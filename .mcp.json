@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vibium": {
+      "command": "npx",
+      "args": ["vibium"]
+    }
+  }
+}

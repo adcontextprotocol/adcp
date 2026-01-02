@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Preferences - Dashboard</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: var(--color-bg-page);
+    }
+
+    .page-header {
+      padding: 32px 40px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+
+    .page-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      color: var(--color-text-heading);
+    }
+
+    .page-header p {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .page-content {
+      padding: 32px 40px;
+      max-width: 800px;
+    }
+
+    .settings-section {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .settings-section-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .settings-section-header h2 {
+      margin: 0;
+      font-size: 16px;
+      color: var(--color-text-heading);
+    }
+
+    .settings-section-header p {
+      margin: 8px 0 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .settings-section-body {
+      padding: 24px;
+    }
+
+    .email-category {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .email-category:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .email-category:first-child {
+      padding-top: 0;
+    }
+
+    .email-category-info {
+      flex: 1;
+      padding-right: 24px;
+    }
+
+    .email-category-name {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .email-category-desc {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Toggle switch */
+    .toggle {
+      position: relative;
+      width: 48px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--color-gray-300);
+      transition: 0.3s;
+      border-radius: 26px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background-color: var(--color-brand);
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(22px);
+    }
+
+    .toggle input:disabled + .toggle-slider {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .unsubscribed-banner {
+      background: var(--color-warning-50);
+      border: 1px solid var(--color-warning-300);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .unsubscribed-banner-text {
+      flex: 1;
+    }
+
+    .unsubscribed-banner h3 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      color: var(--color-warning-800);
+    }
+
+    .unsubscribed-banner p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-warning-700);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-success-600);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    .toast.error {
+      background: var(--color-error-600);
+    }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="toast" class="toast"></div>
+
+  <div class="page-header">
+    <h1>Email Preferences</h1>
+    <p>Choose which emails you'd like to receive from AgenticAdvertising.org</p>
+  </div>
+
+  <div class="page-content">
+    <div id="loading" class="loading">Loading preferences...</div>
+
+    <div id="content" style="display: none;">
+      <!-- Global unsubscribe banner -->
+      <div id="unsubscribedBanner" class="unsubscribed-banner" style="display: none;">
+        <div class="unsubscribed-banner-text">
+          <h3>You're unsubscribed from all emails</h3>
+          <p>You won't receive any marketing or community emails. Transactional emails (password resets, billing) will still be sent.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="resubscribe()">Resubscribe</button>
+      </div>
+
+      <!-- Email categories -->
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <h2>Email Types</h2>
+          <p>Toggle which types of emails you want to receive</p>
+        </div>
+        <div class="settings-section-body" id="categoriesContainer">
+          <!-- Categories will be rendered here -->
+        </div>
+      </div>
+
+      <!-- Info section -->
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <h2>About Transactional Emails</h2>
+        </div>
+        <div class="settings-section-body">
+          <p style="margin: 0; font-size: 13px; color: var(--color-text-secondary);">
+            Some emails can't be unsubscribed from because they're essential for your account. These include:
+          </p>
+          <ul style="margin: 12px 0 0; padding-left: 20px; font-size: 13px; color: var(--color-text-secondary);">
+            <li>Welcome emails when you sign up</li>
+            <li>Password reset and security emails</li>
+            <li>Billing receipts and payment issues</li>
+            <li>Important account notifications</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let preferences = null;
+    let isGloballyUnsubscribed = false;
+
+    // Show toast notification
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Load preferences
+    async function loadPreferences() {
+      try {
+        // First load user data for sidebar
+        const meResponse = await fetch('/api/me', { credentials: 'include' });
+        if (!meResponse.ok) {
+          if (meResponse.status === 401) {
+            window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const userData = await meResponse.json();
+        const orgId = localStorage.getItem('selectedOrgId');
+        const currentOrg = userData.organizations?.find(o => o.id === orgId) || userData.organizations?.[0];
+
+        // Initialize sidebar
+        DashboardNav.init({
+          showOrgSwitcher: userData.organizations?.length > 1,
+          currentOrgName: currentOrg?.name || 'Dashboard',
+          showAdmin: userData.isAdmin
+        });
+
+        if (userData.organizations?.length > 1) {
+          DashboardNav.setOrgOptions(userData.organizations, currentOrg?.id, (newOrgId) => {
+            localStorage.setItem('selectedOrgId', newOrgId);
+            window.location.href = '/dashboard/emails?org=' + newOrgId;
+          });
+        }
+
+        // Load email preferences
+        const response = await fetch('/api/email-preferences', { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load preferences');
+
+        const data = await response.json();
+        preferences = data;
+        isGloballyUnsubscribed = data.global_unsubscribe || false;
+
+        renderPreferences();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading preferences:', error);
+        document.getElementById('loading').innerHTML = 'Error loading preferences. Please refresh.';
+      }
+    }
+
+    function renderPreferences() {
+      const container = document.getElementById('categoriesContainer');
+      const banner = document.getElementById('unsubscribedBanner');
+
+      // Show/hide global unsubscribe banner
+      if (isGloballyUnsubscribed) {
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+      }
+
+      // Render categories
+      if (!preferences.categories || preferences.categories.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No email categories available.</p>';
+        return;
+      }
+
+      container.innerHTML = preferences.categories.map(cat => {
+        // API returns category_name, category_description, category_id, enabled
+        const isEnabled = cat.enabled;
+        const isDisabled = isGloballyUnsubscribed;
+
+        return `
+          <div class="email-category">
+            <div class="email-category-info">
+              <h3 class="email-category-name">${escapeHtml(cat.category_name)}</h3>
+              <p class="email-category-desc">${escapeHtml(cat.category_description || '')}</p>
+            </div>
+            <label class="toggle">
+              <input type="checkbox"
+                     ${isEnabled ? 'checked' : ''}
+                     ${isDisabled ? 'disabled' : ''}
+                     onchange="toggleCategory('${cat.category_id}', this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function toggleCategory(categoryId, enabled) {
+      try {
+        const response = await fetch('/api/email-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category_id: categoryId, enabled }),
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to update preference');
+
+        // Update local state - find the category and update its enabled status
+        const category = preferences.categories.find(c => c.category_id === categoryId);
+        if (category) {
+          category.enabled = enabled;
+        }
+
+        showToast(enabled ? 'Subscribed' : 'Unsubscribed');
+      } catch (error) {
+        showToast('Failed to update preference', true);
+        // Revert the toggle
+        renderPreferences();
+      }
+    }
+
+    async function resubscribe() {
+      try {
+        const response = await fetch('/api/email-preferences/resubscribe-me', {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to resubscribe');
+
+        isGloballyUnsubscribed = false;
+        renderPreferences();
+        showToast('You\'ve been resubscribed to emails');
+      } catch (error) {
+        showToast('Failed to resubscribe', true);
+      }
+    }
+
+    // Initialize
+    loadPreferences();
+  </script>
+</body>
+</html>

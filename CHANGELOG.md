@@ -32,7 +32,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "video_file", "asset_type": "video", "required": true },
       { "item_type": "individual", "asset_id": "end_card", "asset_type": "image", "required": false },
-      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "tracking_pixel", "required": false }
+      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "url", "required": false }
     ]
   }
   ```

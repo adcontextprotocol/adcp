@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Insight Types - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      color: var(--color-text-heading);
+      font-size: 24px;
+    }
+    .page-header p {
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-danger {
+      background: var(--color-danger);
+      color: white;
+    }
+    .btn-danger:hover {
+      background: var(--color-danger-hover);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    th {
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      color: var(--color-text-primary);
+    }
+    .type-name {
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+    .type-description {
+      color: var(--color-text-secondary);
+      font-size: 13px;
+      max-width: 300px;
+    }
+    .example-values {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .example-tag {
+      background: var(--color-gray-100);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-success {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+    .badge-warning {
+      background: var(--color-warning-light);
+      color: var(--color-warning-dark);
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin-bottom: 20px;
+      color: var(--color-text-heading);
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .form-group small {
+      color: var(--color-text-muted);
+      font-size: 12px;
+      margin-top: 4px;
+      display: block;
+    }
+    .form-group .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .form-group .checkbox-label input {
+      width: auto;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-muted);
+    }
+    .error-message {
+      background: var(--color-danger-light);
+      color: var(--color-danger);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Insight Types</h1>
+        <p>Define the taxonomy of insights to collect about members</p>
+      </div>
+      <button class="btn btn-primary" onclick="openCreateModal()">+ New Insight Type</button>
+    </div>
+
+    <div class="card">
+      <div id="loading" class="loading">Loading insight types...</div>
+      <div id="error" class="error-message" style="display: none;"></div>
+      <table id="types-table" style="display: none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Example Values</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="types-body"></tbody>
+      </table>
+      <div id="empty" class="empty-state" style="display: none;">
+        <p>No insight types defined yet.</p>
+        <p style="margin-top: 8px;">Create your first insight type to start categorizing member insights.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div id="modal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modal-title">New Insight Type</h2>
+      <div id="modal-error" class="error-message" style="display: none;"></div>
+      <form id="type-form" onsubmit="handleSubmit(event)">
+        <input type="hidden" id="type-id">
+        <div class="form-group">
+          <label for="name">Name *</label>
+          <input type="text" id="name" required placeholder="e.g., role, interest, pain_point">
+          <small>A short identifier for this insight type (lowercase, no spaces recommended)</small>
+        </div>
+        <div class="form-group">
+          <label for="description">Description</label>
+          <textarea id="description" placeholder="What does this insight type capture?"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="example-values">Example Values</label>
+          <textarea id="example-values" placeholder="Enter example values, one per line"></textarea>
+          <small>These help admins understand what kind of values to expect</small>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="is-active" checked>
+            Active
+          </label>
+          <small>Inactive types won't be used for new insight extraction</small>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submit-btn">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let insightTypes = [];
+
+    // Load insight types on page load
+    async function loadInsightTypes() {
+      const loading = document.getElementById('loading');
+      const error = document.getElementById('error');
+      const table = document.getElementById('types-table');
+      const empty = document.getElementById('empty');
+
+      loading.style.display = 'block';
+      error.style.display = 'none';
+      table.style.display = 'none';
+      empty.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/admin/insight-types');
+        if (!response.ok) {
+          if (response.status === 401) {
+            AdminSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load insight types');
+        }
+
+        insightTypes = await response.json();
+        loading.style.display = 'none';
+
+        if (insightTypes.length === 0) {
+          empty.style.display = 'block';
+        } else {
+          table.style.display = 'table';
+          renderTypes();
+        }
+      } catch (err) {
+        loading.style.display = 'none';
+        error.textContent = err.message;
+        error.style.display = 'block';
+      }
+    }
+
+    function renderTypes() {
+      const tbody = document.getElementById('types-body');
+      tbody.innerHTML = insightTypes.map(type => `
+        <tr>
+          <td class="type-name">${escapeHtml(type.name)}</td>
+          <td class="type-description">${escapeHtml(type.description || '—')}</td>
+          <td>
+            ${type.example_values && type.example_values.length > 0 ? `
+              <div class="example-values">
+                ${type.example_values.slice(0, 5).map(v => `<span class="example-tag">${escapeHtml(v)}</span>`).join('')}
+                ${type.example_values.length > 5 ? `<span class="example-tag">+${type.example_values.length - 5} more</span>` : ''}
+              </div>
+            ` : '—'}
+          </td>
+          <td>
+            <span class="badge ${type.is_active ? 'badge-success' : 'badge-warning'}">
+              ${type.is_active ? 'Active' : 'Inactive'}
+            </span>
+          </td>
+          <td class="actions">
+            <button class="btn btn-secondary btn-small" onclick="openEditModal(${type.id})">Edit</button>
+            <button class="btn btn-danger btn-small" onclick="deleteType(${type.id})">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openCreateModal() {
+      document.getElementById('modal-title').textContent = 'New Insight Type';
+      document.getElementById('submit-btn').textContent = 'Create';
+      document.getElementById('type-form').reset();
+      document.getElementById('type-id').value = '';
+      document.getElementById('is-active').checked = true;
+      document.getElementById('modal-error').style.display = 'none';
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function openEditModal(id) {
+      const type = insightTypes.find(t => t.id === id);
+      if (!type) return;
+
+      document.getElementById('modal-title').textContent = 'Edit Insight Type';
+      document.getElementById('submit-btn').textContent = 'Save';
+      document.getElementById('type-id').value = id;
+      document.getElementById('name').value = type.name;
+      document.getElementById('description').value = type.description || '';
+      document.getElementById('example-values').value = (type.example_values || []).join('\n');
+      document.getElementById('is-active').checked = type.is_active;
+      document.getElementById('modal-error').style.display = 'none';
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    async function handleSubmit(event) {
+      event.preventDefault();
+      const modalError = document.getElementById('modal-error');
+      modalError.style.display = 'none';
+
+      const id = document.getElementById('type-id').value;
+      const name = document.getElementById('name').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const exampleValuesText = document.getElementById('example-values').value.trim();
+      const isActive = document.getElementById('is-active').checked;
+
+      const exampleValues = exampleValuesText
+        ? exampleValuesText.split('\n').map(v => v.trim()).filter(v => v)
+        : [];
+
+      const data = {
+        name,
+        description: description || null,
+        example_values: exampleValues.length > 0 ? exampleValues : null,
+        is_active: isActive,
+      };
+
+      try {
+        const url = id ? `/api/admin/insight-types/${id}` : '/api/admin/insight-types';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to save insight type');
+        }
+
+        closeModal();
+        loadInsightTypes();
+      } catch (err) {
+        modalError.textContent = err.message;
+        modalError.style.display = 'block';
+      }
+    }
+
+    async function deleteType(id) {
+      const type = insightTypes.find(t => t.id === id);
+      if (!type) return;
+
+      if (!confirm(`Are you sure you want to delete the insight type "${type.name}"? Existing insights of this type will remain but no new insights will be extracted.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/insight-types/${id}`, { method: 'DELETE' });
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to delete insight type');
+        }
+        loadInsightTypes();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    loadInsightTypes();
+  </script>
+</body>
+</html>

@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Outreach - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      color: var(--color-text-heading);
+      font-size: 24px;
+    }
+    .page-header p {
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .mode-badge {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .mode-disabled { background: var(--color-gray-200); color: var(--color-text-secondary); }
+    .mode-test { background: var(--color-warning-light); color: var(--color-warning-dark); }
+    .mode-dry_run { background: var(--color-info-light); color: var(--color-info); }
+    .mode-live { background: var(--color-success-light); color: var(--color-success); }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-top: 4px;
+    }
+    .stat-card .subtext {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 4px;
+    }
+    .section {
+      margin-bottom: 24px;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .section-header h2 {
+      font-size: 18px;
+      color: var(--color-text-heading);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-danger {
+      background: var(--color-danger);
+      color: white;
+    }
+    .btn-danger:hover {
+      background: var(--color-danger-hover);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    th {
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      color: var(--color-text-primary);
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-success {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+    .badge-warning {
+      background: var(--color-warning-light);
+      color: var(--color-warning-dark);
+    }
+    .badge-info {
+      background: var(--color-info-light);
+      color: var(--color-info);
+    }
+    .badge-danger {
+      background: var(--color-danger-light);
+      color: var(--color-danger);
+    }
+    .variant-card {
+      background: var(--color-gray-50);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .variant-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .variant-name {
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+    .variant-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .variant-stat {
+      text-align: center;
+    }
+    .variant-stat-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+    .variant-stat-label {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+    }
+    .variant-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .variant-tag {
+      padding: 2px 8px;
+      background: var(--color-gray-200);
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .test-accounts-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .test-account {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--color-gray-100);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .test-account .remove {
+      cursor: pointer;
+      color: var(--color-text-muted);
+    }
+    .test-account .remove:hover {
+      color: var(--color-danger);
+    }
+    .add-account-form {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .add-account-form input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin-bottom: 20px;
+      color: var(--color-text-heading);
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    .form-group small {
+      color: var(--color-text-muted);
+      font-size: 12px;
+      margin-top: 4px;
+      display: block;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-muted);
+    }
+    .error-message {
+      background: var(--color-danger-light);
+      color: var(--color-danger);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .success-message {
+      background: var(--color-success-light);
+      color: var(--color-success);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 12px 20px;
+      background: none;
+      border: none;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      font-size: 14px;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Proactive Outreach</h1>
+        <p>Manage Addie's proactive outreach to Slack members</p>
+      </div>
+      <div class="header-actions">
+        <span id="mode-badge" class="mode-badge mode-disabled">Loading...</span>
+        <button class="btn btn-primary" onclick="runOutreach()" id="run-btn">Run Outreach</button>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="label">Sent Today</div>
+        <div class="value" id="stat-today">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Sent This Week</div>
+        <div class="value" id="stat-week">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Response Rate</div>
+        <div class="value" id="stat-response-rate">—</div>
+        <div class="subtext" id="stat-response-count"></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Insights Gathered</div>
+        <div class="value" id="stat-insights">—</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('history')">History</button>
+      <button class="tab" onclick="showTab('variants')">A/B Variants</button>
+      <button class="tab" onclick="showTab('test-accounts')">Test Accounts</button>
+    </div>
+
+    <!-- History Tab -->
+    <div id="tab-history" class="tab-content active">
+      <div class="card">
+        <div id="history-loading" class="loading">Loading outreach history...</div>
+        <div id="history-error" class="error-message" style="display: none;"></div>
+        <table id="history-table" style="display: none;">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>User</th>
+              <th>Type</th>
+              <th>Variant</th>
+              <th>Responded</th>
+              <th>Insight</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+        <div id="history-empty" class="empty-state" style="display: none;">
+          No outreach has been sent yet.
+        </div>
+      </div>
+    </div>
+
+    <!-- A/B Variants Tab -->
+    <div id="tab-variants" class="tab-content">
+      <div class="section-header">
+        <h2>Message Variants</h2>
+        <button class="btn btn-secondary" onclick="openVariantModal()">+ New Variant</button>
+      </div>
+      <div id="variants-loading" class="loading">Loading variants...</div>
+      <div id="variants-list"></div>
+    </div>
+
+    <!-- Test Accounts Tab -->
+    <div id="tab-test-accounts" class="tab-content">
+      <div class="card">
+        <h3 style="margin-bottom: 8px; color: var(--color-text-heading);">Test Accounts</h3>
+        <p style="color: var(--color-text-secondary); font-size: 14px;">
+          When outreach mode is "test", only these Slack users will receive messages.
+        </p>
+        <div id="test-accounts-list" class="test-accounts-list"></div>
+        <div class="add-account-form">
+          <input type="text" id="new-test-account" placeholder="Slack User ID (e.g., U12345678)">
+          <input type="text" id="new-test-description" placeholder="Description (optional)">
+          <button class="btn btn-secondary" onclick="addTestAccount()">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Variant Modal -->
+  <div id="variant-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="variant-modal-title">New Variant</h2>
+      <div id="variant-error" class="error-message" style="display: none;"></div>
+      <form id="variant-form" onsubmit="handleVariantSubmit(event)">
+        <input type="hidden" id="variant-id">
+        <div class="form-group">
+          <label for="variant-name">Name *</label>
+          <input type="text" id="variant-name" required placeholder="e.g., Professional + Direct">
+        </div>
+        <div class="form-group">
+          <label for="variant-tone">Tone *</label>
+          <select id="variant-tone" required>
+            <option value="professional">Professional</option>
+            <option value="casual">Casual</option>
+            <option value="brief">Brief</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="variant-approach">Approach *</label>
+          <select id="variant-approach" required>
+            <option value="conversational">Conversational</option>
+            <option value="direct">Direct</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="variant-template">Message Template *</label>
+          <textarea id="variant-template" required placeholder="Use {{user_name}} and {{goal_question}} as placeholders"></textarea>
+          <small>Available placeholders: {{user_name}}, {{goal_question}}</small>
+        </div>
+        <div class="form-group">
+          <label for="variant-weight">Weight</label>
+          <input type="number" id="variant-weight" value="100" min="1" max="1000">
+          <small>Higher weight = more likely to be selected (default: 100)</small>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeVariantModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="variant-submit-btn">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let outreachMode = 'disabled';
+    let variantStats = [];
+    let history = [];
+    let testAccounts = [];
+
+    // Initialize
+    async function init() {
+      await Promise.all([
+        loadMode(),
+        loadStats(),
+        loadHistory(),
+        loadVariants(),
+        loadTestAccounts(),
+      ]);
+    }
+
+    async function loadMode() {
+      try {
+        const response = await fetch('/api/admin/outreach/mode');
+        if (response.ok) {
+          const data = await response.json();
+          outreachMode = data.mode;
+          updateModeDisplay();
+        }
+      } catch (err) {
+        console.error('Failed to load mode:', err);
+      }
+    }
+
+    function updateModeDisplay() {
+      const badge = document.getElementById('mode-badge');
+      badge.textContent = outreachMode.replace('_', ' ');
+      badge.className = `mode-badge mode-${outreachMode}`;
+
+      const runBtn = document.getElementById('run-btn');
+      runBtn.disabled = outreachMode === 'disabled';
+    }
+
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/admin/outreach/stats');
+        if (response.ok) {
+          const stats = await response.json();
+          document.getElementById('stat-today').textContent = stats.sent_today || 0;
+          document.getElementById('stat-week').textContent = stats.sent_week || 0;
+          const responseRate = stats.total_sent > 0
+            ? Math.round(100 * stats.total_responded / stats.total_sent)
+            : 0;
+          document.getElementById('stat-response-rate').textContent = responseRate + '%';
+          document.getElementById('stat-response-count').textContent =
+            `${stats.total_responded || 0} / ${stats.total_sent || 0}`;
+          document.getElementById('stat-insights').textContent = stats.insights_gathered || 0;
+        }
+      } catch (err) {
+        console.error('Failed to load stats:', err);
+      }
+    }
+
+    async function loadHistory() {
+      const loading = document.getElementById('history-loading');
+      const error = document.getElementById('history-error');
+      const table = document.getElementById('history-table');
+      const empty = document.getElementById('history-empty');
+
+      loading.style.display = 'block';
+      table.style.display = 'none';
+      empty.style.display = 'none';
+      error.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/admin/outreach/history?limit=50');
+        if (!response.ok) {
+          if (response.status === 401) {
+            AdminSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load history');
+        }
+
+        history = await response.json();
+        loading.style.display = 'none';
+
+        if (history.length === 0) {
+          empty.style.display = 'block';
+        } else {
+          table.style.display = 'table';
+          renderHistory();
+        }
+      } catch (err) {
+        loading.style.display = 'none';
+        error.textContent = err.message;
+        error.style.display = 'block';
+      }
+    }
+
+    function renderHistory() {
+      const tbody = document.getElementById('history-body');
+      tbody.innerHTML = history.map(item => `
+        <tr>
+          <td>${formatDate(item.sent_at)}</td>
+          <td>${escapeHtml(item.slack_user_id)}</td>
+          <td><span class="badge badge-info">${item.outreach_type}</span></td>
+          <td>${item.tone ? `${item.tone} / ${item.approach}` : '—'}</td>
+          <td>
+            <span class="badge ${item.user_responded ? 'badge-success' : 'badge-warning'}">
+              ${item.user_responded ? 'Yes' : 'No'}
+            </span>
+          </td>
+          <td>
+            <span class="badge ${item.insight_extracted ? 'badge-success' : 'badge-warning'}">
+              ${item.insight_extracted ? 'Yes' : 'No'}
+            </span>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadVariants() {
+      const loading = document.getElementById('variants-loading');
+      const list = document.getElementById('variants-list');
+
+      loading.style.display = 'block';
+      list.innerHTML = '';
+
+      try {
+        const [variantsRes, statsRes] = await Promise.all([
+          fetch('/api/admin/outreach/variants'),
+          fetch('/api/admin/outreach/variants/stats'),
+        ]);
+
+        if (!variantsRes.ok || !statsRes.ok) throw new Error('Failed to load variants');
+
+        const variants = await variantsRes.json();
+        variantStats = await statsRes.json();
+
+        loading.style.display = 'none';
+        renderVariants(variants);
+      } catch (err) {
+        loading.style.display = 'none';
+        list.innerHTML = `<div class="error-message">${err.message}</div>`;
+      }
+    }
+
+    function renderVariants(variants) {
+      const list = document.getElementById('variants-list');
+      if (variants.length === 0) {
+        list.innerHTML = '<div class="empty-state">No variants configured yet.</div>';
+        return;
+      }
+
+      list.innerHTML = variants.map(v => {
+        const stats = variantStats.find(s => s.variant_id === v.id) || {};
+        return `
+          <div class="variant-card">
+            <div class="variant-header">
+              <span class="variant-name">${escapeHtml(v.name)}</span>
+              <div>
+                <span class="badge ${v.is_active ? 'badge-success' : 'badge-warning'}">
+                  ${v.is_active ? 'Active' : 'Inactive'}
+                </span>
+                <button class="btn btn-secondary btn-small" onclick="editVariant(${v.id})">Edit</button>
+              </div>
+            </div>
+            <div class="variant-stats">
+              <div class="variant-stat">
+                <div class="variant-stat-value">${stats.total_sent || 0}</div>
+                <div class="variant-stat-label">Sent</div>
+              </div>
+              <div class="variant-stat">
+                <div class="variant-stat-value">${stats.response_rate_pct || 0}%</div>
+                <div class="variant-stat-label">Response Rate</div>
+              </div>
+              <div class="variant-stat">
+                <div class="variant-stat-value">${stats.insight_rate_pct || 0}%</div>
+                <div class="variant-stat-label">Insight Rate</div>
+              </div>
+              <div class="variant-stat">
+                <div class="variant-stat-value">${v.weight}</div>
+                <div class="variant-stat-label">Weight</div>
+              </div>
+            </div>
+            <div class="variant-tags">
+              <span class="variant-tag">Tone: ${v.tone}</span>
+              <span class="variant-tag">Approach: ${v.approach}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadTestAccounts() {
+      try {
+        const response = await fetch('/api/admin/outreach/test-accounts');
+        if (response.ok) {
+          testAccounts = await response.json();
+          renderTestAccounts();
+        }
+      } catch (err) {
+        console.error('Failed to load test accounts:', err);
+      }
+    }
+
+    function renderTestAccounts() {
+      const list = document.getElementById('test-accounts-list');
+      if (testAccounts.length === 0) {
+        list.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px;">No test accounts configured.</p>';
+        return;
+      }
+
+      list.innerHTML = testAccounts.map(a => `
+        <div class="test-account">
+          <span>${escapeHtml(a.slack_user_id)}</span>
+          ${a.description ? `<span style="color: var(--color-text-muted);">(${escapeHtml(a.description)})</span>` : ''}
+          <span class="remove" onclick="removeTestAccount('${escapeHtml(a.slack_user_id)}')">&times;</span>
+        </div>
+      `).join('');
+    }
+
+    async function addTestAccount() {
+      const slackUserId = document.getElementById('new-test-account').value.trim();
+      const description = document.getElementById('new-test-description').value.trim();
+
+      if (!slackUserId) {
+        alert('Please enter a Slack User ID');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/admin/outreach/test-accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slack_user_id: slackUserId, description }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to add test account');
+        }
+
+        document.getElementById('new-test-account').value = '';
+        document.getElementById('new-test-description').value = '';
+        loadTestAccounts();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function removeTestAccount(slackUserId) {
+      if (!confirm(`Remove ${slackUserId} from test accounts?`)) return;
+
+      try {
+        const response = await fetch(`/api/admin/outreach/test-accounts/${slackUserId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to remove test account');
+        }
+
+        loadTestAccounts();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function runOutreach() {
+      if (outreachMode === 'disabled') {
+        alert('Outreach mode is disabled. Set OUTREACH_MODE env var to enable.');
+        return;
+      }
+
+      const btn = document.getElementById('run-btn');
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+
+      try {
+        const response = await fetch('/api/admin/outreach/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 5, forceRun: true }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to run outreach');
+        }
+
+        const result = await response.json();
+        alert(`Outreach complete: ${result.sent} sent, ${result.errors} errors`);
+
+        // Refresh data
+        loadStats();
+        loadHistory();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = outreachMode === 'disabled';
+        btn.textContent = 'Run Outreach';
+      }
+    }
+
+    function showTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+    }
+
+    function openVariantModal(variant = null) {
+      document.getElementById('variant-modal-title').textContent = variant ? 'Edit Variant' : 'New Variant';
+      document.getElementById('variant-submit-btn').textContent = variant ? 'Save' : 'Create';
+      document.getElementById('variant-form').reset();
+      document.getElementById('variant-id').value = variant?.id || '';
+      document.getElementById('variant-error').style.display = 'none';
+
+      if (variant) {
+        document.getElementById('variant-name').value = variant.name;
+        document.getElementById('variant-tone').value = variant.tone;
+        document.getElementById('variant-approach').value = variant.approach;
+        document.getElementById('variant-template').value = variant.message_template;
+        document.getElementById('variant-weight').value = variant.weight;
+      }
+
+      document.getElementById('variant-modal').style.display = 'flex';
+    }
+
+    function closeVariantModal() {
+      document.getElementById('variant-modal').style.display = 'none';
+    }
+
+    async function editVariant(id) {
+      try {
+        const response = await fetch('/api/admin/outreach/variants');
+        if (!response.ok) throw new Error('Failed to load variants');
+        const variants = await response.json();
+        const variant = variants.find(v => v.id === id);
+        if (variant) {
+          openVariantModal(variant);
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function handleVariantSubmit(event) {
+      event.preventDefault();
+      const error = document.getElementById('variant-error');
+      error.style.display = 'none';
+
+      const id = document.getElementById('variant-id').value;
+      const data = {
+        name: document.getElementById('variant-name').value.trim(),
+        tone: document.getElementById('variant-tone').value,
+        approach: document.getElementById('variant-approach').value,
+        message_template: document.getElementById('variant-template').value.trim(),
+        weight: parseInt(document.getElementById('variant-weight').value, 10) || 100,
+        is_active: true,
+      };
+
+      try {
+        const url = id ? `/api/admin/outreach/variants/${id}` : '/api/admin/outreach/variants';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to save variant');
+        }
+
+        closeVariantModal();
+        loadVariants();
+      } catch (err) {
+        error.textContent = err.message;
+        error.style.display = 'block';
+      }
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

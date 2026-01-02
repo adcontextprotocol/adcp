@@ -29,9 +29,13 @@ services:
       - RUN_MIGRATIONS=true
       # WARNING: Only for local development - DO NOT use in production
       - ALLOW_INSECURE_COOKIES=true
+      - DEV_USER_EMAIL=dev@example.com
+      - DEV_USER_ID=dev-user-123
     volumes:
       # Mount public directory for hot reloading static files
       - ./server/public:/app/server/public:ro
+      # Mount docs directory for Addie knowledge base
+      - ./docs:/app/docs:ro
     depends_on:
       postgres:
         condition: service_healthy

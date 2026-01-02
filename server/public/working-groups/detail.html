@@ -99,6 +99,17 @@
       font-weight: var(--font-medium);
     }
 
+    .region-badge {
+      font-size: var(--text-sm);
+      padding: var(--space-1) var(--space-3);
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-md);
+      font-weight: var(--font-medium);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
     .group-tagline {
       font-size: var(--text-lg);
       opacity: 0.9;
@@ -613,6 +624,7 @@
         <h1 class="group-title">
           <span id="groupName">Working Group</span>
           <span id="privateBadge" class="private-badge" style="display: none;">Private</span>
+          <span id="regionBadge" class="region-badge" style="display: none;"></span>
         </h1>
         <p id="groupTagline" class="group-tagline" style="display: none;"></p>
       </div>
@@ -852,10 +864,9 @@
         currentGroup = data.working_group;
         isMember = data.is_member || false;
 
-        // Check if current user is a leader (chair or vice-chair)
+        // Check if current user is a leader
         if (currentUser && currentGroup) {
-          isLeader = currentGroup.chair_user_id === currentUser.id ||
-                     currentGroup.vice_chair_user_id === currentUser.id;
+          isLeader = currentGroup.leaders?.some(l => l.user_id === currentUser.id) ?? false;
         }
 
         renderWorkingGroup();
@@ -878,14 +889,19 @@
         document.getElementById('privateBadge').style.display = 'inline';
       }
 
+      // Region badge for chapters
+      if (currentGroup.committee_type === 'chapter' && currentGroup.region) {
+        const regionBadge = document.getElementById('regionBadge');
+        regionBadge.innerHTML = `📍 ${escapeHtml(currentGroup.region)}`;
+        regionBadge.style.display = 'inline-flex';
+      }
+
       // Actions
       if (currentUser) {
         if (isMember) {
           document.getElementById('membershipStatus').style.display = 'block';
           // Show appropriate role label
-          const isChair = currentGroup.chair_user_id === currentUser.id;
-          const isViceChair = currentGroup.vice_chair_user_id === currentUser.id;
-          const label = isChair ? "You're the Chair" : isViceChair ? "You're the Vice Chair" : "You're a member";
+          const label = isLeader ? "You're a Leader" : "You're a member";
           document.getElementById('membershipLabel').textContent = label;
           document.getElementById('leaveBtn').style.display = 'inline-flex';
         } else if (!currentGroup.is_private) {
@@ -912,34 +928,19 @@
       }
 
       // Leadership
-      const hasLeadership = currentGroup.chair_name || currentGroup.vice_chair_name;
+      const hasLeadership = currentGroup.leaders && currentGroup.leaders.length > 0;
       if (hasLeadership) {
         const leadershipSection = document.getElementById('leadershipSection');
         let html = '';
 
-        if (currentGroup.chair_name) {
+        for (const leader of currentGroup.leaders) {
           html += `
             <div class="leader-card">
-              <div class="leader-avatar">${getInitials(currentGroup.chair_name)}</div>
+              <div class="leader-avatar">${getInitials(leader.name || 'Unknown')}</div>
               <div class="leader-info">
-                <div class="leader-role">Chair</div>
-                <h4>${escapeHtml(currentGroup.chair_name)}</h4>
-                ${currentGroup.chair_title ? `<div class="leader-org">${escapeHtml(currentGroup.chair_title)}</div>` : ''}
-                ${currentGroup.chair_org_name ? `<div class="leader-org">${escapeHtml(currentGroup.chair_org_name)}</div>` : ''}
-              </div>
-            </div>
-          `;
-        }
-
-        if (currentGroup.vice_chair_name) {
-          html += `
-            <div class="leader-card">
-              <div class="leader-avatar">${getInitials(currentGroup.vice_chair_name)}</div>
-              <div class="leader-info">
-                <div class="leader-role">Vice Chair</div>
-                <h4>${escapeHtml(currentGroup.vice_chair_name)}</h4>
-                ${currentGroup.vice_chair_title ? `<div class="leader-org">${escapeHtml(currentGroup.vice_chair_title)}</div>` : ''}
-                ${currentGroup.vice_chair_org_name ? `<div class="leader-org">${escapeHtml(currentGroup.vice_chair_org_name)}</div>` : ''}
+                <div class="leader-role">Leader</div>
+                <h4>${escapeHtml(leader.name || 'Unknown')}</h4>
+                ${leader.org_name ? `<div class="leader-org">${escapeHtml(leader.org_name)}</div>` : ''}
               </div>
             </div>
           `;

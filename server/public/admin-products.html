@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Products - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* =============================================================================
+       Admin Products styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .header-content {
+      max-width: var(--container-wide);
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: var(--text-xl); font-weight: var(--font-bold); }
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-5);
+      padding: var(--space-5);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+    }
+    .filter-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+    }
+    .filter-group select,
+    .filter-group input {
+      width: 100%;
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .actions {
+      display: flex;
+      gap: var(--space-2.5);
+      margin-bottom: var(--space-5);
+    }
+    .btn {
+      padding: var(--space-2.5) var(--space-5);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-primary-700);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .products-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: var(--space-5);
+    }
+    .products-table th {
+      background: var(--color-gray-50);
+      padding: var(--space-3);
+      text-align: left;
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      border-bottom: var(--border-2) solid var(--color-gray-200);
+    }
+    .products-table td {
+      padding: var(--space-3);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .products-table tr:hover {
+      background: var(--color-gray-50);
+    }
+    .category-badge {
+      display: inline-block;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .billing-badge {
+      display: inline-block;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .billing-subscription {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .billing-one_time {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: 10px;
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+      margin-right: 2px;
+      margin-bottom: 2px;
+    }
+    .loading {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-secondary);
+    }
+    .btn-icon {
+      padding: var(--space-1.5) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-icon:hover {
+      background: var(--color-gray-50);
+      border-color: var(--color-brand);
+    }
+    .btn-icon:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--color-surface-overlay);
+    }
+    .modal-content {
+      background-color: var(--color-bg-card);
+      margin: var(--space-8) auto;
+      padding: var(--space-8);
+      border-radius: var(--radius-md);
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+      padding-bottom: var(--space-4);
+      border-bottom: var(--border-2) solid var(--color-gray-200);
+    }
+    .modal-close {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      line-height: 1;
+    }
+    .modal-close:hover {
+      color: var(--color-text-heading);
+    }
+    .form-group {
+      margin-bottom: var(--space-4);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+    .form-group .help-text {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: var(--space-1);
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .checkbox-label input {
+      width: auto;
+    }
+    .modal-actions {
+      display: flex;
+      gap: var(--space-2.5);
+      justify-content: flex-end;
+      margin-top: var(--space-6);
+      padding-top: var(--space-5);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .btn-danger {
+      background: var(--color-error-600);
+      color: white;
+      border: 1px solid var(--color-error-600);
+    }
+    .btn-danger:hover {
+      background: var(--color-error-700);
+      border-color: var(--color-error-700);
+    }
+    .form-error {
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      margin-bottom: var(--space-4);
+      color: var(--color-error-700);
+      font-size: var(--text-sm);
+    }
+    .invoiceable-yes {
+      color: var(--color-success-600);
+    }
+    .invoiceable-no {
+      color: var(--color-text-muted);
+    }
+    .managed-badge {
+      display: inline-block;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      background: var(--color-purple-100, var(--color-primary-100));
+      color: var(--color-purple-700, var(--color-primary-700));
+    }
+    .product-row-managed {
+      background: var(--color-gray-50);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header injected by admin-nav.js -->
+
+  <div id="loading" class="loading">
+    Loading products...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <div>
+            <h1>Product Management</h1>
+            <p class="subtitle">Manage billing products and pricing from Stripe</p>
+          </div>
+          <div class="actions">
+            <button class="btn btn-secondary" onclick="refreshProducts()">Refresh</button>
+            <button class="btn btn-primary" onclick="openCreateModal()">Create Product</button>
+          </div>
+        </div>
+
+        <div class="filters">
+          <div class="filter-group">
+            <label>Category</label>
+            <select id="filterCategory" onchange="applyFilters()">
+              <option value="">All Categories</option>
+              <option value="membership">Membership</option>
+              <option value="sponsorship">Sponsorship</option>
+              <option value="event">Event</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Billing Type</label>
+            <select id="filterBillingType" onchange="applyFilters()">
+              <option value="">All Types</option>
+              <option value="subscription">Subscription</option>
+              <option value="one_time">One-Time</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Search</label>
+            <input type="text" id="filterSearch" placeholder="Product name..." oninput="applyFilters()">
+          </div>
+        </div>
+
+        <div id="productsCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2.5);">
+          Showing 0 products
+        </div>
+
+        <table class="products-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Lookup Key</th>
+              <th>Price</th>
+              <th>Category</th>
+              <th>Billing</th>
+              <th>Customer Types</th>
+              <th>Revenue Tiers</th>
+              <th>Invoice</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="productsTableBody">
+            <tr><td colspan="9" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No products found</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Product Modal -->
+  <div id="productModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Create Product</h2>
+        <button class="modal-close" onclick="closeProductModal()">&times;</button>
+      </div>
+
+      <div id="formError" class="form-error" style="display: none;"></div>
+
+      <form id="productForm" onsubmit="saveProduct(event)">
+        <input type="hidden" id="editProductId" value="">
+        <input type="hidden" id="editPriceId" value="">
+
+        <!-- Quick Templates -->
+        <div class="form-group" id="templatesGroup">
+          <label>Quick Start Template</label>
+          <div style="display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1);">
+            <button type="button" class="btn btn-secondary" onclick="applyTemplate('company_membership')">Company Membership</button>
+            <button type="button" class="btn btn-secondary" onclick="applyTemplate('individual_membership')">Individual Membership</button>
+            <button type="button" class="btn btn-secondary" onclick="applyTemplate('event_sponsorship')">Event Sponsorship</button>
+          </div>
+          <div class="help-text">Click a template to pre-fill the form with common settings</div>
+        </div>
+
+        <div class="form-group">
+          <label for="productName">Product Name *</label>
+          <input type="text" id="productName" required placeholder="e.g., Company Membership - Standard" oninput="autoGenerateLookupKey()">
+          <div class="help-text">The name shown in Stripe and on invoices</div>
+        </div>
+
+        <div class="form-group">
+          <label for="productDescription">Description</label>
+          <textarea id="productDescription" rows="2" placeholder="Brief description of the product"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="lookupKey">Lookup Key *</label>
+            <input type="text" id="lookupKey" required placeholder="Auto-generated from name">
+            <div class="help-text">Auto-generated. Edit only if needed.</div>
+          </div>
+
+          <div class="form-group">
+            <label for="displayName">Display Name</label>
+            <input type="text" id="displayName" placeholder="e.g., Standard Membership">
+            <div class="help-text">Shown to customers. Defaults to product name.</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="amount">Price (USD) *</label>
+            <input type="number" id="amount" required min="0" step="0.01" placeholder="e.g., 2500.00" oninput="autoGenerateLookupKey()">
+          </div>
+
+          <div class="form-group">
+            <label for="category">Category *</label>
+            <select id="category" required onchange="autoGenerateLookupKey()">
+              <option value="">Select category...</option>
+              <option value="membership">Membership</option>
+              <option value="sponsorship">Sponsorship</option>
+              <option value="event">Event</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="billingType">Billing Type *</label>
+            <select id="billingType" required onchange="toggleBillingInterval()">
+              <option value="subscription">Subscription (recurring)</option>
+              <option value="one_time">One-Time Payment</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="billingIntervalGroup">
+            <label for="billingInterval">Billing Interval</label>
+            <select id="billingInterval">
+              <option value="year">Yearly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Customer Types</label>
+          <div class="help-text" style="margin-bottom: var(--space-2);">Leave all unchecked to allow all customer types</div>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="customerTypes" value="company"> Company
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="customerTypes" value="individual"> Individual
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Revenue Tiers</label>
+          <div class="help-text" style="margin-bottom: var(--space-2);">Leave all unchecked to allow all revenue tiers</div>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="revenueTiers" value="under_1m"> &lt; $1M
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="revenueTiers" value="1m_5m"> $1-5M
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="revenueTiers" value="5m_50m"> $5-50M
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="revenueTiers" value="50m_250m"> $50-250M
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="revenueTiers" value="250m_1b"> $250M-1B
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="revenueTiers" value="1b_plus"> $1B+
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="invoiceable"> Available for Invoice Requests
+            </label>
+            <div class="help-text">Allow customers to request invoices for this product</div>
+          </div>
+
+          <div class="form-group">
+            <label for="sortOrder">Sort Order</label>
+            <input type="number" id="sortOrder" value="0" min="0">
+            <div class="help-text">Lower numbers appear first</div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Create Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Archive Confirmation Modal -->
+  <div id="archiveModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2>Archive Product</h2>
+        <button class="modal-close" onclick="closeArchiveModal()">&times;</button>
+      </div>
+
+      <p style="margin-bottom: var(--space-4);">
+        Are you sure you want to archive <strong id="archiveProductName"></strong>?
+      </p>
+      <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">
+        Archived products will no longer be available for purchase but existing subscriptions will continue.
+      </p>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeArchiveModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="confirmArchive()">Archive Product</button>
+      </div>
+    </div>
+  </div>
+
+
+  <script>
+    let allProducts = [];
+    let filteredProducts = [];
+    let archiveTarget = null;
+
+    async function loadProducts() {
+      try {
+        const response = await fetch('/api/admin/products');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load products');
+        }
+
+        const data = await response.json();
+        allProducts = data.products || [];
+        filteredProducts = allProducts;
+        renderProducts();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    function applyFilters() {
+      const categoryFilter = document.getElementById('filterCategory').value;
+      const billingTypeFilter = document.getElementById('filterBillingType').value;
+      const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+
+      filteredProducts = allProducts.filter(product => {
+        if (categoryFilter && product.category !== categoryFilter) {
+          return false;
+        }
+
+        if (billingTypeFilter && product.billing_type !== billingTypeFilter) {
+          return false;
+        }
+
+        if (searchFilter) {
+          const nameMatch = (product.product_name || '').toLowerCase().includes(searchFilter);
+          const displayMatch = (product.display_name || '').toLowerCase().includes(searchFilter);
+          const keyMatch = (product.lookup_key || '').toLowerCase().includes(searchFilter);
+          if (!nameMatch && !displayMatch && !keyMatch) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      renderProducts();
+    }
+
+    function renderProducts() {
+      const tbody = document.getElementById('productsTableBody');
+      const countDiv = document.getElementById('productsCount');
+
+      countDiv.textContent = `Showing ${filteredProducts.length} of ${allProducts.length} products`;
+
+      if (filteredProducts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No products found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filteredProducts.map(product => {
+        const price = formatCurrency(product.amount_cents, product.currency);
+        const interval = product.billing_interval ? `/${product.billing_interval}` : '';
+
+        const customerTypes = product.customer_types && product.customer_types.length > 0
+          ? product.customer_types.map(t => `<span class="tag">${t}</span>`).join('')
+          : '<span style="color: var(--color-text-muted);">All</span>';
+
+        const revenueTiers = product.revenue_tiers && product.revenue_tiers.length > 0
+          ? product.revenue_tiers.map(t => `<span class="tag">${formatRevenueTier(t)}</span>`).join('')
+          : '<span style="color: var(--color-text-muted);">All</span>';
+
+        const stripeLink = `https://dashboard.stripe.com/test/products/${product.product_id}`;
+
+        // Check if product is managed by an event
+        const isManaged = product.managed_by === 'event';
+        const managedBadge = isManaged
+          ? '<span class="managed-badge" title="This product is auto-managed by an event">Managed by Event</span>'
+          : '';
+
+        return `
+          <tr class="${isManaged ? 'product-row-managed' : ''}">
+            <td>
+              <strong>${product.display_name || product.product_name}</strong>
+              ${managedBadge}
+              ${product.description ? `<div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px;">${product.description}</div>` : ''}
+            </td>
+            <td><code style="font-size: var(--text-xs);">${product.lookup_key}</code></td>
+            <td><strong>${price}${interval}</strong></td>
+            <td><span class="category-badge">${product.category || 'membership'}</span></td>
+            <td><span class="billing-badge billing-${product.billing_type}">${product.billing_type === 'subscription' ? 'Subscription' : 'One-Time'}</span></td>
+            <td>${customerTypes}</td>
+            <td>${revenueTiers}</td>
+            <td class="${product.is_invoiceable ? 'invoiceable-yes' : 'invoiceable-no'}">${product.is_invoiceable ? 'Yes' : 'No'}</td>
+            <td style="display: flex; gap: 4px;">
+              <a href="${stripeLink}" target="_blank" class="btn-icon" title="View in Stripe">💳</a>
+              <button class="btn-icon" onclick="openEditModal('${product.product_id}')" title="${isManaged ? 'View (read-only)' : 'Edit'}" ${isManaged ? 'disabled' : ''}>✏️</button>
+              <button class="btn-icon" onclick="openArchiveModal('${product.product_id}', '${product.price_id}')" title="${isManaged ? 'Managed by event' : 'Archive'}" style="color: var(--color-error-600);" ${isManaged ? 'disabled' : ''}>📦</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function formatCurrency(cents, currency = 'usd') {
+      const amount = cents / 100;
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency.toUpperCase(),
+      }).format(amount);
+    }
+
+    function formatRevenueTier(tier) {
+      const labels = {
+        under_1m: '<$1M',
+        '1m_5m': '$1-5M',
+        '5m_50m': '$5-50M',
+        '50m_250m': '$50-250M',
+        '250m_1b': '$250M-1B',
+        '1b_plus': '$1B+'
+      };
+      return labels[tier] || tier;
+    }
+
+    function refreshProducts() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('content').style.display = 'none';
+      loadProducts();
+    }
+
+    function toggleBillingInterval() {
+      const billingType = document.getElementById('billingType').value;
+      const intervalGroup = document.getElementById('billingIntervalGroup');
+      intervalGroup.style.display = billingType === 'subscription' ? 'block' : 'none';
+    }
+
+    // Auto-generate lookup key from product name and price
+    function autoGenerateLookupKey() {
+      const isEditing = !!document.getElementById('editProductId').value;
+      if (isEditing) return; // Don't auto-generate when editing
+
+      const name = document.getElementById('productName').value;
+      const category = document.getElementById('category').value || 'membership';
+      const amount = document.getElementById('amount').value;
+
+      if (!name) {
+        document.getElementById('lookupKey').value = '';
+        return;
+      }
+
+      // Convert name to snake_case lookup key
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')  // Replace non-alphanumeric with underscore
+        .replace(/^_+|_+$/g, '')       // Trim leading/trailing underscores
+        .substring(0, 25);              // Limit length (shorter to leave room for price)
+
+      // Include price to prevent collisions between products with same name but different prices
+      const priceSlug = amount ? `_${Math.round(parseFloat(amount))}` : '';
+
+      document.getElementById('lookupKey').value = `aao_${category}_${slug}${priceSlug}`;
+    }
+
+    // Product templates for quick setup
+    const PRODUCT_TEMPLATES = {
+      company_membership: {
+        name: 'Company Membership',
+        description: 'Annual company membership for the Agentic Advertising Organization',
+        category: 'membership',
+        billingType: 'subscription',
+        billingInterval: 'year',
+        amount: 2500,
+        customerTypes: ['company'],
+        revenueTiers: [],
+        invoiceable: true,
+        displayName: 'Company Membership'
+      },
+      individual_membership: {
+        name: 'Individual Membership',
+        description: 'Annual individual membership for the Agentic Advertising Organization',
+        category: 'membership',
+        billingType: 'subscription',
+        billingInterval: 'year',
+        amount: 250,
+        customerTypes: ['individual'],
+        revenueTiers: [],
+        invoiceable: false,
+        displayName: 'Individual Membership'
+      },
+      event_sponsorship: {
+        name: 'Event Sponsorship',
+        description: 'One-time event sponsorship',
+        category: 'sponsorship',
+        billingType: 'one_time',
+        billingInterval: null,
+        amount: 5000,
+        customerTypes: ['company'],
+        revenueTiers: [],
+        invoiceable: true,
+        displayName: 'Event Sponsorship'
+      }
+    };
+
+    function applyTemplate(templateKey) {
+      const template = PRODUCT_TEMPLATES[templateKey];
+      if (!template) return;
+
+      // Fill form fields
+      document.getElementById('productName').value = template.name;
+      document.getElementById('productDescription').value = template.description;
+      document.getElementById('displayName').value = template.displayName;
+      document.getElementById('amount').value = template.amount;
+      document.getElementById('category').value = template.category;
+      document.getElementById('billingType').value = template.billingType;
+      if (template.billingInterval) {
+        document.getElementById('billingInterval').value = template.billingInterval;
+      }
+      document.getElementById('invoiceable').checked = template.invoiceable;
+
+      // Customer types
+      document.querySelectorAll('input[name="customerTypes"]').forEach(cb => {
+        cb.checked = template.customerTypes.includes(cb.value);
+      });
+
+      // Revenue tiers
+      document.querySelectorAll('input[name="revenueTiers"]').forEach(cb => {
+        cb.checked = template.revenueTiers.includes(cb.value);
+      });
+
+      // Generate lookup key
+      autoGenerateLookupKey();
+      toggleBillingInterval();
+    }
+
+    function openCreateModal() {
+      document.getElementById('modalTitle').textContent = 'Create Product';
+      document.getElementById('saveBtn').textContent = 'Create Product';
+      document.getElementById('formError').style.display = 'none';
+      document.getElementById('productForm').reset();
+      document.getElementById('editProductId').value = '';
+      document.getElementById('editPriceId').value = '';
+      document.getElementById('lookupKey').disabled = false;
+      document.getElementById('billingType').disabled = false;
+      document.getElementById('billingInterval').disabled = false;
+      document.getElementById('amount').disabled = false;
+      document.getElementById('templatesGroup').style.display = 'block';
+      toggleBillingInterval();
+      document.getElementById('productModal').style.display = 'block';
+    }
+
+    function openEditModal(productId) {
+      const product = allProducts.find(p => p.product_id === productId);
+      if (!product) return;
+
+      document.getElementById('modalTitle').textContent = 'Edit Product';
+      document.getElementById('saveBtn').textContent = 'Save Changes';
+      document.getElementById('formError').style.display = 'none';
+      document.getElementById('editProductId').value = product.product_id;
+      document.getElementById('editPriceId').value = product.price_id;
+
+      // Fill form
+      document.getElementById('productName').value = product.product_name || '';
+      document.getElementById('productDescription').value = product.description || '';
+      document.getElementById('lookupKey').value = product.lookup_key || '';
+      document.getElementById('displayName').value = product.display_name || '';
+      document.getElementById('amount').value = (product.amount_cents / 100).toFixed(2);
+      document.getElementById('category').value = product.category || 'membership';
+      document.getElementById('billingType').value = product.billing_type || 'subscription';
+      document.getElementById('billingInterval').value = product.billing_interval || 'year';
+      document.getElementById('invoiceable').checked = product.is_invoiceable || false;
+      document.getElementById('sortOrder').value = product.sort_order || 0;
+
+      // Customer types checkboxes
+      document.querySelectorAll('input[name="customerTypes"]').forEach(cb => {
+        cb.checked = product.customer_types && product.customer_types.includes(cb.value);
+      });
+
+      // Revenue tiers checkboxes
+      document.querySelectorAll('input[name="revenueTiers"]').forEach(cb => {
+        cb.checked = product.revenue_tiers && product.revenue_tiers.includes(cb.value);
+      });
+
+      // Disable fields that can't be changed in Stripe
+      document.getElementById('lookupKey').disabled = true;
+      document.getElementById('billingType').disabled = true;
+      document.getElementById('billingInterval').disabled = true;
+      document.getElementById('amount').disabled = true;
+
+      // Hide templates when editing
+      document.getElementById('templatesGroup').style.display = 'none';
+
+      toggleBillingInterval();
+      document.getElementById('productModal').style.display = 'block';
+    }
+
+    function closeProductModal() {
+      document.getElementById('productModal').style.display = 'none';
+    }
+
+    async function saveProduct(event) {
+      event.preventDefault();
+
+      const formError = document.getElementById('formError');
+      const saveBtn = document.getElementById('saveBtn');
+      const isEditing = !!document.getElementById('editProductId').value;
+
+      // Validate lookup key format
+      const lookupKey = document.getElementById('lookupKey').value.trim();
+      if (!lookupKey.startsWith('aao_')) {
+        formError.textContent = 'Lookup key must start with "aao_"';
+        formError.style.display = 'block';
+        return;
+      }
+
+      // Gather form data
+      const customerTypes = Array.from(document.querySelectorAll('input[name="customerTypes"]:checked')).map(cb => cb.value);
+      const revenueTiers = Array.from(document.querySelectorAll('input[name="revenueTiers"]:checked')).map(cb => cb.value);
+
+      const data = {
+        name: document.getElementById('productName').value.trim(),
+        description: document.getElementById('productDescription').value.trim() || undefined,
+        lookupKey: lookupKey,
+        displayName: document.getElementById('displayName').value.trim() || undefined,
+        amountCents: Math.round(parseFloat(document.getElementById('amount').value) * 100),
+        category: document.getElementById('category').value,
+        billingType: document.getElementById('billingType').value,
+        billingInterval: document.getElementById('billingType').value === 'subscription'
+          ? document.getElementById('billingInterval').value
+          : undefined,
+        customerTypes: customerTypes.length > 0 ? customerTypes : undefined,
+        revenueTiers: revenueTiers.length > 0 ? revenueTiers : undefined,
+        invoiceable: document.getElementById('invoiceable').checked,
+        sortOrder: parseInt(document.getElementById('sortOrder').value) || 0,
+      };
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = isEditing ? 'Saving...' : 'Creating...';
+      formError.style.display = 'none';
+
+      try {
+        let response;
+        if (isEditing) {
+          const productId = document.getElementById('editProductId').value;
+          response = await fetch(`/api/admin/products/${productId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+        } else {
+          response = await fetch('/api/admin/products', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+        }
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const result = await response.json();
+          throw new Error(result.error || 'Failed to save product');
+        }
+
+        closeProductModal();
+        refreshProducts();
+      } catch (error) {
+        console.error('Error saving product:', error);
+        formError.textContent = error.message;
+        formError.style.display = 'block';
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = isEditing ? 'Save Changes' : 'Create Product';
+      }
+    }
+
+    function openArchiveModal(productId, priceId) {
+      const product = allProducts.find(p => p.product_id === productId);
+      if (!product) return;
+
+      archiveTarget = { productId, priceId };
+      document.getElementById('archiveProductName').textContent = product.display_name || product.product_name;
+      document.getElementById('archiveModal').style.display = 'block';
+    }
+
+    function closeArchiveModal() {
+      document.getElementById('archiveModal').style.display = 'none';
+      archiveTarget = null;
+    }
+
+    async function confirmArchive() {
+      if (!archiveTarget) return;
+
+      try {
+        const response = await fetch(`/api/admin/products/${archiveTarget.productId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priceId: archiveTarget.priceId }),
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to archive product');
+        }
+
+        closeArchiveModal();
+        refreshProducts();
+      } catch (error) {
+        console.error('Error archiving product:', error);
+        alert('Failed to archive product: ' + error.message);
+      }
+    }
+
+    // Close modals when clicking outside
+    window.onclick = function(event) {
+      const productModal = document.getElementById('productModal');
+      const archiveModal = document.getElementById('archiveModal');
+      if (event.target === productModal) {
+        closeProductModal();
+      }
+      if (event.target === archiveModal) {
+        closeArchiveModal();
+      }
+    };
+
+    // Initialize
+    loadProducts();
+  </script>
+</body>
+</html>

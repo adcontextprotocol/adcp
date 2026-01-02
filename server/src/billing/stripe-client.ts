@@ -18,6 +18,250 @@ export const stripe = STRIPE_SECRET_KEY
 
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
+// Cache for products (refreshed periodically)
+let productsCache: BillingProduct[] | null = null;
+let productsCacheTime = 0;
+const PRODUCTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export interface BillingProduct {
+  lookup_key: string;
+  price_id: string;
+  product_id: string;
+  product_name: string;
+  display_name: string;
+  description: string | null;
+  amount_cents: number;
+  currency: string;
+  category: string; // 'membership', 'sponsorship', 'event', etc.
+  billing_type: 'subscription' | 'one_time'; // subscription for recurring, one_time for invoices/events
+  billing_interval: string | null; // 'year', 'month', etc. for subscriptions
+  customer_types: string[]; // ['company', 'individual'] or empty for all
+  revenue_tiers: string[]; // ['under_1m', '1m_5m'] or empty for all
+  is_invoiceable: boolean; // Can be paid via invoice request
+  sort_order: number; // For custom ordering
+  metadata: Record<string, string>;
+  // Event-managed product fields
+  managed_by?: string; // 'event' if managed by an event
+  event_id?: string; // The event ID if managed by an event
+}
+
+// Keep backward compatibility alias
+export type InvoiceableProduct = BillingProduct;
+
+/**
+ * Clear the products cache (call after creating/updating/deleting products)
+ */
+export function clearProductsCache(): void {
+  productsCache = null;
+  productsCacheTime = 0;
+}
+
+/**
+ * Parse comma-separated metadata value into array
+ */
+function parseMetadataArray(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
+ * Get all billing products from Stripe using lookup keys
+ * Products must have prices with lookup_key starting with 'aao_'
+ *
+ * Lookup key patterns:
+ * - aao_membership_* - Membership subscriptions
+ * - aao_invoice_* - Invoice-only products (one-time)
+ * - aao_sponsorship_* - Event sponsorships
+ * - aao_event_* - Event tickets/registrations
+ *
+ * Product metadata fields:
+ * - category: 'membership' | 'sponsorship' | 'event' (default: derived from lookup_key)
+ * - display_name: Human-readable name (default: product name)
+ * - customer_types: Comma-separated list of allowed customer types (empty = all)
+ * - revenue_tiers: Comma-separated list of allowed revenue tiers (empty = all)
+ * - invoiceable: 'true' | 'false' - Can be requested via invoice (default: true for one-time)
+ * - sort_order: Number for custom ordering (default: 0)
+ */
+export async function getBillingProducts(): Promise<BillingProduct[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch products');
+    return [];
+  }
+
+  // Return cached data if fresh
+  if (productsCache && Date.now() - productsCacheTime < PRODUCTS_CACHE_TTL) {
+    return productsCache;
+  }
+
+  try {
+    // Fetch all active prices - we'll filter by lookup_key pattern
+    const prices = await stripe.prices.list({
+      active: true,
+      expand: ['data.product'],
+      limit: 100,
+    });
+
+    const products: BillingProduct[] = [];
+
+    for (const price of prices.data) {
+      // Only include prices with our lookup key pattern
+      if (!price.lookup_key?.startsWith('aao_')) {
+        continue;
+      }
+
+      const product = price.product as Stripe.Product;
+      if (!product || typeof product === 'string' || product.deleted) {
+        continue;
+      }
+
+      const metadata = product.metadata || {};
+      const lookupKey = price.lookup_key;
+
+      // Derive category from lookup key if not in metadata
+      let category = metadata.category;
+      if (!category) {
+        if (lookupKey.startsWith('aao_membership_')) category = 'membership';
+        else if (lookupKey.startsWith('aao_invoice_')) category = 'membership'; // Legacy invoice products
+        else if (lookupKey.startsWith('aao_sponsorship_')) category = 'sponsorship';
+        else if (lookupKey.startsWith('aao_event_')) category = 'event';
+        else category = 'other';
+      }
+
+      // Determine billing type from price
+      const isRecurring = !!price.recurring;
+      const billingType = isRecurring ? 'subscription' : 'one_time';
+      const billingInterval = price.recurring?.interval || null;
+
+      // Parse customer types and revenue tiers from metadata
+      const customerTypes = parseMetadataArray(metadata.customer_types);
+      const revenueTiers = parseMetadataArray(metadata.revenue_tiers);
+
+      // Determine if invoiceable (default: true for one-time, configurable via metadata)
+      const isInvoiceable = metadata.invoiceable !== undefined
+        ? metadata.invoiceable === 'true'
+        : billingType === 'one_time';
+
+      products.push({
+        lookup_key: lookupKey,
+        price_id: price.id,
+        product_id: product.id,
+        product_name: product.name,
+        display_name: metadata.display_name || product.name,
+        description: product.description,
+        amount_cents: price.unit_amount || 0,
+        currency: price.currency,
+        category,
+        billing_type: billingType,
+        billing_interval: billingInterval,
+        customer_types: customerTypes,
+        revenue_tiers: revenueTiers,
+        is_invoiceable: isInvoiceable,
+        sort_order: parseInt(metadata.sort_order || '0', 10),
+        metadata,
+        // Event-managed product fields
+        managed_by: metadata.managed_by,
+        event_id: metadata.event_id,
+      });
+    }
+
+    // Sort by category, then by sort_order, then by amount (descending)
+    products.sort((a, b) => {
+      if (a.category !== b.category) {
+        return a.category.localeCompare(b.category);
+      }
+      if (a.sort_order !== b.sort_order) {
+        return a.sort_order - b.sort_order;
+      }
+      return b.amount_cents - a.amount_cents; // Higher amounts first
+    });
+
+    // Update cache
+    productsCache = products;
+    productsCacheTime = Date.now();
+
+    logger.info({ count: products.length }, 'Fetched billing products from Stripe');
+    return products;
+  } catch (error) {
+    logger.error({ err: error }, 'Error fetching billing products');
+    return productsCache || [];
+  }
+}
+
+/**
+ * Get products filtered by customer context
+ */
+export async function getProductsForCustomer(options: {
+  customerType?: 'company' | 'individual';
+  revenueTier?: string;
+  category?: string;
+  invoiceableOnly?: boolean;
+}): Promise<BillingProduct[]> {
+  const allProducts = await getBillingProducts();
+
+  return allProducts.filter(product => {
+    // Filter by category if specified
+    if (options.category && product.category !== options.category) {
+      return false;
+    }
+
+    // Filter by invoiceable if specified
+    if (options.invoiceableOnly && !product.is_invoiceable) {
+      return false;
+    }
+
+    // Filter by customer type (empty array means available to all)
+    if (options.customerType && product.customer_types.length > 0) {
+      if (!product.customer_types.includes(options.customerType)) {
+        return false;
+      }
+    }
+
+    // Filter by revenue tier (empty array means available to all)
+    if (options.revenueTier && product.revenue_tiers.length > 0) {
+      if (!product.revenue_tiers.includes(options.revenueTier)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Get all invoice-able products (backward compatible)
+ * @deprecated Use getBillingProducts() or getProductsForCustomer() instead
+ */
+export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
+  return getProductsForCustomer({ invoiceableOnly: true });
+}
+
+/**
+ * Get a specific price by lookup key
+ */
+export async function getPriceByLookupKey(lookupKey: string): Promise<string | null> {
+  if (!stripe) {
+    return null;
+  }
+
+  try {
+    const prices = await stripe.prices.list({
+      lookup_keys: [lookupKey],
+      active: true,
+      limit: 1,
+    });
+
+    if (prices.data.length === 0) {
+      logger.warn({ lookupKey }, 'No price found for lookup key');
+      return null;
+    }
+
+    return prices.data[0].id;
+  } catch (error) {
+    logger.error({ err: error, lookupKey }, 'Error fetching price by lookup key');
+    return null;
+  }
+}
+
 /**
  * Get subscription info from Stripe for an organization
  */
@@ -141,7 +385,8 @@ export async function getSubscriptionInfo(
 }
 
 /**
- * Create a Stripe customer for an organization
+ * Find or create a Stripe customer for an organization.
+ * Checks for existing customer by email first to avoid duplicates.
  */
 export async function createStripeCustomer(data: {
   email: string;
@@ -154,12 +399,36 @@ export async function createStripeCustomer(data: {
   }
 
   try {
+    // Check for existing customer with this email
+    const existingCustomers = await stripe.customers.list({
+      email: data.email,
+      limit: 1,
+    });
+
+    if (existingCustomers.data.length > 0) {
+      const existing = existingCustomers.data[0];
+      // Update existing customer with new metadata if provided
+      if (data.metadata) {
+        await stripe.customers.update(existing.id, {
+          name: data.name,
+          metadata: {
+            ...existing.metadata,
+            ...data.metadata,
+          },
+        });
+      }
+      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer');
+      return existing.id;
+    }
+
+    // Create new customer
     const customer = await stripe.customers.create({
       email: data.email,
       name: data.name,
       metadata: data.metadata,
     });
 
+    logger.info({ customerId: customer.id, email: data.email }, 'Created new Stripe customer');
     return customer.id;
   } catch (error) {
     logger.error({ err: error }, 'Error creating Stripe customer');
@@ -292,7 +561,7 @@ export async function fetchAllPaidInvoices(
     for await (const invoice of stripe.invoices.list({
       status: 'paid',
       limit: 100,
-      expand: ['data.subscription', 'data.charge'],
+      expand: ['data.subscription', 'data.charge', 'data.lines.data.price.product'],
     })) {
       const customerId = typeof invoice.customer === 'string'
         ? invoice.customer
@@ -451,5 +720,687 @@ export async function fetchAllRefunds(
   } catch (error) {
     logger.error({ err: error }, 'Error fetching refunds from Stripe');
     throw error;
+  }
+}
+
+export interface InvoiceRequestData {
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  billingAddress: {
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    postal_code: string;
+    country: string;
+  };
+  lookupKey: string; // Stripe price lookup key (e.g., 'aao_invoice_membership_10k')
+  workosOrganizationId?: string;
+}
+
+/**
+ * Create and send an invoice for a product
+ * Uses collection_method: 'send_invoice' so customer receives email with payment link
+ */
+export async function createAndSendInvoice(
+  data: InvoiceRequestData
+): Promise<{ invoiceId: string; invoiceUrl: string } | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create invoice');
+    return null;
+  }
+
+  // Get price ID from lookup key
+  const priceId = await getPriceByLookupKey(data.lookupKey);
+
+  if (!priceId) {
+    logger.error({
+      lookupKey: data.lookupKey,
+    }, 'No price found for lookup key');
+    return null;
+  }
+
+  try {
+    // Create or find customer
+    const existingCustomers = await stripe.customers.list({
+      email: data.contactEmail,
+      limit: 1,
+    });
+
+    let customer: Stripe.Customer;
+
+    if (existingCustomers.data.length > 0) {
+      // Update existing customer with new info
+      customer = await stripe.customers.update(existingCustomers.data[0].id, {
+        name: data.companyName,
+        address: data.billingAddress,
+        metadata: {
+          contact_name: data.contactName,
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
+      });
+      logger.info({ customerId: customer.id, email: data.contactEmail }, 'Updated existing Stripe customer for invoice');
+    } else {
+      // Create new customer
+      customer = await stripe.customers.create({
+        email: data.contactEmail,
+        name: data.companyName,
+        address: data.billingAddress,
+        metadata: {
+          contact_name: data.contactName,
+          invoice_request: 'true',
+          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        },
+      });
+      logger.info({ customerId: customer.id, email: data.contactEmail }, 'Created new Stripe customer for invoice');
+    }
+
+    // Create invoice with line item
+    const invoice = await stripe.invoices.create({
+      customer: customer.id,
+      collection_method: 'send_invoice',
+      days_until_due: 30,
+      auto_advance: true,
+      metadata: {
+        lookup_key: data.lookupKey,
+        contact_name: data.contactName,
+      },
+    });
+
+    // Add line item with the price
+    await stripe.invoiceItems.create({
+      customer: customer.id,
+      invoice: invoice.id,
+      pricing: {
+        price: priceId,
+      },
+    });
+
+    // Finalize and send the invoice
+    const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+    await stripe.invoices.sendInvoice(invoice.id);
+
+    logger.info({
+      invoiceId: invoice.id,
+      customerId: customer.id,
+      lookupKey: data.lookupKey,
+      companyName: data.companyName,
+    }, 'Invoice created and sent');
+
+    return {
+      invoiceId: invoice.id,
+      invoiceUrl: finalizedInvoice.hosted_invoice_url || '',
+    };
+  } catch (error) {
+    logger.error({ err: error, data }, 'Error creating invoice');
+    return null;
+  }
+}
+
+export interface CheckoutSessionData {
+  priceId: string;
+  customerId?: string; // Existing Stripe customer ID
+  customerEmail?: string; // Email if no existing customer
+  successUrl: string;
+  cancelUrl: string;
+  workosOrganizationId?: string;
+  workosUserId?: string;
+  isPersonalWorkspace?: boolean;
+  // Event sponsorship fields
+  eventId?: string;
+  eventSponsorshipId?: string;
+  sponsorshipTierId?: string;
+}
+
+/**
+ * Create a Stripe Checkout Session for a product
+ * Handles both subscription and one-time payments
+ */
+export async function createCheckoutSession(
+  data: CheckoutSessionData
+): Promise<{ sessionId: string; url: string } | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create checkout session');
+    return null;
+  }
+
+  try {
+    // Fetch the price to determine if it's subscription or one-time
+    const price = await stripe.prices.retrieve(data.priceId);
+    const mode = price.recurring ? 'subscription' : 'payment';
+
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      mode,
+      line_items: [
+        {
+          price: data.priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: data.successUrl,
+      cancel_url: data.cancelUrl,
+      metadata: {
+        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+        ...(data.workosUserId && { workos_user_id: data.workosUserId }),
+        ...(data.isPersonalWorkspace !== undefined && { is_personal_workspace: String(data.isPersonalWorkspace) }),
+        ...(data.eventId && { event_id: data.eventId }),
+        ...(data.eventSponsorshipId && { event_sponsorship_id: data.eventSponsorshipId }),
+        ...(data.sponsorshipTierId && { sponsorship_tier_id: data.sponsorshipTierId }),
+      },
+    };
+
+    // Set customer or email
+    if (data.customerId) {
+      sessionParams.customer = data.customerId;
+    } else if (data.customerEmail) {
+      sessionParams.customer_email = data.customerEmail;
+    }
+
+    // For subscriptions, allow promotion codes and require billing address
+    // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
+    if (mode === 'subscription') {
+      sessionParams.allow_promotion_codes = true;
+      sessionParams.billing_address_collection = 'required';
+    }
+
+    // For one-time payments, also collect billing address for invoices
+    if (mode === 'payment') {
+      sessionParams.billing_address_collection = 'required';
+      sessionParams.invoice_creation = {
+        enabled: true,
+      };
+      if (!data.customerId) {
+        sessionParams.customer_creation = 'always';
+      }
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    logger.info({
+      sessionId: session.id,
+      priceId: data.priceId,
+      mode,
+      workosOrganizationId: data.workosOrganizationId,
+    }, 'Created checkout session');
+
+    return {
+      sessionId: session.id,
+      url: session.url || '',
+    };
+  } catch (error) {
+    logger.error({ err: error, data }, 'Error creating checkout session');
+    return null;
+  }
+}
+
+// ============================================================================
+// Admin Product Management
+// ============================================================================
+
+export interface CreateProductInput {
+  name: string;
+  description?: string;
+  lookupKey: string;
+  amountCents: number;
+  currency?: string;
+  billingType: 'subscription' | 'one_time';
+  billingInterval?: 'year' | 'month';
+  category: string;
+  displayName?: string;
+  customerTypes?: string[];
+  revenueTiers?: string[];
+  invoiceable?: boolean;
+  sortOrder?: number;
+}
+
+export interface UpdateProductInput {
+  productId: string;
+  priceId: string;
+  name?: string;
+  description?: string;
+  displayName?: string;
+  category?: string;
+  customerTypes?: string[];
+  revenueTiers?: string[];
+  invoiceable?: boolean;
+  sortOrder?: number;
+}
+
+/**
+ * Create a new product with price in Stripe
+ * Creates both the product and an associated price with lookup key
+ */
+export async function createProduct(input: CreateProductInput): Promise<BillingProduct | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create product');
+    return null;
+  }
+
+  // Validate lookup key format
+  if (!input.lookupKey.startsWith('aao_')) {
+    throw new Error('Lookup key must start with "aao_"');
+  }
+
+  try {
+    // Build metadata
+    const metadata: Record<string, string> = {
+      category: input.category,
+    };
+    if (input.displayName) metadata.display_name = input.displayName;
+    if (input.customerTypes?.length) metadata.customer_types = input.customerTypes.join(',');
+    if (input.revenueTiers?.length) metadata.revenue_tiers = input.revenueTiers.join(',');
+    if (input.invoiceable !== undefined) metadata.invoiceable = String(input.invoiceable);
+    if (input.sortOrder !== undefined) metadata.sort_order = String(input.sortOrder);
+
+    // Create the product
+    const product = await stripe.products.create({
+      name: input.name,
+      description: input.description,
+      metadata,
+    });
+
+    // Create the price with lookup key
+    const priceParams: Stripe.PriceCreateParams = {
+      product: product.id,
+      unit_amount: input.amountCents,
+      currency: input.currency || 'usd',
+      lookup_key: input.lookupKey,
+      transfer_lookup_key: true, // Transfer lookup key if it exists on another price
+    };
+
+    if (input.billingType === 'subscription') {
+      priceParams.recurring = {
+        interval: input.billingInterval || 'year',
+      };
+    }
+
+    const price = await stripe.prices.create(priceParams);
+
+    logger.info({
+      productId: product.id,
+      priceId: price.id,
+      lookupKey: input.lookupKey,
+    }, 'Created product and price in Stripe');
+
+    // Clear cache so new product appears
+    clearProductsCache();
+
+    // Return the billing product
+    return {
+      lookup_key: input.lookupKey,
+      price_id: price.id,
+      product_id: product.id,
+      product_name: product.name,
+      display_name: input.displayName || product.name,
+      description: product.description,
+      amount_cents: input.amountCents,
+      currency: input.currency || 'usd',
+      category: input.category,
+      billing_type: input.billingType,
+      billing_interval: input.billingInterval || null,
+      customer_types: input.customerTypes || [],
+      revenue_tiers: input.revenueTiers || [],
+      is_invoiceable: input.invoiceable ?? (input.billingType === 'one_time'),
+      sort_order: input.sortOrder || 0,
+      metadata,
+    };
+  } catch (error) {
+    logger.error({ err: error, input }, 'Error creating product');
+    throw error;
+  }
+}
+
+/**
+ * Update product metadata (cannot change price amount - need to create new price)
+ */
+export async function updateProductMetadata(input: UpdateProductInput): Promise<BillingProduct | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot update product');
+    return null;
+  }
+
+  try {
+    // Build updated metadata
+    const metadata: Record<string, string> = {};
+    if (input.category) metadata.category = input.category;
+    if (input.displayName) metadata.display_name = input.displayName;
+    if (input.customerTypes !== undefined) metadata.customer_types = input.customerTypes.join(',');
+    if (input.revenueTiers !== undefined) metadata.revenue_tiers = input.revenueTiers.join(',');
+    if (input.invoiceable !== undefined) metadata.invoiceable = String(input.invoiceable);
+    if (input.sortOrder !== undefined) metadata.sort_order = String(input.sortOrder);
+
+    // Update product
+    const updateParams: Stripe.ProductUpdateParams = { metadata };
+    if (input.name) updateParams.name = input.name;
+    if (input.description !== undefined) updateParams.description = input.description;
+
+    const product = await stripe.products.update(input.productId, updateParams);
+
+    // Get the price to return full billing product
+    const price = await stripe.prices.retrieve(input.priceId);
+
+    logger.info({
+      productId: product.id,
+      priceId: input.priceId,
+    }, 'Updated product metadata in Stripe');
+
+    // Clear cache
+    clearProductsCache();
+
+    return {
+      lookup_key: price.lookup_key || '',
+      price_id: price.id,
+      product_id: product.id,
+      product_name: product.name,
+      display_name: product.metadata?.display_name || product.name,
+      description: product.description,
+      amount_cents: price.unit_amount || 0,
+      currency: price.currency,
+      category: product.metadata?.category || 'other',
+      billing_type: price.recurring ? 'subscription' : 'one_time',
+      billing_interval: price.recurring?.interval || null,
+      customer_types: parseMetadataArray(product.metadata?.customer_types),
+      revenue_tiers: parseMetadataArray(product.metadata?.revenue_tiers),
+      is_invoiceable: product.metadata?.invoiceable === 'true' || !price.recurring,
+      sort_order: parseInt(product.metadata?.sort_order || '0', 10),
+      metadata: product.metadata || {},
+    };
+  } catch (error) {
+    logger.error({ err: error, input }, 'Error updating product');
+    throw error;
+  }
+}
+
+/**
+ * Archive a product (deactivate the price, archive the product)
+ * Note: Stripe doesn't allow deleting products with price history
+ */
+export async function archiveProduct(productId: string, priceId: string): Promise<boolean> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot archive product');
+    return false;
+  }
+
+  try {
+    // Deactivate the price
+    await stripe.prices.update(priceId, { active: false });
+
+    // Archive the product
+    await stripe.products.update(productId, { active: false });
+
+    logger.info({ productId, priceId }, 'Archived product and price in Stripe');
+
+    // Clear cache
+    clearProductsCache();
+
+    return true;
+  } catch (error) {
+    logger.error({ err: error, productId, priceId }, 'Error archiving product');
+    throw error;
+  }
+}
+
+/**
+ * Pending invoice information
+ */
+export interface PendingInvoice {
+  id: string;
+  status: 'draft' | 'open';
+  amount_due: number;
+  currency: string;
+  created: Date;
+  due_date: Date | null;
+  hosted_invoice_url: string | null;
+  product_name: string | null;
+  customer_email: string | null;
+}
+
+/**
+ * Get pending (draft or open) invoices for a Stripe customer
+ * Returns invoices that are waiting for payment
+ */
+export async function getPendingInvoices(customerId: string): Promise<PendingInvoice[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch pending invoices');
+    return [];
+  }
+
+  try {
+    const pendingInvoices: PendingInvoice[] = [];
+
+    // Fetch open invoices (sent to customer, waiting for payment)
+    const openInvoices = await stripe.invoices.list({
+      customer: customerId,
+      status: 'open',
+      limit: 10,
+      expand: ['data.lines.data.price.product'],
+    });
+
+    // Fetch draft invoices (not yet sent)
+    const draftInvoices = await stripe.invoices.list({
+      customer: customerId,
+      status: 'draft',
+      limit: 10,
+      expand: ['data.lines.data.price.product'],
+    });
+
+    const allInvoices = [...openInvoices.data, ...draftInvoices.data];
+
+    for (const invoice of allInvoices) {
+      // Get product name from first line item
+      let productName: string | null = null;
+      const firstLine = invoice.lines?.data[0];
+      if (firstLine?.price?.product) {
+        const product = firstLine.price.product;
+        if (typeof product === 'object' && 'name' in product) {
+          productName = product.name;
+        }
+      }
+
+      pendingInvoices.push({
+        id: invoice.id,
+        status: invoice.status as 'draft' | 'open',
+        amount_due: invoice.amount_due,
+        currency: invoice.currency,
+        created: new Date(invoice.created * 1000),
+        due_date: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+        hosted_invoice_url: invoice.hosted_invoice_url || null,
+        product_name: productName,
+        customer_email: typeof invoice.customer_email === 'string' ? invoice.customer_email : null,
+      });
+    }
+
+    logger.debug({ customerId, count: pendingInvoices.length }, 'Fetched pending invoices');
+    return pendingInvoices;
+  } catch (error) {
+    logger.error({ err: error, customerId }, 'Error fetching pending invoices');
+    return [];
+  }
+}
+
+/**
+ * Get pending invoices by customer email
+ * Useful when we don't have a Stripe customer ID
+ */
+export async function getPendingInvoicesByEmail(email: string): Promise<PendingInvoice[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch pending invoices');
+    return [];
+  }
+
+  try {
+    // Find customer by email
+    const customers = await stripe.customers.list({
+      email,
+      limit: 1,
+    });
+
+    if (customers.data.length === 0) {
+      return [];
+    }
+
+    return getPendingInvoices(customers.data[0].id);
+  } catch (error) {
+    logger.error({ err: error, email }, 'Error fetching pending invoices by email');
+    return [];
+  }
+}
+
+/**
+ * Void an invoice (cancel it)
+ * Only works on open or uncollectible invoices
+ */
+export async function voidInvoice(invoiceId: string): Promise<boolean> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot void invoice');
+    return false;
+  }
+
+  try {
+    const invoice = await stripe.invoices.voidInvoice(invoiceId);
+    logger.info({ invoiceId, status: invoice.status }, 'Invoice voided');
+    return true;
+  } catch (error) {
+    logger.error({ err: error, invoiceId }, 'Error voiding invoice');
+    return false;
+  }
+}
+
+/**
+ * Delete a draft invoice
+ * Only works on draft invoices (not yet finalized)
+ */
+export async function deleteDraftInvoice(invoiceId: string): Promise<boolean> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot delete invoice');
+    return false;
+  }
+
+  try {
+    await stripe.invoices.del(invoiceId);
+    logger.info({ invoiceId }, 'Draft invoice deleted');
+    return true;
+  } catch (error) {
+    logger.error({ err: error, invoiceId }, 'Error deleting draft invoice');
+    return false;
+  }
+}
+
+// ============================================================================
+// Event Sponsorship Product Management
+// ============================================================================
+
+export interface EventSponsorshipProductInput {
+  eventId: string;
+  eventSlug: string;
+  eventTitle: string;
+  defaultAmountCents?: number;
+}
+
+/**
+ * Create or update a Stripe product for event sponsorships
+ * Called automatically when sponsorship tiers are saved on an event
+ * Returns the Stripe product ID
+ */
+export async function createEventSponsorshipProduct(input: EventSponsorshipProductInput): Promise<string | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create event sponsorship product');
+    return null;
+  }
+
+  const lookupKey = `aao_sponsorship_${input.eventSlug.replace(/-/g, '_')}`;
+  const productName = `${input.eventTitle} Sponsorship`;
+  const defaultAmount = input.defaultAmountCents || 500000; // Default $5000
+
+  try {
+    // Check if a product with this lookup key already exists
+    const existingPrices = await stripe.prices.list({
+      lookup_keys: [lookupKey],
+      active: true,
+      limit: 1,
+      expand: ['data.product'],
+    });
+
+    if (existingPrices.data.length > 0) {
+      const existingPrice = existingPrices.data[0];
+      const product = existingPrice.product as Stripe.Product;
+
+      // Update the product name if it changed
+      if (product && typeof product !== 'string' && !product.deleted) {
+        if (product.name !== productName) {
+          await stripe.products.update(product.id, { name: productName });
+          logger.info({ productId: product.id, lookupKey }, 'Updated existing event sponsorship product name');
+        }
+        return product.id;
+      }
+    }
+
+    // Build metadata
+    const metadata: Record<string, string> = {
+      category: 'sponsorship',
+      display_name: productName,
+      event_id: input.eventId,
+      managed_by: 'event', // Mark as event-managed
+    };
+
+    // Create the product
+    const product = await stripe.products.create({
+      name: productName,
+      description: `Sponsorship opportunities for ${input.eventTitle}`,
+      metadata,
+    });
+
+    // Create the price with lookup key
+    await stripe.prices.create({
+      product: product.id,
+      unit_amount: defaultAmount,
+      currency: 'usd',
+      lookup_key: lookupKey,
+      transfer_lookup_key: true,
+    });
+
+    logger.info({
+      productId: product.id,
+      lookupKey,
+      eventId: input.eventId,
+    }, 'Created event sponsorship product in Stripe');
+
+    // Clear cache so new product appears
+    clearProductsCache();
+
+    return product.id;
+  } catch (error) {
+    logger.error({ err: error, input }, 'Error creating event sponsorship product');
+    throw error;
+  }
+}
+
+/**
+ * Get product info including whether it's managed by an event
+ */
+export async function getProductWithEventInfo(productId: string): Promise<{
+  product_id: string;
+  product_name: string;
+  managed_by?: string;
+  event_id?: string;
+} | null> {
+  if (!stripe) {
+    return null;
+  }
+
+  try {
+    const product = await stripe.products.retrieve(productId);
+    if (product.deleted) return null;
+
+    return {
+      product_id: product.id,
+      product_name: product.name,
+      managed_by: product.metadata?.managed_by,
+      event_id: product.metadata?.event_id,
+    };
+  } catch (error) {
+    logger.error({ err: error, productId }, 'Error getting product info');
+    return null;
   }
 }

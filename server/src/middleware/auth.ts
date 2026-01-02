@@ -79,6 +79,170 @@ const companyDb = new CompanyDatabase();
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
 /**
+ * WorkOS API Key validation result
+ */
+export interface ValidatedApiKey {
+  id: string;
+  organizationId: string;
+  name: string;
+  permissions: string[];
+}
+
+/**
+ * Validate a WorkOS API key from the Authorization header
+ * Returns the validated API key info or null if invalid
+ */
+async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7); // Remove 'Bearer ' prefix
+
+  // WorkOS API keys start with 'wos_api_key_'
+  if (!token.startsWith('wos_api_key_')) return null;
+
+  try {
+    const result = await workos.apiKeys.validateApiKey({ value: token });
+    if (!result.apiKey) return null;
+
+    return {
+      id: result.apiKey.id,
+      organizationId: result.apiKey.owner.id,
+      name: result.apiKey.name,
+      permissions: result.apiKey.permissions,
+    };
+  } catch (error) {
+    logger.debug({ err: error }, 'API key validation failed');
+    return null;
+  }
+}
+
+/**
+ * Check if validated API key has a specific permission
+ */
+function apiKeyHasPermission(apiKey: ValidatedApiKey, permission: string): boolean {
+  return apiKey.permissions.includes(permission);
+}
+
+// Dev mode: bypass auth with mock users for local testing
+// Set DEV_USER_EMAIL and DEV_USER_ID in .env.local to enable
+const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
+const DEV_USER_ID = process.env.DEV_USER_ID;
+const DEV_MODE_ENABLED = !!(DEV_USER_EMAIL && DEV_USER_ID);
+
+// Multiple dev users for testing different scenarios
+// Switch between users by setting ?dev_user=<key> query param or X-Dev-User header
+export interface DevUserConfig {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isAdmin: boolean;
+  isMember: boolean; // Has an organization membership
+  description: string;
+}
+
+export const DEV_USERS: Record<string, DevUserConfig> = {
+  // Admin dev user (separate from real admin accounts for testing)
+  admin: {
+    id: 'user_dev_admin_001',
+    email: 'admin@test.local',
+    firstName: 'Admin',
+    lastName: 'Tester',
+    isAdmin: true,
+    isMember: true,
+    description: 'Test admin with full access',
+  },
+  // Member user (has organization but not admin)
+  member: {
+    id: 'user_dev_member_001',
+    email: 'member@test.local',
+    firstName: 'Member',
+    lastName: 'User',
+    isAdmin: false,
+    isMember: true,
+    description: 'Regular member with organization access',
+  },
+  // Non-member user (no organization, just signed up)
+  nonmember: {
+    id: 'user_dev_nonmember_001',
+    email: 'visitor@test.local',
+    firstName: 'Visitor',
+    lastName: 'User',
+    isAdmin: false,
+    isMember: false,
+    description: 'User without any organization membership',
+  },
+};
+
+// Dev session cookie name
+const DEV_SESSION_COOKIE = 'dev-session';
+
+if (DEV_MODE_ENABLED) {
+  logger.warn({
+    availableUsers: Object.keys(DEV_USERS),
+  }, 'DEV MODE ENABLED - Auth bypass active. DO NOT use in production!');
+  logger.info('Visit /auth/login to select a test user');
+}
+
+/**
+ * Get the current dev user based on request context
+ * Reads from dev-session cookie set by dev login page
+ */
+export function getDevUser(req?: Request): DevUserConfig | null {
+  if (!req) return null;
+
+  // Read user key from dev-session cookie
+  const userKey = req.cookies?.[DEV_SESSION_COOKIE];
+  if (userKey && DEV_USERS[userKey]) {
+    return DEV_USERS[userKey];
+  }
+
+  // No valid dev session - user is not logged in
+  return null;
+}
+
+/**
+ * Get the dev session cookie name (for setting/clearing)
+ */
+export function getDevSessionCookieName(): string {
+  return DEV_SESSION_COOKIE;
+}
+
+/**
+ * Create a mock user for dev mode
+ * Returns null if no dev user is logged in
+ */
+function createDevUser(req?: Request): WorkOSUser | null {
+  const devUser = getDevUser(req);
+  if (!devUser) return null;
+
+  return {
+    id: devUser.id,
+    email: devUser.email,
+    firstName: devUser.firstName,
+    lastName: devUser.lastName,
+    emailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Check if dev mode is enabled
+ */
+export function isDevModeEnabled(): boolean {
+  return DEV_MODE_ENABLED;
+}
+
+/**
+ * Get all available dev users (for UI switcher)
+ */
+export function getAvailableDevUsers(): Record<string, DevUserConfig> {
+  return DEV_USERS;
+}
+
+/**
  * Helper to set the session cookie with consistent options
  */
 function setSessionCookie(res: Response, sealedSession: string) {
@@ -91,15 +255,96 @@ function setSessionCookie(res: Response, sealedSession: string) {
   });
 }
 
+// Static admin API key for internal tooling (bypasses WorkOS)
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+if (ADMIN_API_KEY) {
+  logger.info('Admin API key configured for programmatic access');
+}
+
+/**
+ * Check if request has a valid static admin API key
+ * Returns true if the Bearer token matches ADMIN_API_KEY
+ */
+function hasValidAdminApiKey(req: Request): boolean {
+  if (!ADMIN_API_KEY) return false;
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return false;
+  const token = authHeader.slice(7);
+  // Don't match WorkOS API keys - those are handled separately
+  if (token.startsWith('wos_api_key_')) return false;
+  return token === ADMIN_API_KEY;
+}
+
 /**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
+ * Also accepts WorkOS API keys as Bearer token for programmatic access
+ * Also accepts static admin API key (ADMIN_API_KEY env var) for internal tooling
  * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const sessionCookie = req.cookies['wos-session'];
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  // Check for static admin API key first (for internal tooling)
+  if (hasValidAdminApiKey(req)) {
+    logger.debug({ path: req.path }, 'Authenticated via static admin API key');
+    req.user = {
+      id: 'admin_api_key',
+      email: 'admin-api-key@internal',
+      firstName: 'Admin',
+      lastName: 'API Key',
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'admin-api-key';
+    // Mark this request as using the static admin API key for requireAdmin check
+    (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    return next();
+  }
+
+  // Check for WorkOS API key (for programmatic access)
+  const apiKey = await validateWorkOSApiKey(req);
+  if (apiKey) {
+    logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key');
+    // Create a synthetic user for API key auth - the organization owns the key
+    req.user = {
+      id: `api_key_${apiKey.id}`,
+      email: `api-key@org-${apiKey.organizationId}`,
+      firstName: 'API',
+      lastName: apiKey.name,
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'workos-api-key';
+    // Store API key info for permission checks
+    (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
+    return next();
+  }
+
+  // Dev mode: check for dev-session cookie
+  if (DEV_MODE_ENABLED) {
+    const devUser = createDevUser(req);
+    if (devUser) {
+      req.user = devUser;
+      req.accessToken = 'dev-mode-token';
+      return next();
+    }
+    // No dev session - redirect to dev login page
+    logger.debug('No dev session cookie found');
+    if (isHtmlRequest) {
+      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+    }
+    return res.status(401).json({
+      error: 'Authentication required',
+      message: 'Please log in to access this resource',
+      login_url: '/auth/login',
+    });
+  }
+
+  const sessionCookie = req.cookies['wos-session'];
 
   logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
@@ -190,6 +435,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     // Map WorkOS user to our WorkOSUser type (convert null to undefined)
+    // The result may include impersonator info if session is impersonated
+    const authenticatedResult = result as typeof result & {
+      impersonator?: { email: string; reason: string | null };
+    };
+
     const user: WorkOSUser = {
       id: result.user.id,
       email: result.user.email,
@@ -198,7 +448,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       emailVerified: result.user.emailVerified,
       createdAt: result.user.createdAt,
       updatedAt: result.user.updatedAt,
+      impersonator: authenticatedResult.impersonator,
     };
+
+    // Log impersonation for audit
+    if (user.impersonator) {
+      logger.info(
+        { userId: user.id, impersonatorEmail: user.impersonator.email, reason: user.impersonator.reason },
+        'Impersonation session detected'
+      );
+    }
 
     // Cache the validated session
     sessionCache.set(cacheKey, {
@@ -367,10 +626,113 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
 /**
  * Middleware to require admin access
  * Must be used after requireAuth
- * Checks if user's email is from @agenticadvertising.org domain
+ * Accepts static admin API key (ADMIN_API_KEY env var) for internal tooling
+ * Accepts WorkOS API keys with 'admin:*' permission for programmatic access
+ * Or checks if user's email is in ADMIN_EMAILS list
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  // Check for static admin API key (set by requireAuth)
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
+    logger.debug({ path: req.path, method: req.method }, 'Admin access via static admin API key');
+    return next();
+  }
+
+  // Check for WorkOS API key with admin permission
+  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+  if (apiKey) {
+    const isReadOnlyRequest = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+
+    // admin:* grants full access (read and write)
+    if (apiKeyHasPermission(apiKey, 'admin:*')) {
+      logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Full admin access via WorkOS API key');
+      return next();
+    }
+
+    // admin:read only grants access to read operations
+    if (apiKeyHasPermission(apiKey, 'admin:read') && isReadOnlyRequest) {
+      logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Read-only admin access via WorkOS API key');
+      return next();
+    }
+
+    // API key exists but doesn't have sufficient permission
+    return res.status(403).json({
+      error: 'Insufficient permissions',
+      message: isReadOnlyRequest
+        ? 'This API key does not have admin access. Required permission: admin:* or admin:read'
+        : 'This API key does not have write access. Required permission: admin:*',
+      api_key_permissions: apiKey.permissions,
+    });
+  }
+
+  // Dev mode: check if dev user has admin flag
+  if (DEV_MODE_ENABLED) {
+    const devUser = getDevUser(req);
+    if (!devUser) {
+      // Not logged in
+      if (isHtmlRequest) {
+        return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+      }
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please log in to access this resource',
+        login_url: '/auth/login',
+      });
+    }
+
+    // Set user on request if not already set
+    if (!req.user) {
+      const mockUser = createDevUser(req);
+      if (mockUser) {
+        req.user = mockUser;
+        req.accessToken = 'dev-mode-token';
+      }
+    }
+
+    // Check dev user's isAdmin flag
+    if (!devUser.isAdmin) {
+      logger.warn({ userId: devUser.id, email: devUser.email }, 'Non-admin dev user attempted to access admin endpoint');
+      if (isHtmlRequest) {
+        return res.status(403).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Access Denied</title>
+            <link rel="stylesheet" href="/design-system.css">
+            <style>
+              body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: var(--color-bg-page, #f5f5f5); }
+              .container { background: var(--color-bg-card, white); padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+              h1 { color: var(--color-error-600, #c33); margin-bottom: 10px; }
+              p { color: var(--color-text-secondary, #666); margin-bottom: 20px; }
+              a { color: var(--color-brand, #667eea); text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              .dev-hint { margin-top: 20px; padding: 15px; background: var(--color-bg-subtle, #f9fafb); border-radius: 6px; font-size: 13px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Access Denied</h1>
+              <p>This resource is only accessible to administrators.</p>
+              <p>Current user: <strong>${devUser.email}</strong></p>
+              <div class="dev-hint">
+                <strong>Dev Mode Tip:</strong><br>
+                <a href="/auth/logout">Log out</a> and log in as admin
+              </div>
+              <p><a href="/">← Back to Home</a></p>
+            </div>
+          </body>
+          </html>
+        `);
+      }
+      return res.status(403).json({
+        error: 'Admin access required',
+        message: 'This resource is only accessible to administrators',
+        current_user: devUser.email,
+      });
+    }
+    return next();
+  }
 
   if (!req.user) {
     if (isHtmlRequest) {
@@ -426,13 +788,15 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 /**
  * Factory function to create middleware that requires working group leader access
  * Must be used after requireAuth
- * Checks if user is chair/vice-chair of the specified working group OR a site admin
+ * Checks if user is a leader of the specified working group OR a site admin
  *
- * @param getSlugFromRequest - Function to extract the working group slug from the request
  * @param workingGroupDb - Database instance for looking up working group details
  */
 export function createRequireWorkingGroupLeader(
-  workingGroupDb: { getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; chair_user_id?: string; vice_chair_user_id?: string } | null> }
+  workingGroupDb: {
+    getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; leaders?: Array<{ user_id: string }> } | null>;
+    isLeader: (workingGroupId: string, userId: string) => Promise<boolean>;
+  }
 ) {
   return async function requireWorkingGroupLeader(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
@@ -468,15 +832,14 @@ export function createRequireWorkingGroupLeader(
       });
     }
 
-    // Check if user is chair or vice-chair
-    const isLeader = workingGroup.chair_user_id === req.user.id ||
-                     workingGroup.vice_chair_user_id === req.user.id;
+    // Check if user is a leader
+    const isLeader = await workingGroupDb.isLeader(workingGroup.id, req.user.id);
 
     if (!isLeader) {
       logger.warn({ userId: req.user.id, slug }, 'Non-leader user attempted to access working group admin endpoint');
       return res.status(403).json({
         error: 'Working group leader access required',
-        message: 'This resource is only accessible to the chair or vice-chair of this working group',
+        message: 'This resource is only accessible to leaders of this working group',
       });
     }
 
@@ -494,6 +857,17 @@ export function createRequireWorkingGroupLeader(
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  // Dev mode: set dev user if logged in via dev-session cookie
+  if (DEV_MODE_ENABLED) {
+    const devUser = createDevUser(req);
+    if (devUser) {
+      req.user = devUser;
+      req.accessToken = 'dev-mode-token';
+    }
+    // No dev session = not logged in (which is fine for optional auth)
+    return next();
+  }
+
   const sessionCookie = req.cookies['wos-session'];
 
   if (!sessionCookie) {
@@ -558,6 +932,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     if (result.authenticated && 'user' in result && result.user) {
+      // The result may include impersonator info if session is impersonated
+      const authenticatedResult = result as typeof result & {
+        impersonator?: { email: string; reason: string | null };
+      };
+
       const user: WorkOSUser = {
         id: result.user.id,
         email: result.user.email,
@@ -566,7 +945,16 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         emailVerified: result.user.emailVerified,
         createdAt: result.user.createdAt,
         updatedAt: result.user.updatedAt,
+        impersonator: authenticatedResult.impersonator,
       };
+
+      // Log impersonation for audit
+      if (user.impersonator) {
+        logger.info(
+          { userId: user.id, impersonatorEmail: user.impersonator.email, reason: user.impersonator.reason },
+          'Impersonation session detected (optional auth)'
+        );
+      }
 
       // Cache the validated session
       sessionCache.set(cacheKey, {

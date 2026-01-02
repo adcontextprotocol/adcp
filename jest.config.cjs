@@ -17,9 +17,9 @@ module.exports = {
   // Ignore the existing test files that aren't Jest tests
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/tests/schema-validation.test.js',
-    '/tests/example-validation-simple.test.js',
-    '/tests/extension-fields.test.js',
-    '/tests/snippet-validation.test.js',
+    '/tests/schema-validation.test.cjs',
+    '/tests/example-validation-simple.test.cjs',
+    '/tests/extension-fields.test.cjs',
+    '/tests/snippet-validation.test.cjs',
   ],
 };

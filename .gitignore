@@ -1,5 +1,6 @@
 # Dependencies
 /node_modules
+server/node_modules
 
 # Production
 /build
@@ -16,6 +17,7 @@
 
 # Misc
 .DS_Store
+.conductor_port
 .env.local
 .env.development.local
 .env.test.local
@@ -34,5 +36,9 @@ tests/temp-snippet-*
 coverage/
 .env
 
+# Addie external repo cache
+.addie-repos/
+
 # Stripe webhook secret (dynamically generated)
 .stripe-webhook-secret
+test-results/

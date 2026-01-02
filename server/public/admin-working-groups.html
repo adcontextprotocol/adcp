@@ -4,9 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <title>Admin - Working Groups - AdCP Registry</title>
-  <script src="/admin-nav.js"></script>
+  <title>Admin - Committees - AdCP Registry</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -74,6 +75,11 @@
     .badge-archived { background: var(--color-gray-200); color: var(--color-gray-700); }
     .badge-private { background: var(--color-error-100); color: var(--color-error-700); }
     .badge-public { background: var(--color-info-100); color: var(--color-info-700); }
+    /* Committee type badges */
+    .badge-working_group { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-council { background: var(--color-purple-100, #f3e8ff); color: var(--color-purple-700, #7c3aed); }
+    .badge-chapter { background: var(--color-teal-100, #ccfbf1); color: var(--color-teal-700, #0f766e); }
+    .badge-governance { background: var(--color-gray-300); color: var(--color-gray-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -266,23 +272,29 @@
     .tabs {
       display: flex;
       gap: var(--space-1);
-      border-bottom: var(--border-1) solid var(--color-gray-200);
+      border-bottom: 2px solid var(--color-gray-200);
       margin-bottom: var(--space-5);
     }
     .tab {
       padding: var(--space-2.5) var(--space-4);
       cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
+      border: 2px solid transparent;
+      border-bottom: none;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      margin-bottom: -2px;
       color: var(--color-text-secondary);
+      background: var(--color-bg-subtle);
+      font-weight: var(--font-medium);
+      transition: var(--transition-all);
     }
     .tab:hover {
       color: var(--color-text-heading);
+      background: var(--color-gray-100);
     }
     .tab.active {
-      border-bottom-color: var(--color-brand);
+      border-color: var(--color-gray-200);
+      background: var(--color-bg-card);
       color: var(--color-brand);
-      font-weight: var(--font-medium);
     }
     .tab-content {
       display: none;
@@ -293,6 +305,9 @@
   </style>
 </head>
 <body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
   <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">
     Loading...
   </div>
@@ -302,8 +317,8 @@
       <div class="card">
         <div class="header-bar">
           <div>
-            <h1>Working Groups</h1>
-            <p class="subtitle">Manage AAO working groups and memberships</p>
+            <h1>Committees</h1>
+            <p class="subtitle">Manage working groups, councils, chapters, and governance committees</p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
             <a href="/api/admin/users/memberships?format=csv" class="btn btn-secondary" download style="text-decoration: none;">
@@ -314,19 +329,26 @@
               </svg>
               Export All
             </a>
-            <button class="btn btn-primary" onclick="showCreateModal()">+ Add Working Group</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">+ Add Committee</button>
           </div>
         </div>
 
         <!-- Page-level tabs for Groups vs All Members -->
         <div class="tabs" style="margin-bottom: var(--space-5);">
-          <div class="tab active" id="pageTabGroups" onclick="showPageTab('groups')">Working Groups</div>
+          <div class="tab active" id="pageTabGroups" onclick="showPageTab('groups')">Committees</div>
           <div class="tab" id="pageTabMembers" onclick="showPageTab('allMembers')">All Members</div>
         </div>
 
         <!-- Groups Tab Content -->
         <div id="groupsTabContent">
           <div class="filter-bar">
+            <select id="typeFilter" onchange="renderGroupsList()">
+              <option value="">All Types</option>
+              <option value="working_group">Working Groups</option>
+              <option value="council">Industry Councils</option>
+              <option value="chapter">Regional Chapters</option>
+              <option value="governance">Governance</option>
+            </select>
             <select id="statusFilter" onchange="renderGroupsList()">
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -341,7 +363,7 @@
           </div>
 
           <div id="groupsList" class="groups-list">
-            Loading working groups...
+            Loading committees...
           </div>
         </div>
 
@@ -379,15 +401,10 @@
   <!-- Create/Edit Modal -->
   <div id="groupModal" class="modal-overlay">
     <div class="modal">
-      <h2 id="modalTitle">Add Working Group</h2>
+      <h2 id="modalTitle">Add Committee</h2>
 
-      <div class="tabs">
-        <div class="tab active" onclick="showTab('details')">Details</div>
-        <div class="tab" onclick="showTab('members')" id="membersTab" style="display: none;">Members</div>
-      </div>
-
-      <div id="detailsTab" class="tab-content active">
-        <form id="groupForm" onsubmit="saveGroup(event)">
+      <div id="detailsTab">
+        <form id="groupForm" onsubmit="saveGroup(event)" autocomplete="off">
           <input type="hidden" id="groupId">
 
           <div class="form-group">
@@ -402,12 +419,41 @@
               <small>URL path: /working-groups/{slug}</small>
             </div>
             <div class="form-group">
+              <label>Committee Type</label>
+              <select id="committeeType" onchange="updateRegionVisibility()">
+                <option value="working_group">Working Group</option>
+                <option value="council">Industry Council</option>
+                <option value="chapter">Regional Chapter</option>
+                <option value="governance">Governance</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
               <label>Status</label>
               <select id="status">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="archived">Archived</option>
               </select>
+            </div>
+            <div class="form-group" id="regionGroup" style="display: none;">
+              <label>Region</label>
+              <input type="text" id="region" placeholder="e.g., New York, London, San Francisco">
+              <small>Location for regional chapters</small>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Display Order</label>
+              <input type="number" id="displayOrder" value="0" min="0">
+              <small>Lower numbers appear first</small>
+            </div>
+            <div class="form-group checkbox-group" style="align-self: end; padding-bottom: var(--space-1);">
+              <input type="checkbox" id="isPrivate">
+              <label for="isPrivate" style="margin-bottom: 0;">Private (invite-only)</label>
             </div>
           </div>
 
@@ -418,58 +464,51 @@
 
           <div class="form-group">
             <label>Slack Channel URL</label>
-            <input type="url" id="slackUrl" placeholder="https://aao.slack.com/...">
-          </div>
-
-          <div class="form-row">
-            <div class="form-group checkbox-group">
-              <input type="checkbox" id="isPrivate">
-              <label for="isPrivate" style="margin-bottom: 0;">Private (invite-only)</label>
-            </div>
-            <div class="form-group">
-              <label>Display Order</label>
-              <input type="number" id="displayOrder" value="0" min="0">
-            </div>
+            <input type="url" id="slackUrl" placeholder="https://agenticads.slack.com/archives/C09HEERCY8P" oninput="validateSlackUrl()">
+            <small id="slackUrlStatus" style="margin-top: var(--space-1); display: block;">
+              <span style="color: var(--color-text-muted);">Channel ID will be auto-extracted for member sync</span>
+            </small>
           </div>
 
           <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Leadership</h3>
 
           <div class="form-group">
-            <label>Chair</label>
-            <div class="user-search">
-              <input type="text" id="chairSearch" placeholder="Search for a user..." oninput="searchUsers('chair')" autocomplete="off">
-              <div id="chairResults" class="user-search-results"></div>
+            <label>Leaders</label>
+            <div id="leadersList" class="leaders-list"></div>
+            <div class="user-search" style="margin-top: var(--space-2);">
+              <input type="search" id="leaderSearch" placeholder="Search for a user to add as leader..." oninput="searchUsers('leader')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" name="wg-leader-search-field" role="combobox" aria-autocomplete="list">
+              <div id="leaderResults" class="user-search-results"></div>
             </div>
-            <div id="chairSelected" class="selected-user" style="display: none;">
-              <div>
-                <span class="name" id="chairName"></span>
-                <span class="org" id="chairOrg"></span>
-              </div>
-              <span class="clear" onclick="clearChair()">Clear</span>
-            </div>
-            <input type="hidden" id="chairUserId">
-            <input type="hidden" id="chairUserName">
-            <input type="hidden" id="chairTitle">
-            <input type="hidden" id="chairOrgName">
           </div>
 
-          <div class="form-group">
-            <label>Vice Chair</label>
-            <div class="user-search">
-              <input type="text" id="viceChairSearch" placeholder="Search for a user..." oninput="searchUsers('viceChair')" autocomplete="off">
-              <div id="viceChairResults" class="user-search-results"></div>
-            </div>
-            <div id="viceChairSelected" class="selected-user" style="display: none;">
-              <div>
-                <span class="name" id="viceChairName"></span>
-                <span class="org" id="viceChairOrg"></span>
+          <!-- Members Section (only visible when editing) -->
+          <div id="membersSection" style="display: none;">
+            <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Members (<span id="memberCount">0</span>)</h3>
+
+            <!-- Slack Sync Section -->
+            <div id="slackSyncSection" style="margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--rounded);">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                  <strong>Sync from Slack</strong>
+                  <p style="margin: var(--space-1) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+                    Import members from the linked Slack channel
+                  </p>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="syncFromSlack()" id="syncSlackBtn">
+                  Sync Members
+                </button>
               </div>
-              <span class="clear" onclick="clearViceChair()">Clear</span>
+              <div id="syncResult" style="margin-top: var(--space-3); display: none;"></div>
             </div>
-            <input type="hidden" id="viceChairUserId">
-            <input type="hidden" id="viceChairUserName">
-            <input type="hidden" id="viceChairTitle">
-            <input type="hidden" id="viceChairOrgName">
+
+            <div class="form-group">
+              <label>Add Member</label>
+              <div class="user-search">
+                <input type="search" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" name="wg-member-search-field" role="combobox" aria-autocomplete="list">
+                <div id="memberResults" class="user-search-results"></div>
+              </div>
+            </div>
+            <div id="membersList" class="members-list"></div>
           </div>
 
           <div class="modal-buttons">
@@ -478,30 +517,13 @@
           </div>
         </form>
       </div>
-
-      <div id="membersTab-content" class="tab-content">
-        <div class="members-section">
-          <h3>Members (<span id="memberCount">0</span>)</h3>
-          <div class="form-group" style="margin-top: var(--space-4);">
-            <label>Add Member</label>
-            <div class="user-search">
-              <input type="text" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="off">
-              <div id="memberResults" class="user-search-results"></div>
-            </div>
-          </div>
-          <div id="membersList" class="members-list"></div>
-        </div>
-        <div class="modal-buttons">
-          <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
-        </div>
-      </div>
     </div>
   </div>
 
   <!-- Delete Confirmation Modal -->
   <div id="deleteModal" class="modal-overlay">
     <div class="modal" style="max-width: 450px;">
-      <h2>Delete Working Group</h2>
+      <h2>Delete Committee</h2>
       <p style="margin: var(--space-5) 0; color: var(--color-text-secondary);">
         Are you sure you want to delete "<span id="deleteTitle"></span>"? This will also remove all memberships.
       </p>
@@ -541,7 +563,7 @@
       } catch (error) {
         console.error('Error loading groups:', error);
         document.getElementById('loading').innerHTML =
-          '<p style="color: var(--color-error-600);">Failed to load working groups. <a href="/auth/login">Try logging in again</a></p>';
+          '<p style="color: var(--color-error-600);">Failed to load committees. <a href="/auth/login">Try logging in again</a></p>';
       }
     }
 
@@ -655,13 +677,25 @@
       memberSearchTimeout = setTimeout(renderAllMembers, 300);
     }
 
+    // Committee type labels for display
+    const COMMITTEE_TYPE_LABELS = {
+      working_group: 'Working Group',
+      council: 'Industry Council',
+      chapter: 'Regional Chapter',
+      governance: 'Governance'
+    };
+
     // Render groups list
     function renderGroupsList() {
       const listDiv = document.getElementById('groupsList');
+      const typeFilter = document.getElementById('typeFilter').value;
       const statusFilter = document.getElementById('statusFilter').value;
       const accessFilter = document.getElementById('accessFilter').value;
 
       let filtered = groups;
+      if (typeFilter) {
+        filtered = filtered.filter(g => g.committee_type === typeFilter);
+      }
       if (statusFilter) {
         filtered = filtered.filter(g => g.status === statusFilter);
       }
@@ -672,31 +706,38 @@
       }
 
       if (filtered.length === 0) {
-        listDiv.innerHTML = '<div class="empty-state">No working groups found.</div>';
+        listDiv.innerHTML = '<div class="empty-state">No committees found.</div>';
         return;
       }
 
       let html = '';
       filtered.forEach(group => {
+        const committeeType = group.committee_type || 'working_group';
+        const typeBadge = `<span class="badge badge-${committeeType}">${COMMITTEE_TYPE_LABELS[committeeType] || committeeType}</span>`;
         const statusBadge = `<span class="badge badge-${group.status}">${group.status}</span>`;
         const accessBadge = group.is_private
           ? '<span class="badge badge-private">Private</span>'
           : '<span class="badge badge-public">Public</span>';
+        const regionDisplay = committeeType === 'chapter' && group.region
+          ? `<span>📍 ${escapeHtml(group.region)}</span>`
+          : '';
 
         html += `
           <div class="group-item">
             <div class="group-info">
               <h3>${escapeHtml(group.name)}</h3>
               <div class="group-meta">
+                ${typeBadge}
                 ${statusBadge}
                 ${accessBadge}
+                ${regionDisplay}
                 <span>${group.member_count || 0} members</span>
-                ${group.chair_name ? `<span>· Chair: ${escapeHtml(group.chair_name)}</span>` : ''}
+                ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || 'Unknown')).join(', ')}</span>` : ''}
               </div>
             </div>
             <div class="group-actions">
               <button class="btn btn-secondary btn-small" onclick="window.open('/working-groups/${group.slug}', '_blank')">View</button>
-              <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Edit</button>
+              <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Manage</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${group.id}', '${escapeHtml(group.name).replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
@@ -707,23 +748,19 @@
     }
 
     // Show tabs
-    function showTab(tabName) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-
-      if (tabName === 'details') {
-        document.querySelector('.tab:first-child').classList.add('active');
-        document.getElementById('detailsTab').classList.add('active');
-      } else {
-        document.getElementById('membersTab').classList.add('active');
-        document.getElementById('membersTab-content').classList.add('active');
-      }
+    // Show/hide members section based on whether we're editing an existing group
+    function updateMembersSectionVisibility() {
+      const membersSection = document.getElementById('membersSection');
+      membersSection.style.display = editingGroup ? 'block' : 'none';
     }
+
+    // Current leaders in the form
+    let currentLeaders = [];
 
     // Search users
     async function searchUsers(type) {
-      const inputId = type === 'chair' ? 'chairSearch' : type === 'viceChair' ? 'viceChairSearch' : 'memberSearch';
-      const resultsId = type === 'chair' ? 'chairResults' : type === 'viceChair' ? 'viceChairResults' : 'memberResults';
+      const inputId = type === 'leader' ? 'leaderSearch' : 'memberSearch';
+      const resultsId = type === 'leader' ? 'leaderResults' : 'memberResults';
 
       const query = document.getElementById(inputId).value.trim();
       const resultsDiv = document.getElementById(resultsId);
@@ -764,7 +801,7 @@
       }, 300);
     }
 
-    // Select user for chair/vice-chair
+    // Select user for leader or member
     function selectUser(type, userId, name, email, orgName) {
       if (type === 'member') {
         addMember(userId, name, email, orgName);
@@ -773,30 +810,47 @@
         return;
       }
 
-      const prefix = type === 'chair' ? 'chair' : 'viceChair';
+      if (type === 'leader') {
+        // Check if already a leader
+        if (currentLeaders.some(l => l.user_id === userId)) {
+          document.getElementById('leaderSearch').value = '';
+          document.getElementById('leaderResults').classList.remove('show');
+          return;
+        }
 
-      document.getElementById(`${prefix}UserId`).value = userId;
-      document.getElementById(`${prefix}UserName`).value = name;
-      document.getElementById(`${prefix}OrgName`).value = orgName;
-      document.getElementById(`${prefix}Name`).textContent = name;
-      document.getElementById(`${prefix}Org`).textContent = orgName ? ` (${orgName})` : '';
-      document.getElementById(`${prefix}Selected`).style.display = 'flex';
-      document.getElementById(`${prefix}Search`).value = '';
-      document.getElementById(`${prefix}Results`).classList.remove('show');
+        currentLeaders.push({ user_id: userId, name, org_name: orgName });
+        renderLeadersList();
+        document.getElementById('leaderSearch').value = '';
+        document.getElementById('leaderResults').classList.remove('show');
+      }
     }
 
-    function clearChair() {
-      document.getElementById('chairUserId').value = '';
-      document.getElementById('chairUserName').value = '';
-      document.getElementById('chairOrgName').value = '';
-      document.getElementById('chairSelected').style.display = 'none';
+    function removeLeader(userId) {
+      currentLeaders = currentLeaders.filter(l => l.user_id !== userId);
+      renderLeadersList();
     }
 
-    function clearViceChair() {
-      document.getElementById('viceChairUserId').value = '';
-      document.getElementById('viceChairUserName').value = '';
-      document.getElementById('viceChairOrgName').value = '';
-      document.getElementById('viceChairSelected').style.display = 'none';
+    function renderLeadersList() {
+      const listDiv = document.getElementById('leadersList');
+      if (currentLeaders.length === 0) {
+        listDiv.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No leaders assigned</div>';
+        return;
+      }
+
+      listDiv.innerHTML = currentLeaders.map(l => `
+        <div class="selected-user" style="display: flex; margin-bottom: var(--space-2);">
+          <div>
+            <span class="name">${escapeHtml(l.name || 'Unknown')}</span>
+            <span class="org">${l.org_name ? ` (${escapeHtml(l.org_name)})` : ''}</span>
+          </div>
+          <span class="clear" onclick="removeLeader('${escapeJs(l.user_id)}')">Remove</span>
+        </div>
+      `).join('');
+    }
+
+    function clearLeaders() {
+      currentLeaders = [];
+      renderLeadersList();
     }
 
     // Add member
@@ -865,21 +919,97 @@
             </div>
           `).join('');
         }
+
+        // Update Slack sync section visibility and clear previous result
+        updateSlackSyncVisibility();
+        document.getElementById('syncResult').style.display = 'none';
+        document.getElementById('syncResult').innerHTML = '';
       } catch (error) {
         console.error('Error loading members:', error);
       }
     }
 
+    // Update Slack sync section visibility based on whether channel ID is set
+    function updateSlackSyncVisibility() {
+      const syncSection = document.getElementById('slackSyncSection');
+      const hasSlackChannel = editingGroup && editingGroup.slack_channel_id;
+      syncSection.style.display = hasSlackChannel ? 'block' : 'none';
+    }
+
+    // Sync members from Slack
+    async function syncFromSlack() {
+      if (!editingGroup || !editingGroup.id) {
+        alert('No working group selected');
+        return;
+      }
+
+      const btn = document.getElementById('syncSlackBtn');
+      const resultDiv = document.getElementById('syncResult');
+
+      btn.disabled = true;
+      btn.textContent = 'Syncing...';
+      resultDiv.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/admin/working-groups/${editingGroup.id}/sync-from-slack`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          resultDiv.innerHTML = `<div style="color: var(--color-error-600);">Error: ${escapeHtml(data.message || 'Sync failed')}</div>`;
+          resultDiv.style.display = 'block';
+          return;
+        }
+
+        const result = data.result;
+        let message = `<strong>Sync complete!</strong><br>`;
+        message += `Channel members: ${result.total_channel_members}<br>`;
+        message += `Added: ${result.members_added}<br>`;
+        message += `Already members: ${result.members_already_in_group}<br>`;
+        if (result.unmapped_slack_users > 0) {
+          message += `<span style="color: var(--color-warning-600);">Unmapped Slack users (not linked to website accounts): ${result.unmapped_slack_users}</span>`;
+        }
+        if (result.errors.length > 0) {
+          message += `<br><span style="color: var(--color-error-600);">Errors: ${result.errors.length}</span>`;
+        }
+
+        resultDiv.innerHTML = message;
+        resultDiv.style.display = 'block';
+
+        // Reload members list
+        await loadMembers(editingGroup.id);
+      } catch (error) {
+        console.error('Sync error:', error);
+        resultDiv.innerHTML = `<div style="color: var(--color-error-600);">Error: ${error.message || 'Network error'}</div>`;
+        resultDiv.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sync Members';
+      }
+    }
+
+    // Show/hide region field based on committee type
+    function updateRegionVisibility() {
+      const committeeType = document.getElementById('committeeType').value;
+      const regionGroup = document.getElementById('regionGroup');
+      regionGroup.style.display = committeeType === 'chapter' ? 'block' : 'none';
+    }
+
     // Show create modal
     function showCreateModal() {
       editingGroup = null;
-      document.getElementById('modalTitle').textContent = 'Add Working Group';
+      document.getElementById('modalTitle').textContent = 'Add Committee';
       document.getElementById('groupForm').reset();
       document.getElementById('groupId').value = '';
-      document.getElementById('membersTab').style.display = 'none';
-      clearChair();
-      clearViceChair();
-      showTab('details');
+      document.getElementById('committeeType').value = 'working_group';
+      document.getElementById('region').value = '';
+      clearLeaders();
+      validateSlackUrl(); // Reset status message
+      updateRegionVisibility(); // Hide region for non-chapters
+      updateMembersSectionVisibility(); // Hide members section for new groups
       document.getElementById('groupModal').style.display = 'flex';
     }
 
@@ -891,45 +1021,32 @@
 
         editingGroup = await response.json();
 
-        document.getElementById('modalTitle').textContent = 'Edit Working Group';
+        document.getElementById('modalTitle').textContent = 'Manage Committee';
         document.getElementById('groupId').value = editingGroup.id;
         document.getElementById('name').value = editingGroup.name || '';
         document.getElementById('slug').value = editingGroup.slug || '';
         document.getElementById('description').value = editingGroup.description || '';
         document.getElementById('slackUrl').value = editingGroup.slack_channel_url || '';
+        validateSlackUrl();
         document.getElementById('status').value = editingGroup.status || 'active';
+        document.getElementById('committeeType').value = editingGroup.committee_type || 'working_group';
+        document.getElementById('region').value = editingGroup.region || '';
+        updateRegionVisibility();
         document.getElementById('isPrivate').checked = editingGroup.is_private || false;
         document.getElementById('displayOrder').value = editingGroup.display_order || 0;
 
-        // Chair
-        if (editingGroup.chair_user_id) {
-          document.getElementById('chairUserId').value = editingGroup.chair_user_id;
-          document.getElementById('chairUserName').value = editingGroup.chair_name || '';
-          document.getElementById('chairOrgName').value = editingGroup.chair_org_name || '';
-          document.getElementById('chairName').textContent = editingGroup.chair_name || '';
-          document.getElementById('chairOrg').textContent = editingGroup.chair_org_name ? ` (${editingGroup.chair_org_name})` : '';
-          document.getElementById('chairSelected').style.display = 'flex';
-        } else {
-          clearChair();
-        }
+        // Leaders
+        currentLeaders = (editingGroup.leaders || []).map(l => ({
+          user_id: l.user_id,
+          name: l.name,
+          org_name: l.org_name
+        }));
+        renderLeadersList();
 
-        // Vice Chair
-        if (editingGroup.vice_chair_user_id) {
-          document.getElementById('viceChairUserId').value = editingGroup.vice_chair_user_id;
-          document.getElementById('viceChairUserName').value = editingGroup.vice_chair_name || '';
-          document.getElementById('viceChairOrgName').value = editingGroup.vice_chair_org_name || '';
-          document.getElementById('viceChairName').textContent = editingGroup.vice_chair_name || '';
-          document.getElementById('viceChairOrg').textContent = editingGroup.vice_chair_org_name ? ` (${editingGroup.vice_chair_org_name})` : '';
-          document.getElementById('viceChairSelected').style.display = 'flex';
-        } else {
-          clearViceChair();
-        }
-
-        // Show members tab for existing groups
-        document.getElementById('membersTab').style.display = 'block';
+        // Show members section for existing groups
+        updateMembersSectionVisibility();
         await loadMembers(id);
 
-        showTab('details');
         document.getElementById('groupModal').style.display = 'flex';
       } catch (error) {
         console.error('Error loading group:', error);
@@ -943,12 +1060,19 @@
       editingGroup = null;
 
       // Clear search inputs and results
-      document.getElementById('chairSearch').value = '';
-      document.getElementById('viceChairSearch').value = '';
+      document.getElementById('leaderSearch').value = '';
       document.getElementById('memberSearch').value = '';
-      document.getElementById('chairResults').classList.remove('show');
-      document.getElementById('viceChairResults').classList.remove('show');
+      document.getElementById('leaderResults').classList.remove('show');
       document.getElementById('memberResults').classList.remove('show');
+
+      // Clear sync result
+      document.getElementById('syncResult').style.display = 'none';
+      document.getElementById('syncResult').innerHTML = '';
+
+      // Reset committee type fields
+      document.getElementById('committeeType').value = 'working_group';
+      document.getElementById('region').value = '';
+      updateRegionVisibility();
     }
 
     // Save group
@@ -956,20 +1080,18 @@
       event.preventDefault();
 
       const id = document.getElementById('groupId').value;
+      const committeeType = document.getElementById('committeeType').value;
       const data = {
         name: document.getElementById('name').value.trim(),
         slug: document.getElementById('slug').value.trim(),
         description: document.getElementById('description').value.trim() || null,
         slack_channel_url: document.getElementById('slackUrl').value.trim() || null,
         status: document.getElementById('status').value,
+        committee_type: committeeType,
+        region: committeeType === 'chapter' ? (document.getElementById('region').value.trim() || null) : null,
         is_private: document.getElementById('isPrivate').checked,
         display_order: parseInt(document.getElementById('displayOrder').value) || 0,
-        chair_user_id: document.getElementById('chairUserId').value || null,
-        chair_name: document.getElementById('chairUserName').value || null,
-        chair_org_name: document.getElementById('chairOrgName').value || null,
-        vice_chair_user_id: document.getElementById('viceChairUserId').value || null,
-        vice_chair_name: document.getElementById('viceChairUserName').value || null,
-        vice_chair_org_name: document.getElementById('viceChairOrgName').value || null,
+        leader_user_ids: currentLeaders.map(l => l.user_id),
       };
 
       const saveBtn = document.getElementById('saveBtn');
@@ -1050,6 +1172,43 @@
     function escapeJs(text) {
       if (!text) return '';
       return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    // Extract Slack channel ID from URL (mirrors server-side logic)
+    function extractSlackChannelId(url) {
+      if (!url) return null;
+      // Slack channel IDs start with C (public) or G (private) followed by alphanumeric
+      const channelIdPattern = /[CG][A-Z0-9]{8,}/;
+      try {
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/').filter(Boolean);
+        for (let i = pathParts.length - 1; i >= 0; i--) {
+          const match = pathParts[i].match(channelIdPattern);
+          if (match) return match[0];
+        }
+      } catch {
+        const match = url.match(channelIdPattern);
+        if (match) return match[0];
+      }
+      return null;
+    }
+
+    // Validate Slack URL and show status
+    function validateSlackUrl() {
+      const url = document.getElementById('slackUrl').value.trim();
+      const statusEl = document.getElementById('slackUrlStatus');
+
+      if (!url) {
+        statusEl.innerHTML = '<span style="color: var(--color-text-muted);">Channel ID will be auto-extracted for member sync</span>';
+        return;
+      }
+
+      const channelId = extractSlackChannelId(url);
+      if (channelId) {
+        statusEl.innerHTML = `<span style="color: var(--color-success-600);">✓ Channel ID detected: ${escapeHtml(channelId)}</span>`;
+      } else {
+        statusEl.innerHTML = '<span style="color: var(--color-warning-600);">⚠ Could not detect channel ID from URL</span>';
+      }
     }
 
     // Close search results when clicking outside

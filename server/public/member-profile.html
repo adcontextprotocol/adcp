@@ -21,6 +21,11 @@
       margin: var(--space-10) auto;
       padding: 0 var(--space-5);
     }
+    /* Override dashboard-nav's container reset to keep form narrow */
+    .dashboard-main .container {
+      max-width: var(--container-md) !important;
+      margin: var(--space-6) auto !important;
+    }
     .card {
       background: var(--color-bg-card);
       border-radius: var(--radius-lg);
@@ -671,6 +676,7 @@
   <!-- Navigation -->
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
   <script src="/member-card.js"></script>
 
   <div class="container">
@@ -1007,7 +1013,33 @@
 
     async function loadProfile() {
       try {
-        const response = await fetch(buildApiUrl('/api/me/member-profile'), {
+        // Fetch user info first - needed for org selection and sidebar
+        const meResponse = await fetch('/api/me', { credentials: 'include' });
+        if (meResponse.status === 401) {
+          const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+          window.location.href = `/auth/login?redirect=${returnUrl}`;
+          return;
+        }
+
+        let meData = null;
+        let isAdmin = false;
+        if (meResponse.ok) {
+          meData = await meResponse.json();
+          isAdmin = meData.user?.isAdmin || false;
+        }
+
+        // Get org ID from URL or use first org from user data
+        let orgId = getOrgIdFromUrl();
+        if (!orgId && meData?.organizations?.length > 0) {
+          orgId = meData.organizations[0].id;
+          // Update URL to include org param for bookmarking/sharing
+          const newUrl = new URL(window.location);
+          newUrl.searchParams.set('org', orgId);
+          window.history.replaceState({}, '', newUrl);
+        }
+
+        const apiUrl = orgId ? `/api/me/member-profile?org=${encodeURIComponent(orgId)}` : '/api/me/member-profile';
+        const response = await fetch(apiUrl, {
           credentials: 'include'
         });
 
@@ -1043,12 +1075,42 @@
         currentOrgName = data.organization_name;
         hasActiveSubscription = data.has_active_subscription || false;
 
+        // Get billing info for sidebar
+        let isSubscribed = false;
+        let isPersonal = false;
+        try {
+          const billingResponse = await fetch(`/api/organizations/${currentOrgId}/billing`, { credentials: 'include' });
+          if (billingResponse.ok) {
+            const billingData = await billingResponse.json();
+            isSubscribed = billingData.subscription?.status === 'active';
+            isPersonal = billingData.is_personal || false;
+          }
+        } catch (e) {
+          console.warn('Could not load billing info for sidebar:', e);
+        }
+
+        // Initialize dashboard sidebar
+        if (typeof DashboardNav !== 'undefined') {
+          DashboardNav.init({
+            showOrgSwitcher: false,
+            currentOrgName: currentOrgName || 'Organization',
+            isPersonal: isPersonal,
+            isSubscribed: isSubscribed,
+            showAdmin: isAdmin
+          });
+        }
+
         document.getElementById('loading').style.display = 'none';
 
-        // Update page title/subtitle with org name
-        if (currentOrgName) {
+        // Update page title/subtitle based on account type
+        if (isPersonal) {
+          document.querySelector('.subtitle').textContent = 'Customize how you appear in the AdCP member directory';
+        } else if (currentOrgName) {
           document.querySelector('.subtitle').textContent = `Customize how ${currentOrgName} appears in the AdCP member directory`;
         }
+
+        // Update form placeholders based on account type
+        updateFormLabelsForAccountType(isPersonal);
 
         if (data.profile) {
           currentProfile = data.profile;
@@ -1074,6 +1136,25 @@
         console.error('Load profile error:', error);
         document.getElementById('loading').style.display = 'none';
         showError('Failed to load your profile. Please try again.');
+      }
+    }
+
+    // Update form labels and placeholders based on account type
+    function updateFormLabelsForAccountType(isPersonal) {
+      const displayNameInput = document.getElementById('display_name');
+      const slugInput = document.getElementById('slug');
+      const descriptionTextarea = document.getElementById('description');
+
+      if (isPersonal) {
+        // Update for individual accounts
+        displayNameInput.placeholder = 'Your name';
+        slugInput.placeholder = 'your-name';
+        descriptionTextarea.placeholder = 'Tell people about yourself and what you offer...';
+      } else {
+        // Keep defaults for organizations
+        displayNameInput.placeholder = 'Your company name';
+        slugInput.placeholder = 'your-company';
+        descriptionTextarea.placeholder = 'Tell people about your company and what you offer...';
       }
     }
 

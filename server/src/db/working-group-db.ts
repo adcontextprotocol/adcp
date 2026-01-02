@@ -1,12 +1,14 @@
 import { query } from './client.js';
 import type {
   WorkingGroup,
+  WorkingGroupLeader,
   WorkingGroupMembership,
   CreateWorkingGroupInput,
   UpdateWorkingGroupInput,
   WorkingGroupWithMemberCount,
   WorkingGroupWithDetails,
   AddWorkingGroupMemberInput,
+  CommitteeType,
 } from '../types.js';
 
 /**
@@ -14,6 +16,42 @@ import type {
  */
 function escapeLikePattern(str: string): string {
   return str.replace(/[%_\\]/g, '\\$&');
+}
+
+/**
+ * Extract Slack channel ID from a Slack URL
+ * Handles formats like:
+ * - https://agenticads.slack.com/archives/C09HEERCY8P
+ * - https://app.slack.com/client/T123/C09HEERCY8P
+ * Returns null if no valid channel ID found
+ */
+function extractSlackChannelId(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  // Slack channel IDs start with C (public) or G (private) followed by alphanumeric
+  const channelIdPattern = /[CG][A-Z0-9]{8,}/;
+
+  // Try to extract from URL path
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/').filter(Boolean);
+
+    // Look for channel ID in path segments (usually the last one)
+    for (let i = pathParts.length - 1; i >= 0; i--) {
+      const match = pathParts[i].match(channelIdPattern);
+      if (match) {
+        return match[0];
+      }
+    }
+  } catch {
+    // If URL parsing fails, try regex on the whole string
+    const match = url.match(channelIdPattern);
+    if (match) {
+      return match[0];
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -26,34 +64,38 @@ export class WorkingGroupDatabase {
    * Create a new working group
    */
   async createWorkingGroup(input: CreateWorkingGroupInput): Promise<WorkingGroup> {
+    // Auto-extract channel ID from URL if not explicitly provided
+    const channelId = input.slack_channel_id || extractSlackChannelId(input.slack_channel_url);
+
     const result = await query<WorkingGroup>(
       `INSERT INTO working_groups (
-        name, slug, description, slack_channel_url,
-        chair_user_id, chair_name, chair_title, chair_org_name,
-        vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name,
-        is_private, status, display_order
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        name, slug, description, slack_channel_url, slack_channel_id,
+        is_private, status, display_order, committee_type, region
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         input.name,
         input.slug,
         input.description || null,
         input.slack_channel_url || null,
-        input.chair_user_id || null,
-        input.chair_name || null,
-        input.chair_title || null,
-        input.chair_org_name || null,
-        input.vice_chair_user_id || null,
-        input.vice_chair_name || null,
-        input.vice_chair_title || null,
-        input.vice_chair_org_name || null,
+        channelId,
         input.is_private ?? false,
         input.status ?? 'active',
         input.display_order ?? 0,
+        input.committee_type ?? 'working_group',
+        input.region || null,
       ]
     );
 
-    return result.rows[0];
+    const workingGroup = result.rows[0];
+
+    // Add leaders if provided
+    if (input.leader_user_ids && input.leader_user_ids.length > 0) {
+      await this.setLeaders(workingGroup.id, input.leader_user_ids);
+      workingGroup.leaders = await this.getLeaders(workingGroup.id);
+    }
+
+    return workingGroup;
   }
 
   /**
@@ -64,7 +106,11 @@ export class WorkingGroupDatabase {
       'SELECT * FROM working_groups WHERE id = $1',
       [id]
     );
-    return result.rows[0] || null;
+    if (!result.rows[0]) return null;
+
+    const workingGroup = result.rows[0];
+    workingGroup.leaders = await this.getLeaders(id);
+    return workingGroup;
   }
 
   /**
@@ -75,7 +121,11 @@ export class WorkingGroupDatabase {
       'SELECT * FROM working_groups WHERE slug = $1',
       [slug]
     );
-    return result.rows[0] || null;
+    if (!result.rows[0]) return null;
+
+    const workingGroup = result.rows[0];
+    workingGroup.leaders = await this.getLeaders(workingGroup.id);
+    return workingGroup;
   }
 
   /**
@@ -85,21 +135,21 @@ export class WorkingGroupDatabase {
     id: string,
     updates: UpdateWorkingGroupInput
   ): Promise<WorkingGroup | null> {
-    const COLUMN_MAP: Record<keyof UpdateWorkingGroupInput, string> = {
+    // Auto-extract channel ID from URL if URL is being updated and channel_id isn't explicitly set
+    if (updates.slack_channel_url !== undefined && updates.slack_channel_id === undefined) {
+      updates.slack_channel_id = extractSlackChannelId(updates.slack_channel_url) ?? undefined;
+    }
+
+    const COLUMN_MAP: Record<string, string> = {
       name: 'name',
       description: 'description',
       slack_channel_url: 'slack_channel_url',
-      chair_user_id: 'chair_user_id',
-      chair_name: 'chair_name',
-      chair_title: 'chair_title',
-      chair_org_name: 'chair_org_name',
-      vice_chair_user_id: 'vice_chair_user_id',
-      vice_chair_name: 'vice_chair_name',
-      vice_chair_title: 'vice_chair_title',
-      vice_chair_org_name: 'vice_chair_org_name',
+      slack_channel_id: 'slack_channel_id',
       is_private: 'is_private',
       status: 'status',
       display_order: 'display_order',
+      committee_type: 'committee_type',
+      region: 'region',
     };
 
     const setClauses: string[] = [];
@@ -107,7 +157,10 @@ export class WorkingGroupDatabase {
     let paramIndex = 1;
 
     for (const [key, value] of Object.entries(updates)) {
-      const columnName = COLUMN_MAP[key as keyof UpdateWorkingGroupInput];
+      // Handle leaders separately
+      if (key === 'leader_user_ids') continue;
+
+      const columnName = COLUMN_MAP[key];
       if (!columnName) {
         continue;
       }
@@ -115,20 +168,24 @@ export class WorkingGroupDatabase {
       params.push(value);
     }
 
-    if (setClauses.length === 0) {
-      return this.getWorkingGroupById(id);
+    // Update working group fields if any
+    if (setClauses.length > 0) {
+      params.push(id);
+      const sql = `
+        UPDATE working_groups
+        SET ${setClauses.join(', ')}, updated_at = NOW()
+        WHERE id = $${paramIndex}
+        RETURNING *
+      `;
+      await query<WorkingGroup>(sql, params);
     }
 
-    params.push(id);
-    const sql = `
-      UPDATE working_groups
-      SET ${setClauses.join(', ')}, updated_at = NOW()
-      WHERE id = $${paramIndex}
-      RETURNING *
-    `;
+    // Update leaders if provided
+    if (updates.leader_user_ids !== undefined) {
+      await this.setLeaders(id, updates.leader_user_ids);
+    }
 
-    const result = await query<WorkingGroup>(sql, params);
-    return result.rows[0] || null;
+    return this.getWorkingGroupById(id);
   }
 
   /**
@@ -149,6 +206,8 @@ export class WorkingGroupDatabase {
     status?: string;
     includePrivate?: boolean;
     search?: string;
+    committee_type?: CommitteeType | CommitteeType[];
+    excludeGovernance?: boolean;
   } = {}): Promise<WorkingGroupWithMemberCount[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -169,6 +228,20 @@ export class WorkingGroupDatabase {
       paramIndex++;
     }
 
+    // Filter by committee type
+    if (options.committee_type) {
+      const types = Array.isArray(options.committee_type)
+        ? options.committee_type
+        : [options.committee_type];
+      conditions.push(`wg.committee_type = ANY($${paramIndex++})`);
+      params.push(types);
+    }
+
+    // Exclude governance committees from public listings
+    if (options.excludeGovernance) {
+      conditions.push(`wg.committee_type != 'governance'`);
+    }
+
     const whereClause = conditions.length > 0
       ? `WHERE ${conditions.join(' AND ')}`
       : '';
@@ -183,30 +256,73 @@ export class WorkingGroupDatabase {
       params
     );
 
-    return result.rows;
+    // Batch fetch leaders for all groups
+    const groups = result.rows;
+    const groupIds = groups.map(g => g.id);
+    const leadersByGroup = await this.getLeadersBatch(groupIds);
+
+    for (const group of groups) {
+      group.leaders = leadersByGroup.get(group.id) || [];
+    }
+
+    return groups;
   }
 
   /**
    * List working groups visible to a specific user (public + private they're a member of)
    */
-  async listWorkingGroupsForUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
+  async listWorkingGroupsForUser(userId: string, options: {
+    committee_type?: CommitteeType | CommitteeType[];
+    excludeGovernance?: boolean;
+  } = {}): Promise<WorkingGroupWithMemberCount[]> {
+    const conditions: string[] = [
+      `wg.status = 'active'`,
+      `(wg.is_private = false OR EXISTS (
+        SELECT 1 FROM working_group_memberships wgm
+        WHERE wgm.working_group_id = wg.id
+          AND wgm.workos_user_id = $1
+          AND wgm.status = 'active'
+      ))`,
+    ];
+    const params: unknown[] = [userId];
+    let paramIndex = 2;
+
+    // Filter by committee type
+    if (options.committee_type) {
+      const types = Array.isArray(options.committee_type)
+        ? options.committee_type
+        : [options.committee_type];
+      conditions.push(`wg.committee_type = ANY($${paramIndex++})`);
+      params.push(types);
+    }
+
+    // Exclude governance committees from public listings
+    if (options.excludeGovernance) {
+      conditions.push(`wg.committee_type != 'governance'`);
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
     const result = await query<WorkingGroupWithMemberCount>(
       `SELECT wg.*, COUNT(wgm2.id)::int AS member_count
        FROM working_groups wg
        LEFT JOIN working_group_memberships wgm2 ON wg.id = wgm2.working_group_id AND wgm2.status = 'active'
-       WHERE wg.status = 'active'
-         AND (wg.is_private = false OR EXISTS (
-           SELECT 1 FROM working_group_memberships wgm
-           WHERE wgm.working_group_id = wg.id
-             AND wgm.workos_user_id = $1
-             AND wgm.status = 'active'
-         ))
+       ${whereClause}
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,
-      [userId]
+      params
     );
 
-    return result.rows;
+    // Batch fetch leaders for all groups
+    const groups = result.rows;
+    const groupIds = groups.map(g => g.id);
+    const leadersByGroup = await this.getLeadersBatch(groupIds);
+
+    for (const group of groups) {
+      group.leaders = leadersByGroup.get(group.id) || [];
+    }
+
+    return groups;
   }
 
   /**
@@ -242,6 +358,29 @@ export class WorkingGroupDatabase {
 
     const result = await query(sql, params);
     return result.rows.length === 0;
+  }
+
+  /**
+   * Get working group by Slack channel ID
+   */
+  async getWorkingGroupBySlackChannelId(slackChannelId: string): Promise<WorkingGroup | null> {
+    const result = await query<WorkingGroup>(
+      'SELECT * FROM working_groups WHERE slack_channel_id = $1',
+      [slackChannelId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * List working groups that have Slack channel IDs configured
+   */
+  async listWorkingGroupsWithSlackChannel(): Promise<WorkingGroup[]> {
+    const result = await query<WorkingGroup>(
+      `SELECT * FROM working_groups
+       WHERE slack_channel_id IS NOT NULL AND status = 'active'
+       ORDER BY display_order, name`
+    );
+    return result.rows;
   }
 
   // ============== Memberships ==============
@@ -364,43 +503,158 @@ export class WorkingGroupDatabase {
     return result.rows;
   }
 
-  /**
-   * Ensure chair/vice-chair are members of their working group
-   * Called after updating leadership to add them if not already members
-   */
-  async ensureLeadershipAreMembers(workingGroupId: string): Promise<void> {
-    const wg = await this.getWorkingGroupById(workingGroupId);
-    if (!wg) return;
+  // ============== Leaders ==============
 
-    // Add chair as member if set
-    if (wg.chair_user_id) {
-      const existing = await this.getMembership(workingGroupId, wg.chair_user_id);
-      if (!existing || existing.status !== 'active') {
-        await this.addMembership({
-          working_group_id: workingGroupId,
-          workos_user_id: wg.chair_user_id,
-          user_name: wg.chair_name || undefined,
-          user_org_name: wg.chair_org_name || undefined,
-        });
-      }
+  /**
+   * Get leaders for a working group
+   */
+  async getLeaders(workingGroupId: string): Promise<WorkingGroupLeader[]> {
+    // Get leaders with user details from working_group_memberships (if they're a member),
+    // falling back to organization_memberships (the canonical source from WorkOS)
+    const result = await query<WorkingGroupLeader>(
+      `SELECT
+         wgl.user_id,
+         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
+         COALESCE(wgm.user_org_name, org.name) AS org_name,
+         wgl.created_at
+       FROM working_group_leaders wgl
+       LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+       WHERE wgl.working_group_id = $1
+       ORDER BY wgl.created_at`,
+      [workingGroupId]
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Get leaders for multiple working groups in a single query (batch)
+   */
+  async getLeadersBatch(workingGroupIds: string[]): Promise<Map<string, WorkingGroupLeader[]>> {
+    if (workingGroupIds.length === 0) {
+      return new Map();
     }
 
-    // Add vice-chair as member if set
-    if (wg.vice_chair_user_id) {
-      const existing = await this.getMembership(workingGroupId, wg.vice_chair_user_id);
+    const result = await query<WorkingGroupLeader & { working_group_id: string }>(
+      `SELECT
+         wgl.working_group_id,
+         wgl.user_id,
+         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
+         COALESCE(wgm.user_org_name, org.name) AS org_name,
+         wgl.created_at
+       FROM working_group_leaders wgl
+       LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+       WHERE wgl.working_group_id = ANY($1)
+       ORDER BY wgl.created_at`,
+      [workingGroupIds]
+    );
+
+    // Group by working_group_id
+    const leadersByGroup = new Map<string, WorkingGroupLeader[]>();
+    for (const row of result.rows) {
+      const groupId = row.working_group_id;
+      if (!leadersByGroup.has(groupId)) {
+        leadersByGroup.set(groupId, []);
+      }
+      leadersByGroup.get(groupId)!.push({
+        user_id: row.user_id,
+        name: row.name,
+        org_name: row.org_name,
+        created_at: row.created_at,
+      });
+    }
+
+    return leadersByGroup;
+  }
+
+  /**
+   * Set leaders for a working group (replaces existing leaders)
+   */
+  async setLeaders(workingGroupId: string, userIds: string[]): Promise<void> {
+    // Remove existing leaders
+    await query(
+      'DELETE FROM working_group_leaders WHERE working_group_id = $1',
+      [workingGroupId]
+    );
+
+    // Add new leaders in a single bulk insert
+    if (userIds.length > 0) {
+      const values = userIds.map((_, i) => `($1, $${i + 2})`).join(', ');
+      await query(
+        `INSERT INTO working_group_leaders (working_group_id, user_id)
+         VALUES ${values}
+         ON CONFLICT DO NOTHING`,
+        [workingGroupId, ...userIds]
+      );
+    }
+
+    // Ensure leaders are members
+    await this.ensureLeadersAreMembers(workingGroupId);
+  }
+
+  /**
+   * Add a leader to a working group
+   */
+  async addLeader(workingGroupId: string, userId: string): Promise<void> {
+    await query(
+      `INSERT INTO working_group_leaders (working_group_id, user_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [workingGroupId, userId]
+    );
+
+    // Ensure leader is a member
+    await this.ensureLeadersAreMembers(workingGroupId);
+  }
+
+  /**
+   * Remove a leader from a working group
+   */
+  async removeLeader(workingGroupId: string, userId: string): Promise<void> {
+    await query(
+      'DELETE FROM working_group_leaders WHERE working_group_id = $1 AND user_id = $2',
+      [workingGroupId, userId]
+    );
+  }
+
+  /**
+   * Check if a user is a leader of a working group
+   */
+  async isLeader(workingGroupId: string, userId: string): Promise<boolean> {
+    const result = await query(
+      `SELECT 1 FROM working_group_leaders
+       WHERE working_group_id = $1 AND user_id = $2
+       LIMIT 1`,
+      [workingGroupId, userId]
+    );
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Ensure leaders are members of their working group
+   */
+  async ensureLeadersAreMembers(workingGroupId: string): Promise<void> {
+    const leaders = await this.getLeaders(workingGroupId);
+
+    for (const leader of leaders) {
+      const existing = await this.getMembership(workingGroupId, leader.user_id);
       if (!existing || existing.status !== 'active') {
         await this.addMembership({
           working_group_id: workingGroupId,
-          workos_user_id: wg.vice_chair_user_id,
-          user_name: wg.vice_chair_name || undefined,
-          user_org_name: wg.vice_chair_org_name || undefined,
+          workos_user_id: leader.user_id,
+          user_name: leader.name,
+          user_org_name: leader.org_name,
         });
       }
     }
   }
 
   /**
-   * Search users across all member organizations (for chair/vice-chair selection)
+   * Search users across all member organizations (for leader selection)
    * Returns users with their organization info
    */
   async searchUsersForLeadership(searchTerm: string, limit: number = 20): Promise<Array<{

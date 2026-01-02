@@ -1,8 +1,9 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import * as fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { WorkOS } from "@workos-inc/node";
+import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
@@ -19,14 +20,17 @@ import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType } from "./types.js";
 import type { Server } from "http";
-import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
+import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
-import { WorkingGroupDatabase } from "./db/working-group-db.js";
+import { SlackDatabase } from "./db/slack-db.js";
+import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
+import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
+import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -36,8 +40,28 @@ import {
   notifyPaymentSucceeded,
   notifyPaymentFailed,
   notifySubscriptionCancelled,
-  notifyWorkingGroupPost,
 } from "./notifications/slack.js";
+import { createAdminRouter } from "./routes/admin.js";
+import { createAdminInsightsRouter } from "./routes/admin-insights.js";
+import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter } from "./addie/index.js";
+import { createSlackRouter } from "./routes/slack.js";
+import { createWebhooksRouter } from "./routes/webhooks.js";
+import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
+import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter } from "./routes/admin/index.js";
+import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
+import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts.js";
+import { createBillingRouter } from "./routes/billing.js";
+import { createPublicBillingRouter } from "./routes/billing-public.js";
+import { createOrganizationsRouter } from "./routes/organizations.js";
+import { createEventsRouter } from "./routes/events.js";
+import { createLatestRouter } from "./routes/latest.js";
+import { createCommitteeRouters } from "./routes/committees.js";
+import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
+import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { queuePerspectiveLink, processPendingResources, processRssPerspectives } from "./addie/services/content-curator.js";
+import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,6 +122,12 @@ const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
+// Dev mode: bypass auth with a mock user for local testing
+// Set DEV_USER_EMAIL and DEV_USER_ID in .env.local to enable
+const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
+const DEV_USER_ID = process.env.DEV_USER_ID;
+const DEV_MODE_ENABLED = !!(DEV_USER_EMAIL && DEV_USER_ID);
+
 // System user ID for audit logs from webhook/automated contexts
 const SYSTEM_USER_ID = 'system';
 
@@ -144,6 +174,72 @@ function setCachedUser(userId: string, displayName: string): void {
   });
 }
 
+/**
+ * Build app config object for injection into HTML pages.
+ * This allows nav.js to read config synchronously instead of making an async fetch.
+ */
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null) {
+  let isAdmin = false;
+  if (user) {
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+    isAdmin = adminEmails.includes(user.email.toLowerCase());
+  }
+
+  return {
+    authEnabled: AUTH_ENABLED,
+    user: user ? {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      isAdmin,
+    } : null,
+  };
+}
+
+/**
+ * Generate the script tag to inject app config into HTML.
+ */
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null): string {
+  const config = buildAppConfig(user);
+  return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+}
+
+/**
+ * Get user info from request for HTML config injection.
+ * Checks dev mode first, then WorkOS session.
+ */
+async function getUserFromRequest(req: express.Request): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
+  // Check dev mode first
+  if (isDevModeEnabled()) {
+    const devUser = getDevUser(req);
+    if (devUser) {
+      return devUser;
+    }
+  }
+
+  // Then check WorkOS session
+  const sessionCookie = req.cookies?.['wos-session'];
+  if (sessionCookie && AUTH_ENABLED && workos) {
+    try {
+      const session = await workos.userManagement.loadSealedSession({
+        sessionData: sessionCookie,
+        cookiePassword: WORKOS_COOKIE_PASSWORD,
+      });
+      if (session) {
+        const authResult = await session.authenticate();
+        if (authResult.authenticated && authResult.user) {
+          return authResult.user;
+        }
+      }
+    } catch {
+      // Session invalid or expired - continue without user
+    }
+  }
+
+  return null;
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -155,6 +251,12 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
+  private contentCuratorIntervalId: NodeJS.Timeout | null = null;
+  private feedFetcherIntervalId: NodeJS.Timeout | null = null;
+  private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
+  private alertProcessorIntervalId: NodeJS.Timeout | null = null;
+  private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
+  private dailyDigestTimeoutId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -190,10 +292,19 @@ export class HTTPServer {
       next();
     });
 
-    // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
+    // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
     this.app.use((req, res, next) => {
-      if (req.path === '/api/webhooks/stripe') {
+      // Skip global JSON parser for routes that need raw body capture:
+      // - Stripe webhooks: need raw body for webhook signature verification
+      // - Resend inbound webhooks: need raw body for Svix signature verification
+      // - WorkOS webhooks: need raw body for WorkOS signature verification
+      // - Slack routes: need raw body for Slack signature verification
+      //   (both JSON for events and URL-encoded for commands)
+      if (req.path === '/api/webhooks/stripe' ||
+          req.path === '/api/webhooks/resend-inbound' ||
+          req.path === '/api/webhooks/workos' ||
+          req.path.startsWith('/api/slack/')) {
         next();
       } else {
         express.json({ limit: '10mb' })(req, res, next);
@@ -230,6 +341,55 @@ export class HTTPServer {
     const publicPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../server/public")
       : path.join(__dirname, "../public");
+
+    // Middleware to inject app config into HTML files
+    // This runs optionalAuth to get user info, then serves HTML with config injected
+    // Intercepts both .html requests and extensionless paths that map to .html files
+    this.app.use(async (req, res, next) => {
+      const urlPath = req.path;
+
+      // Determine the file path to check
+      let filePath: string;
+      if (urlPath.endsWith('.html')) {
+        filePath = path.join(publicPath, urlPath);
+      } else if (!urlPath.includes('.')) {
+        // Extensionless path - check if .html version exists
+        filePath = path.join(publicPath, urlPath + '.html');
+      } else {
+        // Has an extension but not .html - skip
+        return next();
+      }
+
+      try {
+        // Check if file exists
+        await fs.access(filePath);
+
+        // Get user from session (if authenticated)
+        const user = await getUserFromRequest(req);
+
+        // Read and inject config
+        let html = await fs.readFile(filePath, 'utf-8');
+        const configScript = getAppConfigScript(user);
+
+        // Inject before </head>
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        } else {
+          // Fallback: inject at start of body
+          html = html.replace('<body', `${configScript}\n<body`);
+        }
+
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(html);
+      } catch {
+        // File doesn't exist, let next middleware handle it
+        next();
+      }
+    });
+
     this.app.use(express.static(publicPath, { index: false }));
   }
 
@@ -241,6 +401,50 @@ export class HTTPServer {
     return hostname.includes('adcontextprotocol') && !hostname.includes('localhost');
   }
 
+  /**
+   * Serve an HTML file with APP_CONFIG injected.
+   * This ensures clean URL routes (like /membership) get the same config injection
+   * as .html file requests handled by the middleware.
+   */
+  private async serveHtmlWithConfig(req: express.Request, res: express.Response, htmlFile: string): Promise<void> {
+    const publicPath = process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public")
+      : path.join(__dirname, "../public");
+    const filePath = path.join(publicPath, htmlFile);
+
+    try {
+      // Get user from session (if authenticated)
+      const user = await getUserFromRequest(req);
+
+      // Read and inject config
+      let html = await fs.readFile(filePath, 'utf-8');
+      const configScript = getAppConfigScript(user);
+
+      // Inject before </head>
+      if (html.includes('</head>')) {
+        html = html.replace('</head>', `${configScript}\n</head>`);
+      } else {
+        // Fallback: inject at start of body
+        html = html.replace('<body', `${configScript}\n<body`);
+      }
+
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.send(html);
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === 'ENOENT') {
+        logger.warn({ htmlFile }, 'HTML file not found');
+        res.status(404).send('Not Found');
+      } else {
+        logger.error({ error, htmlFile }, 'Failed to serve HTML with config');
+        res.status(500).send('Internal Server Error');
+      }
+    }
+  }
+
   private setupRoutes(): void {
     // Authentication routes (only if configured)
     if (AUTH_ENABLED) {
@@ -249,6 +453,76 @@ export class HTTPServer {
     } else {
       logger.warn('Authentication disabled - WORKOS environment variables not configured');
     }
+
+    // Mount admin routes
+    const { pageRouter, apiRouter } = createAdminRouter();
+    this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
+    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
+
+    // Mount admin insights routes (member insights, goals, outreach)
+    const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
+    this.app.use('/admin', insightsPageRouter);      // Page routes: /admin/insights, /admin/insight-types, etc.
+    this.app.use('/api/admin', insightsApiRouter);   // API routes: /api/admin/insights, /api/admin/insight-types, etc.
+
+    // Mount Addie admin routes
+    const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
+    this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
+    this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Addie chat routes (public chat interface)
+    const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
+    this.app.use('/chat', chatPageRouter);              // Page routes: /chat
+    this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
+
+    // Mount Slack routes (public webhook endpoints)
+    // All Slack routes under /api/slack/ for consistency
+    // Addie uses Bolt SDK - get its router if available
+    const addieBoltRouter = getAddieBoltRouter();
+    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter(addieBoltRouter);
+    this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
+    this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events (Bolt SDK)
+
+    // Mount admin Slack, Email, Feeds, and Notification Channels routes
+    const adminSlackRouter = createAdminSlackRouter();
+    this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
+    const adminEmailRouter = createAdminEmailRouter();
+    this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
+    const adminFeedsRouter = createAdminFeedsRouter();
+    this.app.use('/api/admin/feeds', adminFeedsRouter); // Admin Feeds: /api/admin/feeds/*
+    const adminNotificationChannelsRouter = createAdminNotificationChannelsRouter();
+    this.app.use('/api/admin/notification-channels', adminNotificationChannelsRouter); // Notification Channels: /api/admin/notification-channels/*
+    const adminUsersRouter = createAdminUsersRouter();
+    this.app.use('/api/admin/users', adminUsersRouter); // Admin Users: /api/admin/users/*
+
+    // Mount billing routes (admin)
+    const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
+    this.app.use('/admin', billingPageRouter);          // Page routes: /admin/products
+    this.app.use('/api/admin', billingApiRouter);       // API routes: /api/admin/products
+
+    // Mount public billing routes
+    const publicBillingRouter = createPublicBillingRouter();
+    this.app.use('/api', publicBillingRouter);          // Public API routes: /api/billing-products, /api/invoice-request, etc.
+
+    // Mount organization routes
+    const organizationsRouter = createOrganizationsRouter();
+    this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
+
+    // Mount events routes
+    const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
+    this.app.use('/admin', eventsPageRouter);               // Admin page: /admin/events
+    this.app.use('/api/admin/events', eventsAdminApiRouter); // Admin API: /api/admin/events/*
+    this.app.use('/api/events', eventsPublicApiRouter);      // Public API: /api/events/*
+
+    // Mount latest content routes (The Latest section)
+    const { pageRouter: latestPageRouter, apiRouter: latestApiRouter } = createLatestRouter();
+    this.app.use('/', latestPageRouter);                    // Page routes: /latest, /latest/:slug
+    this.app.use('/api', latestApiRouter);                  // API routes: /api/latest/*
+
+    // Mount webhook routes (external services like Resend, WorkOS)
+    const webhooksRouter = createWebhooksRouter();
+    this.app.use('/api/webhooks', webhooksRouter);      // Webhooks: /api/webhooks/resend-inbound
+    const workosWebhooksRouter = createWorkOSWebhooksRouter();
+    this.app.use('/api/webhooks', workosWebhooksRouter); // WorkOS: /api/webhooks/workos
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -266,6 +540,376 @@ export class HTTPServer {
       }
       res.redirect('/team.html' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
     });
+
+    // Email click tracker - records clicks and redirects to destination
+    this.app.get('/r/:trackingId', async (req, res) => {
+      const { trackingId } = req.params;
+      const destinationUrl = req.query.to as string;
+      const linkName = req.query.ln as string;
+
+      if (!destinationUrl) {
+        logger.warn({ trackingId }, 'Click tracker missing destination URL');
+        return res.redirect('/');
+      }
+
+      try {
+        // Record the click
+        await emailDb.recordClick({
+          tracking_id: trackingId,
+          link_name: linkName,
+          destination_url: destinationUrl,
+          ip_address: req.ip,
+          user_agent: req.get('user-agent'),
+          referrer: req.get('referer'),
+          utm_source: req.query.utm_source as string,
+          utm_medium: req.query.utm_medium as string,
+          utm_campaign: req.query.utm_campaign as string,
+        });
+
+        logger.debug({ trackingId, linkName, destination: destinationUrl }, 'Email click recorded');
+      } catch (error) {
+        // Log but don't fail - always redirect even if tracking fails
+        logger.error({ error, trackingId }, 'Failed to record email click');
+      }
+
+      // Always redirect to destination
+      res.redirect(destinationUrl);
+    });
+
+    // ==================== Email Preferences & Unsubscribe ====================
+
+    // One-click unsubscribe (no auth required) - POST for RFC 8058 compliance
+    this.app.post('/unsubscribe/:token', async (req, res) => {
+      const { token } = req.params;
+      const { category } = req.body;
+
+      try {
+        if (category) {
+          // Unsubscribe from specific category
+          const success = await emailPrefsDb.unsubscribeFromCategory(token, category);
+          if (success) {
+            logger.info({ token: token.substring(0, 8) + '...', category }, 'User unsubscribed from category');
+            return res.json({ success: true, message: `Unsubscribed from ${category}` });
+          }
+        } else {
+          // Global unsubscribe
+          const success = await emailPrefsDb.globalUnsubscribe(token);
+          if (success) {
+            logger.info({ token: token.substring(0, 8) + '...' }, 'User globally unsubscribed');
+            return res.json({ success: true, message: 'Unsubscribed from all emails' });
+          }
+        }
+
+        return res.status(404).json({ success: false, message: 'Invalid unsubscribe link' });
+      } catch (error) {
+        logger.error({ error, token: token.substring(0, 8) + '...' }, 'Error processing unsubscribe');
+        return res.status(500).json({ success: false, message: 'Error processing unsubscribe' });
+      }
+    });
+
+    // Unsubscribe page (GET - shows confirmation page, handles one-click via List-Unsubscribe-Post)
+    this.app.get('/unsubscribe/:token', async (req, res) => {
+      const { token } = req.params;
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).send('Invalid unsubscribe link');
+        }
+
+        // Get categories for the preferences page
+        const categories = await emailPrefsDb.getCategories();
+        const userCategoryPrefs = prefs.workos_user_id
+          ? await emailPrefsDb.getUserCategoryPreferences(prefs.workos_user_id)
+          : categories.map(c => ({
+              category_id: c.id,
+              category_name: c.name,
+              category_description: c.description,
+              enabled: c.default_enabled,
+              is_override: false,
+            }));
+
+        // Serve a simple preferences management page
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Preferences - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: var(--color-text); max-width: 600px; margin: 0 auto; padding: 20px; background: var(--color-bg-page); }
+    h1 { color: var(--color-text-heading); }
+    .card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .category { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
+    .category:last-child { border-bottom: none; }
+    .category-info h3 { margin: 0 0 4px 0; font-size: 16px; color: var(--color-text-heading); }
+    .category-info p { margin: 0; font-size: 14px; color: var(--color-text-secondary); }
+    .toggle { position: relative; width: 50px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-gray-300); border-radius: 26px; transition: 0.3s; }
+    .toggle input:checked + .slider { background: var(--color-success-500); }
+    .toggle .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: var(--color-bg-card); border-radius: 50%; transition: 0.3s; }
+    .toggle input:checked + .slider:before { transform: translateX(24px); }
+    .btn { display: inline-block; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; cursor: pointer; border: none; font-size: 16px; }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-secondary { background: var(--color-bg-subtle); color: var(--color-text); border: 1px solid var(--color-border); }
+    .success { background: var(--color-success-50); border: 1px solid var(--color-success-500); color: var(--color-success-700); padding: 12px; border-radius: 6px; margin-bottom: 20px; display: none; }
+    .global-unsubscribe { margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--color-border); }
+  </style>
+</head>
+<body>
+  <h1>Email Preferences</h1>
+  <p>Manage which emails you receive from AgenticAdvertising.org</p>
+
+  <div id="success" class="success">Your preferences have been saved.</div>
+
+  ${prefs.global_unsubscribe ? `
+    <div class="card">
+      <p><strong>You are currently unsubscribed from all emails.</strong></p>
+      <p>You will only receive essential transactional emails (like security alerts).</p>
+      <button class="btn btn-secondary" onclick="resubscribe()">Re-subscribe to emails</button>
+    </div>
+  ` : `
+    <div class="card">
+      ${userCategoryPrefs.map(cat => `
+        <div class="category">
+          <div class="category-info">
+            <h3>${cat.category_name}</h3>
+            <p>${cat.category_description || ''}</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${cat.category_id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="global-unsubscribe">
+      <p>Want to stop receiving all non-essential emails?</p>
+      <button class="btn btn-danger" onclick="globalUnsubscribe()">Unsubscribe from all</button>
+    </div>
+  `}
+
+  <script>
+    const token = '${token}';
+
+    async function toggleCategory(categoryId, enabled) {
+      try {
+        const res = await fetch('/api/email-preferences/category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, category_id: categoryId, enabled })
+        });
+        if (res.ok) showSuccess();
+      } catch (e) { console.error(e); }
+    }
+
+    async function globalUnsubscribe() {
+      if (!confirm('Are you sure you want to unsubscribe from all emails?')) return;
+      try {
+        const res = await fetch('/unsubscribe/' + token, { method: 'POST' });
+        if (res.ok) location.reload();
+      } catch (e) { console.error(e); }
+    }
+
+    async function resubscribe() {
+      try {
+        const res = await fetch('/api/email-preferences/resubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        if (res.ok) location.reload();
+      } catch (e) { console.error(e); }
+    }
+
+    function showSuccess() {
+      const el = document.getElementById('success');
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+  </script>
+</body>
+</html>
+        `);
+      } catch (error) {
+        logger.error({ error }, 'Error rendering unsubscribe page');
+        res.status(500).send('Error loading preferences');
+      }
+    });
+
+    // Update category preference via token (no auth required)
+    this.app.post('/api/email-preferences/category', async (req, res) => {
+      const { token, category_id, enabled } = req.body;
+
+      if (!token || !category_id || enabled === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).json({ error: 'Invalid token' });
+        }
+
+        await emailPrefsDb.setCategoryPreference({
+          workos_user_id: prefs.workos_user_id,
+          email: prefs.email,
+          category_id,
+          enabled,
+        });
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        logger.info({ userId: prefs.workos_user_id, category_id, enabled }, 'Category preference updated');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error updating category preference');
+        res.status(500).json({ error: 'Error updating preference' });
+      }
+    });
+
+    // Resubscribe via token (no auth required)
+    this.app.post('/api/email-preferences/resubscribe', async (req, res) => {
+      const { token } = req.body;
+
+      if (!token) {
+        return res.status(400).json({ error: 'Missing token' });
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).json({ error: 'Invalid token' });
+        }
+
+        await emailPrefsDb.resubscribe(prefs.workos_user_id);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        logger.info({ userId: prefs.workos_user_id }, 'User resubscribed');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error processing resubscribe');
+        res.status(500).json({ error: 'Error processing resubscribe' });
+      }
+    });
+
+    // GET /api/dev-mode - Get dev mode info (for UI dev user switcher)
+    this.app.get('/api/dev-mode', (req, res) => {
+      if (!isDevModeEnabled()) {
+        return res.status(404).json({
+          enabled: false,
+          message: 'Dev mode is not enabled',
+        });
+      }
+
+      const devUser = getDevUser(req);
+      const availableUsers = getAvailableDevUsers();
+
+      res.json({
+        enabled: true,
+        current_user: devUser ? {
+          key: Object.entries(availableUsers).find(([, u]) => u.id === devUser.id)?.[0] || 'unknown',
+          ...devUser,
+        } : null,
+        available_users: Object.entries(availableUsers).map(([key, user]) => ({
+          key,
+          ...user,
+          is_current: devUser ? user.id === devUser.id : false,
+        })),
+        switch_hint: 'Log out and log in as a different user at /auth/login',
+      });
+    });
+
+    // Get email categories (public)
+    this.app.get('/api/email-preferences/categories', async (req, res) => {
+      try {
+        const categories = await emailPrefsDb.getCategories();
+        res.json({ categories });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching email categories');
+        res.status(500).json({ error: 'Error fetching categories' });
+      }
+    });
+
+    // Get user's email preferences (authenticated)
+    this.app.get('/api/email-preferences', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+
+        // Get or create preferences
+        const prefs = await emailPrefsDb.getOrCreateUserPreferences({
+          workos_user_id: userId,
+          email: userEmail,
+        });
+
+        // Get category preferences
+        const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(userId);
+
+        res.json({
+          global_unsubscribe: prefs.global_unsubscribe,
+          categories: categoryPrefs,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching user preferences');
+        res.status(500).json({ error: 'Error fetching preferences' });
+      }
+    });
+
+    // Update user's email preferences (authenticated)
+    this.app.post('/api/email-preferences', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+        const { category_id, enabled } = req.body;
+
+        if (!category_id || enabled === undefined) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        await emailPrefsDb.setCategoryPreference({
+          workos_user_id: userId,
+          email: userEmail,
+          category_id,
+          enabled,
+        });
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error updating preferences');
+        res.status(500).json({ error: 'Error updating preferences' });
+      }
+    });
+
+    // Resubscribe for authenticated users
+    this.app.post('/api/email-preferences/resubscribe-me', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+
+        await emailPrefsDb.resubscribe(userId);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
+        logger.info({ userId }, 'User resubscribed via dashboard');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error processing resubscribe');
+        res.status(500).json({ error: 'Error processing resubscribe' });
+      }
+    });
+
     this.app.get('/dashboard', async (req, res) => {
       // Redirect to AAO for auth-requiring pages when on AdCP domain
       if (this.isAdcpDomain(req)) {
@@ -284,6 +928,13 @@ export class HTTPServer {
           .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
+        // Inject user config for nav.js
+        const user = await getUserFromRequest(req);
+        const configScript = getAppConfigScript(user);
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        }
+
         // Prevent caching to ensure template variables are always fresh
         res.setHeader('Content-Type', 'text/html');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -295,6 +946,51 @@ export class HTTPServer {
         res.status(500).send('Error loading dashboard');
       }
     });
+
+    // Dashboard sub-pages with sidebar navigation
+    // Helper to serve dashboard pages with template variable replacement
+    const serveDashboardPage = async (req: express.Request, res: express.Response, filename: string) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect(`https://agenticadvertising.org/dashboard/${filename.replace('dashboard-', '').replace('.html', '')}`);
+      }
+      try {
+        const pagePath = process.env.NODE_ENV === 'production'
+          ? path.join(__dirname, `../server/public/${filename}`)
+          : path.join(__dirname, `../public/${filename}`);
+        let html = await fs.readFile(pagePath, 'utf-8');
+
+        // Replace template variables (for billing page with Stripe)
+        html = html
+          .replace(/\{\{STRIPE_PUBLISHABLE_KEY\}\}/g, process.env.STRIPE_PUBLISHABLE_KEY || '')
+          .replace(/\{\{STRIPE_PRICING_TABLE_ID\}\}/g, process.env.STRIPE_PRICING_TABLE_ID || '')
+          .replace(/\{\{STRIPE_PRICING_TABLE_ID_INDIVIDUAL\}\}/g, process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
+
+        // Inject user config for nav.js
+        const user = await getUserFromRequest(req);
+        const configScript = getAppConfigScript(user);
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        }
+
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(html);
+      } catch (error) {
+        logger.error({ err: error, filename }, 'Error serving dashboard page');
+        res.status(500).send('Error loading page');
+      }
+    };
+
+    this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    // Redirect old billing path to new membership path
+    this.app.get('/dashboard/billing', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/dashboard/membership${query}`);
+    });
+    this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
 
     // API endpoints
 
@@ -557,7 +1253,7 @@ export class HTTPServer {
     // Homepage route - serve different homepage based on host
     // agenticadvertising.org (beta): Org-focused homepage
     // adcontextprotocol.org (production): Protocol-focused homepage
-    this.app.get("/", (req, res) => {
+    this.app.get("/", async (req, res) => {
       const hostname = req.hostname || '';
       const betaOverride = req.query.beta;
 
@@ -573,145 +1269,115 @@ export class HTTPServer {
                      hostname === '127.0.0.1';
       }
 
-      const publicDir = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public")
-        : path.join(__dirname, "../public");
-
       // Beta site gets org-focused homepage, production gets protocol homepage
       const homepageFile = isBetaSite ? 'org-index.html' : 'index.html';
-      res.sendFile(path.join(publicDir, homepageFile));
+      await this.serveHtmlWithConfig(req, res, homepageFile);
     });
 
     // Registry UI route - serve registry.html at /registry
-    this.app.get("/registry", (req, res) => {
-      const registryPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/registry.html")
-        : path.join(__dirname, "../public/registry.html");
-      res.sendFile(registryPath);
+    this.app.get("/registry", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'registry.html');
     });
 
     // AdAgents Manager UI route - serve adagents.html at /adagents
-    this.app.get("/adagents", (req, res) => {
-      const adagentsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/adagents.html")
-        : path.join(__dirname, "../public/adagents.html");
-      res.sendFile(adagentsPath);
+    this.app.get("/adagents", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'adagents.html');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile
-    this.app.get("/member-profile", (req, res) => {
+    this.app.get("/member-profile", async (req, res) => {
       // Redirect to AAO for auth-requiring pages when on AdCP domain
       if (this.isAdcpDomain(req)) {
         const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
         return res.redirect(`https://agenticadvertising.org/member-profile${queryString}`);
       }
-      const memberProfilePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/member-profile.html")
-        : path.join(__dirname, "../public/member-profile.html");
-      res.sendFile(memberProfilePath);
+      await this.serveHtmlWithConfig(req, res, 'member-profile.html');
     });
 
     // Member Directory UI route - serve members.html at /members
-    this.app.get("/members", (req, res) => {
-      const membersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/members.html")
-        : path.join(__dirname, "../public/members.html");
-      res.sendFile(membersPath);
+    this.app.get("/members", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
     // Individual member profile page
-    this.app.get("/members/:slug", (req, res) => {
-      const membersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/members.html")
-        : path.join(__dirname, "../public/members.html");
-      res.sendFile(membersPath);
+    this.app.get("/members/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
     // Publishers registry page
-    this.app.get("/publishers", (req, res) => {
-      const publishersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/publishers.html")
-        : path.join(__dirname, "../public/publishers.html");
-      res.sendFile(publishersPath);
+    this.app.get("/publishers", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'publishers.html');
     });
 
     // Properties registry page
-    this.app.get("/properties", (req, res) => {
-      const propertiesPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/properties.html")
-        : path.join(__dirname, "../public/properties.html");
-      res.sendFile(propertiesPath);
+    this.app.get("/properties", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'properties.html');
     });
 
     // About AAO page - serve about.html at /about
-    this.app.get("/about", (req, res) => {
-      const aboutPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/about.html")
-        : path.join(__dirname, "../public/about.html");
-      res.sendFile(aboutPath);
+    this.app.get("/about", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'about.html');
     });
 
 // Membership page - serve membership.html at /membership
-    this.app.get("/membership", (req, res) => {
-      const membershipPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/membership.html")
-        : path.join(__dirname, "../public/membership.html");
-      res.sendFile(membershipPath);
+    this.app.get("/membership", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'membership.html');
     });
 
     // Governance page - serve governance.html at /governance
-    this.app.get("/governance", (req, res) => {
-      const governancePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/governance.html")
-        : path.join(__dirname, "../public/governance.html");
-      res.sendFile(governancePath);
+    this.app.get("/governance", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'governance.html');
     });
 
-    // Perspectives section
+    // Legacy redirects to The Latest section
     this.app.get("/perspectives", (req, res) => {
-      const perspectivesPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/perspectives/index.html")
-        : path.join(__dirname, "../public/perspectives/index.html");
-      res.sendFile(perspectivesPath);
+      res.redirect(301, "/latest/research");
     });
-
-    // Dynamic article route - serves article.html which loads content from API
     this.app.get("/perspectives/:slug", (req, res) => {
-      const articlePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/perspectives/article.html")
-        : path.join(__dirname, "../public/perspectives/article.html");
-      res.sendFile(articlePath);
+      res.redirect(301, "/latest/research");
     });
-
-    // Legacy redirect from /insights to /perspectives
     this.app.get("/insights", (req, res) => {
-      res.redirect(301, "/perspectives");
+      res.redirect(301, "/latest/research");
     });
     this.app.get("/insights/:slug", (req, res) => {
-      res.redirect(301, `/perspectives/${req.params.slug}`);
+      res.redirect(301, "/latest/research");
+    });
+
+    // Events section
+    this.app.get("/events", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'events.html');
+    });
+
+    this.app.get("/events/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'event-detail.html');
     });
 
     // Working Groups pages - public list, detail pages handled by single HTML
-    this.app.get("/working-groups", (req, res) => {
-      const workingGroupsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/working-groups.html")
-        : path.join(__dirname, "../public/working-groups.html");
-      res.sendFile(workingGroupsPath);
+    this.app.get("/working-groups", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'working-groups.html');
     });
 
-    this.app.get("/working-groups/:slug", (req, res) => {
-      const workingGroupDetailPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/working-groups/detail.html")
-        : path.join(__dirname, "../public/working-groups/detail.html");
-      res.sendFile(workingGroupDetailPath);
+    // Committees page (unified view for working groups, councils, chapters)
+    this.app.get("/committees", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'committees.html');
+    });
+
+    // Legacy routes - redirect to committees page with type filter
+    this.app.get("/councils", (req, res) => {
+      res.redirect(301, '/committees?type=council');
+    });
+
+    this.app.get("/chapters", (req, res) => {
+      res.redirect(301, '/committees?type=chapter');
+    });
+
+    this.app.get("/working-groups/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'working-groups/detail.html');
     });
 
     // Working group management page (leaders only - auth check happens client-side via API)
-    this.app.get("/working-groups/:slug/manage", (req, res) => {
-      const managePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/working-groups/manage.html")
-        : path.join(__dirname, "../public/working-groups/manage.html");
-      res.sendFile(managePath);
+    this.app.get("/working-groups/:slug/manage", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'working-groups/manage.html');
     });
 
     // AdAgents API Routes
@@ -1051,6 +1717,71 @@ export class HTTPServer {
                       currency: subscription.currency,
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
+
+                    // Send thank you to org admin group DM (fire-and-forget)
+                    (async () => {
+                      try {
+                        // Get org admins/owners
+                        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+                          organizationId: org.workos_organization_id,
+                        });
+                        const adminEmails: string[] = [];
+                        for (const membership of orgMemberships.data) {
+                          if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                            try {
+                              const adminUser = await workos!.userManagement.getUser(membership.userId);
+                              if (adminUser.email) {
+                                adminEmails.push(adminUser.email);
+                              }
+                            } catch {
+                              // Skip if can't fetch user
+                            }
+                          }
+                        }
+
+                        if (adminEmails.length > 0) {
+                          await notifySubscriptionThankYou({
+                            orgId: org.workos_organization_id,
+                            orgName: org.name || 'Organization',
+                            adminEmails,
+                          });
+                        }
+                      } catch (err) {
+                        logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send thank you to admin group DM');
+                      }
+                    })();
+
+                    // Send welcome email to new member
+                    sendWelcomeEmail({
+                      to: userEmail,
+                      organizationName: org.name || 'Unknown Organization',
+                      productName,
+                      workosUserId: workosUser.id,
+                      workosOrganizationId: org.workos_organization_id,
+                      isPersonal: org.is_personal || false,
+                      firstName: workosUser.firstName || undefined,
+                    }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+
+                    // Record to org_activities for prospect tracking
+                    const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
+                    const intervalStr = interval ? `/${interval}` : '';
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription',
+                        `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
+                        workosUser.id,
+                        userEmail,
+                      ]
+                    );
                   } else {
                     logger.error({
                       userEmail,
@@ -1070,7 +1801,7 @@ export class HTTPServer {
               }
             }
 
-            // Update database with subscription status and period end
+            // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
               const customerId = subscription.customer as string;
@@ -1084,17 +1815,29 @@ export class HTTPServer {
                   periodEnd = new Date((subscription as any).current_period_end * 1000);
                 }
 
+                // Extract pricing details from subscription items
+                const priceData = subscription.items?.data?.[0]?.price;
+                const amount = priceData?.unit_amount ?? null;
+                const currency = priceData?.currency ?? null;
+                const interval = priceData?.recurring?.interval ?? null;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
                        stripe_subscription_id = $2,
                        subscription_current_period_end = $3,
+                       subscription_amount = COALESCE($4, subscription_amount),
+                       subscription_currency = COALESCE($5, subscription_currency),
+                       subscription_interval = COALESCE($6, subscription_interval),
                        updated_at = NOW()
-                   WHERE workos_organization_id = $4`,
+                   WHERE workos_organization_id = $7`,
                   [
                     subscription.status,
                     subscription.id,
                     periodEnd,
+                    amount,
+                    currency,
+                    interval,
                     org.workos_organization_id
                   ]
                 );
@@ -1104,7 +1847,14 @@ export class HTTPServer {
                   subscriptionId: subscription.id,
                   status: subscription.status,
                   periodEnd: periodEnd?.toISOString(),
+                  amount,
+                  currency,
+                  interval,
                 }, 'Subscription data synced to database');
+
+                // Invalidate member context cache for all users in this org
+                // (subscription status affects is_member and subscription fields)
+                invalidateMemberContextCache();
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -1124,6 +1874,25 @@ export class HTTPServer {
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
+
+                  // Record to org_activities for prospect tracking
+                  await pool.query(
+                    `INSERT INTO org_activities (
+                      organization_id,
+                      activity_type,
+                      description,
+                      logged_by_user_id,
+                      logged_by_name,
+                      activity_date
+                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                    [
+                      org.workos_organization_id,
+                      'subscription_cancelled',
+                      'Subscription cancelled',
+                      SYSTEM_USER_ID,
+                      'System',
+                    ]
+                  );
                 }
               }
             } catch (syncError) {
@@ -1375,6 +2144,28 @@ export class HTTPServer {
                 productName: productName || undefined,
                 isRecurring: revenueType === 'subscription_recurring',
               }).catch(err => logger.error({ err }, 'Failed to send Slack payment notification'));
+
+              // Record to org_activities for prospect tracking (for recurring payments)
+              if (revenueType === 'subscription_recurring') {
+                const amountFormatted = `$${(invoice.amount_paid / 100).toFixed(2)}`;
+                await pool.query(
+                  `INSERT INTO org_activities (
+                    organization_id,
+                    activity_type,
+                    description,
+                    logged_by_user_id,
+                    logged_by_name,
+                    activity_date
+                  ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                  [
+                    org.workos_organization_id,
+                    'payment',
+                    `Renewal payment ${amountFormatted} for ${productName || 'membership'}`,
+                    SYSTEM_USER_ID,
+                    'System',
+                  ]
+                );
+              }
             }
             break;
           }
@@ -1522,157 +2313,10 @@ export class HTTPServer {
       }
     });
 
-
-    // Admin stats endpoint - moved here so it works in tests
-    // GET /api/admin/stats - Admin dashboard statistics
-    this.app.get('/api/admin/stats', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const pool = getPool();
-
-        // Get member counts
-        const memberStats = await pool.query(`
-          SELECT
-            COUNT(*) as total_members,
-            COUNT(CASE WHEN subscription_amount IS NOT NULL AND subscription_current_period_end > NOW() AND subscription_canceled_at IS NULL THEN 1 END) as active_subscriptions,
-            COUNT(CASE
-              WHEN subscription_amount IS NOT NULL
-                AND subscription_current_period_end IS NOT NULL
-                AND subscription_current_period_end < NOW() + INTERVAL '30 days'
-                AND subscription_canceled_at IS NULL
-              THEN 1
-            END) as expiring_this_month,
-            COUNT(CASE WHEN subscription_interval = 'month' AND subscription_amount IS NOT NULL AND subscription_current_period_end > NOW() AND subscription_canceled_at IS NULL THEN 1 END) as monthly_subscriptions,
-            COUNT(CASE WHEN subscription_interval = 'year' AND subscription_amount IS NOT NULL AND subscription_current_period_end > NOW() AND subscription_canceled_at IS NULL THEN 1 END) as annual_subscriptions
-          FROM organizations
-        `);
-
-        // Get revenue metrics
-        const revenueStats = await pool.query(`
-          SELECT
-            -- Total revenue (all time, including refunds as negative)
-            COALESCE(SUM(CASE WHEN revenue_type != 'payment_failed' THEN amount_paid ELSE 0 END), 0) as total_revenue,
-
-            -- Total refunds
-            COALESCE(SUM(CASE WHEN revenue_type = 'refund' THEN ABS(amount_paid) ELSE 0 END), 0) as total_refunds,
-
-            -- This month's revenue
-            COALESCE(SUM(CASE
-              WHEN revenue_type != 'refund'
-                AND revenue_type != 'payment_failed'
-                AND paid_at >= date_trunc('month', CURRENT_DATE)
-              THEN amount_paid
-              ELSE 0
-            END), 0) as current_month_revenue,
-
-            -- Last month's revenue
-            COALESCE(SUM(CASE
-              WHEN revenue_type != 'refund'
-                AND revenue_type != 'payment_failed'
-                AND paid_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
-                AND paid_at < date_trunc('month', CURRENT_DATE)
-              THEN amount_paid
-              ELSE 0
-            END), 0) as last_month_revenue,
-
-            -- Subscription revenue (recurring only)
-            COALESCE(SUM(CASE
-              WHEN revenue_type = 'subscription_recurring'
-              THEN amount_paid
-              ELSE 0
-            END), 0) as recurring_revenue,
-
-            -- One-time revenue
-            COALESCE(SUM(CASE
-              WHEN revenue_type IN ('one_time', 'subscription_initial')
-              THEN amount_paid
-              ELSE 0
-            END), 0) as one_time_revenue
-          FROM revenue_events
-        `);
-
-        // Calculate MRR (Monthly Recurring Revenue) from active subscriptions
-        const mrrStats = await pool.query(`
-          SELECT
-            COALESCE(SUM(CASE
-              WHEN subscription_interval = 'month'
-              THEN subscription_amount
-              WHEN subscription_interval = 'year'
-              THEN subscription_amount / 12.0
-              ELSE 0
-            END), 0) as mrr
-          FROM organizations
-          WHERE subscription_amount IS NOT NULL
-            AND subscription_current_period_end > NOW()
-            AND subscription_canceled_at IS NULL
-        `);
-
-        // Get revenue by product
-        const productRevenue = await pool.query(`
-          SELECT
-            product_name,
-            COUNT(*) as count,
-            SUM(amount_paid) as revenue
-          FROM revenue_events
-          WHERE revenue_type != 'refund'
-            AND revenue_type != 'payment_failed'
-            AND product_name IS NOT NULL
-          GROUP BY product_name
-          ORDER BY revenue DESC
-        `);
-
-        const members = memberStats.rows[0];
-        const revenue = revenueStats.rows[0];
-        const mrr = mrrStats.rows[0];
-
-        // Format currency values
-        const formatCurrency = (cents: number) => {
-          const dollars = (cents / 100).toFixed(2);
-          return `$${dollars}`;
-        };
-
-        res.json({
-          // Member stats
-          total_members: parseInt(members.total_members) || 0,
-          active_subscriptions: parseInt(members.active_subscriptions) || 0,
-          expiring_this_month: parseInt(members.expiring_this_month) || 0,
-          monthly_subscriptions: parseInt(members.monthly_subscriptions) || 0,
-          annual_subscriptions: parseInt(members.annual_subscriptions) || 0,
-
-          // Revenue stats
-          total_revenue: formatCurrency(parseInt(revenue.total_revenue)),
-          total_refunds: formatCurrency(parseInt(revenue.total_refunds)),
-          current_month_revenue: formatCurrency(parseInt(revenue.current_month_revenue)),
-          last_month_revenue: formatCurrency(parseInt(revenue.last_month_revenue)),
-          recurring_revenue: formatCurrency(parseInt(revenue.recurring_revenue)),
-          one_time_revenue: formatCurrency(parseInt(revenue.one_time_revenue)),
-
-          // MRR and ARR
-          mrr: formatCurrency(parseFloat(mrr.mrr)),
-          arr: formatCurrency(parseFloat(mrr.mrr) * 12),
-
-          // Revenue by product
-          product_breakdown: productRevenue.rows.map((row: any) => ({
-            product_name: row.product_name,
-            count: String(parseInt(row.count)),
-            revenue: formatCurrency(parseInt(row.revenue)),
-          })),
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Error fetching admin stats');
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Unable to fetch admin statistics',
-        });
-      }
-    });
-
     // Admin routes
     // GET /admin - Admin landing page
-    this.app.get('/admin', requireAuth, requireAdmin, (req, res) => {
-      const adminPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin.html')
-        : path.join(__dirname, '../public/admin.html');
-      res.sendFile(adminPath);
+    this.app.get('/admin', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin.html');
     });
 
 
@@ -1877,6 +2521,7 @@ export class HTTPServer {
             is_personal,
             stripe_customer_id,
             created_at,
+            subscription_status,
             subscription_amount,
             subscription_interval,
             subscription_currency,
@@ -1931,20 +2576,8 @@ export class HTTPServer {
               ? Math.floor(new Date(row.subscription_current_period_end).getTime() / 1000)
               : null;
 
-            // Infer subscription status from existing fields
-            let subscriptionStatus = 'none';
-            if (row.subscription_amount && row.subscription_current_period_end) {
-              const periodEnd = new Date(row.subscription_current_period_end);
-              const now = new Date();
-
-              if (row.subscription_canceled_at) {
-                subscriptionStatus = 'canceled';
-              } else if (periodEnd > now) {
-                subscriptionStatus = 'active';
-              } else {
-                subscriptionStatus = 'expired';
-              }
-            }
+            // Use subscription_status from database (populated by Stripe webhooks)
+            const subscriptionStatus = row.subscription_status || 'none';
 
             return {
               company_id: row.workos_organization_id, // Keep company_id name for backwards compatibility
@@ -2076,14 +2709,16 @@ export class HTTPServer {
                   // Update organization with fresh subscription data
                   await pool.query(
                     `UPDATE organizations
-                     SET subscription_amount = $1,
-                         subscription_interval = $2,
-                         subscription_currency = $3,
-                         subscription_current_period_end = $4,
-                         subscription_canceled_at = $5,
+                     SET subscription_status = $1,
+                         subscription_amount = $2,
+                         subscription_interval = $3,
+                         subscription_currency = $4,
+                         subscription_current_period_end = $5,
+                         subscription_canceled_at = $6,
                          updated_at = NOW()
-                     WHERE workos_organization_id = $6`,
+                     WHERE workos_organization_id = $7`,
                     [
+                      subscription.status,
                       priceData?.unit_amount || null,
                       priceData?.recurring?.interval || null,
                       priceData?.currency || 'usd',
@@ -2482,10 +3117,12 @@ export class HTTPServer {
         if (customerOrgMap.size === 0) {
           return res.json({
             success: true,
-            message: 'No organizations with Stripe customers found',
-            invoices_imported: 0,
-            refunds_imported: 0,
-            skipped: 0,
+            message: 'No organizations with Stripe customers found. Link customers to orgs first.',
+            invoices_found: 0,
+            refunds_found: 0,
+            processed: 0,
+            subscriptions_synced: 0,
+            subscriptions_failed: 0,
           });
         }
 
@@ -2497,60 +3134,65 @@ export class HTTPServer {
 
         const allEvents = [...invoices, ...refunds];
 
-        // Import events, skipping duplicates
+        // Import events, updating existing records with fresh data from Stripe
         let imported = 0;
-        let skipped = 0;
 
         for (const event of allEvents) {
-          try {
-            await pool.query(
-              `INSERT INTO revenue_events (
-                workos_organization_id,
-                stripe_invoice_id,
-                stripe_subscription_id,
-                stripe_payment_intent_id,
-                stripe_charge_id,
-                amount_paid,
-                currency,
-                revenue_type,
-                billing_reason,
-                product_id,
-                product_name,
-                price_id,
-                billing_interval,
-                paid_at,
-                period_start,
-                period_end
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-              ON CONFLICT (stripe_invoice_id) DO NOTHING`,
-              [
-                event.workos_organization_id,
-                event.stripe_invoice_id,
-                event.stripe_subscription_id,
-                event.stripe_payment_intent_id,
-                event.stripe_charge_id,
-                event.amount_paid,
-                event.currency,
-                event.revenue_type,
-                event.billing_reason,
-                event.product_id,
-                event.product_name,
-                event.price_id,
-                event.billing_interval,
-                event.paid_at,
-                event.period_start,
-                event.period_end,
-              ]
-            );
-            imported++;
-          } catch (err: unknown) {
-            // Check for unique constraint violation
-            if ((err as { code?: string }).code === '23505') {
-              skipped++;
-            } else {
-              throw err;
-            }
-          }
+          await pool.query(
+            `INSERT INTO revenue_events (
+              workos_organization_id,
+              stripe_invoice_id,
+              stripe_subscription_id,
+              stripe_payment_intent_id,
+              stripe_charge_id,
+              amount_paid,
+              currency,
+              revenue_type,
+              billing_reason,
+              product_id,
+              product_name,
+              price_id,
+              billing_interval,
+              paid_at,
+              period_start,
+              period_end
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+              workos_organization_id = EXCLUDED.workos_organization_id,
+              stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+              stripe_payment_intent_id = EXCLUDED.stripe_payment_intent_id,
+              stripe_charge_id = EXCLUDED.stripe_charge_id,
+              amount_paid = EXCLUDED.amount_paid,
+              currency = EXCLUDED.currency,
+              revenue_type = EXCLUDED.revenue_type,
+              billing_reason = EXCLUDED.billing_reason,
+              product_id = EXCLUDED.product_id,
+              product_name = EXCLUDED.product_name,
+              price_id = EXCLUDED.price_id,
+              billing_interval = EXCLUDED.billing_interval,
+              paid_at = EXCLUDED.paid_at,
+              period_start = EXCLUDED.period_start,
+              period_end = EXCLUDED.period_end`,
+            [
+              event.workos_organization_id,
+              event.stripe_invoice_id,
+              event.stripe_subscription_id,
+              event.stripe_payment_intent_id,
+              event.stripe_charge_id,
+              event.amount_paid,
+              event.currency,
+              event.revenue_type,
+              event.billing_reason,
+              event.product_id,
+              event.product_name,
+              event.price_id,
+              event.billing_interval,
+              event.paid_at,
+              event.period_start,
+              event.period_end,
+            ]
+          );
+          imported++;
         }
 
         // Sync subscription data to organizations for MRR calculation
@@ -2594,17 +3236,19 @@ export class HTTPServer {
               // Update organization with subscription details
               await pool.query(
                 `UPDATE organizations
-                 SET subscription_amount = $1,
-                     subscription_interval = $2,
-                     subscription_currency = $3,
-                     subscription_current_period_end = $4,
-                     subscription_canceled_at = $5,
-                     subscription_product_id = $6,
-                     subscription_product_name = $7,
-                     subscription_price_id = $8,
+                 SET subscription_status = $1,
+                     subscription_amount = $2,
+                     subscription_interval = $3,
+                     subscription_currency = $4,
+                     subscription_current_period_end = $5,
+                     subscription_canceled_at = $6,
+                     subscription_product_id = $7,
+                     subscription_product_name = $8,
+                     subscription_price_id = $9,
                      updated_at = NOW()
-                 WHERE workos_organization_id = $9`,
+                 WHERE workos_organization_id = $10`,
                 [
+                  subscription.status,
                   amount,
                   interval,
                   price?.currency || 'usd',
@@ -2630,19 +3274,17 @@ export class HTTPServer {
         logger.info({
           invoices: invoices.length,
           refunds: refunds.length,
-          imported,
-          skipped,
+          processed: imported,
           subscriptionsSynced,
           subscriptionsFailed,
         }, 'Revenue backfill completed');
 
         res.json({
           success: true,
-          message: `Backfill completed`,
+          message: `Sync completed: ${imported} records processed`,
           invoices_found: invoices.length,
           refunds_found: refunds.length,
-          imported,
-          skipped,
+          processed: imported,
           subscriptions_synced: subscriptionsSynced,
           subscriptions_failed: subscriptionsFailed,
         });
@@ -2865,7 +3507,22 @@ export class HTTPServer {
           ]
         );
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for Addie's knowledge base when published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Create perspective error:');
         // Check for unique constraint violation
@@ -2976,7 +3633,22 @@ export class HTTPServer {
           });
         }
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for indexing when perspective is published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Update perspective error:');
         // Check for unique constraint violation
@@ -3022,331 +3694,13 @@ export class HTTPServer {
     });
 
     // ========================================
-    // Admin Working Groups API Routes
+    // Committee Routes (Working Groups, Councils, Chapters)
     // ========================================
 
-    const workingGroupDb = new WorkingGroupDatabase();
-
-    // GET /api/admin/working-groups - List all working groups
-    this.app.get('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const groups = await workingGroupDb.listWorkingGroups({ includePrivate: true });
-        res.json(groups);
-      } catch (error) {
-        logger.error({ err: error }, 'List working groups error:');
-        res.status(500).json({
-          error: 'Failed to list working groups',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/working-groups/search-users - Search users for leadership selection
-    // IMPORTANT: This route must come BEFORE parameterized routes like /:id
-    this.app.get('/api/admin/working-groups/search-users', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { q } = req.query;
-        if (!q || typeof q !== 'string' || q.length < 2) {
-          return res.json([]);
-        }
-
-        if (!workos) {
-          return res.status(503).json({ error: 'Authentication not configured' });
-        }
-
-        // Search for users by iterating through member organizations
-        const searchTerm = q.toLowerCase();
-        const matchingUsers: Array<{
-          user_id: string;
-          email: string;
-          name: string;
-          org_id: string;
-          org_name: string;
-        }> = [];
-        const seenUserIds = new Set<string>();
-
-        // Get all member organizations from our database
-        const orgDatabase = new OrganizationDatabase();
-        const orgs = await orgDatabase.listOrganizations();
-
-        // For each org, get their memberships from WorkOS and filter
-        for (const org of orgs) {
-          if (matchingUsers.length >= 20) break;
-
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
-
-            for (const membership of memberships.data) {
-              if (matchingUsers.length >= 20) break;
-              if (seenUserIds.has(membership.userId)) continue;
-
-              // Get user details
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-
-                // Check if user matches search term
-                if (
-                  user.email.toLowerCase().includes(searchTerm) ||
-                  fullName.toLowerCase().includes(searchTerm) ||
-                  org.name.toLowerCase().includes(searchTerm)
-                ) {
-                  seenUserIds.add(user.id);
-                  matchingUsers.push({
-                    user_id: user.id,
-                    email: user.email,
-                    name: fullName,
-                    org_id: org.workos_organization_id,
-                    org_name: org.name,
-                  });
-                }
-              } catch (userErr) {
-                // Skip users we can't fetch
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
-            }
-          } catch (orgErr) {
-            // Skip orgs we can't fetch memberships for
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
-          }
-        }
-
-        res.json(matchingUsers);
-      } catch (error) {
-        logger.error({ err: error }, 'Search users error:');
-        res.status(500).json({
-          error: 'Failed to search users',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/working-groups/:id - Get single working group with details
-    this.app.get('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const group = await workingGroupDb.getWorkingGroupWithDetails(id);
-
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with id ${id}`
-          });
-        }
-
-        res.json(group);
-      } catch (error) {
-        logger.error({ err: error }, 'Get working group error:');
-        res.status(500).json({
-          error: 'Failed to get working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/admin/working-groups - Create working group
-    this.app.post('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { name, slug, description, slack_channel_url, is_private, status, display_order,
-                chair_user_id, chair_name, chair_title, chair_org_name,
-                vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name } = req.body;
-
-        if (!name || !slug) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'Name and slug are required'
-          });
-        }
-
-        // Validate slug format
-        const slugPattern = /^[a-z0-9-]+$/;
-        if (!slugPattern.test(slug)) {
-          return res.status(400).json({
-            error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
-          });
-        }
-
-        // Check slug availability
-        const slugAvailable = await workingGroupDb.isSlugAvailable(slug);
-        if (!slugAvailable) {
-          return res.status(409).json({
-            error: 'Slug already exists',
-            message: `A working group with slug '${slug}' already exists`
-          });
-        }
-
-        const group = await workingGroupDb.createWorkingGroup({
-          name, slug, description, slack_channel_url, is_private, status, display_order,
-          chair_user_id, chair_name, chair_title, chair_org_name,
-          vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name
-        });
-
-        // Ensure chair/vice-chair are members
-        await workingGroupDb.ensureLeadershipAreMembers(group.id);
-
-        res.status(201).json(group);
-      } catch (error) {
-        logger.error({ err: error }, 'Create working group error:');
-        res.status(500).json({
-          error: 'Failed to create working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/admin/working-groups/:id - Update working group
-    this.app.put('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const updates = req.body;
-
-        const group = await workingGroupDb.updateWorkingGroup(id, updates);
-
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with id ${id}`
-          });
-        }
-
-        // Ensure chair/vice-chair are members if leadership was updated
-        if (updates.chair_user_id || updates.vice_chair_user_id) {
-          await workingGroupDb.ensureLeadershipAreMembers(group.id);
-        }
-
-        res.json(group);
-      } catch (error) {
-        logger.error({ err: error }, 'Update working group error:');
-        res.status(500).json({
-          error: 'Failed to update working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/admin/working-groups/:id - Delete working group
-    this.app.delete('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const deleted = await workingGroupDb.deleteWorkingGroup(id);
-
-        if (!deleted) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with id ${id}`
-          });
-        }
-
-        res.json({ success: true, deleted: id });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete working group error:');
-        res.status(500).json({
-          error: 'Failed to delete working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/working-groups/:id/members - List working group members
-    this.app.get('/api/admin/working-groups/:id/members', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const members = await workingGroupDb.getMembershipsByWorkingGroup(id);
-        res.json(members);
-      } catch (error) {
-        logger.error({ err: error }, 'List working group members error:');
-        res.status(500).json({
-          error: 'Failed to list members',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/admin/working-groups/:id/members - Add member to working group
-    this.app.post('/api/admin/working-groups/:id/members', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { workos_user_id, user_email, user_name, user_org_name, workos_organization_id } = req.body;
-        const user = req.user!;
-
-        if (!workos_user_id) {
-          return res.status(400).json({
-            error: 'Missing required field',
-            message: 'workos_user_id is required'
-          });
-        }
-
-        const membership = await workingGroupDb.addMembership({
-          working_group_id: id,
-          workos_user_id,
-          user_email,
-          user_name,
-          user_org_name,
-          workos_organization_id,
-          added_by_user_id: user.id,
-        });
-
-        res.status(201).json(membership);
-      } catch (error) {
-        logger.error({ err: error }, 'Add working group member error:');
-        res.status(500).json({
-          error: 'Failed to add member',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/admin/working-groups/:id/members/:userId - Remove member from working group
-    this.app.delete('/api/admin/working-groups/:id/members/:userId', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id, userId } = req.params;
-        const deleted = await workingGroupDb.deleteMembership(id, userId);
-
-        if (!deleted) {
-          return res.status(404).json({
-            error: 'Membership not found',
-            message: 'User is not a member of this working group'
-          });
-        }
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error }, 'Remove working group member error:');
-        res.status(500).json({
-          error: 'Failed to remove member',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/working-groups/:id/posts - List all posts for a working group
-    this.app.get('/api/admin/working-groups/:id/posts', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const pool = getPool();
-
-        const result = await pool.query(
-          `SELECT id, slug, content_type, title, subtitle, category, excerpt,
-            external_url, external_site_name, author_name, author_title,
-            author_user_id, featured_image_url, status, published_at, display_order, tags
-          FROM perspectives
-          WHERE working_group_id = $1
-          ORDER BY published_at DESC NULLS LAST, created_at DESC`,
-          [id]
-        );
-
-        res.json(result.rows);
-      } catch (error) {
-        logger.error({ err: error }, 'List working group posts error:');
-        res.status(500).json({
-          error: 'Failed to list posts',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
+    const { adminApiRouter, publicApiRouter, userApiRouter } = createCommitteeRouters();
+    this.app.use('/api/admin/working-groups', adminApiRouter);
+    this.app.use('/api/working-groups', publicApiRouter);
+    this.app.use('/api/me/working-groups', userApiRouter);
 
     // ========================================
     // SEO Routes (sitemap.xml, robots.txt)
@@ -3594,53 +3948,48 @@ Disallow: /api/admin/
     });
 
     // Serve admin pages
-    this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
-      const membersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-members.html')
-        : path.join(__dirname, '../public/admin-members.html');
-      res.sendFile(membersPath);
+    // Note: /admin/prospects route is now in routes/admin.ts
+
+    this.app.get('/admin/members', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-members.html');
     });
 
-    this.app.get('/admin/agreements', requireAuth, requireAdmin, (req, res) => {
-      const agreementsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-agreements.html')
-        : path.join(__dirname, '../public/admin-agreements.html');
-      res.sendFile(agreementsPath);
+    this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
     });
 
-    this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) => {
-      const analyticsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-analytics.html')
-        : path.join(__dirname, '../public/admin-analytics.html');
-      res.sendFile(analyticsPath);
+    this.app.get('/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-analytics.html');
     });
 
-    this.app.get('/admin/audit', requireAuth, requireAdmin, (req, res) => {
-      const auditPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-audit.html')
-        : path.join(__dirname, '../public/admin-audit.html');
-      res.sendFile(auditPath);
+    this.app.get('/admin/audit', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-audit.html');
     });
 
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
-      const perspectivesPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-perspectives.html')
-        : path.join(__dirname, '../public/admin-perspectives.html');
-      res.sendFile(perspectivesPath);
+    // Note: /admin/billing is now served from billing.ts router
+
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-perspectives.html');
     });
 
-    this.app.get('/admin/working-groups', requireAuth, requireAdmin, (req, res) => {
-      const workingGroupsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-working-groups.html')
-        : path.join(__dirname, '../public/admin-working-groups.html');
-      res.sendFile(workingGroupsPath);
+    this.app.get('/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-working-groups.html');
     });
 
-    this.app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
-      const usersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-users.html')
-        : path.join(__dirname, '../public/admin-users.html');
-      res.sendFile(usersPath);
+    this.app.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-users.html');
+    });
+
+    this.app.get('/admin/email', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-email.html');
+    });
+
+    this.app.get('/admin/feeds', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-feeds.html');
+    });
+
+    this.app.get('/admin/notification-channels', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-notification-channels.html');
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)
@@ -4039,26 +4388,42 @@ Disallow: /api/admin/
 
     const orgDb = new OrganizationDatabase();
 
-    // GET /auth/login - Redirect to WorkOS for authentication
+    // GET /auth/login - Redirect to WorkOS for authentication (or dev login page)
     // On AdCP domain, redirect to AAO first to keep auth on a single domain
+    // Supports slack_user_id param for auto-linking after login (for existing users)
     this.app.get('/auth/login', (req, res) => {
       try {
+        // Dev mode: show dev login page
+        if (isDevModeEnabled()) {
+          const returnTo = req.query.return_to as string || '/dashboard';
+          return res.redirect(`/dev-login.html?return_to=${encodeURIComponent(returnTo)}`);
+        }
+
         // If on AdCP domain, redirect to AAO for login (keeps cookies on single domain)
         if (this.isAdcpDomain(req)) {
           const returnTo = req.query.return_to as string;
+          const slackUserId = req.query.slack_user_id as string;
           // Rewrite return_to to AAO domain if it's a relative URL
           let aaoReturnTo = returnTo;
           if (returnTo && returnTo.startsWith('/')) {
             aaoReturnTo = `https://agenticadvertising.org${returnTo}`;
           }
-          const redirectUrl = aaoReturnTo
-            ? `https://agenticadvertising.org/auth/login?return_to=${encodeURIComponent(aaoReturnTo)}`
-            : 'https://agenticadvertising.org/auth/login';
+          let redirectUrl = 'https://agenticadvertising.org/auth/login';
+          const params = new URLSearchParams();
+          if (aaoReturnTo) params.append('return_to', aaoReturnTo);
+          if (slackUserId) params.append('slack_user_id', slackUserId);
+          if (params.toString()) redirectUrl += `?${params.toString()}`;
           return res.redirect(redirectUrl);
         }
 
         const returnTo = req.query.return_to as string;
-        const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
+        const slackUserId = req.query.slack_user_id as string;
+
+        // Build state object with return_to and slack_user_id for auto-linking
+        const stateObj: { return_to?: string; slack_user_id?: string } = {};
+        if (returnTo) stateObj.return_to = returnTo;
+        if (slackUserId) stateObj.slack_user_id = slackUserId;
+        const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
           provider: 'authkit',
@@ -4077,24 +4442,81 @@ Disallow: /api/admin/
       }
     });
 
+    // POST /auth/dev-login - Set dev session cookie (dev mode only)
+    this.app.post('/auth/dev-login', (req, res) => {
+      if (!isDevModeEnabled()) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      // Validate request is from localhost (defense in depth)
+      const host = req.get('host') || '';
+      if (!host.startsWith('localhost:') && !host.startsWith('127.0.0.1:')) {
+        logger.warn({ host }, 'Dev login attempt from non-localhost host');
+        return res.status(403).json({ error: 'Dev login only available on localhost' });
+      }
+
+      // Basic CSRF protection: check origin header matches host
+      const origin = req.get('origin');
+      if (origin) {
+        const originHost = new URL(origin).host;
+        if (originHost !== host) {
+          logger.warn({ origin, host }, 'Dev login CSRF check failed');
+          return res.status(403).json({ error: 'Origin mismatch' });
+        }
+      }
+
+      const { user, return_to } = req.body;
+      if (!user || !DEV_USERS[user]) {
+        return res.status(400).json({ error: 'Invalid user', available: Object.keys(DEV_USERS) });
+      }
+
+      // Validate return_to is a relative path to prevent open redirect
+      let safeReturnTo = '/dashboard';
+      if (return_to && typeof return_to === 'string' && return_to.startsWith('/') && !return_to.startsWith('//')) {
+        safeReturnTo = return_to;
+      }
+
+      // Set dev session cookie
+      res.cookie(getDevSessionCookieName(), user, {
+        httpOnly: true,
+        secure: false, // Dev mode is always HTTP on localhost
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      logger.info({ user, returnTo: safeReturnTo }, 'Dev login - setting session cookie');
+      res.json({ success: true, redirect: safeReturnTo });
+    });
+
     // GET /auth/signup - Redirect to WorkOS with sign-up screen hint
+    // Supports slack_user_id param for auto-linking after signup
     this.app.get('/auth/signup', (req, res) => {
       try {
         // If on AdCP domain, redirect to AAO for signup (keeps cookies on single domain)
         if (this.isAdcpDomain(req)) {
           const returnTo = req.query.return_to as string;
+          const slackUserId = req.query.slack_user_id as string;
           let aaoReturnTo = returnTo;
           if (returnTo && returnTo.startsWith('/')) {
             aaoReturnTo = `https://agenticadvertising.org${returnTo}`;
           }
-          const redirectUrl = aaoReturnTo
-            ? `https://agenticadvertising.org/auth/signup?return_to=${encodeURIComponent(aaoReturnTo)}`
-            : 'https://agenticadvertising.org/auth/signup';
+          let redirectUrl = 'https://agenticadvertising.org/auth/signup';
+          const params = new URLSearchParams();
+          if (aaoReturnTo) params.append('return_to', aaoReturnTo);
+          if (slackUserId) params.append('slack_user_id', slackUserId);
+          if (params.toString()) redirectUrl += `?${params.toString()}`;
           return res.redirect(redirectUrl);
         }
 
         const returnTo = req.query.return_to as string;
-        const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
+        const slackUserId = req.query.slack_user_id as string;
+
+        // Build state object with return_to and slack_user_id for auto-linking
+        const stateObj: { return_to?: string; slack_user_id?: string } = {};
+        if (returnTo) stateObj.return_to = returnTo;
+        if (slackUserId) stateObj.slack_user_id = slackUserId;
+        const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
           provider: 'authkit',
@@ -4143,7 +4565,12 @@ Disallow: /api/admin/
         // This happens when:
         // 1. User has never accepted them, OR
         // 2. The version has been updated since they last accepted
+        let isFirstTimeUser = false;
         try {
+          // Check if user has ANY prior acceptances (to detect first-time users)
+          const priorAcceptances = await orgDb.getUserAgreementAcceptances(user.id);
+          isFirstTimeUser = priorAcceptances.length === 0;
+
           const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
           const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
 
@@ -4205,17 +4632,101 @@ Disallow: /api/admin/
 
         logger.debug({ count: memberships.data.length }, 'Organization memberships retrieved');
 
-        // Parse return_to from state
+        // Record login for engagement tracking (fire and forget)
+        if (memberships.data.length > 0) {
+          const primaryOrgId = memberships.data[0].organizationId;
+          const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+          orgDb.recordUserLogin({
+            workos_user_id: user.id,
+            workos_organization_id: primaryOrgId,
+            user_name: userName,
+          }).catch((err) => {
+            logger.error({ error: err, userId: user.id }, 'Failed to record user login');
+          });
+        }
+
+        // Send welcome email to first-time users (async, don't block auth flow)
+        if (isFirstTimeUser && memberships.data.length > 0) {
+          // Get org details to determine subscription status
+          const firstMembership = memberships.data[0];
+          const orgId = firstMembership.organizationId;
+
+          // Fire and forget - don't block the auth callback
+          (async () => {
+            try {
+              const org = await orgDb.getOrganization(orgId);
+              const workosOrg = await workos!.organizations.getOrganization(orgId);
+              const hasActiveSubscription = org?.subscription_status === 'active';
+
+              await sendUserSignupEmail({
+                to: user.email,
+                firstName: user.firstName || undefined,
+                organizationName: workosOrg?.name || org?.name || undefined,
+                hasActiveSubscription,
+                workosUserId: user.id,
+                workosOrganizationId: orgId,
+              });
+
+              logger.info({ userId: user.id, orgId, hasActiveSubscription }, 'First-time user signup email sent');
+            } catch (emailError) {
+              logger.error({ error: emailError, userId: user.id }, 'Failed to send signup email');
+            }
+          })();
+        }
+
+        // Parse return_to and slack_user_id from state
         let returnTo = '/dashboard';
+        let slackUserIdToLink: string | undefined;
         logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
             const parsedState = JSON.parse(state);
             returnTo = parsedState.return_to || returnTo;
-            logger.debug({ parsedState, returnTo }, 'Parsed state successfully');
+            slackUserIdToLink = parsedState.slack_user_id;
+            logger.debug({ parsedState, returnTo, slackUserIdToLink }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
             logger.debug({ state, error: String(e) }, 'Failed to parse state');
+          }
+        }
+
+        // Auto-link Slack account if slack_user_id was provided during signup
+        if (slackUserIdToLink) {
+          try {
+            const slackDb = new SlackDatabase();
+            const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
+
+            if (existingMapping && !existingMapping.workos_user_id) {
+              // Link the Slack user to the newly authenticated WorkOS user
+              await slackDb.mapUser({
+                slack_user_id: slackUserIdToLink,
+                workos_user_id: user.id,
+                mapping_source: 'user_claimed',
+              });
+              logger.info(
+                { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                'Auto-linked Slack account after signup'
+              );
+
+              // Send proactive Addie message if user has a recent conversation
+              const firstName = user.firstName || undefined;
+              sendAccountLinkedMessage(slackUserIdToLink, firstName).catch((err) => {
+                logger.warn({ error: err, slackUserId: slackUserIdToLink }, 'Failed to send Addie account linked message');
+              });
+            } else if (!existingMapping) {
+              logger.debug(
+                { slackUserId: slackUserIdToLink },
+                'Slack user not found in mapping table, skipping auto-link'
+              );
+            } else {
+              logger.debug(
+                { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
+                'Slack user already mapped to different WorkOS user'
+              );
+            }
+          } catch (linkError) {
+            // Log but don't fail authentication if linking fails
+            logger.error({ error: linkError, slackUserId: slackUserIdToLink }, 'Failed to auto-link Slack account');
           }
         }
 
@@ -4239,6 +4750,18 @@ Disallow: /api/admin/
 
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
+      // Dev mode: clear dev-session cookie and redirect to home
+      if (isDevModeEnabled()) {
+        logger.debug('Dev mode logout - clearing dev session cookie');
+        res.clearCookie(getDevSessionCookieName(), {
+          httpOnly: true,
+          secure: false,
+          sameSite: 'lax',
+          path: '/',
+        });
+        return res.redirect('/');
+      }
+
       try {
         const sessionCookie = req.cookies['wos-session'];
 
@@ -4293,6 +4816,49 @@ Disallow: /api/admin/
       try {
         const user = req.user!;
 
+        // Dev mode: return mock data without calling WorkOS
+        // Check if user ID matches any dev user
+        const devUser = isDevModeEnabled() ? getDevUser(req) : null;
+        if (devUser) {
+          // In dev mode, look up organizations from our local database
+          // All dev users get organizations so we can test dashboard states
+          // The billing API returns different subscription status based on isMember flag
+          const pool = getPool();
+          const result = await pool.query(
+            `SELECT workos_organization_id, name, is_personal
+             FROM organizations
+             WHERE workos_organization_id LIKE 'org_dev_%'
+             ORDER BY created_at DESC`
+          );
+
+          const organizations = result.rows.map(row => ({
+            id: row.workos_organization_id,
+            name: row.name,
+            role: 'owner', // Dev user is always owner of their orgs
+            status: 'active',
+            is_personal: row.is_personal || false,
+          }));
+
+          return res.json({
+            user: {
+              id: user.id,
+              email: user.email,
+              first_name: user.firstName,
+              last_name: user.lastName,
+              isAdmin: devUser.isAdmin,
+            },
+            organizations,
+            // Include dev mode info for debugging
+            dev_mode: {
+              enabled: true,
+              current_user: devUser.email,
+              user_type: devUser.isAdmin ? 'admin' : devUser.isMember ? 'member' : 'nonmember',
+              available_users: Object.keys(DEV_USERS),
+              switch_hint: 'Log out and log in as a different user',
+            },
+          });
+        }
+
         // Get user's WorkOS organization memberships
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
@@ -4321,7 +4887,8 @@ Disallow: /api/admin/
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
 
-        res.json({
+        // Build response with optional impersonation info
+        const response: Record<string, unknown> = {
           user: {
             id: user.id,
             email: user.email,
@@ -4330,7 +4897,18 @@ Disallow: /api/admin/
             isAdmin,
           },
           organizations,
-        });
+        };
+
+        // Include impersonation info if present
+        if (user.impersonator) {
+          response.impersonation = {
+            active: true,
+            impersonator_email: user.impersonator.email,
+            reason: user.impersonator.reason,
+          };
+        }
+
+        res.json(response);
       } catch (error) {
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
@@ -4656,130 +5234,6 @@ Disallow: /api/admin/
       }
     });
 
-    // GET /api/organizations/search - Search for organizations by name
-    // Used in the "find your company" feature during onboarding
-    this.app.get('/api/organizations/search', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const query = (req.query.q as string) || '';
-
-        if (!query || query.trim().length < 2) {
-          return res.json({ organizations: [], user_domain: getCompanyDomain(user.email) });
-        }
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Get user's current org memberships to exclude
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-        const userOrgIds = userMemberships.data.map(m => m.organizationId);
-
-        // Get user's pending join requests
-        const pendingRequests = await joinRequestDb.getUserPendingRequests(user.id);
-        const pendingOrgIds = new Set(pendingRequests.map(r => r.workos_organization_id));
-
-        // Search organizations
-        const results = await orgDb.searchOrganizations({
-          query: query.trim(),
-          excludeOrgIds: userOrgIds,
-          limit: 10,
-        });
-
-        // Get admin contact info for each org (masked)
-        const orgsWithAdmins = await Promise.all(
-          results.map(async (org) => {
-            let adminContact: string | null = null;
-            try {
-              const memberships = await workos!.userManagement.listOrganizationMemberships({
-                organizationId: org.workos_organization_id,
-              });
-
-              // Find an admin or owner
-              const adminMembership = memberships.data.find(m => {
-                const role = m.role?.slug || 'member';
-                return role === 'admin' || role === 'owner';
-              });
-
-              if (adminMembership) {
-                const adminUser = await workos!.userManagement.getUser(adminMembership.userId);
-                // Mask the email: "j***@company.com"
-                const email = adminUser.email;
-                const [local, domain] = email.split('@');
-                adminContact = `${local[0]}***@${domain}`;
-              }
-            } catch (error) {
-              logger.debug({ orgId: org.workos_organization_id, err: error }, 'Could not get admin contact');
-            }
-
-            return {
-              organization_id: org.workos_organization_id,
-              name: org.name,
-              company_type: org.company_type,
-              logo_url: org.logo_url,
-              tagline: org.tagline,
-              admin_contact: adminContact,
-              request_pending: pendingOrgIds.has(org.workos_organization_id),
-            };
-          })
-        );
-
-        res.json({
-          organizations: orgsWithAdmins,
-          user_domain: getCompanyDomain(user.email),
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Organization search error:');
-        res.status(500).json({
-          error: 'Failed to search organizations',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/organizations/:orgId/admins - Get admin contact info for an organization
-    // Used to show who to contact when requesting to join
-    this.app.get('/api/organizations/:orgId/admins', requireAuth, async (req, res) => {
-      try {
-        const { orgId } = req.params;
-
-        // Get org memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          organizationId: orgId,
-        });
-
-        // Find admins and owners
-        const adminMemberships = memberships.data.filter(m => {
-          const role = m.role?.slug || 'member';
-          return role === 'admin' || role === 'owner';
-        });
-
-        // Get user details and mask emails
-        const admins = await Promise.all(
-          adminMemberships.map(async (m) => {
-            const adminUser = await workos!.userManagement.getUser(m.userId);
-            const email = adminUser.email;
-            const [local, domain] = email.split('@');
-            const maskedEmail = `${local[0]}***@${domain}`;
-
-            return {
-              first_name: adminUser.firstName || null,
-              masked_email: maskedEmail,
-              role: m.role?.slug || 'admin',
-            };
-          })
-        );
-
-        res.json({ admins });
-      } catch (error) {
-        logger.error({ err: error, orgId: req.params.orgId }, 'Get org admins error:');
-        res.status(500).json({
-          error: 'Failed to get organization admins',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
     // POST /api/join-requests - Request to join an organization
     this.app.post('/api/join-requests', requireAuth, async (req, res) => {
       try {
@@ -4818,10 +5272,23 @@ Disallow: /api/admin/
           });
         }
 
+        // Get user's full details from WorkOS for name
+        let firstName: string | undefined;
+        let lastName: string | undefined;
+        try {
+          const workosUser = await workos!.userManagement.getUser(user.id);
+          firstName = workosUser.firstName || undefined;
+          lastName = workosUser.lastName || undefined;
+        } catch (err) {
+          logger.warn({ err, userId: user.id }, 'Failed to get user details from WorkOS');
+        }
+
         // Create the join request
         const request = await joinRequestDb.createRequest({
           workos_user_id: user.id,
           user_email: user.email,
+          first_name: firstName,
+          last_name: lastName,
           workos_organization_id: organization_id,
         });
 
@@ -4849,8 +5316,46 @@ Disallow: /api/admin/
           resource_id: request.id,
           details: {
             user_email: user.email,
+            first_name: firstName,
+            last_name: lastName,
           },
         });
+
+        // Notify org admins via Slack group DM (fire-and-forget)
+        (async () => {
+          try {
+            // Get org admins/owners
+            const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: organization_id,
+            });
+            const adminEmails: string[] = [];
+            for (const membership of orgMemberships.data) {
+              if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                try {
+                  const adminUser = await workos!.userManagement.getUser(membership.userId);
+                  if (adminUser.email) {
+                    adminEmails.push(adminUser.email);
+                  }
+                } catch {
+                  // Skip if can't fetch user
+                }
+              }
+            }
+
+            if (adminEmails.length > 0) {
+              await notifyJoinRequest({
+                orgId: organization_id,
+                orgName,
+                adminEmails,
+                requesterEmail: user.email,
+                requesterFirstName: firstName,
+                requesterLastName: lastName,
+              });
+            }
+          } catch (err) {
+            logger.warn({ err, orgId: organization_id }, 'Failed to notify admins of join request');
+          }
+        })();
 
         res.status(201).json({
           success: true,
@@ -4900,253 +5405,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Cancel join request error:');
         res.status(500).json({
           error: 'Failed to cancel join request',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/organizations/:orgId/join-requests - Get pending join requests for an org (admin only)
-    this.app.get('/api/organizations/:orgId/join-requests', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Verify user is admin/owner of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        const userRole = memberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can view join requests',
-          });
-        }
-
-        const joinRequestDb = new JoinRequestDatabase();
-        const requests = await joinRequestDb.getOrganizationPendingRequests(orgId);
-
-        res.json({
-          requests: requests.map(r => ({
-            id: r.id,
-            user_email: r.user_email,
-            status: r.status,
-            created_at: r.created_at,
-          })),
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Get org join requests error:');
-        res.status(500).json({
-          error: 'Failed to get join requests',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/join-requests/:requestId/approve - Approve a join request (admin only)
-    this.app.post('/api/organizations/:orgId/join-requests/:requestId/approve', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId, requestId } = req.params;
-        const { role = 'member' } = req.body;
-
-        // Validate role - only allow member or admin, not owner
-        if (role !== 'member' && role !== 'admin') {
-          return res.status(400).json({
-            error: 'Invalid role',
-            message: 'Role must be either "member" or "admin"',
-          });
-        }
-
-        // Verify user is admin/owner of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        const userRole = memberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can approve join requests',
-          });
-        }
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Get the request
-        const request = await joinRequestDb.getRequest(requestId);
-        if (!request || request.workos_organization_id !== orgId) {
-          return res.status(404).json({
-            error: 'Request not found',
-            message: 'No pending join request found with this ID',
-          });
-        }
-
-        if (request.status !== 'pending') {
-          return res.status(400).json({
-            error: 'Request not pending',
-            message: 'This join request has already been processed',
-          });
-        }
-
-        // Send invitation via WorkOS
-        await workos!.userManagement.sendInvitation({
-          email: request.user_email,
-          organizationId: orgId,
-          inviterUserId: user.id,
-          roleSlug: role,
-        });
-
-        // Mark request as approved
-        await joinRequestDb.approveRequest(requestId, user.id);
-
-        logger.info({
-          adminId: user.id,
-          requestId,
-          orgId,
-          requesterId: request.workos_user_id,
-          email: request.user_email,
-        }, 'Join request approved');
-
-        // Record audit log for join request approval
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'join_request_approved',
-          resource_type: 'join_request',
-          resource_id: requestId,
-          details: {
-            requester_user_id: request.workos_user_id,
-            requester_email: request.user_email,
-            role_assigned: role,
-          },
-        });
-
-        res.json({
-          success: true,
-          message: `Invitation sent to ${request.user_email}`,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Approve join request error:');
-
-        // Check for specific WorkOS errors
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage.includes('already a member')) {
-          return res.status(400).json({
-            error: 'User already a member',
-            message: 'This user is already a member of the organization',
-          });
-        }
-        if (errorMessage.includes('pending invitation')) {
-          return res.status(400).json({
-            error: 'Invitation exists',
-            message: 'There is already a pending invitation for this user',
-          });
-        }
-
-        res.status(500).json({
-          error: 'Failed to approve join request',
-          message: errorMessage,
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/join-requests/:requestId/reject - Reject a join request (admin only)
-    this.app.post('/api/organizations/:orgId/join-requests/:requestId/reject', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId, requestId } = req.params;
-        const { reason } = req.body;
-
-        // Verify user is admin/owner of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        const userRole = memberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can reject join requests',
-          });
-        }
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Get the request
-        const request = await joinRequestDb.getRequest(requestId);
-        if (!request || request.workos_organization_id !== orgId) {
-          return res.status(404).json({
-            error: 'Request not found',
-            message: 'No pending join request found with this ID',
-          });
-        }
-
-        if (request.status !== 'pending') {
-          return res.status(400).json({
-            error: 'Request not pending',
-            message: 'This join request has already been processed',
-          });
-        }
-
-        // Mark request as rejected
-        await joinRequestDb.rejectRequest(requestId, user.id, reason);
-
-        logger.info({
-          adminId: user.id,
-          requestId,
-          orgId,
-          requesterId: request.workos_user_id,
-          reason,
-        }, 'Join request rejected');
-
-        // Record audit log for join request rejection
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'join_request_rejected',
-          resource_type: 'join_request',
-          resource_id: requestId,
-          details: {
-            requester_user_id: request.workos_user_id,
-            requester_email: request.user_email,
-            reason: reason || null,
-          },
-        });
-
-        res.json({
-          success: true,
-          message: 'Join request rejected',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Reject join request error:');
-        res.status(500).json({
-          error: 'Failed to reject join request',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -5323,1377 +5581,7 @@ Disallow: /api/admin/
       }
     });
 
-    // POST /api/organizations - Create a new organization
-    this.app.post('/api/organizations', requireAuth, orgCreationRateLimiter, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { organization_name, is_personal, company_type, revenue_tier } = req.body;
-
-        // Validate required fields
-        if (!organization_name) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'organization_name is required',
-          });
-        }
-
-        // Validate organization name format
-        const nameValidation = validateOrganizationName(organization_name);
-        if (!nameValidation.valid) {
-          return res.status(400).json({
-            error: 'Invalid organization name',
-            message: nameValidation.error,
-          });
-        }
-
-        // Validate company_type if provided
-        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech', 'other'];
-        if (company_type && !validCompanyTypes.includes(company_type)) {
-          return res.status(400).json({
-            error: 'Invalid company type',
-            message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
-          });
-        }
-
-        // Validate revenue_tier if provided
-        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-        if (revenue_tier && !validRevenueTiers.includes(revenue_tier)) {
-          return res.status(400).json({
-            error: 'Invalid revenue tier',
-            message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
-          });
-        }
-
-        // Use trimmed name for consistency
-        const trimmedName = organization_name.trim();
-
-        logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier }, 'Creating WorkOS organization');
-
-        // Create WorkOS Organization
-        const workosOrg = await workos!.organizations.createOrganization({
-          name: trimmedName,
-        });
-
-        logger.info({ orgId: workosOrg.id, name: trimmedName }, 'WorkOS organization created');
-
-        // Add user as organization owner (since they created it)
-        await workos!.userManagement.createOrganizationMembership({
-          userId: user.id,
-          organizationId: workosOrg.id,
-          roleSlug: 'owner',
-        });
-
-        logger.info({ userId: user.id, orgId: workosOrg.id }, 'User added as organization owner');
-
-        // Create organization record in our database
-        const orgRecord = await orgDb.createOrganization({
-          workos_organization_id: workosOrg.id,
-          name: trimmedName,
-          is_personal: is_personal || false,
-          company_type: company_type || undefined,
-          revenue_tier: revenue_tier || undefined,
-        });
-
-        logger.info({
-          orgId: workosOrg.id,
-          company_type: orgRecord.company_type,
-          revenue_tier: orgRecord.revenue_tier,
-        }, 'Organization record created in database');
-
-        // Record audit log for organization creation
-        await orgDb.recordAuditLog({
-          workos_organization_id: workosOrg.id,
-          workos_user_id: user.id,
-          action: 'organization_created',
-          resource_type: 'organization',
-          resource_id: workosOrg.id,
-          details: {
-            name: trimmedName,
-            is_personal: is_personal || false,
-            company_type: company_type || null,
-            revenue_tier: revenue_tier || null,
-          },
-        });
-
-        // Record ToS and Privacy Policy acceptance
-        const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
-        const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
-
-        if (tosAgreement) {
-          await orgDb.recordUserAgreementAcceptance({
-            workos_user_id: user.id,
-            email: user.email,
-            agreement_type: 'terms_of_service',
-            agreement_version: tosAgreement.version,
-            ip_address: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
-            user_agent: req.headers['user-agent'] || 'unknown',
-            workos_organization_id: workosOrg.id,
-          });
-        }
-
-        if (privacyAgreement) {
-          await orgDb.recordUserAgreementAcceptance({
-            workos_user_id: user.id,
-            email: user.email,
-            agreement_type: 'privacy_policy',
-            agreement_version: privacyAgreement.version,
-            ip_address: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
-            user_agent: req.headers['user-agent'] || 'unknown',
-            workos_organization_id: workosOrg.id,
-          });
-        }
-
-        res.json({
-          success: true,
-          organization: {
-            id: workosOrg.id,
-            name: workosOrg.name,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Create organization error');
-
-        // Provide more helpful error messages for common WorkOS errors
-        let errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-        if (errorMessage.includes('state should not be empty')) {
-          errorMessage = 'WorkOS configuration error: Organizations require additional setup in WorkOS Dashboard. Please contact support or check your WorkOS settings.';
-        }
-
-        res.status(500).json({
-          error: 'Failed to create organization',
-          message: errorMessage,
-        });
-      }
-    });
-
-    // PUT /api/organizations/:orgId - Update organization (rename)
-    this.app.put('/api/organizations/:orgId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-        const { name } = req.body;
-
-        // Validate name is provided
-        if (!name) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'name is required',
-          });
-        }
-
-        // Validate organization name format
-        const nameValidation = validateOrganizationName(name);
-        if (!nameValidation.valid) {
-          return res.status(400).json({
-            error: 'Invalid organization name',
-            message: nameValidation.error,
-          });
-        }
-
-        const trimmedName = name.trim();
-
-        // Verify user is member of this organization with owner or admin role
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        const membership = memberships.data[0];
-        if (!membership) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Only owners and admins can rename
-        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
-        if (roleSlug !== 'owner' && roleSlug !== 'admin') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only organization owners and admins can rename the organization',
-          });
-        }
-
-        // Update in WorkOS
-        const updatedOrg = await workos!.organizations.updateOrganization({
-          organization: orgId,
-          name: trimmedName,
-        });
-
-        // Update in our database
-        await orgDb.updateOrganization(orgId, { name: trimmedName });
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'organization_renamed',
-          resource_type: 'organization',
-          resource_id: orgId,
-          details: { new_name: trimmedName },
-        });
-
-        logger.info({ orgId, newName: trimmedName, userId: user.id }, 'Organization renamed');
-
-        res.json({
-          success: true,
-          organization: {
-            id: updatedOrg.id,
-            name: updatedOrg.name,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Update organization error');
-        res.status(500).json({
-          error: 'Failed to update organization',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PATCH /api/organizations/:orgId/settings - Update organization settings (company_type, revenue_tier)
-    this.app.patch('/api/organizations/:orgId/settings', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-        const { company_type, revenue_tier } = req.body;
-
-        // Verify user is member of this organization with owner or admin role
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        const membership = memberships.data[0];
-        if (!membership) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Only owners and admins can update settings
-        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
-        if (roleSlug !== 'owner' && roleSlug !== 'admin') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only organization owners and admins can update settings',
-          });
-        }
-
-        // Check if organization is personal (cannot have company type/revenue tier)
-        const org = await orgDb.getOrganization(orgId);
-        if (!org) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'The requested organization does not exist',
-          });
-        }
-
-        if (org.is_personal) {
-          return res.status(400).json({
-            error: 'Invalid operation',
-            message: 'Personal workspaces cannot have company type or revenue tier',
-          });
-        }
-
-        // Validate company_type if provided
-        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech', 'other'];
-        if (company_type !== undefined && company_type !== null && !validCompanyTypes.includes(company_type)) {
-          return res.status(400).json({
-            error: 'Invalid company type',
-            message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
-          });
-        }
-
-        // Validate revenue_tier if provided
-        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-        if (revenue_tier !== undefined && revenue_tier !== null && !validRevenueTiers.includes(revenue_tier)) {
-          return res.status(400).json({
-            error: 'Invalid revenue tier',
-            message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
-          });
-        }
-
-        // Build updates object with properly typed values
-        const updates: {
-          company_type?: CompanyType | null;
-          revenue_tier?: RevenueTier | null;
-        } = {};
-        if (company_type !== undefined) {
-          updates.company_type = company_type as CompanyType | null;
-        }
-        if (revenue_tier !== undefined) {
-          updates.revenue_tier = revenue_tier as RevenueTier | null;
-        }
-
-        if (Object.keys(updates).length === 0) {
-          return res.status(400).json({
-            error: 'No updates provided',
-            message: 'Provide company_type or revenue_tier to update',
-          });
-        }
-
-        // Update in our database
-        await orgDb.updateOrganization(orgId, updates);
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'organization_settings_updated',
-          resource_type: 'organization',
-          resource_id: orgId,
-          details: updates,
-        });
-
-        logger.info({ orgId, updates, userId: user.id }, 'Organization settings updated');
-
-        res.json({
-          success: true,
-          company_type: company_type !== undefined ? company_type : org.company_type,
-          revenue_tier: revenue_tier !== undefined ? revenue_tier : org.revenue_tier,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Update organization settings error');
-        res.status(500).json({
-          error: 'Failed to update organization settings',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/organizations/:orgId - Delete own workspace (owner only)
-    // Cannot delete if workspace has any payment history
-    this.app.delete('/api/organizations/:orgId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-        const { confirmation } = req.body;
-
-        // Verify user is owner of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        const membership = memberships.data[0];
-        if (!membership) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Only owners can delete
-        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
-        if (roleSlug !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only the organization owner can delete the workspace',
-          });
-        }
-
-        // Get organization from database
-        const pool = getPool();
-        const orgResult = await pool.query(
-          'SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
-          [orgId]
-        );
-
-        if (orgResult.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'The specified organization does not exist',
-          });
-        }
-
-        const org = orgResult.rows[0];
-
-        // Check if organization has any payment history
-        const revenueResult = await pool.query(
-          'SELECT COUNT(*) as count FROM revenue_events WHERE workos_organization_id = $1',
-          [orgId]
-        );
-
-        const hasPayments = parseInt(revenueResult.rows[0].count) > 0;
-
-        if (hasPayments) {
-          return res.status(400).json({
-            error: 'Cannot delete paid workspace',
-            message: 'This workspace has payment history and cannot be deleted. Please contact support if you need to remove this workspace.',
-            has_payments: true,
-          });
-        }
-
-        // Check for active Stripe subscription
-        if (org.stripe_customer_id) {
-          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
-          if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
-            return res.status(400).json({
-              error: 'Cannot delete workspace with active subscription',
-              message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
-              has_active_subscription: true,
-              subscription_status: subscriptionInfo.status,
-            });
-          }
-        }
-
-        // Require confirmation by typing the organization name
-        if (!confirmation || confirmation !== org.name) {
-          return res.status(400).json({
-            error: 'Confirmation required',
-            message: `To delete this workspace, please provide the exact name "${org.name}" in the confirmation field.`,
-            requires_confirmation: true,
-            organization_name: org.name,
-          });
-        }
-
-        // Record audit log before deletion (while org still exists)
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'organization_deleted',
-          resource_type: 'organization',
-          resource_id: orgId,
-          details: { name: org.name, deleted_by: 'self_service', user_email: user.email },
-        });
-
-        // Delete from WorkOS
-        try {
-          await workos!.organizations.deleteOrganization(orgId);
-          logger.info({ orgId, name: org.name, userId: user.id }, 'Deleted organization from WorkOS');
-        } catch (workosError) {
-          logger.warn({ err: workosError, orgId }, 'Failed to delete organization from WorkOS - continuing with local deletion');
-        }
-
-        // Delete from local database (cascades to related tables)
-        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
-
-        logger.info({ orgId, name: org.name, userId: user.id, userEmail: user.email }, 'User deleted their own organization');
-
-        res.json({
-          success: true,
-          message: `Workspace "${org.name}" has been deleted`,
-          deleted_org_id: orgId,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete organization error');
-        res.status(500).json({
-          error: 'Failed to delete organization',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // Billing Routes
-
-    // POST /api/organizations/:orgId/billing/portal - Create Customer Portal session
-    this.app.post('/api/organizations/:orgId/billing/portal', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Verify user is member of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Get organization from database
-        const org = await orgDb.getOrganization(orgId);
-        if (!org) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'Organization not found in database',
-          });
-        }
-
-        // Create Stripe customer if needed
-        let stripeCustomerId = org.stripe_customer_id;
-        if (!stripeCustomerId) {
-          logger.info({ orgId }, 'Creating Stripe customer for organization');
-          stripeCustomerId = await createStripeCustomer({
-            email: user.email,
-            name: org.name,
-            metadata: {
-              workos_organization_id: orgId,
-            },
-          });
-
-          if (!stripeCustomerId) {
-            return res.status(500).json({
-              error: 'Failed to create billing account',
-              message: 'Could not create Stripe customer',
-            });
-          }
-
-          // Save Stripe customer ID
-          await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
-        }
-
-        // Create Customer Portal session
-        const returnUrl = `${req.protocol}://${req.get('host')}/dashboard`;
-        const portalUrl = await createCustomerPortalSession(stripeCustomerId, returnUrl);
-
-        if (!portalUrl) {
-          return res.status(500).json({
-            error: 'Failed to create portal session',
-            message: 'Could not create Stripe Customer Portal session',
-          });
-        }
-
-        res.json({
-          success: true,
-          portal_url: portalUrl,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Create portal session error');
-        res.status(500).json({
-          error: 'Failed to create portal session',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/organizations/:orgId/billing - Get billing info
-    this.app.get('/api/organizations/:orgId/billing', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Get organization from database
-        let org = await orgDb.getOrganization(orgId);
-        if (!org) {
-          // Organization not in local DB - try to sync from WorkOS on-demand
-          try {
-            const workosOrg = await workos!.organizations.getOrganization(orgId);
-            if (workosOrg) {
-              org = await orgDb.createOrganization({
-                workos_organization_id: workosOrg.id,
-                name: workosOrg.name,
-              });
-              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS');
-            }
-          } catch (syncError) {
-            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS on-demand');
-          }
-        }
-
-        if (!org) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'The requested organization does not exist',
-          });
-        }
-
-        // Verify user is a member of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Get subscription info - if this fails, we want to know about it
-        const subscriptionInfo = await orgDb.getSubscriptionInfo(orgId);
-
-        if (subscriptionInfo === null) {
-          // Stripe API call failed - this is an error, not "no subscription"
-          return res.status(500).json({
-            error: 'Failed to fetch subscription info from Stripe',
-            message: 'Unable to retrieve billing information. Please try again.',
-          });
-        }
-
-        // Ensure Stripe customer exists before showing pricing table
-        // This is critical: if we don't create the customer first, Stripe Pricing Table
-        // will create one without workos_organization_id metadata, breaking the linkage
-        let stripeCustomerId = org.stripe_customer_id;
-        if (!stripeCustomerId) {
-          logger.info({ orgId, userName: user.email }, 'Creating Stripe customer for pricing table');
-          stripeCustomerId = await createStripeCustomer({
-            email: user.email,
-            name: org.name,
-            metadata: {
-              workos_organization_id: orgId,
-            },
-          });
-
-          if (stripeCustomerId) {
-            await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
-            logger.info({ orgId, stripeCustomerId }, 'Stripe customer created and linked to organization');
-          } else {
-            logger.error({ orgId }, 'Failed to create Stripe customer for pricing table');
-          }
-        }
-
-        // Create customer session for pricing table
-        let customerSessionSecret = null;
-        if (stripeCustomerId) {
-          customerSessionSecret = await createCustomerSession(stripeCustomerId);
-        }
-
-        res.json({
-          subscription: subscriptionInfo,
-          stripe_customer_id: stripeCustomerId || null,
-          customer_session_secret: customerSessionSecret,
-          company_type: org.company_type || null,
-          revenue_tier: org.revenue_tier || null,
-          is_personal: org.is_personal || false,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Get billing info error:');
-        res.status(500).json({
-          error: 'Failed to get billing info',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/pending-agreement - Store pending agreement info
-    // This is called when user checks the agreement checkbox, before payment
-    // Actual acceptance is recorded in webhook when payment succeeds
-    this.app.post('/api/organizations/:orgId/pending-agreement', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-        const { agreement_version, agreement_accepted_at } = req.body;
-
-        if (!agreement_version) {
-          return res.status(400).json({
-            error: 'Missing required field',
-            message: 'agreement_version is required',
-          });
-        }
-
-        // Verify user is member of this organization
-        const memberships = await workos.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Ensure organization exists in local DB (on-demand sync from WorkOS)
-        let org = await orgDb.getOrganization(orgId);
-        if (!org) {
-          try {
-            const workosOrg = await workos.organizations.getOrganization(orgId);
-            if (workosOrg) {
-              org = await orgDb.createOrganization({
-                workos_organization_id: workosOrg.id,
-                name: workosOrg.name,
-              });
-              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for pending agreement');
-            }
-          } catch (syncError) {
-            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
-          }
-        }
-
-        if (!org) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'Could not find or sync organization',
-          });
-        }
-
-        // Store pending agreement info in organization record
-        // This will be used by webhook when subscription is created
-        await orgDb.updateOrganization(orgId, {
-          pending_agreement_version: agreement_version,
-          pending_agreement_accepted_at: agreement_accepted_at ? new Date(agreement_accepted_at) : new Date(),
-        });
-
-        logger.info({
-          orgId,
-          userId: user.id,
-          version: agreement_version
-        }, 'Pending agreement info stored (will be recorded on payment success)');
-
-        res.json({
-          success: true,
-          agreement_version,
-          accepted_at: new Date().toISOString(),
-        });
-
-      } catch (error) {
-        logger.error({ err: error }, 'Accept membership agreement error:');
-        res.status(500).json({
-          error: 'Failed to record agreement acceptance',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/domain-verification-link - Generate WorkOS portal link for domain verification
-    this.app.post('/api/organizations/:orgId/domain-verification-link', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Verify user is member of this organization
-        const memberships = await workos.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Generate portal link for domain verification
-        const { link } = await workos.portal.generateLink({
-          organization: orgId,
-          intent: 'domain_verification' as any,
-        });
-
-        logger.info({ organizationId: orgId, userId: user.id }, 'Generated domain verification portal link');
-
-        res.json({ link });
-      } catch (error) {
-        logger.error({ err: error }, 'Failed to generate domain verification link');
-        res.status(500).json({
-          error: 'Failed to generate domain verification link',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/convert-to-team - Convert personal workspace to team
-    this.app.post('/api/organizations/:orgId/convert-to-team', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Verify user is owner of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        const userRole = memberships.data[0].role?.slug || 'member';
-        if (userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only owners can convert a workspace to a team',
-          });
-        }
-
-        // Check if already a team
-        const localOrg = await orgDb.getOrganization(orgId);
-        if (!localOrg?.is_personal) {
-          return res.status(400).json({
-            error: 'Already a team',
-            message: 'This workspace is already a team workspace',
-          });
-        }
-
-        // Convert to team by setting is_personal to false
-        await orgDb.updateOrganization(orgId, { is_personal: false });
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'convert_to_team',
-          resource_type: 'organization',
-          resource_id: orgId,
-          details: {
-            previous_state: 'personal',
-            new_state: 'team',
-          },
-        });
-
-        logger.info({ orgId, userId: user.id }, 'Personal workspace converted to team');
-
-        res.json({
-          success: true,
-          message: 'Workspace converted to team successfully',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Convert to team error');
-        res.status(500).json({
-          error: 'Failed to convert workspace',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // Team Management Routes
-
-    // GET /api/organizations/:orgId/members - List organization members
-    this.app.get('/api/organizations/:orgId/members', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Get all members of the organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          organizationId: orgId,
-          statuses: ['active', 'pending'],
-        });
-
-        // Fetch user details for each membership
-        const members = await Promise.all(
-          memberships.data.map(async (membership) => {
-            try {
-              const memberUser = await workos!.userManagement.getUser(membership.userId);
-              return {
-                id: membership.id,
-                user_id: membership.userId,
-                email: memberUser.email,
-                first_name: memberUser.firstName || null,
-                last_name: memberUser.lastName || null,
-                role: membership.role?.slug || 'member',
-                status: membership.status,
-                created_at: membership.createdAt,
-              };
-            } catch (error) {
-              // User might have been deleted
-              logger.warn({ membershipId: membership.id, userId: membership.userId }, 'Failed to fetch user for membership');
-              return {
-                id: membership.id,
-                user_id: membership.userId,
-                email: 'Unknown',
-                first_name: null,
-                last_name: null,
-                role: membership.role?.slug || 'member',
-                status: membership.status,
-                created_at: membership.createdAt,
-              };
-            }
-          })
-        );
-
-        // Get pending invitations for this organization
-        const invitations = await workos!.userManagement.listInvitations({
-          organizationId: orgId,
-        });
-
-        const pendingInvitations = invitations.data
-          .filter(inv => inv.state === 'pending')
-          .map(inv => ({
-            id: inv.id,
-            email: inv.email,
-            state: inv.state,
-            expires_at: inv.expiresAt,
-            created_at: inv.createdAt,
-            inviter_user_id: inv.inviterUserId,
-          }));
-
-        res.json({
-          members,
-          pending_invitations: pendingInvitations,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'List organization members error');
-        res.status(500).json({
-          error: 'Failed to list organization members',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/invitations - Invite a new member
-    this.app.post('/api/organizations/:orgId/invitations', requireAuth, invitationRateLimiter, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-        const { email, role } = req.body;
-
-        if (!email) {
-          return res.status(400).json({
-            error: 'Missing required field',
-            message: 'email is required',
-          });
-        }
-
-        // Validate email format
-        const emailValidation = validateEmail(email);
-        if (!emailValidation.valid) {
-          return res.status(400).json({
-            error: 'Invalid email',
-            message: emailValidation.error,
-          });
-        }
-
-        // Validate role if provided
-        const validRoles = ['member', 'admin', 'owner'];
-        if (role && !validRoles.includes(role)) {
-          return res.status(400).json({
-            error: 'Invalid role',
-            message: `Role must be one of: ${validRoles.join(', ')}`,
-          });
-        }
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Check user's role - only admins or owners can invite
-        const userRole = userMemberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can invite new members',
-          });
-        }
-
-        // Send invitation via WorkOS
-        const invitation = await workos!.userManagement.sendInvitation({
-          email,
-          organizationId: orgId,
-          inviterUserId: user.id,
-          roleSlug: role || 'member',
-        });
-
-        logger.info({ orgId, email, inviterId: user.id }, 'Invitation sent');
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'member_invited',
-          resource_type: 'invitation',
-          resource_id: invitation.id,
-          details: { email, role: role || 'member' },
-        });
-
-        res.json({
-          success: true,
-          invitation: {
-            id: invitation.id,
-            email: invitation.email,
-            state: invitation.state,
-            expires_at: invitation.expiresAt,
-            accept_invitation_url: invitation.acceptInvitationUrl,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Send invitation error');
-
-        // Check for specific WorkOS errors
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage.includes('already a member')) {
-          return res.status(400).json({
-            error: 'User already a member',
-            message: 'This user is already a member of the organization',
-          });
-        }
-        if (errorMessage.includes('pending invitation')) {
-          return res.status(400).json({
-            error: 'Invitation already exists',
-            message: 'An invitation has already been sent to this email address',
-          });
-        }
-
-        res.status(500).json({
-          error: 'Failed to send invitation',
-          message: errorMessage,
-        });
-      }
-    });
-
-    // DELETE /api/organizations/:orgId/invitations/:invitationId - Revoke an invitation
-    this.app.delete('/api/organizations/:orgId/invitations/:invitationId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId, invitationId } = req.params;
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Check user's role - only admins or owners can revoke invitations
-        const userRole = userMemberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can revoke invitations',
-          });
-        }
-
-        // Verify invitation belongs to this organization
-        const invitation = await workos!.userManagement.getInvitation(invitationId);
-        if (invitation.organizationId !== orgId) {
-          return res.status(404).json({
-            error: 'Invitation not found',
-            message: 'This invitation does not belong to this organization',
-          });
-        }
-
-        // Revoke the invitation
-        await workos!.userManagement.revokeInvitation(invitationId);
-
-        logger.info({ orgId, invitationId, revokerId: user.id }, 'Invitation revoked');
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'invitation_revoked',
-          resource_type: 'invitation',
-          resource_id: invitationId,
-          details: { email: invitation.email },
-        });
-
-        res.json({
-          success: true,
-          message: 'Invitation revoked successfully',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Revoke invitation error');
-        res.status(500).json({
-          error: 'Failed to revoke invitation',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/organizations/:orgId/invitations/:invitationId/resend - Resend an invitation
-    this.app.post('/api/organizations/:orgId/invitations/:invitationId/resend', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId, invitationId } = req.params;
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Check user's role - only admins or owners can resend invitations
-        const userRole = userMemberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can resend invitations',
-          });
-        }
-
-        // Verify invitation belongs to this organization
-        const invitation = await workos!.userManagement.getInvitation(invitationId);
-        if (invitation.organizationId !== orgId) {
-          return res.status(404).json({
-            error: 'Invitation not found',
-            message: 'This invitation does not belong to this organization',
-          });
-        }
-
-        // Resend the invitation
-        const updatedInvitation = await workos!.userManagement.resendInvitation(invitationId);
-
-        logger.info({ orgId, invitationId, resenderId: user.id }, 'Invitation resent');
-
-        res.json({
-          success: true,
-          invitation: {
-            id: updatedInvitation.id,
-            email: updatedInvitation.email,
-            state: updatedInvitation.state,
-            expires_at: updatedInvitation.expiresAt,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Resend invitation error');
-        res.status(500).json({
-          error: 'Failed to resend invitation',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PATCH /api/organizations/:orgId/members/:membershipId - Update member role
-    this.app.patch('/api/organizations/:orgId/members/:membershipId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId, membershipId } = req.params;
-        const { role } = req.body;
-
-        if (!role) {
-          return res.status(400).json({
-            error: 'Missing required field',
-            message: 'role is required',
-          });
-        }
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Check user's role - only admins or owners can update roles
-        const userRole = userMemberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can update member roles',
-          });
-        }
-
-        // Verify membership belongs to this organization
-        const membership = await workos!.userManagement.getOrganizationMembership(membershipId);
-        if (membership.organizationId !== orgId) {
-          return res.status(404).json({
-            error: 'Member not found',
-            message: 'This member does not belong to this organization',
-          });
-        }
-
-        // Prevent self-demotion from owner role
-        if (membership.userId === user.id && userRole === 'owner' && role !== 'owner') {
-          return res.status(400).json({
-            error: 'Cannot demote yourself',
-            message: 'You cannot change your own owner role. Transfer ownership to another member first.',
-          });
-        }
-
-        // Update the membership role
-        const updatedMembership = await workos!.userManagement.updateOrganizationMembership(membershipId, {
-          roleSlug: role,
-        });
-
-        logger.info({ orgId, membershipId, newRole: role, updaterId: user.id }, 'Member role updated');
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'member_role_updated',
-          resource_type: 'membership',
-          resource_id: membershipId,
-          details: { target_user_id: membership.userId, new_role: role, old_role: membership.role?.slug },
-        });
-
-        res.json({
-          success: true,
-          membership: {
-            id: updatedMembership.id,
-            user_id: updatedMembership.userId,
-            role: updatedMembership.role?.slug || 'member',
-            status: updatedMembership.status,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Update member role error');
-        res.status(500).json({
-          error: 'Failed to update member role',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/organizations/:orgId/members/:membershipId - Remove a member
-    this.app.delete('/api/organizations/:orgId/members/:membershipId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId, membershipId } = req.params;
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Check user's role - only admins or owners can remove members
-        const userRole = userMemberships.data[0].role?.slug || 'member';
-        if (userRole !== 'admin' && userRole !== 'owner') {
-          return res.status(403).json({
-            error: 'Insufficient permissions',
-            message: 'Only admins and owners can remove members',
-          });
-        }
-
-        // Verify membership belongs to this organization
-        const membership = await workos!.userManagement.getOrganizationMembership(membershipId);
-        if (membership.organizationId !== orgId) {
-          return res.status(404).json({
-            error: 'Member not found',
-            message: 'This member does not belong to this organization',
-          });
-        }
-
-        // Prevent self-removal
-        if (membership.userId === user.id) {
-          return res.status(400).json({
-            error: 'Cannot remove yourself',
-            message: 'You cannot remove yourself from the organization. Leave the organization instead or transfer ownership first.',
-          });
-        }
-
-        // Get member email for audit log before deletion
-        let memberEmail = 'Unknown';
-        try {
-          const memberUser = await workos!.userManagement.getUser(membership.userId);
-          memberEmail = memberUser.email;
-        } catch {
-          // User might not exist anymore
-        }
-
-        // Remove the member
-        await workos!.userManagement.deleteOrganizationMembership(membershipId);
-
-        logger.info({ orgId, membershipId, removerId: user.id }, 'Member removed');
-
-        // Record audit log
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: user.id,
-          action: 'member_removed',
-          resource_type: 'membership',
-          resource_id: membershipId,
-          details: { removed_user_id: membership.userId, removed_email: memberEmail },
-        });
-
-        res.json({
-          success: true,
-          message: 'Member removed successfully',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Remove member error');
-        res.status(500).json({
-          error: 'Failed to remove member',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/organizations/:orgId/roles - List available roles for the organization
-    this.app.get('/api/organizations/:orgId/roles', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Verify user is member of this organization
-        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (userMemberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
-          });
-        }
-
-        // Get available roles from WorkOS
-        const roles = await workos!.organizations.listOrganizationRoles({ organizationId: orgId });
-
-        res.json({
-          roles: roles.data.map(role => ({
-            id: role.id,
-            slug: role.slug,
-            name: role.name,
-            description: role.description,
-            permissions: role.permissions,
-          })),
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'List organization roles error');
-
-        // If roles aren't configured, return default roles
-        if (error instanceof Error && error.message.includes('not found')) {
-          return res.json({
-            roles: [
-              { slug: 'owner', name: 'Owner', description: 'Full access to all organization settings' },
-              { slug: 'admin', name: 'Admin', description: 'Can manage members and settings' },
-              { slug: 'member', name: 'Member', description: 'Standard member access' },
-            ],
-          });
-        }
-
-        res.status(500).json({
-          error: 'Failed to list roles',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
+    // NOTE: Organization routes (/api/organizations/*) have been moved to routes/organizations.ts
 
     // API Key Management Routes using WorkOS
 
@@ -6926,1272 +5814,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({
           error: 'Failed to get member',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // ========================================
-    // Admin Users API Routes
-    // ========================================
-
-    // GET /api/admin/users - List all users with their working groups
-    this.app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        if (!workos) {
-          return res.status(503).json({ error: 'Authentication not configured' });
-        }
-
-        const wgDb = new WorkingGroupDatabase();
-        const orgDatabase = new OrganizationDatabase();
-        const { search, group, noGroups } = req.query;
-        const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
-        const filterByGroup = typeof group === 'string' ? group : undefined;
-        const filterNoGroups = noGroups === 'true';
-
-        // Get all working group memberships from our database
-        const allWgMemberships = await wgDb.getAllMemberships();
-
-        // Create a map of user_id -> working groups
-        const userWorkingGroups = new Map<string, Array<{
-          id: string;
-          name: string;
-          slug: string;
-          is_private: boolean;
-        }>>();
-
-        for (const m of allWgMemberships) {
-          const groups = userWorkingGroups.get(m.user_id) || [];
-          groups.push({
-            id: m.working_group_id,
-            name: m.working_group_name,
-            slug: m.working_group_slug || '',
-            is_private: m.is_private || false,
-          });
-          userWorkingGroups.set(m.user_id, groups);
-        }
-
-        // Get all users from WorkOS via org memberships
-        const orgs = await orgDatabase.listOrganizations();
-        const allUsers: Array<{
-          user_id: string;
-          email: string;
-          name: string;
-          org_id: string;
-          org_name: string;
-          working_groups: Array<{
-            id: string;
-            name: string;
-            slug: string;
-            is_private: boolean;
-          }>;
-        }> = [];
-        const seenUserIds = new Set<string>();
-
-        for (const org of orgs) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
-
-            for (const membership of memberships.data) {
-              if (seenUserIds.has(membership.userId)) continue;
-
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-                const workingGroups = userWorkingGroups.get(user.id) || [];
-
-                // Apply filters
-                if (searchTerm) {
-                  const matches = user.email.toLowerCase().includes(searchTerm) ||
-                                  fullName.toLowerCase().includes(searchTerm) ||
-                                  org.name.toLowerCase().includes(searchTerm);
-                  if (!matches) continue;
-                }
-
-                if (filterByGroup) {
-                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
-                  if (!hasGroup) continue;
-                }
-
-                if (filterNoGroups && workingGroups.length > 0) {
-                  continue;
-                }
-
-                seenUserIds.add(user.id);
-                allUsers.push({
-                  user_id: user.id,
-                  email: user.email,
-                  name: fullName,
-                  org_id: org.workos_organization_id,
-                  org_name: org.name,
-                  working_groups: workingGroups,
-                });
-              } catch (userErr) {
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
-            }
-          } catch (orgErr) {
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
-          }
-        }
-
-        // Sort by name
-        allUsers.sort((a, b) => a.name.localeCompare(b.name));
-
-        res.json({ users: allUsers });
-      } catch (error) {
-        logger.error({ err: error }, 'Get admin users error');
-        res.status(500).json({
-          error: 'Failed to get users',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/users/memberships - Get all working group memberships (for export)
-    this.app.get('/api/admin/users/memberships', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const wgDb = new WorkingGroupDatabase();
-        const memberships = await wgDb.getAllMemberships();
-
-        // Check if CSV export is requested
-        const format = req.query.format;
-        if (format === 'csv') {
-          const csv = [
-            'User Name,Email,Organization,Working Group,Joined At',
-            ...memberships.map(m =>
-              `"${m.user_name || ''}","${m.user_email || ''}","${m.user_org_name || ''}","${m.working_group_name}","${m.joined_at ? new Date(m.joined_at).toISOString().split('T')[0] : ''}"`
-            ),
-          ].join('\n');
-
-          res.setHeader('Content-Type', 'text/csv');
-          res.setHeader('Content-Disposition', 'attachment; filename="working-group-memberships.csv"');
-          return res.send(csv);
-        }
-
-        res.json({ memberships });
-      } catch (error) {
-        logger.error({ err: error }, 'Get memberships export error');
-        res.status(500).json({
-          error: 'Failed to get memberships',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // ========================================
-    // Public Working Groups API Routes
-    // ========================================
-
-    // GET /api/working-groups - List active working groups (public groups for everyone, private for members)
-    this.app.get('/api/working-groups', optionalAuth, async (req, res) => {
-      try {
-        const wgDb = new WorkingGroupDatabase();
-        const user = req.user; // May be undefined for anonymous users
-
-        let groups;
-        if (user?.id) {
-          // Authenticated user - show public + private groups they're a member of
-          groups = await wgDb.listWorkingGroupsForUser(user.id);
-        } else {
-          // Anonymous user - show only public active groups
-          groups = await wgDb.listWorkingGroups({ status: 'active', includePrivate: false });
-        }
-
-        res.json({ working_groups: groups });
-      } catch (error) {
-        logger.error({ err: error }, 'List working groups error');
-        res.status(500).json({
-          error: 'Failed to list working groups',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/working-groups/:slug - Get working group details
-    this.app.get('/api/working-groups/:slug', optionalAuth, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const wgDb = new WorkingGroupDatabase();
-        const user = req.user; // May be undefined for anonymous users
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check access for private groups
-        if (group.is_private) {
-          if (!user?.id) {
-            return res.status(404).json({
-              error: 'Working group not found',
-              message: `No working group found with slug: ${slug}`,
-            });
-          }
-
-          const isMember = await wgDb.isMember(group.id, user.id);
-          if (!isMember) {
-            return res.status(404).json({
-              error: 'Working group not found',
-              message: `No working group found with slug: ${slug}`,
-            });
-          }
-        }
-
-        // Get memberships for display
-        const memberships = await wgDb.getMembershipsByWorkingGroup(group.id);
-
-        // Check if current user is a member
-        let isMember = false;
-        if (user?.id) {
-          isMember = await wgDb.isMember(group.id, user.id);
-        }
-
-        res.json({
-          working_group: {
-            ...group,
-            member_count: memberships.length,
-            memberships,
-          },
-          is_member: isMember,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Get working group error');
-        res.status(500).json({
-          error: 'Failed to get working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/working-groups/:slug/posts - Get published posts for a working group
-    this.app.get('/api/working-groups/:slug/posts', optionalAuth, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const wgDb = new WorkingGroupDatabase();
-        const pool = getPool();
-        const user = req.user; // May be undefined for anonymous users
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check access for private groups and determine membership
-        let isMember = false;
-        if (user?.id) {
-          isMember = await wgDb.isMember(group.id, user.id);
-        }
-
-        if (group.is_private) {
-          if (!user?.id || !isMember) {
-            return res.status(404).json({
-              error: 'Working group not found',
-              message: `No working group found with slug: ${slug}`,
-            });
-          }
-        }
-
-        // If user is a member, show all posts; otherwise filter out members-only posts
-        const result = await pool.query(
-          `SELECT id, slug, content_type, title, subtitle, category, excerpt,
-            external_url, external_site_name, author_name, author_title,
-            featured_image_url, published_at, tags, is_members_only
-          FROM perspectives
-          WHERE working_group_id = $1 AND status = 'published'
-            AND (is_members_only = false OR $2 = true)
-          ORDER BY published_at DESC NULLS LAST`,
-          [group.id, isMember]
-        );
-
-        res.json({ posts: result.rows });
-      } catch (error) {
-        logger.error({ err: error }, 'Get working group posts error');
-        res.status(500).json({
-          error: 'Failed to get posts',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/working-groups/:slug/join - Join a public working group
-    this.app.post('/api/working-groups/:slug/join', requireAuth, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const wgDb = new WorkingGroupDatabase();
-        const user = req.user!;
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        if (group.is_private) {
-          return res.status(403).json({
-            error: 'Private group',
-            message: 'This working group is private and requires an invitation to join',
-          });
-        }
-
-        // Check if already a member
-        const existingMembership = await wgDb.getMembership(group.id, user.id);
-        if (existingMembership && existingMembership.status === 'active') {
-          return res.status(409).json({
-            error: 'Already a member',
-            message: 'You are already a member of this working group',
-          });
-        }
-
-        // Get user's organization info for the membership record
-        let orgId: string | undefined;
-        let orgName: string | undefined;
-        if (workos) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              userId: user.id,
-            });
-            if (memberships.data.length > 0) {
-              const org = await workos.organizations.getOrganization(memberships.data[0].organizationId);
-              orgId = org.id;
-              orgName = org.name;
-            }
-          } catch {
-            // Ignore org fetch errors
-          }
-        }
-
-        const membership = await wgDb.addMembership({
-          working_group_id: group.id,
-          workos_user_id: user.id,
-          user_email: user.email,
-          user_name: user.firstName && user.lastName
-            ? `${user.firstName} ${user.lastName}`
-            : user.email,
-          workos_organization_id: orgId,
-          user_org_name: orgName,
-          added_by_user_id: user.id, // Self-join
-        });
-
-        res.status(201).json({ success: true, membership });
-      } catch (error) {
-        logger.error({ err: error }, 'Join working group error');
-        res.status(500).json({
-          error: 'Failed to join working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/working-groups/:slug/leave - Leave a working group
-    this.app.delete('/api/working-groups/:slug/leave', requireAuth, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const wgDb = new WorkingGroupDatabase();
-        const user = req.user!;
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check if user is chair or vice-chair - they can't leave without being replaced
-        if (group.chair_user_id === user.id || group.vice_chair_user_id === user.id) {
-          return res.status(403).json({
-            error: 'Cannot leave',
-            message: 'As chair or vice-chair, you must be replaced before leaving the group',
-          });
-        }
-
-        const removed = await wgDb.removeMembership(group.id, user.id);
-
-        if (!removed) {
-          return res.status(404).json({
-            error: 'Not a member',
-            message: 'You are not a member of this working group',
-          });
-        }
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error }, 'Leave working group error');
-        res.status(500).json({
-          error: 'Failed to leave working group',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/me/working-groups - Get current user's working group memberships
-    this.app.get('/api/me/working-groups', requireAuth, async (req, res) => {
-      try {
-        const wgDb = new WorkingGroupDatabase();
-        const user = req.user!;
-
-        const groups = await wgDb.getWorkingGroupsForUser(user.id);
-        res.json({ working_groups: groups });
-      } catch (error) {
-        logger.error({ err: error }, 'Get user working groups error');
-        res.status(500).json({
-          error: 'Failed to get working groups',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/working-groups/:slug/posts - Create a post in a working group (members)
-    // Members can only create members-only posts; leaders can create public posts
-    this.app.post('/api/working-groups/:slug/posts', requireAuth, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
-        const wgDb = new WorkingGroupDatabase();
-        const pool = getPool();
-        const user = req.user!;
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check if user is a member
-        const isMember = await wgDb.isMember(group.id, user.id);
-        if (!isMember) {
-          return res.status(403).json({
-            error: 'Not a member',
-            message: 'You must be a member of this working group to post',
-          });
-        }
-
-        // Check if user is a leader (chair or vice-chair)
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
-
-        // Non-leaders can only create members-only posts
-        const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
-
-        if (!title || !post_slug) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'Title and slug are required',
-          });
-        }
-
-        // Validate slug format
-        const slugPattern = /^[a-z0-9-]+$/;
-        if (!slugPattern.test(post_slug)) {
-          return res.status(400).json({
-            error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-          });
-        }
-
-        // Create the post (perspective with working_group_id)
-        const authorName = user.firstName && user.lastName
-          ? `${user.firstName} ${user.lastName}`
-          : user.email;
-
-        const result = await pool.query(
-          `INSERT INTO perspectives (
-            working_group_id, slug, content_type, title, content, category, excerpt,
-            external_url, external_site_name, author_name, author_user_id,
-            status, published_at, is_members_only
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'published', NOW(), $12)
-          RETURNING *`,
-          [
-            group.id,
-            post_slug,
-            content_type || 'article',
-            title,
-            content || null,
-            category || null,
-            excerpt || null,
-            external_url || null,
-            external_site_name || null,
-            authorName,
-            user.id,
-            finalMembersOnly,
-          ]
-        );
-
-        // Send Slack notification for public posts
-        if (!finalMembersOnly) {
-          notifyWorkingGroupPost({
-            workingGroupName: group.name,
-            workingGroupSlug: slug,
-            postTitle: title,
-            postSlug: post_slug,
-            authorName,
-            contentType: content_type || 'article',
-            category: category || undefined,
-          }).catch(err => {
-            logger.warn({ err }, 'Failed to send Slack notification for working group post');
-          });
-        }
-
-        res.status(201).json({ post: result.rows[0] });
-      } catch (error) {
-        logger.error({ err: error }, 'Create working group post error');
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          return res.status(409).json({
-            error: 'Slug already exists',
-            message: 'A post with this slug already exists in this working group',
-          });
-        }
-        res.status(500).json({
-          error: 'Failed to create post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/working-groups/:slug/posts/:postId - Update own post (members)
-    this.app.put('/api/working-groups/:slug/posts/:postId', requireAuth, async (req, res) => {
-      try {
-        const { slug, postId } = req.params;
-        const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
-        const wgDb = new WorkingGroupDatabase();
-        const pool = getPool();
-        const user = req.user!;
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check if user is a member
-        const isMember = await wgDb.isMember(group.id, user.id);
-        if (!isMember) {
-          return res.status(403).json({
-            error: 'Not a member',
-            message: 'You must be a member of this working group',
-          });
-        }
-
-        // Get existing post
-        const existing = await pool.query(
-          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
-          [postId, group.id]
-        );
-
-        if (existing.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Post not found',
-            message: 'Post not found in this working group',
-          });
-        }
-
-        const post = existing.rows[0];
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
-        const isAuthor = post.author_user_id === user.id;
-
-        // Only authors or leaders can edit posts
-        if (!isAuthor && !isLeader) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'You can only edit your own posts',
-          });
-        }
-
-        // Non-leaders cannot make posts public
-        const finalMembersOnly = isLeader ? (is_members_only ?? post.is_members_only) : true;
-
-        // Validate slug if changing
-        if (post_slug && post_slug !== post.slug) {
-          const slugPattern = /^[a-z0-9-]+$/;
-          if (!slugPattern.test(post_slug)) {
-            return res.status(400).json({
-              error: 'Invalid slug',
-              message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-            });
-          }
-        }
-
-        const result = await pool.query(
-          `UPDATE perspectives SET
-            slug = COALESCE($1, slug),
-            content_type = COALESCE($2, content_type),
-            title = COALESCE($3, title),
-            content = $4,
-            category = $5,
-            excerpt = $6,
-            external_url = $7,
-            external_site_name = $8,
-            is_members_only = $9,
-            updated_at = NOW()
-          WHERE id = $10 AND working_group_id = $11
-          RETURNING *`,
-          [
-            post_slug || null,
-            content_type || null,
-            title || null,
-            content ?? post.content,
-            category ?? post.category,
-            excerpt ?? post.excerpt,
-            external_url ?? post.external_url,
-            external_site_name ?? post.external_site_name,
-            finalMembersOnly,
-            postId,
-            group.id,
-          ]
-        );
-
-        res.json({ post: result.rows[0] });
-      } catch (error) {
-        logger.error({ err: error }, 'Update working group post error');
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          return res.status(409).json({
-            error: 'Slug already exists',
-            message: 'A post with this slug already exists',
-          });
-        }
-        res.status(500).json({
-          error: 'Failed to update post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/working-groups/:slug/posts/:postId - Delete own post (members)
-    this.app.delete('/api/working-groups/:slug/posts/:postId', requireAuth, async (req, res) => {
-      try {
-        const { slug, postId } = req.params;
-        const wgDb = new WorkingGroupDatabase();
-        const pool = getPool();
-        const user = req.user!;
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check if user is a member
-        const isMember = await wgDb.isMember(group.id, user.id);
-        if (!isMember) {
-          return res.status(403).json({
-            error: 'Not a member',
-            message: 'You must be a member of this working group',
-          });
-        }
-
-        // Get existing post
-        const existing = await pool.query(
-          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
-          [postId, group.id]
-        );
-
-        if (existing.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Post not found',
-            message: 'Post not found in this working group',
-          });
-        }
-
-        const post = existing.rows[0];
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
-        const isAuthor = post.author_user_id === user.id;
-
-        // Only authors or leaders can delete posts
-        if (!isAuthor && !isLeader) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'You can only delete your own posts',
-          });
-        }
-
-        await pool.query(
-          `DELETE FROM perspectives WHERE id = $1 AND working_group_id = $2`,
-          [postId, group.id]
-        );
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete working group post error');
-        res.status(500).json({
-          error: 'Failed to delete post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/working-groups/:slug/fetch-url - Fetch URL metadata (for link posts) - members only
-    this.app.post('/api/working-groups/:slug/fetch-url', requireAuth, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const { url } = req.body;
-        const wgDb = new WorkingGroupDatabase();
-        const user = req.user!;
-
-        const group = await wgDb.getWorkingGroupBySlug(slug);
-
-        if (!group || group.status !== 'active') {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check if user is a member
-        const isMember = await wgDb.isMember(group.id, user.id);
-        if (!isMember) {
-          return res.status(403).json({
-            error: 'Not a member',
-            message: 'You must be a member of this working group',
-          });
-        }
-
-        if (!url) {
-          return res.status(400).json({
-            error: 'URL required',
-            message: 'Please provide a URL to fetch',
-          });
-        }
-
-        // Fetch the page
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
-            'Accept': 'text/html,application/xhtml+xml',
-          },
-          redirect: 'follow',
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch URL: ${response.status}`);
-        }
-
-        const html = await response.text();
-
-        // Extract metadata from HTML
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
-        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
-        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
-        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-
-        // Helper to decode HTML entities
-        const decodeHtmlEntities = (text: string): string => {
-          return text
-            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-            .replace(/&quot;/g, '"')
-            .replace(/&apos;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-        };
-
-        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
-        title = decodeHtmlEntities(title.trim());
-
-        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
-        excerpt = decodeHtmlEntities(excerpt.trim());
-        // Truncate excerpt to 160 chars max
-        if (excerpt.length > 160) {
-          excerpt = excerpt.substring(0, 157) + '...';
-        }
-
-        let site_name = ogSiteMatch?.[1] || '';
-        if (!site_name) {
-          try {
-            const parsedUrl = new URL(url);
-            site_name = parsedUrl.hostname.replace('www.', '');
-            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
-          } catch {
-            // ignore URL parse errors
-          }
-        }
-        site_name = decodeHtmlEntities(site_name);
-
-        res.json({ title, excerpt, site_name });
-      } catch (error) {
-        logger.error({ err: error }, 'Fetch URL metadata error (member)');
-        res.status(500).json({
-          error: 'Failed to fetch URL',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // ========================================
-    // Working Group Leader API Routes (Chair/Vice-Chair only)
-    // ========================================
-
-    const wgDbForLeader = new WorkingGroupDatabase();
-    const requireWorkingGroupLeader = createRequireWorkingGroupLeader(wgDbForLeader);
-
-    // GET /api/working-groups/:slug/manage/posts - List all posts (including drafts) for leaders
-    this.app.get('/api/working-groups/:slug/manage/posts', requireAuth, requireWorkingGroupLeader, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const pool = getPool();
-
-        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        const result = await pool.query(
-          `SELECT id, slug, content_type, title, subtitle, category, excerpt, content,
-            external_url, external_site_name, author_name, author_title,
-            author_user_id, featured_image_url, status, published_at, display_order, tags,
-            created_at, updated_at
-          FROM perspectives
-          WHERE working_group_id = $1
-          ORDER BY display_order ASC, published_at DESC NULLS LAST, created_at DESC`,
-          [group.id]
-        );
-
-        res.json({ posts: result.rows });
-      } catch (error) {
-        logger.error({ err: error }, 'List working group leader posts error');
-        res.status(500).json({
-          error: 'Failed to list posts',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/working-groups/:slug/manage/posts/:postId - Get single post for editing
-    this.app.get('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
-      try {
-        const { slug, postId } = req.params;
-        const pool = getPool();
-
-        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        const result = await pool.query(
-          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
-          [postId, group.id]
-        );
-
-        if (result.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Post not found',
-            message: 'Post not found in this working group',
-          });
-        }
-
-        res.json(result.rows[0]);
-      } catch (error) {
-        logger.error({ err: error }, 'Get working group post error');
-        res.status(500).json({
-          error: 'Failed to get post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/working-groups/:slug/manage/posts - Create post as leader (with draft support)
-    this.app.post('/api/working-groups/:slug/manage/posts', requireAuth, requireWorkingGroupLeader, async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const {
-          post_slug, content_type, title, subtitle, category, excerpt, content,
-          external_url, external_site_name, author_name, author_title,
-          featured_image_url, status, display_order, tags, is_members_only
-        } = req.body;
-        const pool = getPool();
-        const user = req.user!;
-
-        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        if (!title || !post_slug) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'Title and slug are required',
-          });
-        }
-
-        // Validate slug format
-        const slugPattern = /^[a-z0-9-]+$/;
-        if (!slugPattern.test(post_slug)) {
-          return res.status(400).json({
-            error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-          });
-        }
-
-        // Validate content type for links
-        if (content_type === 'link' && !external_url) {
-          return res.status(400).json({
-            error: 'Missing external URL',
-            message: 'External URL is required for link type posts',
-          });
-        }
-
-        const authorNameFinal = author_name || (user.firstName && user.lastName
-          ? `${user.firstName} ${user.lastName}`
-          : user.email);
-
-        const result = await pool.query(
-          `INSERT INTO perspectives (
-            working_group_id, slug, content_type, title, subtitle, category, excerpt, content,
-            external_url, external_site_name, author_name, author_title, author_user_id,
-            featured_image_url, status, display_order, tags, published_at, is_members_only
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-          RETURNING *`,
-          [
-            group.id,
-            post_slug,
-            content_type || 'article',
-            title,
-            subtitle || null,
-            category || null,
-            excerpt || null,
-            content || null,
-            external_url || null,
-            external_site_name || null,
-            authorNameFinal,
-            author_title || null,
-            user.id,
-            featured_image_url || null,
-            status || 'draft',
-            display_order || 0,
-            tags || null,
-            status === 'published' ? new Date() : null,
-            is_members_only || false,
-          ]
-        );
-
-        const createdPost = result.rows[0];
-
-        // Send Slack notification if post is published
-        if (status === 'published') {
-          notifyWorkingGroupPost({
-            workingGroupName: group.name,
-            workingGroupSlug: slug,
-            postTitle: title,
-            postSlug: post_slug,
-            authorName: authorNameFinal,
-            contentType: content_type || 'article',
-            category: category || undefined,
-          }).catch(err => {
-            logger.warn({ err }, 'Failed to send Slack notification for working group post');
-          });
-        }
-
-        res.status(201).json(createdPost);
-      } catch (error) {
-        logger.error({ err: error }, 'Create working group leader post error');
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          return res.status(409).json({
-            error: 'Slug already exists',
-            message: 'A post with this slug already exists',
-          });
-        }
-        res.status(500).json({
-          error: 'Failed to create post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/working-groups/:slug/manage/posts/:postId - Update post as leader
-    this.app.put('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
-      try {
-        const { slug, postId } = req.params;
-        const {
-          post_slug, content_type, title, subtitle, category, excerpt, content,
-          external_url, external_site_name, author_name, author_title,
-          featured_image_url, status, display_order, tags, is_members_only
-        } = req.body;
-        const pool = getPool();
-
-        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        // Check post belongs to this working group
-        const existing = await pool.query(
-          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
-          [postId, group.id]
-        );
-
-        if (existing.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Post not found',
-            message: 'Post not found in this working group',
-          });
-        }
-
-        // Validate slug if provided
-        if (post_slug) {
-          const slugPattern = /^[a-z0-9-]+$/;
-          if (!slugPattern.test(post_slug)) {
-            return res.status(400).json({
-              error: 'Invalid slug',
-              message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-            });
-          }
-        }
-
-        // If status is changing to published, set published_at
-        const wasPublished = existing.rows[0].status === 'published';
-        const willBePublished = status === 'published';
-        const publishedAt = willBePublished && !wasPublished
-          ? new Date()
-          : existing.rows[0].published_at;
-
-        const result = await pool.query(
-          `UPDATE perspectives SET
-            slug = COALESCE($1, slug),
-            content_type = COALESCE($2, content_type),
-            title = COALESCE($3, title),
-            subtitle = $4,
-            category = $5,
-            excerpt = $6,
-            content = $7,
-            external_url = $8,
-            external_site_name = $9,
-            author_name = COALESCE($10, author_name),
-            author_title = $11,
-            featured_image_url = $12,
-            status = COALESCE($13, status),
-            display_order = COALESCE($14, display_order),
-            tags = $15,
-            published_at = $16,
-            is_members_only = $17,
-            updated_at = NOW()
-          WHERE id = $18 AND working_group_id = $19
-          RETURNING *`,
-          [
-            post_slug || null,
-            content_type || null,
-            title || null,
-            subtitle || null,
-            category || null,
-            excerpt || null,
-            content || null,
-            external_url || null,
-            external_site_name || null,
-            author_name || null,
-            author_title || null,
-            featured_image_url || null,
-            status || null,
-            display_order ?? null,
-            tags || null,
-            publishedAt,
-            is_members_only ?? false,
-            postId,
-            group.id,
-          ]
-        );
-
-        const updatedPost = result.rows[0];
-
-        // Send Slack notification if post was just published (status changed to published)
-        if (willBePublished && !wasPublished) {
-          notifyWorkingGroupPost({
-            workingGroupName: group.name,
-            workingGroupSlug: slug,
-            postTitle: updatedPost.title,
-            postSlug: updatedPost.slug,
-            authorName: updatedPost.author_name || 'Unknown',
-            contentType: updatedPost.content_type || 'article',
-            category: updatedPost.category || undefined,
-          }).catch(err => {
-            logger.warn({ err }, 'Failed to send Slack notification for working group post');
-          });
-        }
-
-        res.json(updatedPost);
-      } catch (error) {
-        logger.error({ err: error }, 'Update working group post error');
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          return res.status(409).json({
-            error: 'Slug already exists',
-            message: 'A post with this slug already exists',
-          });
-        }
-        res.status(500).json({
-          error: 'Failed to update post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/working-groups/:slug/manage/posts/:postId - Delete post as leader
-    this.app.delete('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
-      try {
-        const { slug, postId } = req.params;
-        const pool = getPool();
-
-        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
-        if (!group) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        const result = await pool.query(
-          `DELETE FROM perspectives WHERE id = $1 AND working_group_id = $2 RETURNING id`,
-          [postId, group.id]
-        );
-
-        if (result.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Post not found',
-            message: 'Post not found in this working group',
-          });
-        }
-
-        res.json({ success: true, deleted: postId });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete working group post error');
-        res.status(500).json({
-          error: 'Failed to delete post',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/working-groups/:slug/manage/fetch-url - Fetch URL metadata (for link posts)
-    this.app.post('/api/working-groups/:slug/manage/fetch-url', requireAuth, requireWorkingGroupLeader, async (req, res) => {
-      try {
-        const { url } = req.body;
-
-        if (!url) {
-          return res.status(400).json({
-            error: 'URL required',
-            message: 'Please provide a URL to fetch',
-          });
-        }
-
-        // Fetch the page
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
-            'Accept': 'text/html,application/xhtml+xml',
-          },
-          redirect: 'follow',
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch URL: ${response.status}`);
-        }
-
-        const html = await response.text();
-
-        // Extract metadata from HTML
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
-        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
-        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
-        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-
-        // Helper to decode HTML entities
-        const decodeHtmlEntities = (text: string): string => {
-          return text
-            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-            .replace(/&quot;/g, '"')
-            .replace(/&apos;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-        };
-
-        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
-        title = decodeHtmlEntities(title.trim());
-
-        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
-        excerpt = decodeHtmlEntities(excerpt.trim());
-        // Truncate excerpt to 160 chars max
-        if (excerpt.length > 160) {
-          excerpt = excerpt.substring(0, 157) + '...';
-        }
-
-        let site_name = ogSiteMatch?.[1] || '';
-        if (!site_name) {
-          try {
-            const parsedUrl = new URL(url);
-            site_name = parsedUrl.hostname.replace('www.', '');
-            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
-          } catch {
-            // ignore URL parse errors
-          }
-        }
-        site_name = decodeHtmlEntities(site_name);
-
-        res.json({ title, excerpt, site_name });
-      } catch (error) {
-        logger.error({ err: error }, 'Fetch URL metadata error (working group)');
-        res.status(500).json({
-          error: 'Failed to fetch URL',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/working-groups/for-organization/:orgId - Get working groups that users from an org belong to
-    this.app.get('/api/working-groups/for-organization/:orgId', async (req, res) => {
-      try {
-        const { orgId } = req.params;
-        const wgDb = new WorkingGroupDatabase();
-
-        const groups = await wgDb.getWorkingGroupsForOrganization(orgId);
-        res.json({ working_groups: groups });
-      } catch (error) {
-        logger.error({ err: error }, 'Get org working groups error');
-        res.status(500).json({
-          error: 'Failed to get working groups',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -8487,6 +6109,25 @@ Disallow: /api/admin/
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
 
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
+        if (isDevUserProfile) {
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
+            });
+          }
+          const profile = await memberDb.getProfileByOrgId(requestedOrgId!);
+          logger.info({ userId: user.id, orgId: requestedOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
+          return res.json({
+            profile: profile || null,
+            organization_id: requestedOrgId,
+            organization_name: localOrg.name,
+          });
+        }
+
         // Get user's organization memberships
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
@@ -8585,38 +6226,54 @@ Disallow: /api/admin/
           });
         }
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to create a profile',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          // Verify user is a member of the requested org
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'POST /api/me/member-profile: dev mode bypass');
         } else {
-          // Default to first org
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization to create a profile',
+            });
+          }
+
+          if (requestedOrgId) {
+            // Verify user is a member of the requested org
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            // Default to first org
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
-        // Ensure organization exists in local DB (on-demand sync from WorkOS)
+        // Ensure organization exists in local DB (on-demand sync from WorkOS, skip for dev mode)
         let org = await orgDb.getOrganization(targetOrgId);
-        if (!org) {
+        if (!org && !isDevUserProfile) {
           try {
             const workosOrg = await workos!.organizations.getOrganization(targetOrgId);
             if (workosOrg) {
@@ -8692,6 +6349,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? false,
         });
 
+        // Invalidate Addie's member context cache - organization profile created
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
@@ -8714,31 +6374,47 @@ Disallow: /api/admin/
         const requestedOrgId = req.query.org as string | undefined;
         const updates = req.body;
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to update a profile',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile: dev mode bypass');
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization to update a profile',
+            });
+          }
+
+          if (requestedOrgId) {
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
         // Check if profile exists
@@ -8772,6 +6448,9 @@ Disallow: /api/admin/
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
+        // Invalidate Addie's member context cache - organization profile updated
+        invalidateMemberContextCache();
+
         const duration = Date.now() - startTime;
         logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
 
@@ -8802,31 +6481,47 @@ Disallow: /api/admin/
           });
         }
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to update visibility',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile/visibility: dev mode bypass');
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization to update visibility',
+            });
+          }
+
+          if (requestedOrgId) {
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
         // Check if profile exists
@@ -8855,6 +6550,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? is_public, // Default to match is_public
         });
 
+        // Invalidate Addie's member context cache - organization profile visibility changed
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile?.id, orgId: targetOrgId, is_public }, 'Member profile visibility updated');
 
         res.json({ profile });
@@ -8876,31 +6574,47 @@ Disallow: /api/admin/
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'DELETE /api/me/member-profile: dev mode bypass');
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization',
+            });
+          }
+
+          if (requestedOrgId) {
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
         // Check if profile exists
@@ -8913,6 +6627,9 @@ Disallow: /api/admin/
         }
 
         await memberDb.deleteProfile(existingProfile.id);
+
+        // Invalidate Addie's member context cache - organization profile deleted
+        invalidateMemberContextCache();
 
         logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
@@ -8970,6 +6687,9 @@ Disallow: /api/admin/
           });
         }
 
+        // Invalidate Addie's member context cache - organization profile updated by admin
+        invalidateMemberContextCache();
+
         logger.info({ profileId: id, adminUpdate: true }, 'Member profile updated by admin');
 
         res.json({ profile });
@@ -8996,6 +6716,9 @@ Disallow: /api/admin/
           });
         }
 
+        // Invalidate Addie's member context cache - organization profile deleted by admin
+        invalidateMemberContextCache();
+
         logger.info({ profileId: id, adminDelete: true }, 'Member profile deleted by admin');
 
         res.json({ success: true });
@@ -9008,9 +6731,116 @@ Disallow: /api/admin/
       }
     });
 
+    // Note: Prospect management routes are now in routes/admin.ts
+    // Routes: GET/POST /api/admin/prospects, POST /api/admin/prospects/bulk,
+    //         PUT /api/admin/prospects/:orgId, GET /api/admin/prospects/stats,
+    //         GET /api/admin/organizations
+
     // NOTE: Agent management is now handled through member profiles.
     // Agents are stored in the member_profiles.agents JSONB array.
     // Use PUT /api/me/member-profile to update agents.
+
+    // Note: Slack Admin routes have been moved to routes/slack.ts
+    // Routes: GET /api/admin/slack/status, /stats, /users, /unified, /unmapped, /auto-link-suggested
+    //         POST /api/admin/slack/sync, /users/:id/link, /users/:id/unlink, /auto-link-suggested
+
+    // ============== Admin Email Endpoints ==============
+
+    // GET /api/admin/email/stats - Email statistics for admin dashboard
+    this.app.get('/api/admin/email/stats', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+
+        // Get total emails sent
+        const sentResult = await pool.query(
+          `SELECT COUNT(*) as count FROM email_events WHERE sent_at IS NOT NULL`
+        );
+        const totalSent = parseInt(sentResult.rows[0]?.count || '0');
+
+        // Get open rate
+        const openResult = await pool.query(
+          `SELECT
+            COUNT(*) FILTER (WHERE opened_at IS NOT NULL) as opened,
+            COUNT(*) as total
+           FROM email_events
+           WHERE sent_at IS NOT NULL`
+        );
+        const avgOpenRate = openResult.rows[0]?.total > 0
+          ? (parseInt(openResult.rows[0].opened) / parseInt(openResult.rows[0].total)) * 100
+          : 0;
+
+        // Get click rate
+        const clickResult = await pool.query(
+          `SELECT
+            COUNT(*) FILTER (WHERE first_clicked_at IS NOT NULL) as clicked,
+            COUNT(*) as total
+           FROM email_events
+           WHERE sent_at IS NOT NULL`
+        );
+        const avgClickRate = clickResult.rows[0]?.total > 0
+          ? (parseInt(clickResult.rows[0].clicked) / parseInt(clickResult.rows[0].total)) * 100
+          : 0;
+
+        // Get campaign count
+        const campaignResult = await pool.query(
+          `SELECT COUNT(*) as count FROM email_campaigns`
+        );
+        const totalCampaigns = parseInt(campaignResult.rows[0]?.count || '0');
+
+        res.json({
+          total_sent: totalSent,
+          avg_open_rate: avgOpenRate,
+          avg_click_rate: avgClickRate,
+          total_campaigns: totalCampaigns,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching email stats');
+        res.status(500).json({ error: 'Failed to fetch email stats' });
+      }
+    });
+
+    // GET /api/admin/email/campaigns - List all campaigns
+    this.app.get('/api/admin/email/campaigns', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const campaigns = await emailPrefsDb.getCampaigns();
+        res.json({ campaigns });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching campaigns');
+        res.status(500).json({ error: 'Failed to fetch campaigns' });
+      }
+    });
+
+    // GET /api/admin/email/templates - List all templates
+    this.app.get('/api/admin/email/templates', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const templates = await emailPrefsDb.getTemplates();
+        res.json({ templates });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching templates');
+        res.status(500).json({ error: 'Failed to fetch templates' });
+      }
+    });
+
+    // GET /api/admin/email/recent - Recent email sends
+    this.app.get('/api/admin/email/recent', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT *
+           FROM email_events
+           ORDER BY created_at DESC
+           LIMIT 100`
+        );
+        res.json({ emails: result.rows });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching recent emails');
+        res.status(500).json({ error: 'Failed to fetch recent emails' });
+      }
+    });
+
+    // Note: Slack Public routes have been moved to routes/slack.ts
+    // AAO Bot: POST /api/slack/aaobot/commands, /api/slack/aaobot/events
+    // Addie: POST /api/slack/addie/events (Bolt SDK)
 
     // Utility: Check slug availability
     this.app.get('/api/members/check-slug/:slug', async (req, res) => {
@@ -9284,6 +7114,15 @@ Disallow: /api/admin/
       } catch (error) {
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
+
+      // Seed dev organizations if dev mode is enabled
+      if (isDevModeEnabled()) {
+        try {
+          await this.seedDevOrganizations(orgDb);
+        } catch (error) {
+          logger.warn({ error }, 'Failed to seed dev organizations (non-fatal)');
+        }
+      }
     }
 
     // Pre-warm caches for all agents in background
@@ -9304,6 +7143,14 @@ Disallow: /api/admin/
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
+    // Start periodic content curator for Addie's knowledge base
+    // Process pending external resources (fetch content, generate summaries)
+    this.startContentCurator();
+
+    // Start industry feed monitoring
+    // Fetches RSS feeds, processes articles, sends Slack alerts
+    this.startIndustryMonitor();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -9314,6 +7161,152 @@ Disallow: /api/admin/
 
     // Setup graceful shutdown handlers
     this.setupShutdownHandlers();
+  }
+
+  /**
+   * Start periodic content curator for Addie's knowledge base
+   * Processes pending external resources (fetch content, generate AI summaries)
+   */
+  private startContentCurator(): void {
+    const CURATOR_INTERVAL_MINUTES = 5;
+
+    // Process on startup after a short delay
+    setTimeout(async () => {
+      try {
+        // Process manually queued resources
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+        // Process RSS perspectives
+        const rssResult = await processRssPerspectives({ limit: 5 });
+        if (rssResult.processed > 0) {
+          logger.info(rssResult, 'Content curator: processed RSS perspectives');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: initial processing failed');
+      }
+    }, 30000); // 30 second delay to let other services start
+
+    // Then process periodically
+    this.contentCuratorIntervalId = setInterval(async () => {
+      try {
+        // Process manually queued resources
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+        // Process RSS perspectives
+        const rssResult = await processRssPerspectives({ limit: 5 });
+        if (rssResult.processed > 0) {
+          logger.info(rssResult, 'Content curator: processed RSS perspectives');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: periodic processing failed');
+      }
+    }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
+
+    logger.info({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
+  }
+
+  /**
+   * Start industry feed monitoring system
+   * Fetches RSS feeds from ad tech publications, processes articles,
+   * and sends Slack alerts for high-priority content
+   */
+  private startIndustryMonitor(): void {
+    const FEED_FETCH_INTERVAL_MINUTES = 30;
+    const ALERT_CHECK_INTERVAL_MINUTES = 5;
+
+    // Feed fetcher - check feeds every 30 minutes
+    // Creates perspectives from RSS articles, which are then processed by the content curator
+    this.feedFetcherInitialTimeoutId = setTimeout(async () => {
+      this.feedFetcherInitialTimeoutId = null;
+      try {
+        const result = await processFeedsToFetch();
+        if (result.feedsProcessed > 0) {
+          logger.info(result, 'Industry monitor: fetched RSS feeds');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: initial feed fetch failed');
+      }
+    }, 60000); // 1 minute delay to let other services start
+
+    this.feedFetcherIntervalId = setInterval(async () => {
+      try {
+        const result = await processFeedsToFetch();
+        if (result.feedsProcessed > 0) {
+          logger.info(result, 'Industry monitor: fetched RSS feeds');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: periodic feed fetch failed');
+      }
+    }, FEED_FETCH_INTERVAL_MINUTES * 60 * 1000);
+
+    // Alert processor - check for alerts every 5 minutes
+    this.alertProcessorInitialTimeoutId = setTimeout(async () => {
+      this.alertProcessorInitialTimeoutId = null;
+      try {
+        const result = await processAlerts();
+        if (result.alerted > 0) {
+          logger.info(result, 'Industry monitor: sent alerts');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: initial alert processing failed');
+      }
+    }, 120000); // 2 minute delay
+
+    this.alertProcessorIntervalId = setInterval(async () => {
+      try {
+        const result = await processAlerts();
+        if (result.alerted > 0) {
+          logger.info(result, 'Industry monitor: sent alerts');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: periodic alert processing failed');
+      }
+    }, ALERT_CHECK_INTERVAL_MINUTES * 60 * 1000);
+
+    // Daily digest - schedule for 9am local time
+    this.scheduleDailyDigest();
+
+    logger.info({
+      feedFetchIntervalMinutes: FEED_FETCH_INTERVAL_MINUTES,
+      alertCheckIntervalMinutes: ALERT_CHECK_INTERVAL_MINUTES,
+    }, 'Industry monitor started');
+  }
+
+  /**
+   * Schedule daily digest to run at 9am local time
+   */
+  private scheduleDailyDigest(): void {
+    const now = new Date();
+    const targetHour = 9; // 9am local time
+
+    // Calculate next 9am
+    const nextRun = new Date(now);
+    nextRun.setHours(targetHour, 0, 0, 0);
+
+    // If it's past 9am today, schedule for tomorrow
+    if (now >= nextRun) {
+      nextRun.setDate(nextRun.getDate() + 1);
+    }
+
+    const msUntilNextRun = nextRun.getTime() - now.getTime();
+
+    logger.info({ nextRun: nextRun.toISOString(), msUntilNextRun }, 'Daily digest scheduled');
+
+    this.dailyDigestTimeoutId = setTimeout(async () => {
+      try {
+        await sendDailyDigest();
+        logger.info('Industry monitor: sent daily digest');
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: daily digest failed');
+      }
+
+      // Schedule next day's digest
+      this.scheduleDailyDigest();
+    }, msUntilNextRun);
   }
 
   /**
@@ -9336,6 +7329,36 @@ Disallow: /api/admin/
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
 
+    // Stop content curator
+    if (this.contentCuratorIntervalId) {
+      clearInterval(this.contentCuratorIntervalId);
+      this.contentCuratorIntervalId = null;
+      logger.info('Content curator stopped');
+    }
+
+    // Stop industry monitor jobs
+    if (this.feedFetcherInitialTimeoutId) {
+      clearTimeout(this.feedFetcherInitialTimeoutId);
+      this.feedFetcherInitialTimeoutId = null;
+    }
+    if (this.feedFetcherIntervalId) {
+      clearInterval(this.feedFetcherIntervalId);
+      this.feedFetcherIntervalId = null;
+    }
+    if (this.alertProcessorInitialTimeoutId) {
+      clearTimeout(this.alertProcessorInitialTimeoutId);
+      this.alertProcessorInitialTimeoutId = null;
+    }
+    if (this.alertProcessorIntervalId) {
+      clearInterval(this.alertProcessorIntervalId);
+      this.alertProcessorIntervalId = null;
+    }
+    if (this.dailyDigestTimeoutId) {
+      clearTimeout(this.dailyDigestTimeoutId);
+      this.dailyDigestTimeoutId = null;
+    }
+    logger.info('Industry monitor stopped');
+
     // Close HTTP server
     if (this.server) {
       await new Promise<void>((resolve, reject) => {
@@ -9357,6 +7380,53 @@ Disallow: /api/admin/
     logger.info('Database connection closed');
 
     logger.info('Graceful shutdown complete');
+  }
+
+  /**
+   * Seed dev organizations in the database
+   * Creates organizations for dev users so they can access dashboard without onboarding
+   */
+  private async seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
+    const devOrgs = [
+      {
+        id: 'org_dev_company_001',
+        name: 'Dev Company (Member)',
+        is_personal: false,
+        company_type: 'brand' as const,
+        revenue_tier: '5m_50m' as const,
+      },
+      {
+        id: 'org_dev_personal_001',
+        name: 'Dev Personal Workspace',
+        is_personal: true,
+        company_type: null,
+        revenue_tier: null,
+      },
+    ];
+
+    for (const devOrg of devOrgs) {
+      try {
+        // Check if org already exists
+        const existing = await orgDb.getOrganization(devOrg.id);
+        if (!existing) {
+          await orgDb.createOrganization({
+            workos_organization_id: devOrg.id,
+            name: devOrg.name,
+            is_personal: devOrg.is_personal,
+            company_type: devOrg.company_type || undefined,
+            revenue_tier: devOrg.revenue_tier || undefined,
+          });
+          logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
+        }
+      } catch (error) {
+        // Ignore duplicate key errors (org already exists)
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          logger.debug({ orgId: devOrg.id }, 'Dev organization already exists');
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   private async prewarmCaches(agents: any[]): Promise<void> {

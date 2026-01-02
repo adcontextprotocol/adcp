@@ -9,6 +9,7 @@ primary_region = 'iad'
 
 [env]
   PORT = "8080"
+  RUN_MIGRATIONS = "true"
 
 [http_service]
   internal_port = 8080

@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Industry Feeds - AdCP Registry</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-lg);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    h2 { margin-bottom: var(--space-4); color: var(--color-text-heading); font-size: var(--text-xl); }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+    }
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .stat-card {
+      background: var(--color-bg-subtle);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .feeds-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .feed-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .feed-item:hover {
+      border-color: var(--color-brand);
+    }
+    .feed-item.inactive {
+      opacity: 0.6;
+      background: var(--color-gray-50);
+    }
+    .feed-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-3);
+    }
+    .feed-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .feed-url {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      word-break: break-all;
+    }
+    .feed-meta {
+      display: flex;
+      gap: var(--space-4);
+      flex-wrap: wrap;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+    }
+    .feed-meta span {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .feed-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-active { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-inactive { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-error { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-category { background: var(--color-info-100); color: var(--color-info-700); }
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
+    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: var(--space-5);
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-8);
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .form-group {
+      margin-bottom: var(--space-5);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-family: inherit;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .form-group small {
+      display: block;
+      margin-top: var(--space-1);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-5);
+    }
+    .modal-buttons {
+      display: flex;
+      gap: var(--space-2.5);
+      justify-content: flex-end;
+      margin-top: var(--space-6);
+      padding-top: var(--space-5);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .url-input-group {
+      display: flex;
+      gap: var(--space-2.5);
+    }
+    .url-input-group input {
+      flex: 1;
+    }
+    .status-message {
+      padding: var(--space-2.5) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .status-message.loading {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .status-message.success {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .status-message.error {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+    .discovered-feeds {
+      margin-top: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+    }
+    .discovered-feeds h4 {
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-3);
+      color: var(--color-text-heading);
+    }
+    .discovered-feed-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .discovered-feed-item:last-child {
+      border-bottom: none;
+    }
+    .discovered-feed-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .discovered-feed-title {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .discovered-feed-url {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      word-break: break-all;
+    }
+    .recent-articles {
+      margin-top: var(--space-3);
+    }
+    .recent-articles-toggle {
+      color: var(--color-brand);
+      cursor: pointer;
+      font-size: var(--text-sm);
+    }
+    .recent-articles-toggle:hover {
+      text-decoration: underline;
+    }
+    .articles-list {
+      display: none;
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .articles-list.show {
+      display: block;
+    }
+    .article-item {
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      font-size: var(--text-sm);
+    }
+    .article-item:last-child {
+      border-bottom: none;
+    }
+    .article-item a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+    .article-item a:hover {
+      text-decoration: underline;
+    }
+    .article-meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+    .article-summary {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--color-brand);
+      line-height: 1.5;
+    }
+    .article-title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .pending-icon {
+      color: var(--color-warning-500);
+      font-size: var(--text-sm);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .error-details {
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      background: var(--color-error-100);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      color: var(--color-error-700);
+      word-break: break-word;
+    }
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-secondary);
+    }
+    .search-bar {
+      margin-bottom: var(--space-4);
+    }
+    .search-bar input {
+      width: 100%;
+      padding: var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-family: inherit;
+    }
+    .search-bar input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .feeds-count {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-3);
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-5);
+      padding: var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+    }
+    .filter-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+    }
+    .filter-group select,
+    .filter-group input {
+      width: 100%;
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-family: inherit;
+    }
+    .filter-group select:focus,
+    .filter-group input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .feed-type-selector {
+      display: flex;
+      gap: var(--space-3);
+    }
+    .feed-type-option {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      border: var(--border-2) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .feed-type-option:hover {
+      border-color: var(--color-gray-300);
+    }
+    .feed-type-option:has(input:checked) {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+    .feed-type-option input {
+      margin-top: 2px;
+    }
+    .feed-type-label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .feed-type-label strong {
+      color: var(--color-text-heading);
+    }
+    .feed-type-label small {
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+    }
+    .email-info-box {
+      background: var(--color-info-50);
+      border: var(--border-1) solid var(--color-info-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .email-info-box p {
+      margin: 0 0 var(--space-2) 0;
+      color: var(--color-text-heading);
+    }
+    .email-info-box ol {
+      margin: 0;
+      padding-left: var(--space-5);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .email-info-box li {
+      margin-bottom: var(--space-1);
+    }
+    .email-section {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-info-50);
+      border-radius: var(--radius-md);
+      border: var(--border-1) solid var(--color-info-200);
+    }
+    .email-address {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-sm);
+      display: inline-block;
+      margin-right: var(--space-2);
+      border: var(--border-1) solid var(--color-gray-200);
+    }
+    .email-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .email-label strong {
+      color: var(--color-text-heading);
+    }
+    .badge-email { background: var(--color-info-100); color: var(--color-info-700); }
+    .btn-copy {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      background: var(--color-gray-100);
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .btn-copy:hover {
+      background: var(--color-gray-200);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h1>Industry Feeds</h1>
+            <p class="subtitle">RSS feeds from ad tech publications monitored by Addie</p>
+          </div>
+          <button class="btn btn-primary" onclick="showAddModal()">+ Add Feed</button>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+          <!-- Stats populated by JS -->
+        </div>
+
+        <div class="filters">
+          <div class="filter-group">
+            <label>Search</label>
+            <input type="text" id="searchInput" placeholder="Name, URL, or category..." oninput="debouncedFilter()">
+          </div>
+          <div class="filter-group">
+            <label>Status</label>
+            <select id="filterStatus" onchange="filterFeeds()">
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="errors">Has Errors</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Category</label>
+            <select id="filterCategory" onchange="filterFeeds()">
+              <option value="">All Categories</option>
+              <option value="ad-tech">Ad Tech</option>
+              <option value="advertising">Advertising</option>
+              <option value="marketing">Marketing</option>
+              <option value="media">Media</option>
+              <option value="tech">Tech</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Email Enabled</label>
+            <select id="filterEmail" onchange="filterFeeds()">
+              <option value="">All</option>
+              <option value="yes">Email Enabled</option>
+              <option value="no">No Email</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="feedsCount" class="feeds-count">
+          Showing 0 feeds
+        </div>
+
+        <div id="feedsList" class="feeds-list">
+          Loading feeds...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Feed Modal -->
+  <div id="feedModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">Add Feed</h2>
+
+      <div id="statusMessage" class="status-message" style="display: none;"></div>
+
+      <form id="feedForm" onsubmit="saveFeed(event)">
+        <input type="hidden" id="feedId">
+
+        <div class="form-group">
+          <label>Feed Type</label>
+          <div class="feed-type-selector">
+            <label class="feed-type-option">
+              <input type="radio" name="feedType" value="rss" checked onchange="toggleFeedType()">
+              <span class="feed-type-label">
+                <strong>RSS Feed</strong>
+                <small>Monitor an RSS/Atom feed URL</small>
+              </span>
+            </label>
+            <label class="feed-type-option">
+              <input type="radio" name="feedType" value="email" onchange="toggleFeedType()">
+              <span class="feed-type-label">
+                <strong>Email Newsletter</strong>
+                <small>Generate an email address to receive newsletters</small>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- RSS-specific fields -->
+        <div id="rssFields">
+          <div class="form-group">
+            <label>Website or Feed URL</label>
+            <div class="url-input-group">
+              <input type="url" id="feedUrl" placeholder="https://example.com or https://example.com/feed">
+              <button type="button" class="btn btn-secondary" id="discoverBtn" onclick="discoverFeeds()">
+                Discover
+              </button>
+            </div>
+            <small>Enter a website URL to auto-discover RSS feeds, or paste a feed URL directly</small>
+          </div>
+
+          <div id="discoveredFeeds" class="discovered-feeds" style="display: none;">
+            <h4>Discovered Feeds</h4>
+            <div id="discoveredFeedsList"></div>
+          </div>
+        </div>
+
+        <!-- Email-specific info -->
+        <div id="emailFields" style="display: none;">
+          <div class="form-group">
+            <div class="email-info-box">
+              <p><strong>How it works:</strong></p>
+              <ol>
+                <li>Enter a name for the newsletter source below</li>
+                <li>Save to generate a unique email address</li>
+                <li>Subscribe to the newsletter using that email address</li>
+                <li>Incoming emails will be processed as articles</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Feed Name</label>
+          <input type="text" id="feedName" placeholder="e.g., AdExchanger" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="feedCategory">
+              <option value="">None</option>
+              <option value="ad-tech">Ad Tech</option>
+              <option value="advertising">Advertising</option>
+              <option value="marketing">Marketing</option>
+              <option value="media">Media</option>
+              <option value="tech">Tech</option>
+            </select>
+          </div>
+          <div class="form-group" id="fetchIntervalGroup">
+            <label>Fetch Interval (minutes)</label>
+            <input type="number" id="fetchInterval" value="30" min="5" max="1440">
+          </div>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Save Feed</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="modal-overlay">
+    <div class="modal" style="max-width: 450px;">
+      <h2>Delete Feed</h2>
+      <p style="margin: var(--space-5) 0; color: var(--color-text-secondary);">
+        Are you sure you want to delete "<span id="deleteTitle"></span>"?
+        This will also delete all articles from this feed.
+      </p>
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let feeds = [];
+    let filteredFeeds = [];
+    let stats = {};
+    let editingFeedId = null;
+    let deletingFeedId = null;
+
+    // Load feeds and stats
+    async function loadFeeds() {
+      try {
+        const response = await fetch('/api/admin/feeds');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load feeds');
+        }
+
+        const data = await response.json();
+        feeds = data.feeds;
+        stats = data.stats;
+
+        renderStats();
+        filterFeeds();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading feeds:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load feeds. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    // Render stats
+    function renderStats() {
+      const statsGrid = document.getElementById('statsGrid');
+      statsGrid.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-value">${stats.active_feeds || 0}</div>
+          <div class="stat-label">Active Feeds</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.total_rss_perspectives || 0}</div>
+          <div class="stat-label">Total Articles</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.rss_perspectives_today || 0}</div>
+          <div class="stat-label">Today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.pending_processing || 0}</div>
+          <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.processed_success || 0}</div>
+          <div class="stat-label">Processed</div>
+        </div>
+        <div class="stat-card" ${(stats.processed_failed || 0) > 0 ? 'style="border-color: var(--color-error);"' : ''}>
+          <div class="stat-value" ${(stats.processed_failed || 0) > 0 ? 'style="color: var(--color-error);"' : ''}>${stats.processed_failed || 0}</div>
+          <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.alerts_sent_today || 0}</div>
+          <div class="stat-label">Alerts Today</div>
+        </div>
+      `;
+    }
+
+    // Debounced filter for search input
+    let searchTimeout;
+    function debouncedFilter() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(filterFeeds, 200);
+    }
+
+    // Filter feeds based on all filter criteria
+    function filterFeeds() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      const statusFilter = document.getElementById('filterStatus').value;
+      const categoryFilter = document.getElementById('filterCategory').value;
+      const emailFilter = document.getElementById('filterEmail').value;
+
+      filteredFeeds = feeds.filter(feed => {
+        // Search filter
+        if (searchTerm) {
+          const nameMatch = (feed.name || '').toLowerCase().includes(searchTerm);
+          const urlMatch = (feed.feed_url || '').toLowerCase().includes(searchTerm);
+          const categoryMatch = (feed.category || '').toLowerCase().includes(searchTerm);
+          if (!nameMatch && !urlMatch && !categoryMatch) {
+            return false;
+          }
+        }
+
+        // Status filter
+        if (statusFilter === 'active' && !feed.is_active) return false;
+        if (statusFilter === 'inactive' && feed.is_active) return false;
+        if (statusFilter === 'errors' && feed.error_count === 0) return false;
+
+        // Category filter
+        if (categoryFilter && feed.category !== categoryFilter) return false;
+
+        // Email filter
+        if (emailFilter === 'yes' && !feed.accepts_email) return false;
+        if (emailFilter === 'no' && feed.accepts_email) return false;
+
+        return true;
+      });
+
+      renderFeedsList();
+    }
+
+    // Render feeds list
+    function renderFeedsList() {
+      const listDiv = document.getElementById('feedsList');
+      const countDiv = document.getElementById('feedsCount');
+
+      // Update count display
+      if (filteredFeeds.length === feeds.length) {
+        countDiv.textContent = `Showing ${feeds.length} feeds`;
+      } else {
+        countDiv.textContent = `Showing ${filteredFeeds.length} of ${feeds.length} feeds`;
+      }
+
+      if (feeds.length === 0) {
+        listDiv.innerHTML = '<div class="empty-state">No feeds configured. Click "Add Feed" to get started.</div>';
+        return;
+      }
+
+      if (filteredFeeds.length === 0) {
+        listDiv.innerHTML = '<div class="empty-state">No feeds match your search.</div>';
+        return;
+      }
+
+      let html = '';
+      filteredFeeds.forEach(feed => {
+        const statusBadge = feed.is_active
+          ? '<span class="badge badge-active">Active</span>'
+          : '<span class="badge badge-inactive">Inactive</span>';
+
+        const errorBadge = feed.error_count > 0
+          ? `<span class="badge badge-error">${feed.error_count} errors</span>`
+          : '';
+
+        const categoryBadge = feed.category
+          ? `<span class="badge badge-category">${escapeHtml(feed.category)}</span>`
+          : '';
+
+        const emailBadge = feed.accepts_email
+          ? '<span class="badge badge-email">Email</span>'
+          : '';
+
+        const lastFetched = feed.last_fetched_at
+          ? formatDate(feed.last_fetched_at)
+          : 'Never';
+
+        const lastArticle = feed.last_article_at
+          ? formatDate(feed.last_article_at)
+          : 'None';
+
+        // Email subscription section
+        let emailSection = '';
+        if (feed.accepts_email && feed.email_slug) {
+          const emailAddress = `${feed.email_slug}@updates.agenticadvertising.org`;
+          const lastEmail = feed.last_email_at ? formatDate(feed.last_email_at) : 'Never';
+          emailSection = `
+            <div class="email-section">
+              <div class="email-label">
+                <strong>Newsletter Email:</strong>
+                <span class="email-address" id="email-${feed.id}">${emailAddress}</span>
+                <button class="btn-copy" onclick="copyEmail('${emailAddress}')">Copy</button>
+                <button class="btn btn-secondary btn-small" onclick="toggleEmail(${feed.id}, false)">Disable</button>
+              </div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">
+                Subscribe to newsletters with this address • Last received: ${lastEmail}
+              </div>
+            </div>
+          `;
+        } else {
+          emailSection = `
+            <div style="margin-top: var(--space-3);">
+              <button class="btn btn-secondary btn-small" onclick="toggleEmail(${feed.id}, true)">
+                Enable Email Subscription
+              </button>
+              <span style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-left: var(--space-2);">
+                Generate an email address to receive newsletters
+              </span>
+            </div>
+          `;
+        }
+
+        html += `
+          <div class="feed-item ${feed.is_active ? '' : 'inactive'}">
+            <div class="feed-header">
+              <div class="feed-info">
+                <h3>${escapeHtml(feed.name)}</h3>
+                <div class="feed-url">${escapeHtml(feed.feed_url)}</div>
+              </div>
+              <div class="feed-actions">
+                <button class="btn btn-secondary btn-small" onclick="fetchFeed(event, ${feed.id})" title="Fetch now">
+                  Fetch
+                </button>
+                <button class="btn btn-secondary btn-small" onclick="toggleFeed(${feed.id}, ${!feed.is_active})">
+                  ${feed.is_active ? 'Disable' : 'Enable'}
+                </button>
+                <button class="btn btn-primary btn-small" onclick="editFeed(${feed.id})">Edit</button>
+                <button class="btn btn-danger btn-small" data-feed-id="${feed.id}" data-feed-name="${escapeHtml(feed.name)}" onclick="showDeleteModalFromEvent(event)">Delete</button>
+              </div>
+            </div>
+            <div class="feed-meta">
+              ${statusBadge}
+              ${categoryBadge}
+              ${emailBadge}
+              ${errorBadge}
+              <span>Articles: ${feed.article_count || 0} (${feed.articles_this_week || 0} this week)</span>
+              <span>Last fetched: ${lastFetched}</span>
+              <span>Last article: ${lastArticle}</span>
+            </div>
+            ${feed.last_error ? `<div class="error-details">Last error: ${escapeHtml(feed.last_error)}</div>` : ''}
+            ${emailSection}
+            <div class="recent-articles">
+              <span class="recent-articles-toggle" onclick="toggleArticles(${feed.id})">
+                Show recent articles
+              </span>
+              <div id="articles-${feed.id}" class="articles-list">
+                Loading...
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      listDiv.innerHTML = html;
+    }
+
+    // Toggle recent articles
+    async function toggleArticles(feedId) {
+      const articlesDiv = document.getElementById(`articles-${feedId}`);
+      if (articlesDiv.classList.contains('show')) {
+        articlesDiv.classList.remove('show');
+        return;
+      }
+
+      articlesDiv.classList.add('show');
+      articlesDiv.innerHTML = 'Loading...';
+
+      try {
+        const response = await fetch(`/api/admin/feeds/${feedId}`);
+        if (!response.ok) throw new Error('Failed to load articles');
+
+        const data = await response.json();
+        const articles = data.recentArticles || [];
+
+        if (articles.length === 0) {
+          articlesDiv.innerHTML = '<div style="color: var(--color-text-secondary); font-style: italic;">No articles yet</div>';
+          return;
+        }
+
+        let html = '';
+        articles.forEach(article => {
+          const quality = article.quality_score ? `Quality: ${article.quality_score}/5` : '';
+          const date = article.published_at ? formatDate(article.published_at) : '';
+          const isPending = !article.summary;
+          const pendingIcon = isPending ? '<span class="pending-icon" title="Pending AI analysis">&#9203;</span> ' : '';
+          const summary = article.summary
+            ? `<div class="article-summary">${escapeHtml(article.summary)}</div>`
+            : '';
+          html += `
+            <div class="article-item">
+              <div class="article-title-row">
+                ${pendingIcon}<a href="${escapeHtml(article.external_url)}" target="_blank">${escapeHtml(article.title)}</a>
+              </div>
+              <div class="article-meta">${date} ${quality}</div>
+              ${summary}
+            </div>
+          `;
+        });
+
+        articlesDiv.innerHTML = html;
+      } catch (error) {
+        console.error('Error loading articles:', error);
+        articlesDiv.innerHTML = '<div style="color: var(--color-error-600);">Failed to load articles</div>';
+      }
+    }
+
+    // Toggle between RSS and Email feed types
+    function toggleFeedType() {
+      const feedType = document.querySelector('input[name="feedType"]:checked').value;
+      const rssFields = document.getElementById('rssFields');
+      const emailFields = document.getElementById('emailFields');
+      const fetchIntervalGroup = document.getElementById('fetchIntervalGroup');
+      const feedUrlInput = document.getElementById('feedUrl');
+
+      if (feedType === 'email') {
+        rssFields.style.display = 'none';
+        emailFields.style.display = 'block';
+        fetchIntervalGroup.style.display = 'none';
+        feedUrlInput.removeAttribute('required');
+      } else {
+        rssFields.style.display = 'block';
+        emailFields.style.display = 'none';
+        fetchIntervalGroup.style.display = 'block';
+        // URL not required for RSS either since we can discover
+      }
+    }
+
+    // Show add modal
+    function showAddModal() {
+      editingFeedId = null;
+      document.getElementById('modalTitle').textContent = 'Add Feed';
+      document.getElementById('feedForm').reset();
+      document.getElementById('feedId').value = '';
+      document.getElementById('fetchInterval').value = '30';
+      document.getElementById('statusMessage').style.display = 'none';
+      document.getElementById('discoveredFeeds').style.display = 'none';
+      // Reset to RSS type
+      document.querySelector('input[name="feedType"][value="rss"]').checked = true;
+      toggleFeedType();
+      document.getElementById('feedModal').style.display = 'flex';
+    }
+
+    // Edit feed
+    function editFeed(id) {
+      const feed = feeds.find(f => f.id === id);
+      if (!feed) return;
+
+      editingFeedId = id;
+      document.getElementById('modalTitle').textContent = 'Edit Feed';
+      document.getElementById('feedId').value = feed.id;
+      document.getElementById('feedUrl').value = feed.feed_url || '';
+      document.getElementById('feedName').value = feed.name;
+      document.getElementById('feedCategory').value = feed.category || '';
+      document.getElementById('fetchInterval').value = feed.fetch_interval_minutes || 30;
+      document.getElementById('statusMessage').style.display = 'none';
+      document.getElementById('discoveredFeeds').style.display = 'none';
+
+      // Set feed type based on whether it has a URL or is email-only
+      const isEmailOnly = feed.accepts_email && !feed.feed_url;
+      if (isEmailOnly) {
+        document.querySelector('input[name="feedType"][value="email"]').checked = true;
+      } else {
+        document.querySelector('input[name="feedType"][value="rss"]').checked = true;
+      }
+      toggleFeedType();
+
+      document.getElementById('feedModal').style.display = 'flex';
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('feedModal').style.display = 'none';
+      editingFeedId = null;
+    }
+
+    // Discover feeds from URL
+    async function discoverFeeds() {
+      const url = document.getElementById('feedUrl').value.trim();
+      if (!url) return;
+
+      const statusMessage = document.getElementById('statusMessage');
+      const discoverBtn = document.getElementById('discoverBtn');
+      const discoveredFeeds = document.getElementById('discoveredFeeds');
+      const discoveredFeedsList = document.getElementById('discoveredFeedsList');
+
+      statusMessage.style.display = 'block';
+      statusMessage.className = 'status-message loading';
+      statusMessage.textContent = 'Discovering feeds...';
+      discoverBtn.disabled = true;
+
+      try {
+        const response = await fetch('/api/admin/feeds/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to discover feeds');
+        }
+
+        const data = await response.json();
+
+        if (data.feeds && data.feeds.length > 0) {
+          statusMessage.className = 'status-message success';
+          statusMessage.textContent = `Found ${data.feeds.length} feed(s)`;
+
+          let html = '';
+          data.feeds.forEach(feed => {
+            html += `
+              <div class="discovered-feed-item">
+                <div class="discovered-feed-info">
+                  <div class="discovered-feed-title">${escapeHtml(feed.title)}</div>
+                  <div class="discovered-feed-url">${escapeHtml(feed.url)}</div>
+                </div>
+                <button type="button" class="btn btn-small btn-primary" onclick="selectDiscoveredFeed('${escapeHtml(feed.url).replace(/'/g, "\\'")}', '${escapeHtml(feed.title).replace(/'/g, "\\'")}')">
+                  Use
+                </button>
+              </div>
+            `;
+          });
+
+          discoveredFeedsList.innerHTML = html;
+          discoveredFeeds.style.display = 'block';
+        } else {
+          statusMessage.className = 'status-message error';
+          statusMessage.textContent = 'No RSS feeds found at this URL';
+          discoveredFeeds.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Error discovering feeds:', error);
+        statusMessage.className = 'status-message error';
+        statusMessage.textContent = error.message;
+        discoveredFeeds.style.display = 'none';
+      }
+
+      discoverBtn.disabled = false;
+    }
+
+    // Select a discovered feed
+    function selectDiscoveredFeed(url, title) {
+      document.getElementById('feedUrl').value = url;
+      document.getElementById('feedName').value = title;
+      document.getElementById('discoveredFeeds').style.display = 'none';
+      document.getElementById('statusMessage').style.display = 'none';
+    }
+
+    // Save feed
+    async function saveFeed(event) {
+      event.preventDefault();
+
+      const id = document.getElementById('feedId').value;
+      const feedType = document.querySelector('input[name="feedType"]:checked').value;
+      const isEmailOnly = feedType === 'email';
+
+      const data = {
+        feed_url: isEmailOnly ? null : document.getElementById('feedUrl').value.trim(),
+        name: document.getElementById('feedName').value.trim(),
+        category: document.getElementById('feedCategory').value || null,
+        fetch_interval_minutes: isEmailOnly ? null : (parseInt(document.getElementById('fetchInterval').value, 10) || 30),
+        enable_email: isEmailOnly, // Flag to enable email subscription on create
+      };
+
+      // Validate: RSS feeds need a URL
+      if (!isEmailOnly && !data.feed_url && !id) {
+        const statusMessage = document.getElementById('statusMessage');
+        statusMessage.style.display = 'block';
+        statusMessage.className = 'status-message error';
+        statusMessage.textContent = 'Please enter a feed URL or discover one from a website';
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveBtn');
+      const statusMessage = document.getElementById('statusMessage');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const url = id ? `/api/admin/feeds/${id}` : '/api/admin/feeds';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to save feed');
+        }
+
+        const result = await response.json();
+
+        // If this was an email-only feed, show the generated email address
+        if (isEmailOnly && result.feed && result.feed.email_slug) {
+          const emailAddress = `${result.feed.email_slug}@updates.agenticadvertising.org`;
+          alert(`Feed created!\n\nSubscribe to newsletters using this email address:\n${emailAddress}`);
+        }
+
+        closeModal();
+        loadFeeds();
+      } catch (error) {
+        console.error('Error saving feed:', error);
+        statusMessage.style.display = 'block';
+        statusMessage.className = 'status-message error';
+        statusMessage.textContent = error.message;
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Feed';
+    }
+
+    // Toggle feed active status
+    async function toggleFeed(id, isActive) {
+      try {
+        const response = await fetch(`/api/admin/feeds/${id}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: isActive })
+        });
+
+        if (!response.ok) throw new Error('Failed to toggle feed');
+        loadFeeds();
+      } catch (error) {
+        console.error('Error toggling feed:', error);
+        alert('Failed to toggle feed: ' + error.message);
+      }
+    }
+
+    // Manual fetch
+    async function fetchFeed(event, id) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+
+      try {
+        const response = await fetch(`/api/admin/feeds/${id}/fetch`, {
+          method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Fetch failed');
+        }
+
+        alert(data.message);
+        loadFeeds();
+      } catch (error) {
+        console.error('Error fetching feed:', error);
+        alert('Fetch failed: ' + error.message);
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Fetch';
+    }
+
+    // Show delete modal from data attributes (safer than inline params)
+    function showDeleteModalFromEvent(event) {
+      const btn = event.currentTarget;
+      const id = parseInt(btn.dataset.feedId, 10);
+      const name = btn.dataset.feedName;
+      showDeleteModal(id, name);
+    }
+
+    // Show delete modal
+    function showDeleteModal(id, name) {
+      deletingFeedId = id;
+      document.getElementById('deleteTitle').textContent = name;
+      document.getElementById('deleteModal').style.display = 'flex';
+    }
+
+    // Close delete modal
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').style.display = 'none';
+      deletingFeedId = null;
+    }
+
+    // Confirm delete
+    async function confirmDelete() {
+      if (!deletingFeedId) return;
+
+      try {
+        const response = await fetch(`/api/admin/feeds/${deletingFeedId}`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete feed');
+
+        closeDeleteModal();
+        loadFeeds();
+      } catch (error) {
+        console.error('Error deleting feed:', error);
+        alert('Failed to delete: ' + error.message);
+      }
+    }
+
+    // Format date helper
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+
+      return date.toLocaleDateString();
+    }
+
+    // Escape HTML helper
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Toggle email subscription for a feed
+    async function toggleEmail(feedId, enable) {
+      try {
+        const response = await fetch(`/api/admin/feeds/${feedId}/email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enable })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to toggle email subscription');
+        }
+
+        const data = await response.json();
+
+        if (enable && data.email_address) {
+          alert(`Email subscription enabled!\n\nSubscribe to newsletters using:\n${data.email_address}`);
+        }
+
+        loadFeeds();
+      } catch (error) {
+        console.error('Error toggling email:', error);
+        alert('Failed to toggle email subscription: ' + error.message);
+      }
+    }
+
+    // Copy email address to clipboard
+    function copyEmail(email) {
+      navigator.clipboard.writeText(email).then(() => {
+        alert('Email address copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = email;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('Email address copied to clipboard!');
+      });
+    }
+
+    // Initialize
+    loadFeeds();
+  </script>
+</body>
+</html>

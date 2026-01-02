@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Admin - Agreements - AdCP Registry</title>
-  <script src="/admin-nav.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -192,7 +193,8 @@
   </style>
 </head>
 <body>
-  <!-- Header injected by admin-nav.js -->
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
 
   <div id="loading" style="text-align: center; padding: 50px; color: var(--color-text-secondary);">
     Loading...

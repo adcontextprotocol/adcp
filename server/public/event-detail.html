@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event | AgenticAdvertising.org</title>
+  <meta name="description" content="Event details from the Agentic Advertising Organization.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <style>
+    body { padding-top: 60px; background: var(--color-bg-page); }
+
+    .event-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .back-link:hover {
+      color: var(--color-brand);
+    }
+
+    .event-hero {
+      background: var(--color-bg-card);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 2rem;
+    }
+
+    .event-hero-image {
+      background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .event-hero-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      max-height: 300px;
+    }
+
+    .event-hero-image .placeholder {
+      color: white;
+      font-size: 4rem;
+      opacity: 0.5;
+    }
+
+    .event-hero-content {
+      padding: 2rem;
+    }
+
+    .event-badges {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .event-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-in_person { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-virtual { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-hybrid { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-type { background: var(--color-gray-100); color: var(--color-gray-700); }
+
+    .event-title {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 1rem;
+    }
+
+    .event-date-location {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .event-info-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      color: var(--color-text-secondary);
+    }
+
+    .event-info-item svg {
+      color: var(--color-brand);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .event-info-item strong {
+      color: var(--color-text-heading);
+      display: block;
+    }
+
+    .event-actions {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.15s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-primary-700);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--color-brand);
+      border: 2px solid var(--color-brand);
+    }
+
+    .btn-outline:hover {
+      background: var(--color-primary-50);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .event-section {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .event-description {
+      color: var(--color-text-secondary);
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+
+    /* Sponsors Section */
+    .sponsors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .sponsor-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+      background: var(--color-gray-50);
+      border-radius: 8px;
+      text-decoration: none;
+      transition: transform 0.15s;
+    }
+
+    .sponsor-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .sponsor-logo {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      margin-bottom: 0.5rem;
+    }
+
+    .sponsor-name {
+      font-size: 0.85rem;
+      color: var(--color-text-heading);
+      text-align: center;
+    }
+
+    .sponsor-tier {
+      font-size: 0.7rem;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Sponsorship CTA */
+    .sponsorship-cta {
+      background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
+      border: 1px solid var(--color-primary-200);
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .sponsorship-cta h3 {
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .sponsorship-cta p {
+      color: var(--color-text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    /* Sponsorship Tiers */
+    .sponsorship-tiers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .tier-card {
+      background: var(--color-bg-card);
+      border: 2px solid var(--color-border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .tier-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: var(--shadow-md);
+    }
+
+    .tier-card.tier-sold-out {
+      opacity: 0.6;
+    }
+
+    .tier-name {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .tier-price {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--color-brand);
+      margin-bottom: 1rem;
+    }
+
+    .tier-benefits {
+      text-align: left;
+      margin-bottom: 1.5rem;
+      color: var(--color-text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .tier-benefits ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .tier-benefits li {
+      padding: 0.35rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .tier-benefits li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--color-success-500);
+      font-weight: bold;
+    }
+
+    .tier-availability {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .tier-availability.limited {
+      color: var(--color-warning-600);
+      font-weight: 500;
+    }
+
+    .tier-availability.sold-out {
+      color: var(--color-error-600);
+      font-weight: 500;
+    }
+
+    .btn-tier {
+      width: 100%;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 4rem;
+      color: var(--color-text-secondary);
+    }
+
+    .error-state {
+      text-align: center;
+      padding: 4rem;
+    }
+
+    .error-state h2 {
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .error-state p {
+      color: var(--color-text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .event-container {
+        padding: 1rem;
+      }
+
+      .event-title {
+        font-size: 1.5rem;
+      }
+
+      .event-hero-content {
+        padding: 1.5rem;
+      }
+
+      .event-date-location {
+        flex-direction: column;
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="event-container">
+    <a href="/events" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Back to Events
+    </a>
+
+    <div id="loading" class="loading">Loading event...</div>
+    <div id="error" class="error-state" style="display: none;">
+      <h2>Event Not Found</h2>
+      <p>The event you're looking for doesn't exist or has been removed.</p>
+      <a href="/events" class="btn btn-primary">View All Events</a>
+    </div>
+    <div id="content" style="display: none;"></div>
+  </div>
+
+  <script>
+    async function loadEvent() {
+      const slug = window.location.pathname.split('/').pop();
+
+      try {
+        const res = await fetch(`/api/events/${slug}`);
+        if (!res.ok) throw new Error('Event not found');
+
+        const data = await res.json();
+        const event = data.event;
+        const sponsors = data.sponsors || [];
+        const registrationCount = data.registration_count || 0;
+
+        document.title = `${event.title} | AgenticAdvertising.org`;
+
+        // Update meta tags
+        updateMetaTags(event);
+
+        renderEvent(event, sponsors, registrationCount);
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading event:', error);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+      }
+    }
+
+    function updateMetaTags(event) {
+      const description = event.short_description || event.description?.substring(0, 160) || '';
+      document.querySelector('meta[name="description"]').content = description;
+
+      // Update OG tags if they exist
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) ogTitle.content = event.title;
+
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) ogDesc.content = description;
+
+      const ogUrl = document.querySelector('meta[property="og:url"]');
+      if (ogUrl) ogUrl.content = `https://agenticadvertising.org/events/${event.slug}`;
+
+      if (event.featured_image_url) {
+        const ogImage = document.querySelector('meta[property="og:image"]');
+        if (ogImage) ogImage.content = event.featured_image_url;
+      }
+    }
+
+    function renderEvent(event, sponsors, registrationCount) {
+      const startDate = new Date(event.start_time);
+      const endDate = event.end_time ? new Date(event.end_time) : null;
+
+      const dateStr = startDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      const timeStr = startDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+
+      const endTimeStr = endDate ? endDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short'
+      }) : '';
+
+      const formatLabel = {
+        'in_person': 'In Person',
+        'virtual': 'Virtual',
+        'hybrid': 'Hybrid'
+      }[event.event_format] || event.event_format;
+
+      const typeLabel = {
+        'summit': 'Summit',
+        'meetup': 'Meetup',
+        'webinar': 'Webinar',
+        'workshop': 'Workshop',
+        'conference': 'Conference',
+        'other': 'Event'
+      }[event.event_type] || event.event_type;
+
+      const isPast = startDate < new Date();
+
+      let html = `
+        <div class="event-hero">
+          <div class="event-hero-image">
+            ${event.featured_image_url
+              ? `<img src="${escapeHtml(event.featured_image_url)}" alt="${escapeHtml(event.title)}">`
+              : '<span class="placeholder">AAO</span>'
+            }
+          </div>
+          <div class="event-hero-content">
+            <div class="event-badges">
+              <span class="event-badge badge-${event.event_format}">${formatLabel}</span>
+              <span class="event-badge badge-type">${typeLabel}</span>
+            </div>
+            <h1 class="event-title">${escapeHtml(event.title)}</h1>
+
+            <div class="event-date-location">
+              <div class="event-info-item">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M5 0v1.25H1.25v17.5h17.5V1.25H15V0h-1.25v1.25h-7.5V0H5zm12.5 6.25H2.5v11.25h15V6.25z"/>
+                </svg>
+                <div>
+                  <strong>${dateStr}</strong>
+                  ${timeStr}${endTimeStr ? ` - ${endTimeStr}` : ''}
+                </div>
+              </div>
+
+              ${event.venue_name || event.venue_city ? `
+                <div class="event-info-item">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 0C6.13 0 3 3.13 3 7c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S8.62 4.5 10 4.5s2.5 1.12 2.5 2.5S11.38 9.5 10 9.5z"/>
+                  </svg>
+                  <div>
+                    ${event.venue_name ? `<strong>${escapeHtml(event.venue_name)}</strong>` : ''}
+                    ${event.venue_address ? escapeHtml(event.venue_address) + '<br>' : ''}
+                    ${event.venue_city ? escapeHtml(event.venue_city) : ''}${event.venue_state ? ', ' + escapeHtml(event.venue_state) : ''}
+                    ${event.venue_country ? '<br>' + escapeHtml(event.venue_country) : ''}
+                  </div>
+                </div>
+              ` : ''}
+
+              ${event.event_format === 'virtual' || event.event_format === 'hybrid' ? `
+                <div class="event-info-item">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M17 3H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 10H4V6h8v7zm5-1l-3-2.5v-2L17 5v7z"/>
+                  </svg>
+                  <div>
+                    <strong>Online</strong>
+                    ${event.virtual_platform ? escapeHtml(event.virtual_platform.replace('_', ' ')) : 'Virtual Event'}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="event-actions">
+              ${isPast ? `
+                <span class="btn btn-outline" style="cursor: default;">Event Has Ended</span>
+              ` : event.luma_url ? `
+                <a href="${escapeHtml(event.luma_url)}" class="btn btn-primary" target="_blank" rel="noopener">
+                  Register Now
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 1l7 7-7 7-1.4-1.4L11.2 9H1V7h10.2L6.6 2.4z"/>
+                  </svg>
+                </a>
+              ` : `
+                <button class="btn btn-primary" onclick="handleRegister()">
+                  Register Now
+                </button>
+              `}
+
+              ${event.sponsorship_enabled && event.stripe_product_id && !isPast ? `
+                <a href="#sponsorship" class="btn btn-outline">Become a Sponsor</a>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Description
+      if (event.description) {
+        html += `
+          <div class="event-section">
+            <h2 class="section-title">About This Event</h2>
+            <div class="event-description">${escapeHtml(event.description)}</div>
+          </div>
+        `;
+      }
+
+      // Sponsors
+      if (sponsors.length > 0) {
+        html += `
+          <div class="event-section">
+            <h2 class="section-title">Sponsors</h2>
+            <div class="sponsors-grid">
+              ${sponsors.map(sponsor => `
+                <a href="${sponsor.organization_website ? escapeHtml(sponsor.organization_website) : '#'}"
+                   class="sponsor-card"
+                   ${sponsor.organization_website ? 'target="_blank" rel="noopener"' : ''}>
+                  ${sponsor.display_logo_url
+                    ? `<img src="${escapeHtml(sponsor.display_logo_url)}" alt="${escapeHtml(sponsor.organization_name)}" class="sponsor-logo">`
+                    : `<div class="sponsor-logo" style="background: var(--color-gray-200); border-radius: 8px;"></div>`
+                  }
+                  <span class="sponsor-name">${escapeHtml(sponsor.organization_name)}</span>
+                  ${sponsor.tier_name ? `<span class="sponsor-tier">${escapeHtml(sponsor.tier_name)}</span>` : ''}
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Sponsorship Tiers - show if stripe_product_id is set
+      if (event.sponsorship_enabled && event.stripe_product_id && !isPast) {
+        const tiers = event.sponsorship_tiers || [];
+
+        if (tiers.length > 0) {
+          html += `
+            <div class="event-section" id="sponsorship">
+              <h2 class="section-title">Sponsorship Opportunities</h2>
+              <p style="color: var(--color-text-secondary); margin-bottom: 1rem;">
+                Support the agentic advertising community and get your brand in front of industry leaders.
+              </p>
+              <div class="sponsorship-tiers">
+                ${tiers.map(tier => {
+                  const price = formatPrice(tier.price_cents);
+                  const benefits = tier.benefits || [];
+                  const maxSponsors = tier.max_sponsors || 0;
+                  // TODO: Get actual sponsor count from API
+                  const currentSponsors = 0;
+                  const spotsLeft = maxSponsors > 0 ? maxSponsors - currentSponsors : null;
+                  const isSoldOut = spotsLeft !== null && spotsLeft <= 0;
+
+                  let availabilityHtml = '';
+                  if (isSoldOut) {
+                    availabilityHtml = '<div class="tier-availability sold-out">Sold Out</div>';
+                  } else if (spotsLeft !== null && spotsLeft <= 3) {
+                    availabilityHtml = `<div class="tier-availability limited">Only ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left!</div>`;
+                  } else if (maxSponsors > 0) {
+                    availabilityHtml = `<div class="tier-availability">${maxSponsors} spots available</div>`;
+                  }
+
+                  return `
+                    <div class="tier-card ${isSoldOut ? 'tier-sold-out' : ''}">
+                      <div class="tier-name">${escapeHtml(tier.name)}</div>
+                      <div class="tier-price">${price}</div>
+                      ${benefits.length > 0 ? `
+                        <div class="tier-benefits">
+                          <ul>
+                            ${benefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+                          </ul>
+                        </div>
+                      ` : ''}
+                      ${availabilityHtml}
+                      ${isSoldOut ? `
+                        <button class="btn btn-outline btn-tier" disabled>Sold Out</button>
+                      ` : `
+                        <button class="btn btn-primary btn-tier" onclick="handleSponsorTier(${JSON.stringify(tier.tier_id)}, ${JSON.stringify(tier.name)}, ${tier.price_cents || 0})">
+                          Select ${escapeHtml(tier.name)}
+                        </button>
+                      `}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+              <p style="margin-top: 1.5rem; text-align: center; color: var(--color-text-muted); font-size: 0.875rem;">
+                Need a custom sponsorship package? <a href="mailto:hello@agenticadvertising.org">Contact us</a>
+              </p>
+            </div>
+          `;
+        } else {
+          // No tiers defined - show generic CTA
+          html += `
+            <div class="event-section" id="sponsorship">
+              <div class="sponsorship-cta">
+                <h3>Become a Sponsor</h3>
+                <p>Support the agentic advertising community and get your brand in front of industry leaders.</p>
+                <a href="mailto:hello@agenticadvertising.org" class="btn btn-primary">Contact Us for Sponsorship</a>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      document.getElementById('content').innerHTML = html;
+    }
+
+    function handleRegister() {
+      // TODO: Implement registration flow
+      alert('Registration coming soon! Check back later.');
+    }
+
+    function handleSponsorTier(tierId, tierName, priceCents) {
+      // For now, redirect to contact - full checkout flow will be implemented later
+      const price = formatPrice(priceCents);
+      const subject = encodeURIComponent(`Summit Sponsorship Inquiry: ${tierName}`);
+      const body = encodeURIComponent(
+        `Hi,\n\nI'm interested in the ${tierName} sponsorship tier (${price}) for the AAO Summit.\n\nPlease send me more information about next steps.\n\nThank you!`
+      );
+      window.location.href = `mailto:hello@agenticadvertising.org?subject=${subject}&body=${body}`;
+    }
+
+    function formatPrice(cents) {
+      if (!cents || cents === 0) return 'Contact us';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(cents / 100);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    loadEvent();
+  </script>
+</body>
+</html>

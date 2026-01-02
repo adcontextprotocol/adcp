@@ -1492,3 +1492,19 @@ a.btn-success:hover {
     padding: var(--space-8) var(--space-6);
   }
 }
+
+/* =============================================================================
+   Utility: Screen Reader Only
+   Visually hidden but accessible to screen readers and search indexers
+   ============================================================================= */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

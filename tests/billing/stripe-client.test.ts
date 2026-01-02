@@ -166,12 +166,13 @@ describe('stripe-client', () => {
       expect(result).toBeNull();
     });
 
-    test('creates customer and returns customer ID', async () => {
+    test('creates customer and returns customer ID when no existing customer', async () => {
       process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 
       const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
+          list: jest.fn().mockResolvedValue({ data: [] }),
           create: jest.fn().mockResolvedValue({
             id: 'cus_new123',
           }),
@@ -188,11 +189,50 @@ describe('stripe-client', () => {
       });
 
       expect(result).toBe('cus_new123');
+      expect(mockStripeInstance.customers.list).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        limit: 1,
+      });
       expect(mockStripeInstance.customers.create).toHaveBeenCalledWith({
         email: 'test@example.com',
         name: 'Test User',
         metadata: { org_id: 'org_123' },
       });
+    });
+
+    test('returns existing customer ID when customer already exists', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customers: {
+          list: jest.fn().mockResolvedValue({
+            data: [{ id: 'cus_existing123', metadata: { existing_key: 'value' } }],
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'cus_existing123' }),
+          create: jest.fn(),
+        },
+      };
+      StripeMock.mockImplementation(() => mockStripeInstance as any);
+
+      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createStripeCustomer({
+        email: 'test@example.com',
+        name: 'Test User',
+        metadata: { org_id: 'org_123' },
+      });
+
+      expect(result).toBe('cus_existing123');
+      expect(mockStripeInstance.customers.list).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        limit: 1,
+      });
+      expect(mockStripeInstance.customers.update).toHaveBeenCalledWith('cus_existing123', {
+        name: 'Test User',
+        metadata: { existing_key: 'value', org_id: 'org_123' },
+      });
+      expect(mockStripeInstance.customers.create).not.toHaveBeenCalled();
     });
 
     test('handles errors and returns null', async () => {
@@ -201,7 +241,7 @@ describe('stripe-client', () => {
       const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
       const mockStripeInstance = {
         customers: {
-          create: jest.fn().mockRejectedValue(new Error('Stripe API error')),
+          list: jest.fn().mockRejectedValue(new Error('Stripe API error')),
         },
       };
       StripeMock.mockImplementation(() => mockStripeInstance as any);

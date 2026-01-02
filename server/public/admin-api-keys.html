@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - API Keys - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-xl);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-6);
+    }
+    .info-box {
+      background: var(--color-primary-50);
+      border: var(--border-1) solid var(--color-primary-200);
+      color: var(--color-primary-700);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .info-box code {
+      background: var(--color-primary-100);
+      padding: var(--space-0.5) var(--space-1);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+    }
+    .code-block {
+      background: var(--color-gray-900);
+      color: var(--color-gray-100);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      overflow-x: auto;
+      margin: var(--space-4) 0;
+    }
+    .code-block .comment {
+      color: var(--color-gray-500);
+    }
+    .code-block .string {
+      color: var(--color-success-400);
+    }
+    .section {
+      margin-bottom: var(--space-6);
+    }
+    .section h2 {
+      font-size: var(--text-lg);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+    .section p {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      line-height: 1.6;
+    }
+    .permissions-list {
+      margin-top: var(--space-4);
+    }
+    .permissions-list h3 {
+      font-size: var(--text-sm);
+      font-weight: 600;
+      margin-bottom: var(--space-2);
+      color: var(--color-text-heading);
+    }
+    .permissions-list ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .permissions-list li {
+      padding: var(--space-1) 0;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .permissions-list li code {
+      background: var(--color-gray-100);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+  </style>
+</head>
+<body>
+  <div id="nav-container"></div>
+
+  <div class="page-with-sidebar">
+    <div id="admin-sidebar"></div>
+
+    <main class="main-content">
+      <div class="container">
+        <div class="card">
+          <h1>API Keys</h1>
+          <p class="subtitle">Programmatic access to the admin API</p>
+
+          <div class="info-box">
+            <strong>How API Keys Work:</strong>
+            <p style="margin: var(--space-2) 0 0 0;">
+              API keys provide programmatic access to admin endpoints without requiring a browser session.
+              Use them in the <code>Authorization: Bearer &lt;key&gt;</code> header.
+            </p>
+          </div>
+
+          <div class="section">
+            <h2>Admin API Key</h2>
+            <p>
+              Set the <code>ADMIN_API_KEY</code> environment variable to enable programmatic admin access.
+              This key grants full admin permissions to all API endpoints.
+            </p>
+
+            <div class="code-block">
+              <span class="comment"># Generate a secure key</span><br>
+              node -e "console.log('aao_' + require('crypto').randomBytes(32).toString('base64url'))"<br><br>
+              <span class="comment"># Add to .env.local</span><br>
+              ADMIN_API_KEY=<span class="string">aao_your_generated_key</span><br><br>
+              <span class="comment"># Use in API requests</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;https://agenticadvertising.org/api/admin/users
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Usage Examples</h2>
+
+            <div class="code-block">
+              <span class="comment"># List all users</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;/api/admin/users<br><br>
+              <span class="comment"># Get organization details</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;/api/admin/organizations<br><br>
+              <span class="comment"># View analytics</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;/api/admin/analytics/dashboard
+            </div>
+          </div>
+
+          <div class="permissions-list">
+            <h3>API Endpoints Available</h3>
+            <ul>
+              <li><code>GET /api/admin/users</code> - List all users</li>
+              <li><code>GET /api/admin/organizations</code> - List organizations</li>
+              <li><code>GET /api/admin/analytics/*</code> - Analytics data</li>
+              <li><code>GET /api/admin/working-groups</code> - Working groups</li>
+              <li><code>POST /api/admin/*</code> - All write operations</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
