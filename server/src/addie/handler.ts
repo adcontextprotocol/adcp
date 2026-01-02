@@ -314,12 +314,12 @@ export async function handleAssistantMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response using Addie's bot token
+  // Send response
   try {
     await sendChannelMessage(channelId, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts,
-    }, true); // useAddieToken = true
+    });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send response');
   }
@@ -433,12 +433,12 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in thread using Addie's bot token
+  // Send response in thread
   try {
     await sendChannelMessage(event.channel, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts || event.ts,
-    }, true); // useAddieToken = true
+    });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send mention response');
   }
@@ -579,7 +579,7 @@ export async function sendAccountLinkedMessage(
     await sendChannelMessage(recentThread.channel_id, {
       text: message,
       thread_ts: recentThread.thread_ts,
-    }, true); // useAddieToken = true
+    });
     logger.info({ slackUserId, channelId: recentThread.channel_id }, 'Addie: Sent account linked message');
     return true;
   } catch (error) {
