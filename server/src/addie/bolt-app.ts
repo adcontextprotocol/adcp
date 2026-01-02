@@ -40,7 +40,17 @@ import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
 } from './mcp/member-tools.js';
-import { isSlackUserAdmin } from './mcp/admin-tools.js';
+import {
+  ADMIN_TOOLS,
+  createAdminToolHandlers,
+  isSlackUserAdmin,
+  isAdmin,
+} from './mcp/admin-tools.js';
+import {
+  EVENT_TOOLS,
+  createEventToolHandlers,
+  canCreateEvents,
+} from './mcp/event-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
@@ -276,13 +286,42 @@ async function buildMessageWithMemberContext(
 }
 
 /**
- * Create user-scoped member tools
+ * Create user-scoped tools based on member context and permissions
+ * Admin users also get access to admin tools
+ * Event creators (admin or committee leads) get access to event tools
  */
-function createUserScopedTools(memberContext: MemberContext | null): RequestTools {
-  const handlers = createMemberToolHandlers(memberContext);
+async function createUserScopedTools(
+  memberContext: MemberContext | null,
+  slackUserId?: string
+): Promise<RequestTools> {
+  const memberHandlers = createMemberToolHandlers(memberContext);
+  const allTools = [...MEMBER_TOOLS];
+  const allHandlers = new Map(memberHandlers);
+
+  // Add admin tools if user is admin
+  if (isAdmin(memberContext)) {
+    const adminHandlers = createAdminToolHandlers(memberContext);
+    allTools.push(...ADMIN_TOOLS);
+    for (const [name, handler] of adminHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Admin tools enabled for this user');
+  }
+
+  // Add event tools if user can create events (admin or committee lead)
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : isAdmin(memberContext);
+  if (canCreate) {
+    const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
+    allTools.push(...EVENT_TOOLS);
+    for (const [name, handler] of eventHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Event tools enabled for this user');
+  }
+
   return {
-    tools: MEMBER_TOOLS,
-    handlers,
+    tools: allTools,
+    handlers: allHandlers,
   };
 }
 
@@ -499,8 +538,8 @@ async function handleUserMessage({
     flag_reason: inputValidation.reason || undefined,
   });
 
-  // Create user-scoped tools
-  const userTools = createUserScopedTools(memberContext);
+  // Create user-scoped tools (includes admin tools if user is admin)
+  const userTools = await createUserScopedTools(memberContext, userId);
 
   // Process with Claude using streaming
   let response;
@@ -852,8 +891,8 @@ async function handleAppMention({
     flag_reason: inputValidation.reason || undefined,
   });
 
-  // Create user-scoped tools
-  const userTools = createUserScopedTools(memberContext);
+  // Create user-scoped tools (includes admin tools if user is admin)
+  const userTools = await createUserScopedTools(memberContext, userId);
 
   // Process with Claude
   let response;
@@ -1311,8 +1350,8 @@ async function handleChannelMessage({
       messageText
     );
 
-    // Generate a response with the specified tools
-    const userTools = createUserScopedTools(memberContext);
+    // Generate a response with the specified tools (includes admin tools if user is admin)
+    const userTools = await createUserScopedTools(memberContext, userId);
     const response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
 
     if (!response.text || response.text.trim().length === 0) {
