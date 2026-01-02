@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
+import { upsertEmailContact } from "../db/contacts-db.js";
 import {
   createCheckoutSession,
   createStripeCustomer,
@@ -636,6 +637,7 @@ export function createEventsRouter(): {
         let created = 0;
         let updated = 0;
         let skipped = 0;
+        let contactsCreated = 0;
         const errors: string[] = [];
 
         for (const row of rows) {
@@ -645,11 +647,27 @@ export function createEventsRouter(): {
               continue;
             }
 
-            const email = row.email.toLowerCase();
+            const email = row.email.toLowerCase().trim();
+            // Basic email validation
+            if (!email.includes('@') || email.length < 5 || !email.includes('.')) {
+              errors.push(`Row ${row.email}: Invalid email format`);
+              skipped++;
+              continue;
+            }
+
             const name = row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim();
             const registrationStatus = mapLumaStatus(row.approval_status);
             const checkedInAt = parseDate(row.checked_in_at);
             const attended = !!checkedInAt;
+
+            // Upsert email contact for domain extraction and org matching
+            const contact = await upsertEmailContact({
+              email,
+              displayName: name || null,
+            });
+            if (contact.isNew) {
+              contactsCreated++;
+            }
 
             // Check for existing registration
             const existingByLuma = existingByLumaId.get(row.api_id);
@@ -657,24 +675,33 @@ export function createEventsRouter(): {
             const existing = existingByLuma || existingByEmailReg;
 
             if (existing) {
-              // Update existing registration with attendance info
+              // Update existing registration with attendance info and contact link
               if (attended && !existing.attended) {
                 await eventsDb.updateRegistration(existing.id, {
                   attended: true,
                   checked_in_at: checkedInAt,
                   luma_guest_id: row.api_id,
                   registration_status: registrationStatus,
+                  email_contact_id: contact.contactId,
                 });
                 updated++;
+              } else if (!existing.email_contact_id) {
+                // Link to contact even if not updating attendance
+                await eventsDb.updateRegistration(existing.id, {
+                  email_contact_id: contact.contactId,
+                });
+                skipped++;
               } else {
                 skipped++;
               }
             } else {
-              // Create new registration
+              // Create new registration with contact link
               const newReg = await eventsDb.createRegistration({
                 event_id: id,
                 email,
                 name: name || undefined,
+                email_contact_id: contact.contactId,
+                organization_id: contact.organizationId || undefined,
                 registration_status: registrationStatus,
                 registration_source: 'import',
                 luma_guest_id: row.api_id,
@@ -702,7 +729,7 @@ export function createEventsRouter(): {
         }
 
         logger.info(
-          { eventId: id, created, updated, skipped, errors: errors.length },
+          { eventId: id, created, updated, skipped, contactsCreated, errors: errors.length },
           "Luma CSV import completed"
         );
 
@@ -713,6 +740,7 @@ export function createEventsRouter(): {
             created,
             updated,
             skipped,
+            contacts_created: contactsCreated,
             errors: errors.length,
           },
           errors: errors.length > 0 ? errors.slice(0, 10) : undefined,

@@ -438,6 +438,7 @@ export class EventsDatabase {
       checked_in_at?: Date;
       registration_status?: RegistrationStatus;
       luma_guest_id?: string;
+      email_contact_id?: string;
     }
   ): Promise<EventRegistration | null> {
     const setClauses: string[] = ['updated_at = NOW()'];
@@ -459,6 +460,10 @@ export class EventsDatabase {
     if (updates.luma_guest_id !== undefined) {
       setClauses.push(`luma_guest_id = $${paramIndex++}`);
       params.push(updates.luma_guest_id);
+    }
+    if (updates.email_contact_id !== undefined) {
+      setClauses.push(`email_contact_id = $${paramIndex++}`);
+      params.push(updates.email_contact_id);
     }
 
     params.push(registrationId);
