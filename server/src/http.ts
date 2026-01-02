@@ -3850,7 +3850,7 @@ export class HTTPServer {
           logger.warn('organization_memberships table not found - run migrations and backfill');
           return res.status(503).json({
             error: 'User search not yet configured',
-            message: 'Run database migrations and then call POST /api/admin/backfill-memberships to populate user data',
+            message: 'Run database migrations and then call POST /api/admin/users/sync-workos to populate user data',
           });
         }
 
@@ -4126,49 +4126,6 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/admin/backfill-memberships - Backfill organization_memberships table from WorkOS
-    // Call this once after setting up the webhook to populate existing data
-    this.app.post('/api/admin/backfill-memberships', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { backfillOrganizationMemberships } = await import('./routes/workos-webhooks.js');
-        const result = await backfillOrganizationMemberships();
-
-        res.json({
-          success: result.errors.length === 0,
-          orgs_processed: result.orgsProcessed,
-          memberships_created: result.membershipsCreated,
-          errors: result.errors,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Backfill memberships error:');
-        res.status(500).json({
-          error: 'Failed to backfill memberships',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/admin/backfill-users - Backfill users table from WorkOS
-    // Call this once after setting up the webhook to populate existing data
-    this.app.post('/api/admin/backfill-users', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { backfillUsers } = await import('./routes/workos-webhooks.js');
-        const result = await backfillUsers();
-
-        res.json({
-          success: result.errors.length === 0,
-          users_processed: result.usersProcessed,
-          users_created: result.usersCreated,
-          errors: result.errors,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Backfill users error:');
-        res.status(500).json({
-          error: 'Failed to backfill users',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
     // GET /api/admin/working-groups/:id/posts - List all posts for a working group
     this.app.get('/api/admin/working-groups/:id/posts', requireAuth, requireAdmin, async (req, res) => {
       try {

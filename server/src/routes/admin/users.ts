@@ -13,7 +13,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
-import { backfillOrganizationMemberships } from '../workos-webhooks.js';
+import { backfillOrganizationMemberships, backfillUsers } from '../workos-webhooks.js';
 
 const logger = createLogger('admin-users-routes');
 
@@ -321,6 +321,27 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Backfill memberships error');
       res.status(500).json({
         error: 'Failed to backfill memberships',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/admin/users/sync-users - Backfill users table from WorkOS
+  // Populates canonical users table with WorkOS user data for engagement tracking
+  router.post('/sync-users', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const result = await backfillUsers();
+
+      res.json({
+        success: result.errors.length === 0,
+        users_processed: result.usersProcessed,
+        users_created: result.usersCreated,
+        errors: result.errors,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Backfill users error');
+      res.status(500).json({
+        error: 'Failed to backfill users',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
