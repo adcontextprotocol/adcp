@@ -224,20 +224,20 @@
       <!-- Metrics Grid -->
       <div class="metrics-grid">
         <div class="metric-card">
-          <div class="metric-label">Total Revenue</div>
-          <div class="metric-value" id="total-revenue">$0</div>
+          <div class="metric-label">Annual Recurring Revenue</div>
+          <div class="metric-value" id="arr">$0</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Active Customers</div>
           <div class="metric-value" id="active-customers">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Monthly Recurring Revenue</div>
-          <div class="metric-value" id="mrr">$0</div>
+          <div class="metric-label">New Bookings (30 days)</div>
+          <div class="metric-value" id="new-bookings">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Total Customers</div>
-          <div class="metric-value" id="total-customers">0</div>
+          <div class="metric-label">Total Revenue</div>
+          <div class="metric-value" id="total-revenue">$0</div>
         </div>
       </div>
 
@@ -265,7 +265,7 @@
             <tr>
               <th>Organization</th>
               <th>Status</th>
-              <th>MRR</th>
+              <th>ARR</th>
               <th>Customer Since</th>
             </tr>
           </thead>
@@ -329,10 +329,10 @@
 
         // Update metrics
         const metrics = data.subscription_metrics || {};
-        document.getElementById('total-revenue').textContent = formatCurrency(metrics.total_revenue || 0);
+        document.getElementById('arr').textContent = formatCurrency(metrics.total_arr || 0);
         document.getElementById('active-customers').textContent = metrics.active_subscriptions || 0;
-        document.getElementById('mrr').textContent = formatCurrency(metrics.mrr || 0);
-        document.getElementById('total-customers').textContent = metrics.total_customers || 0;
+        document.getElementById('new-bookings').textContent = metrics.new_bookings_30d || 0;
+        document.getElementById('total-revenue').textContent = formatCurrency(metrics.total_revenue || 0);
 
         // Populate revenue by month table
         const revenueTable = document.getElementById('revenue-table').querySelector('tbody');
@@ -356,7 +356,7 @@
             <tr>
               <td>${row.company_name || 'N/A'}</td>
               <td><span style="color: ${row.subscription_status === 'active' ? 'var(--color-success-500)' : 'var(--color-text-secondary)'}">${row.subscription_status || 'N/A'}</span></td>
-              <td>${formatCurrency(row.mrr)}</td>
+              <td>${formatCurrency(row.arr)}</td>
               <td>${formatDate(row.customer_since)}</td>
             </tr>
           `).join('');
