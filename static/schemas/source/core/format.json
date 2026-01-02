@@ -246,8 +246,7 @@
               },
               "required": {
                 "type": "boolean",
-                "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory.",
-                "default": false
+                "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory."
               },
               "requirements": {
                 "type": "object",
@@ -255,7 +254,7 @@
                 "additionalProperties": true
               }
             },
-            "required": ["item_type", "asset_id", "asset_type"]
+            "required": ["item_type", "asset_id", "asset_type", "required"]
           },
           {
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
@@ -272,8 +271,7 @@
               },
               "required": {
                 "type": "boolean",
-                "description": "Whether this asset group is required. If true, at least min_count repetitions must be provided.",
-                "default": false
+                "description": "Whether this asset group is required. If true, at least min_count repetitions must be provided."
               },
               "min_count": {
                 "type": "integer",
@@ -318,7 +316,7 @@
                 }
               }
             },
-            "required": ["item_type", "asset_group_id", "min_count", "max_count", "assets"]
+            "required": ["item_type", "asset_group_id", "required", "min_count", "max_count", "assets"]
           }
         ]
       }
