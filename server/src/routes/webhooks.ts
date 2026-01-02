@@ -170,6 +170,21 @@ function getExternalParticipants(
 }
 
 /**
+ * Parse a comma-separated email header into individual addresses
+ * Handles formats like: "John Doe" <john@example.com>, jane@example.com
+ * Splits on commas that aren't inside quoted strings (display names)
+ */
+function parseEmailHeaderList(headerValue: string | undefined): string[] {
+  if (!headerValue) return [];
+  // Split on comma followed by optional space, but not commas inside quoted strings
+  // This regex splits on commas that are followed by text that doesn't have unbalanced quotes
+  return headerValue
+    .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+    .map(addr => addr.trim())
+    .filter(Boolean);
+}
+
+/**
  * Parse email address to extract name and email parts
  * Handles formats like "John Doe <john@example.com>" or just "john@example.com"
  */
@@ -338,10 +353,30 @@ async function ensureContactsForParticipants(
   return contacts;
 }
 
+interface ResendEmailResponse {
+  text?: string;
+  html?: string;
+  headers?: {
+    to?: string;
+    cc?: string;
+    from?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+interface FetchEmailResult {
+  text?: string;
+  html?: string;
+  textLength?: number;
+  originalTo?: string[];
+  originalCc?: string[];
+}
+
 /**
- * Fetch email body from Resend API
+ * Fetch email body and headers from Resend API
+ * The headers contain original TO/CC recipients that aren't in the webhook payload
  */
-async function fetchEmailBody(emailId: string): Promise<{ text?: string; html?: string; textLength?: number } | null> {
+async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null> {
   if (!RESEND_API_KEY) {
     logger.warn('RESEND_API_KEY not configured, cannot fetch email body');
     return null;
@@ -370,9 +405,14 @@ async function fetchEmailBody(emailId: string): Promise<{ text?: string; html?: 
       return null;
     }
 
-    const data = (await response.json()) as { text?: string; html?: string };
+    const data = (await response.json()) as ResendEmailResponse;
     const textLength = data.text?.length || 0;
     const htmlLength = data.html?.length || 0;
+
+    // Parse original recipients from headers (these contain the real TO/CC, not just Resend addresses)
+    // Headers can contain multiple comma-separated addresses like: "John Doe" <john@example.com>, jane@example.com
+    const originalTo = parseEmailHeaderList(data.headers?.to);
+    const originalCc = parseEmailHeaderList(data.headers?.cc);
 
     logger.info({
       emailId,
@@ -381,12 +421,18 @@ async function fetchEmailBody(emailId: string): Promise<{ text?: string; html?: 
       hasHtml: !!data.html,
       textLength,
       htmlLength,
+      hasOriginalTo: originalTo.length > 0,
+      hasOriginalCc: originalCc.length > 0,
+      originalTo,
+      originalCc,
     }, 'Fetched email body from Resend');
 
     return {
       text: data.text,
       html: data.html,
       textLength,
+      originalTo,
+      originalCc,
     };
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -576,8 +622,24 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
 }> {
   const pool = getPool();
 
-  // Get all external participants
-  const participants = getExternalParticipants(data.from, data.to, data.cc);
+  // Fetch email body and original headers first
+  // The Resend API returns original TO/CC in headers, which aren't in the webhook payload
+  const emailBody = await fetchEmailBody(data.email_id);
+
+  // Use original recipients from headers if available, otherwise fall back to webhook data
+  const toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
+  const ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+
+  logger.info({
+    webhookTo: data.to,
+    webhookCc: data.cc,
+    originalTo: emailBody?.originalTo,
+    originalCc: emailBody?.originalCc,
+    usingOriginalRecipients: !!(emailBody?.originalTo?.length || emailBody?.originalCc?.length),
+  }, 'Resolving email recipients');
+
+  // Get all external participants using original recipients
+  const participants = getExternalParticipants(data.from, toAddresses, ccAddresses);
 
   if (participants.length === 0) {
     throw new Error('No external participants found in email');
@@ -595,24 +657,23 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     throw new Error('Failed to create any contacts');
   }
 
-  // Fetch email body
-  const emailBody = await fetchEmailBody(data.email_id);
-
   // Extract insights
   const { insights, method, tokensUsed } = await extractInsightsWithClaude({
     from: data.from,
     subject: data.subject,
     text: emailBody?.text,
-    to: data.to,
-    cc: data.cc,
+    to: toAddresses,
+    cc: ccAddresses,
   });
 
-  // Build metadata with all participants
+  // Build metadata with all participants (include both original and webhook recipients for debugging)
   const metadata = {
     email_id: data.email_id,
     from: data.from,
-    to: data.to,
-    cc: data.cc,
+    to: toAddresses,
+    cc: ccAddresses,
+    webhook_to: data.to,
+    webhook_cc: data.cc,
     has_attachments: (data.attachments?.length || 0) > 0,
     received_at: data.created_at,
     context: 'prospect',
