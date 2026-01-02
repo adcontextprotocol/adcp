@@ -91,6 +91,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // =========================================================================
 
   // GET /api/admin/users/:userId/context - Get member context for a user
+  // Extended to include Addie goal and member insights
   apiRouter.get(
     "/users/:userId/context",
     requireAuth,
@@ -99,6 +100,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
       try {
         const { userId } = req.params;
         const { type } = req.query;
+        const pool = getPool();
 
         let context;
 
@@ -126,7 +128,55 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        res.json(context);
+        // Extend context with Addie goal from unified_contacts_with_goals
+        const workosUserId = context.workos_user?.workos_user_id;
+        const slackUserId = context.slack_user?.slack_user_id;
+
+        // Create extended context object with goal and insights
+        const extendedContext: typeof context & {
+          addie_goal?: { goal_key: string; goal_name: string; reasoning: string };
+          insights?: Array<{ type_key: string; type_name: string; value: string }>;
+        } = { ...context };
+
+        if (workosUserId || slackUserId) {
+          // Get goal from unified contacts view
+          const goalQuery = workosUserId
+            ? `SELECT goal_key, goal_name, goal_reasoning as reasoning
+               FROM unified_contacts_with_goals
+               WHERE workos_user_id = $1
+               LIMIT 1`
+            : `SELECT goal_key, goal_name, goal_reasoning as reasoning
+               FROM unified_contacts_with_goals
+               WHERE slack_user_id = $1 AND contact_type = 'slack_only'
+               LIMIT 1`;
+
+          const goalResult = await pool.query(goalQuery, [workosUserId || slackUserId]);
+          if (goalResult.rows.length > 0) {
+            extendedContext.addie_goal = goalResult.rows[0];
+          }
+
+          // Get member insights
+          const insightsQuery = workosUserId
+            ? `SELECT mi.type_key, it.name as type_name, mi.value
+               FROM member_insights mi
+               LEFT JOIN insight_types it ON it.key = mi.type_key
+               WHERE mi.workos_user_id = $1 AND mi.is_current = TRUE
+               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               LIMIT 10`
+            : `SELECT mi.type_key, it.name as type_name, mi.value
+               FROM member_insights mi
+               LEFT JOIN insight_types it ON it.key = mi.type_key
+               WHERE mi.slack_user_id = $1 AND mi.is_current = TRUE
+               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               LIMIT 10`;
+
+          const insightsResult = await pool.query(insightsQuery, [workosUserId || slackUserId]);
+          if (insightsResult.rows.length > 0) {
+            extendedContext.insights = insightsResult.rows;
+          }
+        }
+
+        res.json(extendedContext);
       } catch (error) {
         logger.error({ err: error }, "Error fetching user context");
         res.status(500).json({

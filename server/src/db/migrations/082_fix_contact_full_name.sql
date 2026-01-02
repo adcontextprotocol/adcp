@@ -176,7 +176,7 @@ CREATE OR REPLACE VIEW unified_contacts_with_goals AS
 SELECT
   uc.*,
   g.goal_key,
-  g.name as goal_name,
+  g.goal_name,
   g.priority as goal_priority,
   g.prompt_template as goal_prompt,
   g.reasoning as goal_reasoning

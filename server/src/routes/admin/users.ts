@@ -2,7 +2,7 @@
  * Admin Users routes module
  *
  * Admin-only routes for managing users:
- * - Unified user list (AAO members + Slack users)
+ * - Unified user list (AAO members + Slack users) with engagement data
  * - Working group memberships export
  * - WorkOS user sync (backfill)
  */
@@ -24,20 +24,23 @@ const logger = createLogger('admin-users-routes');
 export function createAdminUsersRouter(): Router {
   const router = Router();
 
-  // GET /api/admin/users - Unified view of AAO members and Slack users
+  // GET /api/admin/users - Unified view of AAO members and Slack users with engagement
   // Uses local organization_memberships table (synced from WorkOS via webhooks) for fast queries
+  // Also joins users table for engagement scores and goal selection
   router.get('/', requireAuth, requireAdmin, async (req, res) => {
     const startTime = Date.now();
     try {
       const pool = getPool();
       const slackDb = new SlackDatabase();
       const wgDb = new WorkingGroupDatabase();
-      const { search, status, group } = req.query;
+      const { search, status, group, goal, lifecycle } = req.query;
       const searchTerm = typeof search === 'string' ? search.toLowerCase().trim() : '';
       const statusFilter = typeof status === 'string' ? status : '';
       const filterByGroup = typeof group === 'string' ? group : undefined;
+      const filterByGoal = typeof goal === 'string' ? goal : undefined;
+      const filterByLifecycle = typeof lifecycle === 'string' ? lifecycle : undefined;
 
-      // Get all AAO users from local organization_memberships table
+      // Get all AAO users from local organization_memberships table with engagement data
       const aaoUsersResult = await pool.query<{
         workos_user_id: string;
         email: string;
@@ -45,6 +48,12 @@ export function createAdminUsersRouter(): Router {
         last_name: string | null;
         org_id: string;
         org_name: string;
+        engagement_score: number | null;
+        excitement_score: number | null;
+        lifecycle_stage: string | null;
+        goal_key: string | null;
+        goal_name: string | null;
+        last_activity_at: Date | null;
       }>(`
         SELECT DISTINCT ON (om.workos_user_id)
           om.workos_user_id,
@@ -52,9 +61,18 @@ export function createAdminUsersRouter(): Router {
           om.first_name,
           om.last_name,
           om.workos_organization_id AS org_id,
-          o.name AS org_name
+          o.name AS org_name,
+          u.engagement_score,
+          u.excitement_score,
+          u.lifecycle_stage,
+          uc.goal_key,
+          uc.goal_name,
+          GREATEST(sm.last_slack_activity_at, u.updated_at) as last_activity_at
         FROM organization_memberships om
         INNER JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
+        LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+        LEFT JOIN unified_contacts_with_goals uc ON uc.workos_user_id = om.workos_user_id
+        LEFT JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
         ORDER BY om.workos_user_id, o.name
       `);
 
@@ -116,6 +134,13 @@ export function createAdminUsersRouter(): Router {
           slug: string;
           is_private: boolean;
         }>;
+        // Engagement data
+        engagement_score: number | null;
+        excitement_score: number | null;
+        lifecycle_stage: string | null;
+        goal_key: string | null;
+        goal_name: string | null;
+        last_activity_at: Date | null;
       };
 
       const unifiedUsers: UnifiedUser[] = [];
@@ -165,6 +190,12 @@ export function createAdminUsersRouter(): Router {
           if (!hasGroup) continue;
         }
 
+        // Apply goal filter
+        if (filterByGoal && user.goal_key !== filterByGoal) continue;
+
+        // Apply lifecycle filter
+        if (filterByLifecycle && user.lifecycle_stage !== filterByLifecycle) continue;
+
         // Apply search filter
         if (searchTerm) {
           const matches =
@@ -187,8 +218,40 @@ export function createAdminUsersRouter(): Router {
           mapping_status: mappingStatus,
           mapping_source: slackMapping?.mapping_source || null,
           working_groups: workingGroups,
+          // Engagement data
+          engagement_score: user.engagement_score,
+          excitement_score: user.excitement_score,
+          lifecycle_stage: user.lifecycle_stage,
+          goal_key: user.goal_key,
+          goal_name: user.goal_name,
+          last_activity_at: user.last_activity_at,
         });
       }
+
+      // Get Slack-only contacts from unified_contacts_with_goals for engagement data
+      const slackOnlyContactsResult = await pool.query<{
+        slack_user_id: string;
+        engagement_score: number | null;
+        excitement_score: number | null;
+        lifecycle_stage: string | null;
+        goal_key: string | null;
+        goal_name: string | null;
+        last_activity_at: Date | null;
+      }>(`
+        SELECT
+          slack_user_id,
+          engagement_score,
+          excitement_score,
+          lifecycle_stage,
+          goal_key,
+          goal_name,
+          COALESCE(last_slack_activity_at, last_conversation_at) as last_activity_at
+        FROM unified_contacts_with_goals
+        WHERE contact_type = 'slack_only' AND slack_user_id IS NOT NULL
+      `);
+      const slackOnlyEngagement = new Map(
+        slackOnlyContactsResult.rows.map(r => [r.slack_user_id, r])
+      );
 
       // Add Slack-only users (those not linked to any AAO account)
       for (const slackUser of slackMappings) {
@@ -203,7 +266,17 @@ export function createAdminUsersRouter(): Router {
           if (hasAaoMatch) continue;
         }
 
+        // Skip if filtering by group (Slack-only users have no groups)
         if (filterByGroup) continue;
+
+        // Get engagement data for this Slack user
+        const engagement = slackOnlyEngagement.get(slackUser.slack_user_id);
+
+        // Apply goal filter
+        if (filterByGoal && engagement?.goal_key !== filterByGoal) continue;
+
+        // Apply lifecycle filter
+        if (filterByLifecycle && engagement?.lifecycle_stage !== filterByLifecycle) continue;
 
         if (searchTerm) {
           const matches =
@@ -226,6 +299,13 @@ export function createAdminUsersRouter(): Router {
           mapping_status: 'slack_only',
           mapping_source: null,
           working_groups: [],
+          // Engagement data from unified contacts
+          engagement_score: engagement?.engagement_score ?? null,
+          excitement_score: engagement?.excitement_score ?? null,
+          lifecycle_stage: engagement?.lifecycle_stage ?? null,
+          goal_key: engagement?.goal_key ?? null,
+          goal_name: engagement?.goal_name ?? null,
+          last_activity_at: engagement?.last_activity_at ?? null,
         });
       }
 

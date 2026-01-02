@@ -216,6 +216,73 @@
       color: var(--color-primary-700);
     }
 
+    /* Engagement score display */
+    .score-bar {
+      width: 50px;
+      height: 6px;
+      background: var(--color-gray-200);
+      border-radius: 3px;
+      overflow: hidden;
+      display: inline-block;
+      margin-right: var(--space-1);
+      vertical-align: middle;
+    }
+    .score-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+    .score-fill.low { background: var(--color-gray-400); }
+    .score-fill.medium { background: var(--color-warning-500); }
+    .score-fill.high { background: var(--color-success-500); }
+    .score-value {
+      font-weight: var(--font-medium);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+    }
+    .score-na {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      font-style: italic;
+    }
+
+    /* Goal badges */
+    .goal-badge {
+      display: inline-block;
+      padding: 3px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      white-space: nowrap;
+    }
+    .goal-link_account {
+      background: #4A154B20;
+      color: #4A154B;
+    }
+    .goal-membership_pitch {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .goal-drive_engagement {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .goal-drive_value {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .goal-learn_interests {
+      background: #9c27b020;
+      color: #9c27b0;
+    }
+    .goal-deepen_relationship {
+      background: #00968820;
+      color: #009688;
+    }
+    .goal-initial_contact {
+      background: var(--color-gray-200);
+      color: var(--color-text-secondary);
+    }
+
     /* Source indicator */
     .source-icon {
       display: inline-flex;
@@ -531,6 +598,9 @@
             <option value="aao_only">AAO Only</option>
             <option value="slack_only">Slack Only (Unmapped)</option>
           </select>
+          <select id="goalFilter" onchange="loadUsers()">
+            <option value="">All Goals</option>
+          </select>
           <select id="groupFilter" onchange="loadUsers()">
             <option value="">All Working Groups</option>
           </select>
@@ -544,8 +614,8 @@
               <tr>
                 <th>User</th>
                 <th>Organization</th>
-                <th>Status</th>
-                <th>Working Groups</th>
+                <th>Engagement</th>
+                <th>Goal</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -578,14 +648,19 @@
   <script>
     let allUsers = [];
     let allGroups = [];
+    let goalTypes = [];
     let searchTimeout = null;
     let slackConfigured = false;
     let currentStatusFilter = '';
 
     async function init() {
       try {
-        // Load working groups for filter dropdown
-        const groupsResponse = await fetch('/api/admin/working-groups');
+        // Load working groups and goal types in parallel
+        const [groupsResponse, goalsResponse] = await Promise.all([
+          fetch('/api/admin/working-groups'),
+          fetch('/api/admin/goal-types')
+        ]);
+
         if (!groupsResponse.ok) {
           if (groupsResponse.status === 401) {
             window.AdminNav.redirectToLogin();
@@ -595,6 +670,13 @@
         }
         allGroups = await groupsResponse.json();
         populateGroupFilter();
+
+        if (goalsResponse.ok) {
+          goalTypes = await goalsResponse.json();
+          populateGoalFilter();
+        } else {
+          console.error('Failed to load goal types:', goalsResponse.status);
+        }
 
         // Check Slack sync status
         await checkSlackStatus();
@@ -609,6 +691,12 @@
         document.getElementById('loading').innerHTML =
           '<p style="color: var(--color-error-600);">Failed to load users. <a href="/auth/login">Try logging in again</a></p>';
       }
+    }
+
+    function populateGoalFilter() {
+      const select = document.getElementById('goalFilter');
+      select.innerHTML = '<option value="">All Goals</option>' +
+        goalTypes.map(g => `<option value="${g.goal_key}">${escapeHtml(g.name)}</option>`).join('');
     }
 
     async function checkSlackStatus() {
@@ -750,11 +838,13 @@
     async function loadUsers(retryCount = 0) {
       const search = document.getElementById('searchInput').value.trim();
       const statusFilter = document.getElementById('statusFilter').value;
+      const goalFilter = document.getElementById('goalFilter').value;
       const groupFilter = document.getElementById('groupFilter').value;
 
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (statusFilter) params.append('status', statusFilter);
+      if (goalFilter) params.append('goal', goalFilter);
       if (groupFilter) params.append('group', groupFilter);
 
       try {
@@ -799,15 +889,6 @@
       emptyState.style.display = 'none';
 
       tbody.innerHTML = allUsers.map(user => {
-        const groupBadges = (user.working_groups?.length > 0)
-          ? user.working_groups.map(g =>
-              `<a href="/admin/working-groups" class="group-badge ${g.is_private ? 'private' : ''}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</a>`
-            ).join('')
-          : '<span class="no-groups">No groups</span>';
-
-        const statusClass = getStatusClass(user.mapping_status);
-        const statusLabel = getStatusLabel(user.mapping_status);
-
         // Determine source and display appropriately
         const sourceIcon = user.slack_user_id
           ? '<span class="source-icon" title="Has Slack account"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg></span>'
@@ -817,6 +898,14 @@
           ? '<span class="source-icon" title="Has AAO account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>'
           : '';
 
+        // Engagement score display
+        const engagementHtml = renderEngagementScore(user.engagement_score);
+
+        // Goal display
+        const goalHtml = user.goal_key
+          ? `<span class="goal-badge goal-${user.goal_key}">${escapeHtml(user.goal_name || formatGoalKey(user.goal_key))}</span>`
+          : '<span class="score-na">—</span>';
+
         // Actions based on status
         let actions = '';
 
@@ -824,7 +913,7 @@
         const contextUserId = user.workos_user_id || user.slack_user_id;
         const contextType = user.workos_user_id ? 'workos' : 'slack';
         if (contextUserId) {
-          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${contextUserId}', '${contextType}', '${escapeHtml(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View context as Addie sees it">Context</button>`;
+          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${contextUserId}', '${contextType}', '${escapeHtml(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
         }
 
         if (user.mapping_status === 'suggested_match') {
@@ -832,7 +921,7 @@
         } else if (user.mapping_status === 'mapped') {
           actions += `<button class="btn btn-secondary btn-small" onclick="unlinkUser('${user.slack_user_id}')">Unlink</button>`;
         } else if (user.mapping_status === 'slack_only') {
-          actions += `<span class="source-icon">Needs AAO signup</span>`;
+          actions += `<span class="source-icon">Needs signup</span>`;
         }
 
         const displayName = user.name || user.slack_real_name || user.slack_display_name || 'Unknown';
@@ -849,10 +938,10 @@
               <span class="user-org">${escapeHtml(displayOrg) || '<em style="color: var(--color-text-muted);">No org</em>'}</span>
             </td>
             <td>
-              <span class="status-badge ${statusClass}">${statusLabel}</span>
+              ${engagementHtml}
             </td>
             <td>
-              <div class="group-badges">${groupBadges}</div>
+              ${goalHtml}
             </td>
             <td class="action-cell">
               ${actions}
@@ -862,30 +951,17 @@
       }).join('');
     }
 
-    function getStatusClass(status) {
-      switch (status) {
-        case 'mapped': return 'status-mapped';
-        case 'suggested_match': return 'status-suggested';
-        case 'aao_only': return 'status-aao-only';
-        case 'slack_only':
-        case 'unmapped': return 'status-slack-only';
-        default:
-          // If Slack isn't configured, treat as Website Only
-          return slackConfigured ? 'status-unmapped' : 'status-aao-only';
+    function renderEngagementScore(score) {
+      if (score === null || score === undefined) {
+        return '<span class="score-na">—</span>';
       }
+      const level = score >= 50 ? 'high' : (score >= 20 ? 'medium' : 'low');
+      return `<span class="score-bar"><span class="score-fill ${level}" style="width: ${Math.min(score, 100)}%"></span></span><span class="score-value">${score}</span>`;
     }
 
-    function getStatusLabel(status) {
-      switch (status) {
-        case 'mapped': return 'Website + Slack';
-        case 'suggested_match': return 'Can Link (email match)';
-        case 'aao_only': return 'Website Only';
-        case 'slack_only':
-        case 'unmapped': return 'Slack Only';
-        default:
-          // If Slack isn't configured, show as Website user
-          return slackConfigured ? (status || 'Unknown') : 'Website Only';
-      }
+    function formatGoalKey(key) {
+      if (!key) return '';
+      return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     }
 
     function updateStats(stats) {
@@ -987,6 +1063,7 @@
     function clearFilters() {
       document.getElementById('searchInput').value = '';
       document.getElementById('statusFilter').value = '';
+      document.getElementById('goalFilter').value = '';
       document.getElementById('groupFilter').value = '';
       currentStatusFilter = '';
       loadUsers();
@@ -1040,37 +1117,71 @@
     function renderContext(context, userId) {
       let html = '';
 
-      // User Info Section
+      // Addie's Goal Section - Most important, show first
+      if (context.addie_goal) {
+        html += '<div class="context-section" style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="margin-bottom: var(--space-2);">Addie\'s Goal</h3>';
+        html += `<div style="margin-bottom: var(--space-2);">
+          <span class="goal-badge goal-${context.addie_goal.goal_key}" style="font-size: var(--text-sm); padding: var(--space-1) var(--space-3);">
+            ${escapeHtml(context.addie_goal.goal_name || formatGoalKey(context.addie_goal.goal_key))}
+          </span>
+        </div>`;
+        if (context.addie_goal.reasoning) {
+          html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">${escapeHtml(context.addie_goal.reasoning)}</p>`;
+        }
+        html += '</div>';
+      }
+
+      // Identity & Status Section - Compact overview
       html += '<div class="context-section">';
-      html += '<h3>User Info</h3>';
+      html += '<h3>Identity</h3>';
       html += '<div class="context-grid">';
 
       if (context.workos_user) {
         html += renderContextItem('Email', context.workos_user.email);
-        html += renderContextItem('Name', `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim() || 'Not set');
-        html += renderContextItem('WorkOS ID', context.workos_user.workos_user_id, 'muted');
+        const name = `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim();
+        if (name) html += renderContextItem('Name', name);
       }
 
-      if (context.slack_user) {
-        html += renderContextItem('Slack Name', context.slack_user.display_name || 'Not set');
-        html += renderContextItem('Slack Email', context.slack_user.email || 'Not set');
-        html += renderContextItem('Slack ID', context.slack_user.slack_user_id, 'muted');
+      if (context.slack_user && !context.workos_user) {
+        html += renderContextItem('Email', context.slack_user.email || 'Not set');
+        html += renderContextItem('Slack Name', context.slack_user.display_name || context.slack_user.real_name || 'Not set');
       }
 
-      html += renderContextItem('Mapped', context.is_mapped ? 'Yes' : 'No', context.is_mapped ? 'success' : 'muted');
-      html += renderContextItem('Member', context.is_member ? 'Yes' : 'No', context.is_member ? 'success' : 'muted');
-      html += renderContextItem('Slack Linked', context.slack_linked ? 'Yes' : 'No', context.slack_linked ? 'success' : 'muted');
+      // Show account status badges
+      const statusItems = [];
+      if (context.is_member) statusItems.push('<span class="context-badge" style="background: var(--color-success-100); color: var(--color-success-700);">Member</span>');
+      if (context.slack_linked) statusItems.push('<span class="context-badge" style="background: #4A154B20; color: #4A154B;">Slack</span>');
+      if (!context.slack_linked && context.slack_user) statusItems.push('<span class="context-badge" style="background: var(--color-warning-100); color: var(--color-warning-700);">Slack Unlinked</span>');
+
+      if (statusItems.length > 0) {
+        html += `<div class="context-item" style="grid-column: 1 / -1;">
+          <div class="context-item-label">Status</div>
+          <div class="context-badges">${statusItems.join(' ')}</div>
+        </div>`;
+      }
 
       html += '</div></div>';
 
-      // Organization Section
-      if (context.organization) {
+      // Organization & Subscription Section - Combined
+      if (context.organization || context.subscription) {
         html += '<div class="context-section">';
         html += '<h3>Organization</h3>';
         html += '<div class="context-grid">';
-        html += renderContextItem('Name', context.organization.name);
-        html += renderContextItem('Subscription', context.organization.subscription_status || 'None', context.organization.subscription_status === 'active' ? 'success' : 'warning');
-        html += renderContextItem('Org ID', context.organization.workos_organization_id, 'muted');
+        if (context.organization) {
+          html += renderContextItem('Company', context.organization.name);
+          const subStatus = context.organization.subscription_status || 'None';
+          html += renderContextItem('Subscription', subStatus, subStatus === 'active' ? 'success' : 'warning');
+        }
+        if (context.subscription?.product_name) {
+          html += renderContextItem('Plan', context.subscription.product_name);
+        }
+        if (context.org_membership) {
+          html += renderContextItem('Role', context.org_membership.role);
+          if (context.org_membership.joined_at) {
+            html += renderContextItem('Joined', new Date(context.org_membership.joined_at).toLocaleDateString());
+          }
+        }
         html += '</div></div>';
       }
 
@@ -1079,12 +1190,11 @@
         html += '<div class="context-section">';
         html += '<h3>Member Profile</h3>';
         html += '<div class="context-grid">';
-        html += renderContextItem('Display Name', context.member_profile.display_name);
         if (context.member_profile.tagline) {
           html += renderContextItem('Tagline', context.member_profile.tagline);
         }
         if (context.member_profile.headquarters) {
-          html += renderContextItem('Headquarters', context.member_profile.headquarters);
+          html += renderContextItem('Location', context.member_profile.headquarters);
         }
         if (context.member_profile.offerings && context.member_profile.offerings.length > 0) {
           html += `<div class="context-item" style="grid-column: 1 / -1;">
@@ -1095,68 +1205,28 @@
         html += '</div></div>';
       }
 
-      // Subscription Section
-      if (context.subscription) {
-        html += '<div class="context-section">';
-        html += '<h3>Subscription Details</h3>';
-        html += '<div class="context-grid">';
-        html += renderContextItem('Status', context.subscription.status, context.subscription.status === 'active' ? 'success' : 'warning');
-        if (context.subscription.product_name) {
-          html += renderContextItem('Plan', context.subscription.product_name);
-        }
-        if (context.subscription.current_period_end) {
-          html += renderContextItem('Period End', new Date(context.subscription.current_period_end).toLocaleDateString());
-        }
-        if (context.subscription.cancel_at_period_end) {
-          html += renderContextItem('Canceling', 'Yes, at period end', 'warning');
-        }
-        html += '</div></div>';
-      }
+      // Engagement Section - Combined dashboard + slack activity
+      html += '<div class="context-section">';
+      html += '<h3>Activity</h3>';
+      html += '<div class="context-grid">';
 
-      // Org Membership Section
-      if (context.org_membership) {
-        html += '<div class="context-section">';
-        html += '<h3>Organization Membership</h3>';
-        html += '<div class="context-grid">';
-        html += renderContextItem('Role', context.org_membership.role);
-        html += renderContextItem('Team Size', context.org_membership.member_count + ' members');
-        if (context.org_membership.joined_at) {
-          html += renderContextItem('Joined', new Date(context.org_membership.joined_at).toLocaleDateString());
-        }
-        html += '</div></div>';
-      }
-
-      // Engagement Section
       if (context.engagement) {
-        html += '<div class="context-section">';
-        html += '<h3>Engagement (Organization)</h3>';
-        html += '<div class="context-grid">';
         html += renderContextItem('Dashboard Logins (30d)', context.engagement.login_count_30d.toString());
         if (context.engagement.last_login) {
           html += renderContextItem('Last Login', new Date(context.engagement.last_login).toLocaleDateString());
         }
-        html += renderContextItem('Working Groups', context.engagement.working_group_count.toString());
         html += renderContextItem('Email Clicks (30d)', context.engagement.email_click_count_30d.toString());
-        if (context.engagement.interest_level) {
-          html += renderContextItem('Interest Level', context.engagement.interest_level);
-        }
-        html += '</div></div>';
       }
 
-      // Slack Activity Section
       if (context.slack_activity) {
-        html += '<div class="context-section">';
-        html += '<h3>Slack Activity (30 Days)</h3>';
-        html += '<div class="context-grid">';
-        html += renderContextItem('Messages', context.slack_activity.total_messages_30d.toString());
-        html += renderContextItem('Thread Replies', context.slack_activity.total_thread_replies_30d.toString());
-        html += renderContextItem('Reactions', context.slack_activity.total_reactions_30d.toString());
-        html += renderContextItem('Active Days', context.slack_activity.active_days_30d.toString());
+        html += renderContextItem('Slack Messages (30d)', context.slack_activity.total_messages_30d.toString());
+        html += renderContextItem('Reactions Given', context.slack_activity.total_reactions_30d.toString());
         if (context.slack_activity.last_activity_at) {
-          html += renderContextItem('Last Activity', new Date(context.slack_activity.last_activity_at).toLocaleDateString());
+          html += renderContextItem('Last Slack Activity', new Date(context.slack_activity.last_activity_at).toLocaleDateString());
         }
-        html += '</div></div>';
       }
+
+      html += '</div></div>';
 
       // Working Groups Section
       if (context.working_groups && context.working_groups.length > 0) {
@@ -1169,29 +1239,28 @@
         html += '</div></div>';
       }
 
-      // Email Status Section
-      if (context.email_status) {
+      // Insights Section - From collected member insights
+      if (context.insights && context.insights.length > 0) {
         html += '<div class="context-section">';
-        html += '<h3>Email Preferences</h3>';
-        html += '<div class="context-grid">';
-        html += renderContextItem('Global Unsubscribe', context.email_status.global_unsubscribed ? 'Yes' : 'No', context.email_status.global_unsubscribed ? 'warning' : 'success');
-        if (context.email_status.subscribed_categories && context.email_status.subscribed_categories.length > 0) {
-          html += `<div class="context-item" style="grid-column: 1 / -1;">
-            <div class="context-item-label">Subscribed Categories</div>
-            <div class="context-badges">${context.email_status.subscribed_categories.map(c => `<span class="context-badge">${escapeHtml(c)}</span>`).join('')}</div>
+        html += '<h3>Insights</h3>';
+        html += '<div style="max-height: 200px; overflow-y: auto;">';
+        context.insights.forEach(insight => {
+          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+            <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
+            <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
           </div>`;
-        }
+        });
         html += '</div></div>';
       }
 
       // Addie History Section
       if (context.addie_history) {
         html += '<div class="context-section">';
-        html += '<h3>Addie Interaction History</h3>';
+        html += '<h3>Conversation History</h3>';
         html += '<div class="context-grid">';
-        html += renderContextItem('Total Interactions', context.addie_history.total_interactions.toString());
+        html += renderContextItem('Total Conversations', context.addie_history.total_interactions.toString());
         if (context.addie_history.last_interaction_at) {
-          html += renderContextItem('Last Interaction', new Date(context.addie_history.last_interaction_at).toLocaleDateString());
+          html += renderContextItem('Last Conversation', new Date(context.addie_history.last_interaction_at).toLocaleDateString());
         }
         html += '</div>';
         if (context.addie_history.recent_topics && context.addie_history.recent_topics.length > 0) {

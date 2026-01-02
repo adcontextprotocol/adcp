@@ -13,6 +13,7 @@ import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { serveHtmlWithConfig } from '../utils/html-config.js';
 import { InsightsDatabase } from '../db/insights-db.js';
+import { getPool } from '../db/client.js';
 import {
   runOutreachScheduler,
   manualOutreach,
@@ -72,16 +73,26 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     });
   });
 
-  pageRouter.get('/contacts', requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, 'admin-contacts.html').catch((err) => {
-      logger.error({ err }, 'Error serving contacts page');
-      res.status(500).send('Internal server error');
-    });
-  });
-
   // =========================================================================
   // INSIGHT TYPES API
   // =========================================================================
+
+  // GET /api/admin/goal-types - List Addie goal types (for contacts/users filtering)
+  apiRouter.get('/goal-types', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pool = getPool();
+      const result = await pool.query(`
+        SELECT goal_key, name, description, priority
+        FROM addie_goal_types
+        WHERE is_active = TRUE
+        ORDER BY priority DESC
+      `);
+      res.json(result.rows);
+    } catch (error) {
+      logger.error({ err: error }, 'Error listing goal types');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // GET /api/admin/insight-types - List all insight types
   apiRouter.get('/insight-types', requireAuth, requireAdmin, async (req, res) => {
@@ -725,286 +736,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       res.json(eligibility);
     } catch (error) {
       logger.error({ err: error }, 'Error checking outreach eligibility');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =========================================================================
-  // UNIFIED CONTACTS API
-  // =========================================================================
-
-  // Valid contact types for filtering
-  const VALID_CONTACT_TYPES = ['user', 'slack_only', 'email_only', 'linked'] as const;
-
-  // Escape LIKE/ILIKE special characters to prevent pattern injection
-  function escapeLikePattern(pattern: string): string {
-    return pattern.replace(/[%_\\]/g, '\\$&');
-  }
-
-  // GET /api/admin/contacts - List all unified contacts with goals
-  apiRouter.get('/contacts', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-      const offset = parseInt(req.query.offset as string) || 0;
-      const contactType = req.query.contact_type as string;
-      const goalKey = req.query.goal as string;
-      const lifecycleStage = req.query.lifecycle_stage as string;
-      const search = req.query.search as string;
-
-      let whereClause = 'WHERE 1=1';
-      const params: (string | number)[] = [];
-      let paramIndex = 1;
-
-      // Validate and filter by contact type
-      if (contactType) {
-        if (contactType === 'linked') {
-          // 'linked' means AAO members (user type)
-          whereClause += ` AND contact_type = $${paramIndex++}`;
-          params.push('user');
-        } else if (VALID_CONTACT_TYPES.includes(contactType as typeof VALID_CONTACT_TYPES[number])) {
-          whereClause += ` AND contact_type = $${paramIndex++}`;
-          params.push(contactType);
-        }
-        // Invalid contact types are silently ignored (no filter applied)
-      }
-
-      if (goalKey) {
-        whereClause += ` AND goal_key = $${paramIndex++}`;
-        params.push(goalKey);
-      }
-
-      if (lifecycleStage) {
-        whereClause += ` AND lifecycle_stage = $${paramIndex++}`;
-        params.push(lifecycleStage);
-      }
-
-      if (search) {
-        const escapedSearch = escapeLikePattern(search);
-        whereClause += ` AND (
-          email ILIKE $${paramIndex} OR
-          full_name ILIKE $${paramIndex} OR
-          slack_display_name ILIKE $${paramIndex} OR
-          organization_name ILIKE $${paramIndex}
-        )`;
-        params.push(`%${escapedSearch}%`);
-        paramIndex++;
-      }
-
-      const countResult = await insightsDb.query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM unified_contacts_with_goals ${whereClause}`,
-        params
-      );
-
-      const result = await insightsDb.query(
-        `SELECT * FROM unified_contacts_with_goals
-         ${whereClause}
-         ORDER BY
-           CASE contact_type
-             WHEN 'user' THEN 1
-             WHEN 'slack_only' THEN 2
-             WHEN 'email_only' THEN 3
-           END,
-           goal_priority DESC,
-           COALESCE(engagement_score, 0) + COALESCE(excitement_score, 0) DESC
-         LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
-        [...params, limit, offset]
-      );
-
-      res.json({
-        contacts: result.rows,
-        total: parseInt(countResult.rows[0]?.count || '0'),
-        limit,
-        offset,
-      });
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing unified contacts');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/contacts/stats - Get contact statistics
-  apiRouter.get('/contacts/stats', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      // Get totals by contact type
-      const typeStats = await insightsDb.query<{ contact_type: string; count: string }>(`
-        SELECT
-          contact_type,
-          COUNT(*) as count
-        FROM unified_contacts_with_goals
-        GROUP BY contact_type
-      `);
-
-      // Get count ready for membership pitch
-      const pitchReady = await insightsDb.query<{ count: string }>(`
-        SELECT COUNT(*) as count
-        FROM unified_contacts_with_goals
-        WHERE goal_key = 'membership_pitch'
-      `);
-
-      // Calculate totals from type breakdown
-      const byType: Record<string, number> = {};
-      let total = 0;
-      for (const row of typeStats.rows) {
-        byType[row.contact_type] = parseInt(row.count);
-        total += parseInt(row.count);
-      }
-
-      // Return format expected by frontend
-      res.json({
-        total_contacts: total,
-        linked_contacts: byType['user'] || 0,
-        slack_only_contacts: byType['slack_only'] || 0,
-        email_only_contacts: byType['email_only'] || 0,
-        ready_for_pitch: parseInt(pitchReady.rows[0]?.count || '0'),
-      });
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting contact stats');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/contacts/:identifier - Get single contact details
-  // identifier can be workos_user_id, slack_user_id, or email
-  apiRouter.get('/contacts/:identifier', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { identifier } = req.params;
-
-      // Try to find by various identifiers
-      const result = await insightsDb.query(
-        `SELECT * FROM unified_contacts_with_goals
-         WHERE workos_user_id = $1
-            OR slack_user_id = $1
-            OR email = $1
-         LIMIT 1`,
-        [identifier]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Contact not found' });
-      }
-
-      const contact = result.rows[0];
-
-      // Get additional details based on contact type
-      let slackActivity = null;
-      let emailActivity = null;
-      let insights: Record<string, unknown>[] = [];
-      let conversations: Record<string, unknown>[] = [];
-
-      if (contact.slack_user_id) {
-        const slackResult = await insightsDb.query(
-          `SELECT * FROM slack_contact_activity WHERE slack_user_id = $1`,
-          [contact.slack_user_id]
-        );
-        slackActivity = slackResult.rows[0] || null;
-      }
-
-      if (contact.email) {
-        const emailResult = await insightsDb.query(
-          `SELECT * FROM email_contact_activity WHERE email = $1`,
-          [contact.email]
-        );
-        emailActivity = emailResult.rows[0] || null;
-      }
-
-      // Get insights for this contact
-      if (contact.workos_user_id || contact.slack_user_id) {
-        const insightsResult = await insightsDb.query(
-          `SELECT mi.*, mit.name as type_name, mit.description as type_description
-           FROM member_insights mi
-           JOIN member_insight_types mit ON mit.id = mi.insight_type_id
-           WHERE (mi.workos_user_id = $1 OR mi.slack_user_id = $2)
-             AND mi.is_current = TRUE
-           ORDER BY mi.created_at DESC`,
-          [contact.workos_user_id, contact.slack_user_id]
-        );
-        insights = insightsResult.rows;
-      }
-
-      // Get recent conversations
-      if (contact.workos_user_id || contact.slack_user_id) {
-        const convResult = await insightsDb.query(
-          `SELECT thread_id, channel, source, title, created_at, updated_at
-           FROM addie_threads
-           WHERE workos_user_id = $1 OR slack_user_id = $2
-           ORDER BY created_at DESC
-           LIMIT 10`,
-          [contact.workos_user_id, contact.slack_user_id]
-        );
-        conversations = convResult.rows;
-      }
-
-      res.json({
-        contact,
-        slackActivity,
-        emailActivity,
-        insights,
-        conversations,
-      });
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting contact details');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/contacts/:workosUserId/recompute-scores - Recompute scores for a user
-  apiRouter.post('/contacts/:workosUserId/recompute-scores', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { workosUserId } = req.params;
-
-      // Call the score update function
-      await insightsDb.query(
-        `SELECT update_user_scores($1)`,
-        [workosUserId]
-      );
-
-      // Get updated user
-      const result = await insightsDb.query(
-        `SELECT * FROM unified_contacts_with_goals WHERE workos_user_id = $1`,
-        [workosUserId]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      logger.info({ workosUserId, triggeredBy: req.user?.id }, 'Recomputed user scores');
-      res.json(result.rows[0]);
-    } catch (error) {
-      logger.error({ err: error }, 'Error recomputing scores');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/contacts/recompute-all - Recompute scores for all users with stale data
-  apiRouter.post('/contacts/recompute-all', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const maxUsers = parseInt(req.query.max as string) || 100;
-
-      const result = await insightsDb.query<{ update_stale_user_scores: number }>(
-        `SELECT update_stale_user_scores($1)`,
-        [maxUsers]
-      );
-
-      const count = result.rows[0]?.update_stale_user_scores || 0;
-
-      logger.info({ count, triggeredBy: req.user?.id }, 'Recomputed stale user scores');
-      res.json({ updated: count });
-    } catch (error) {
-      logger.error({ err: error }, 'Error recomputing all scores');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/goal-types - List all goal types
-  apiRouter.get('/goal-types', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const result = await insightsDb.query(
-        `SELECT * FROM addie_goal_types ORDER BY priority DESC`
-      );
-      res.json(result.rows);
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing goal types');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
