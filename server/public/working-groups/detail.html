@@ -99,6 +99,17 @@
       font-weight: var(--font-medium);
     }
 
+    .region-badge {
+      font-size: var(--text-sm);
+      padding: var(--space-1) var(--space-3);
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-md);
+      font-weight: var(--font-medium);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
     .group-tagline {
       font-size: var(--text-lg);
       opacity: 0.9;
@@ -613,6 +624,7 @@
         <h1 class="group-title">
           <span id="groupName">Working Group</span>
           <span id="privateBadge" class="private-badge" style="display: none;">Private</span>
+          <span id="regionBadge" class="region-badge" style="display: none;"></span>
         </h1>
         <p id="groupTagline" class="group-tagline" style="display: none;"></p>
       </div>
@@ -875,6 +887,13 @@
 
       if (currentGroup.is_private) {
         document.getElementById('privateBadge').style.display = 'inline';
+      }
+
+      // Region badge for chapters
+      if (currentGroup.committee_type === 'chapter' && currentGroup.region) {
+        const regionBadge = document.getElementById('regionBadge');
+        regionBadge.innerHTML = `📍 ${escapeHtml(currentGroup.region)}`;
+        regionBadge.style.display = 'inline-flex';
       }
 
       // Actions

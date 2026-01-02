@@ -24,6 +24,7 @@ import { setupOrganizationRoutes } from "./admin/organizations.js";
 import { setupEnrichmentRoutes } from "./admin/enrichment.js";
 import { setupDomainRoutes } from "./admin/domains.js";
 import { setupCleanupRoutes } from "./admin/cleanup.js";
+import { setupStatsRoutes } from "./admin/stats.js";
 
 const logger = createLogger("admin-routes");
 
@@ -86,11 +87,15 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // Prospect cleanup routes
   setupCleanupRoutes(apiRouter);
 
+  // Dashboard stats routes
+  setupStatsRoutes(apiRouter);
+
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
   // =========================================================================
 
   // GET /api/admin/users/:userId/context - Get member context for a user
+  // Extended to include Addie goal and member insights
   apiRouter.get(
     "/users/:userId/context",
     requireAuth,
@@ -99,6 +104,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
       try {
         const { userId } = req.params;
         const { type } = req.query;
+        const pool = getPool();
 
         let context;
 
@@ -126,7 +132,96 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        res.json(context);
+        // Extend context with Addie goal from unified_contacts_with_goals
+        const workosUserId = context.workos_user?.workos_user_id;
+        const slackUserId = context.slack_user?.slack_user_id;
+
+        // Create extended context object with goal and insights
+        const extendedContext: typeof context & {
+          addie_goal?: { goal_key: string; goal_name: string; reasoning: string };
+          insights?: Array<{ type_key: string; type_name: string; value: string }>;
+        } = { ...context };
+
+        if (workosUserId || slackUserId) {
+          // Get goal from unified contacts view
+          const goalQuery = workosUserId
+            ? `SELECT goal_key, goal_name, goal_reasoning as reasoning
+               FROM unified_contacts_with_goals
+               WHERE workos_user_id = $1
+               LIMIT 1`
+            : `SELECT goal_key, goal_name, goal_reasoning as reasoning
+               FROM unified_contacts_with_goals
+               WHERE slack_user_id = $1 AND contact_type = 'slack_only'
+               LIMIT 1`;
+
+          const goalResult = await pool.query(goalQuery, [workosUserId || slackUserId]);
+          if (goalResult.rows.length > 0) {
+            extendedContext.addie_goal = goalResult.rows[0];
+          }
+
+          // Get member insights
+          const insightsQuery = workosUserId
+            ? `SELECT mi.type_key, it.name as type_name, mi.value
+               FROM member_insights mi
+               LEFT JOIN insight_types it ON it.key = mi.type_key
+               WHERE mi.workos_user_id = $1 AND mi.is_current = TRUE
+               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               LIMIT 10`
+            : `SELECT mi.type_key, it.name as type_name, mi.value
+               FROM member_insights mi
+               LEFT JOIN insight_types it ON it.key = mi.type_key
+               WHERE mi.slack_user_id = $1 AND mi.is_current = TRUE
+               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               LIMIT 10`;
+
+          const insightsResult = await pool.query(insightsQuery, [workosUserId || slackUserId]);
+          if (insightsResult.rows.length > 0) {
+            extendedContext.insights = insightsResult.rows;
+          }
+
+          // Get outreach info (if Slack user)
+          if (slackUserId) {
+            const outreachQuery = `
+              SELECT
+                sm.last_outreach_at,
+                sm.outreach_opt_out,
+                EXTRACT(EPOCH FROM (NOW() - sm.last_outreach_at)) / 86400 as days_since_outreach,
+                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id) as total_outreach_count,
+                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id AND po.response_received = TRUE) as responses_received
+              FROM slack_user_mappings sm
+              WHERE sm.slack_user_id = $1`;
+            const outreachResult = await pool.query(outreachQuery, [slackUserId]);
+            if (outreachResult.rows.length > 0) {
+              const row = outreachResult.rows[0];
+              (extendedContext as typeof extendedContext & { outreach?: unknown }).outreach = {
+                last_outreach_at: row.last_outreach_at,
+                days_since_outreach: row.days_since_outreach ? Math.floor(row.days_since_outreach) : null,
+                total_outreach_count: parseInt(row.total_outreach_count) || 0,
+                responses_received: parseInt(row.responses_received) || 0,
+                opted_out: row.outreach_opt_out || false,
+              };
+            }
+          }
+
+          // Get recent conversations (threads) for this user
+          const threadsQuery = workosUserId
+            ? `SELECT thread_id, channel, title, message_count, started_at, last_message_at
+               FROM addie_threads
+               WHERE user_type = 'workos' AND user_id = $1
+               ORDER BY last_message_at DESC
+               LIMIT 5`
+            : `SELECT thread_id, channel, title, message_count, started_at, last_message_at
+               FROM addie_threads
+               WHERE user_type = 'slack' AND user_id = $1
+               ORDER BY last_message_at DESC
+               LIMIT 5`;
+          const threadsResult = await pool.query(threadsQuery, [workosUserId || slackUserId]);
+          if (threadsResult.rows.length > 0) {
+            (extendedContext as typeof extendedContext & { recent_conversations?: unknown }).recent_conversations = threadsResult.rows;
+          }
+        }
+
+        res.json(extendedContext);
       } catch (error) {
         logger.error({ err: error }, "Error fetching user context");
         res.status(500).json({

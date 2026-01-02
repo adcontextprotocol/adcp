@@ -9,116 +9,269 @@
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
-    /* =============================================================================
-       Admin Dashboard styles
-       Uses design system variables - see /design-system.css for tokens
-       ============================================================================= */
-
     body {
       background: var(--color-bg-page);
     }
 
-    .header-content {
-      max-width: var(--container-wide);
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .logo {
-      font-size: var(--text-xl);
-      font-weight: var(--font-bold);
-    }
-
     .container {
       max-width: var(--container-wide);
-      margin: var(--space-8) auto;
+      margin: var(--space-6) auto;
       padding: 0 var(--space-5);
     }
 
-    .card {
+    .page-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .page-header h1 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .page-header .subtitle {
+      color: var(--color-text-secondary);
+    }
+
+    /* Goal sections - the 3 pillars */
+    .goal-section {
       background: var(--color-bg-card);
       border-radius: var(--radius-lg);
-      padding: var(--space-6);
+      padding: var(--space-5);
       margin-bottom: var(--space-5);
       box-shadow: var(--shadow-xs);
     }
 
-    h1 {
-      margin-bottom: var(--space-2.5);
-      color: var(--color-text-heading);
-    }
-
-    .subtitle {
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-8);
-    }
-
-    .admin-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: var(--space-5);
-      margin-bottom: var(--space-8);
-    }
-
-    .admin-card {
-      background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      cursor: pointer;
-      transition: var(--transition-all);
-      text-decoration: none;
-      color: inherit;
-      display: block;
-    }
-
-    .admin-card:hover {
-      border-color: var(--color-brand);
-      box-shadow: var(--shadow-primary-md);
-      transform: translateY(-2px);
-    }
-
-    .admin-card-icon {
-      font-size: var(--text-4xl);
+    .goal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: var(--space-4);
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid var(--color-border);
     }
 
-    .admin-card h2 {
+    .goal-title-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .goal-icon {
       font-size: var(--text-xl);
-      margin-bottom: var(--space-2.5);
+    }
+
+    .goal-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
       color: var(--color-text-heading);
     }
 
-    .admin-card p {
+    .goal-subtitle {
+      font-size: var(--text-sm);
       color: var(--color-text-secondary);
-      line-height: var(--leading-normal);
     }
 
-    .stats-grid {
+    /* Trend indicator in header */
+    .trend-badge {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+    }
+
+    .trend-badge.up {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+
+    .trend-badge.down {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+
+    .trend-badge.neutral {
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+    }
+
+    /* Metrics grid inside goal */
+    .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
       gap: var(--space-4);
     }
 
-    .stat-card {
-      background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-5);
+    .metric-card {
+      text-align: center;
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
     }
 
-    .stat-value {
-      font-size: var(--text-4xl);
+    .metric-value {
+      font-size: var(--text-2xl);
       font-weight: var(--font-bold);
       color: var(--color-brand);
-      margin-bottom: var(--space-1);
+      line-height: 1.2;
     }
 
-    .stat-label {
+    .metric-value.muted {
+      color: var(--color-text-muted);
+    }
+
+    .metric-label {
+      font-size: var(--text-xs);
       color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    .metric-trend {
+      font-size: var(--text-xs);
+      margin-top: var(--space-1);
+    }
+
+    .metric-trend.up {
+      color: var(--color-success-600);
+    }
+
+    .metric-trend.down {
+      color: var(--color-error-600);
+    }
+
+    /* Hero metric - larger */
+    .hero-metric {
+      background: var(--gradient-primary);
+      color: white;
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+
+    .hero-metric .metric-value {
+      font-size: var(--text-3xl);
+      color: white;
+    }
+
+    .hero-metric .metric-label {
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .hero-metric .metric-trend {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* Chart section */
+    .chart-section {
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--color-border);
+    }
+
+    .chart-title {
       font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+    }
+
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: var(--space-2);
+      height: 100px;
+    }
+
+    .bar-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .bar {
+      width: 100%;
+      max-width: 40px;
+      background: var(--color-primary-200);
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      transition: height 0.3s ease;
+      min-height: 4px;
+    }
+
+    .bar-column:last-child .bar {
+      background: var(--color-brand);
+    }
+
+    .bar-label {
+      font-size: 10px;
+      color: var(--color-text-muted);
+      text-align: center;
+    }
+
+    .bar-value {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+    }
+
+    /* Funnel visualization */
+    .funnel {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .funnel-stage {
+      text-align: center;
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      min-width: 100px;
+    }
+
+    .funnel-arrow {
+      color: var(--color-text-muted);
+      font-size: var(--text-lg);
+    }
+
+    .funnel-value {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+
+    .funnel-stage.active .funnel-value {
+      color: var(--color-success-600);
+    }
+
+    .funnel-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* Two column for charts */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+    }
+
+    @media (max-width: 768px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+      .funnel {
+        flex-direction: column;
+      }
+      .funnel-arrow {
+        transform: rotate(90deg);
+      }
     }
 
     .loading {
@@ -126,10 +279,30 @@
       padding: var(--space-12);
       color: var(--color-text-secondary);
     }
+
+    /* Addie insight box */
+    .insight-box {
+      background: var(--color-primary-50);
+      border: 1px solid var(--color-primary-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      margin-top: var(--space-4);
+    }
+
+    .insight-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-primary-700);
+      margin-bottom: var(--space-1);
+    }
+
+    .insight-text {
+      font-size: var(--text-sm);
+      color: var(--color-primary-800);
+    }
   </style>
 </head>
 <body>
-  <!-- AAO top navigation -->
   <div id="adcp-nav"></div>
 
   <div id="loading" class="loading">
@@ -138,85 +311,232 @@
 
   <div id="content" style="display: none;">
     <div class="container">
-      <div class="card">
-        <h1>Admin Dashboard</h1>
-        <p class="subtitle">Manage members, agreements, and system settings</p>
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <p class="subtitle">Tracking engagement, funnel health, and revenue</p>
+      </div>
 
-        <h2 style="margin-bottom: 15px; color: var(--color-text-heading);">Quick Stats</h2>
-        <div class="stats-grid" id="statsGrid">
-          <div class="stat-card">
-            <div class="stat-value" id="totalMembers">-</div>
-            <div class="stat-label">Total Members</div>
+      <!-- GOAL 1: ENGAGEMENT -->
+      <div class="goal-section">
+        <div class="goal-header">
+          <div class="goal-title-group">
+            <span class="goal-icon">💬</span>
+            <div>
+              <div class="goal-title">Engagement</div>
+              <div class="goal-subtitle">Are people participating and staying engaged?</div>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-value" id="activeSubscriptions">-</div>
-            <div class="stat-label">Active Subscriptions</div>
+          <div class="trend-badge" id="engagementTrend">
+            <span class="trend-arrow">-</span>
+            <span class="trend-text">-</span>
           </div>
-          <div class="stat-card">
-            <div class="stat-value" id="expiringCount">-</div>
-            <div class="stat-label">Expiring This Month</div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-value" id="activeUsers30d">-</div>
+            <div class="metric-label">Active Users (30d)</div>
+            <div class="metric-trend" id="activeUsersTrend">-</div>
           </div>
-          <div class="stat-card">
-            <div class="stat-value" id="totalRevenue">-</div>
-            <div class="stat-label">Monthly Revenue</div>
+          <div class="metric-card">
+            <div class="metric-value" id="messages30d">-</div>
+            <div class="metric-label">Messages (30d)</div>
+            <div class="metric-trend" id="messagesTrend">-</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="avgEngagement">-</div>
+            <div class="metric-label">Avg Engagement Score</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="champions">-</div>
+            <div class="metric-label">Champions</div>
+          </div>
+        </div>
+
+        <div class="chart-section">
+          <div class="chart-title">Slack Activity by Week</div>
+          <div class="bar-chart" id="slackChart"></div>
+        </div>
+
+        <div class="insight-box">
+          <div class="insight-label">Addie Impact</div>
+          <div class="insight-text">
+            <span id="addieThreads30d">-</span> conversations this month
+            (<span id="addieTrend">-</span> vs last month) ·
+            <span id="addieRating">-</span> avg rating
           </div>
         </div>
       </div>
 
-      <h2 style="margin-bottom: 15px; color: var(--color-text-heading);">Management</h2>
-      <div class="admin-grid">
-        <a href="/admin/members" class="admin-card">
-          <div class="admin-card-icon">👥</div>
-          <h2>Members</h2>
-          <p>View and manage all members, subscriptions, and company details. Export data and track subscription renewals.</p>
-        </a>
+      <!-- GOAL 2: FUNNEL -->
+      <div class="goal-section">
+        <div class="goal-header">
+          <div class="goal-title-group">
+            <span class="goal-icon">📊</span>
+            <div>
+              <div class="goal-title">Funnel</div>
+              <div class="goal-subtitle">Are prospects converting? Pipeline health?</div>
+            </div>
+          </div>
+        </div>
 
-        <a href="/admin/users" class="admin-card">
-          <div class="admin-card-icon">👤</div>
-          <h2>Users</h2>
-          <p>View all individual users across organizations. See working group participation and export membership data.</p>
-        </a>
+        <div class="funnel">
+          <div class="funnel-stage">
+            <div class="funnel-value" id="totalOrgs">-</div>
+            <div class="funnel-label">Total Orgs</div>
+          </div>
+          <span class="funnel-arrow" aria-hidden="true">→</span>
+          <div class="funnel-stage">
+            <div class="funnel-value" id="prospects">-</div>
+            <div class="funnel-label">Prospects</div>
+          </div>
+          <span class="funnel-arrow" aria-hidden="true">→</span>
+          <div class="funnel-stage">
+            <div class="funnel-value" id="engagedProspects">-</div>
+            <div class="funnel-label">Engaged</div>
+          </div>
+          <span class="funnel-arrow" aria-hidden="true">→</span>
+          <div class="funnel-stage">
+            <div class="funnel-value" id="trials">-</div>
+            <div class="funnel-label">Trials</div>
+          </div>
+          <span class="funnel-arrow" aria-hidden="true">→</span>
+          <div class="funnel-stage active">
+            <div class="funnel-value" id="payingOrgs">-</div>
+            <div class="funnel-label">Paying</div>
+          </div>
+        </div>
 
-        <a href="/admin/working-groups" class="admin-card">
-          <div class="admin-card-icon">🏛️</div>
-          <h2>Working Groups</h2>
-          <p>Create and manage working groups. Assign leadership, manage memberships, and configure group settings.</p>
-        </a>
+        <div class="two-col" style="margin-top: var(--space-4);">
+          <div class="metric-card">
+            <div class="metric-value" id="totalUsers">-</div>
+            <div class="metric-label">Total Users</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="activeSubscriptions">-</div>
+            <div class="metric-label">Active Subscriptions</div>
+          </div>
+        </div>
+      </div>
 
-        <a href="/admin/agreements" class="admin-card">
-          <div class="admin-card-icon">📄</div>
-          <h2>Agreements</h2>
-          <p>Create and edit membership agreements, terms of service, and privacy policies. Manage versions and effective dates.</p>
-        </a>
+      <!-- GOAL 3: REVENUE -->
+      <div class="goal-section">
+        <div class="goal-header">
+          <div class="goal-title-group">
+            <span class="goal-icon">💰</span>
+            <div>
+              <div class="goal-title">Revenue</div>
+              <div class="goal-subtitle">Is the business growing?</div>
+            </div>
+          </div>
+          <div class="trend-badge" id="revenueTrend">
+            <span class="trend-arrow">-</span>
+            <span class="trend-text">-</span>
+          </div>
+        </div>
 
-        <a href="/admin/perspectives" class="admin-card">
-          <div class="admin-card-icon">📰</div>
-          <h2>Perspectives</h2>
-          <p>Manage insights, articles, and external links. Create and publish thought leadership content for the Perspectives section.</p>
-        </a>
+        <div class="metrics-grid">
+          <div class="hero-metric">
+            <div class="metric-value" id="arr">-</div>
+            <div class="metric-label">Annual Recurring Revenue</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="mrr">-</div>
+            <div class="metric-label">Monthly Recurring</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="bookings30d">-</div>
+            <div class="metric-label">Bookings (30d)</div>
+            <div class="metric-trend" id="bookingsCount">-</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="monthlyRevenue">-</div>
+            <div class="metric-label">This Month</div>
+            <div class="metric-trend" id="monthlyTrend">-</div>
+          </div>
+        </div>
 
-        <a href="/admin/analytics" class="admin-card">
-          <div class="admin-card-icon">📊</div>
-          <h2>Analytics</h2>
-          <p>View revenue metrics, customer health, subscription analytics, and business intelligence dashboards powered by Metabase.</p>
-        </a>
-
-        <a href="/admin/email" class="admin-card">
-          <div class="admin-card-icon">📧</div>
-          <h2>Email</h2>
-          <p>Manage email templates, send newsletters and announcements. View email engagement stats and manage campaigns.</p>
-        </a>
-
-        <a href="/admin/addie" class="admin-card">
-          <div class="admin-card-icon">🤖</div>
-          <h2>Addie</h2>
-          <p>Configure Addie's behavior, manage operating rules, review interactions, and monitor the AI assistant's knowledge base.</p>
-        </a>
+        <div class="chart-section">
+          <div class="chart-title">Bookings by Month</div>
+          <div class="bar-chart" id="bookingsChart"></div>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
+    function formatNumber(num) {
+      if (!num && num !== 0) return '-';
+      return num.toLocaleString();
+    }
+
+    function formatCurrency(num) {
+      if (!num && num !== 0) return '$0';
+      if (num >= 1000) {
+        return '$' + (num / 1000).toFixed(1) + 'k';
+      }
+      return '$' + num.toLocaleString();
+    }
+
+    function calculateTrend(current, previous) {
+      if (previous === null || previous === undefined || previous === 0) {
+        if (current === 0) {
+          return { direction: 'neutral', percent: 0, text: 'No activity' };
+        }
+        return { direction: 'up', percent: 100, text: 'New activity' };
+      }
+      const change = ((current - previous) / previous) * 100;
+      if (Math.abs(change) < 1) {
+        return { direction: 'neutral', percent: 0, text: 'Flat' };
+      }
+      return {
+        direction: change > 0 ? 'up' : 'down',
+        percent: Math.abs(Math.round(change)),
+        text: `${change > 0 ? '+' : ''}${Math.round(change)}% vs prior period`
+      };
+    }
+
+    function renderTrendBadge(elementId, trend) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+
+      el.className = `trend-badge ${trend.direction}`;
+      const arrow = trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→';
+      el.innerHTML = `<span class="trend-arrow">${arrow}</span><span class="trend-text">${trend.percent}%</span>`;
+    }
+
+    function renderTrendText(elementId, current, previous) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+
+      const trend = calculateTrend(current, previous);
+      el.className = `metric-trend ${trend.direction}`;
+      el.textContent = trend.text;
+    }
+
+    function renderBarChart(containerId, data, valueKey, labelKey, formatFn = formatNumber) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm); text-align: center;">No data available</p>';
+        return;
+      }
+
+      const maxValue = Math.max(...data.map(d => d[valueKey])) || 1;
+
+      container.innerHTML = data.map((d, i) => {
+        const heightPercent = (d[valueKey] / maxValue) * 100;
+        return `
+          <div class="bar-column">
+            <div class="bar-value">${formatFn(d[valueKey])}</div>
+            <div class="bar" style="height: ${Math.max(heightPercent, 4)}%"></div>
+            <div class="bar-label">${d[labelKey]}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
     async function loadStats() {
       try {
         const response = await fetch('/api/admin/stats');
@@ -229,11 +549,67 @@
         }
 
         const stats = await response.json();
+        const trends = stats.trends || {};
 
-        document.getElementById('totalMembers').textContent = stats.total_members || 0;
-        document.getElementById('activeSubscriptions').textContent = stats.active_subscriptions || 0;
-        document.getElementById('expiringCount').textContent = stats.expiring_this_month || 0;
-        document.getElementById('totalRevenue').textContent = stats.monthly_revenue || '$0';
+        // ENGAGEMENT
+        document.getElementById('activeUsers30d').textContent = formatNumber(stats.slack_active_users_30d);
+        document.getElementById('messages30d').textContent = formatNumber(trends.messages?.current || stats.slack_messages_7d * 4);
+        document.getElementById('avgEngagement').textContent = stats.avg_engagement_score || '-';
+        document.getElementById('champions').textContent = formatNumber(stats.champion_users);
+
+        // Engagement trends
+        if (trends.active_users) {
+          renderTrendText('activeUsersTrend', trends.active_users.current, trends.active_users.previous);
+          const engTrend = calculateTrend(trends.active_users.current, trends.active_users.previous);
+          renderTrendBadge('engagementTrend', engTrend);
+        }
+        if (trends.messages) {
+          renderTrendText('messagesTrend', trends.messages.current, trends.messages.previous);
+        }
+
+        // Addie insight
+        document.getElementById('addieThreads30d').textContent = formatNumber(stats.addie_threads_30d);
+        document.getElementById('addieRating').textContent = stats.addie_avg_rating || '-';
+        if (trends.addie_threads) {
+          const addieTrend = calculateTrend(trends.addie_threads.current, trends.addie_threads.previous);
+          document.getElementById('addieTrend').textContent = addieTrend.text;
+        }
+
+        // FUNNEL
+        document.getElementById('totalOrgs').textContent = formatNumber(stats.total_orgs);
+        document.getElementById('prospects').textContent = formatNumber(stats.prospects);
+        document.getElementById('engagedProspects').textContent = formatNumber(stats.engaged_prospects);
+        document.getElementById('trials').textContent = formatNumber(stats.trials);
+        document.getElementById('payingOrgs').textContent = formatNumber(stats.paying_orgs);
+        document.getElementById('totalUsers').textContent = formatNumber(stats.total_users);
+        document.getElementById('activeSubscriptions').textContent = formatNumber(stats.active_subscriptions);
+
+        // REVENUE
+        document.getElementById('arr').textContent = stats.arr || '$0';
+        document.getElementById('mrr').textContent = stats.mrr || '$0';
+        document.getElementById('bookings30d').textContent = stats.bookings_30d_revenue || '$0';
+        document.getElementById('bookingsCount').textContent = `${formatNumber(stats.bookings_30d_count)} transactions`;
+        document.getElementById('monthlyRevenue').textContent = stats.monthly_revenue || '$0';
+
+        // Revenue trends
+        if (trends.revenue) {
+          renderTrendText('monthlyTrend', trends.revenue.current, trends.revenue.previous);
+          const revTrend = calculateTrend(trends.revenue.current, trends.revenue.previous);
+          renderTrendBadge('revenueTrend', revTrend);
+        }
+
+        // Charts
+        if (stats.slack_trend) {
+          const slackData = stats.slack_trend.map(d => ({
+            ...d,
+            week_label: new Date(d.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          }));
+          renderBarChart('slackChart', slackData, 'messages', 'week_label');
+        }
+
+        if (stats.bookings_trend) {
+          renderBarChart('bookingsChart', stats.bookings_trend, 'revenue', 'month', formatCurrency);
+        }
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -244,7 +620,6 @@
       }
     }
 
-    // Initialize
     loadStats();
   </script>
 </body>
