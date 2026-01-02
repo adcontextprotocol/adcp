@@ -1,4 +1,4 @@
--- Migration: 085_seed_committees.sql
+-- Migration: 086_seed_committees.sql
 -- Seed initial committees: industry councils and regional chapters
 
 -- Insert Industry Councils

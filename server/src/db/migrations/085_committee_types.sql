@@ -1,4 +1,4 @@
--- Migration: 084_committee_types.sql
+-- Migration: 085_committee_types.sql
 -- Evolve working_groups into multi-type committees system
 
 -- Add committee_type column with check constraint
