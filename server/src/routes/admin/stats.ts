@@ -46,6 +46,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
         userStats,
         orgStats,
         recentBookings,
+        bookingsByMonth,
+        slackByWeek,
+        engagementTrends,
+        addieTrends,
       ] = await Promise.all([
         // Member counts from organizations
         pool.query(`
@@ -193,6 +197,50 @@ export function setupStatsRoutes(apiRouter: Router): void {
           WHERE revenue_type IN ('subscription_initial', 'subscription_recurring', 'one_time')
             AND paid_at >= CURRENT_DATE - INTERVAL '30 days'
         `),
+
+        // Bookings by month (last 6 months) for trend chart
+        pool.query(`
+          SELECT
+            TO_CHAR(date_trunc('month', paid_at), 'Mon') as month,
+            EXTRACT(MONTH FROM paid_at) as month_num,
+            COUNT(*) as count,
+            COALESCE(SUM(amount_paid), 0) as revenue
+          FROM revenue_events
+          WHERE revenue_type IN ('subscription_initial', 'subscription_recurring', 'one_time')
+            AND paid_at >= date_trunc('month', CURRENT_DATE - INTERVAL '5 months')
+          GROUP BY date_trunc('month', paid_at), TO_CHAR(date_trunc('month', paid_at), 'Mon'), EXTRACT(MONTH FROM paid_at)
+          ORDER BY date_trunc('month', paid_at)
+        `),
+
+        // Slack activity by week (last 8 weeks) for trend chart
+        pool.query(`
+          SELECT
+            date_trunc('week', activity_date)::date as week_start,
+            COALESCE(SUM(message_count), 0) as messages,
+            COUNT(DISTINCT slack_user_id) as active_users
+          FROM slack_activity_daily
+          WHERE activity_date >= CURRENT_DATE - INTERVAL '8 weeks'
+          GROUP BY date_trunc('week', activity_date)
+          ORDER BY week_start
+        `),
+
+        // Engagement trends - current vs previous period (30 days)
+        pool.query(`
+          SELECT
+            COUNT(DISTINCT CASE WHEN activity_date >= CURRENT_DATE - INTERVAL '30 days' THEN slack_user_id END) as active_users_current,
+            COUNT(DISTINCT CASE WHEN activity_date >= CURRENT_DATE - INTERVAL '60 days' AND activity_date < CURRENT_DATE - INTERVAL '30 days' THEN slack_user_id END) as active_users_previous,
+            COALESCE(SUM(CASE WHEN activity_date >= CURRENT_DATE - INTERVAL '30 days' THEN message_count END), 0) as messages_current,
+            COALESCE(SUM(CASE WHEN activity_date >= CURRENT_DATE - INTERVAL '60 days' AND activity_date < CURRENT_DATE - INTERVAL '30 days' THEN message_count END), 0) as messages_previous
+          FROM slack_activity_daily
+        `),
+
+        // Addie engagement trends
+        pool.query(`
+          SELECT
+            COUNT(CASE WHEN started_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as threads_current,
+            COUNT(CASE WHEN started_at >= CURRENT_DATE - INTERVAL '60 days' AND started_at < CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as threads_previous
+          FROM addie_threads
+        `),
       ]);
 
       const members = memberStats.rows[0] || {};
@@ -204,6 +252,8 @@ export function setupStatsRoutes(apiRouter: Router): void {
       const users = userStats.rows[0] || {};
       const orgs = orgStats.rows[0] || {};
       const bookings = recentBookings.rows[0] || {};
+      const engagement = engagementTrends.rows[0] || {};
+      const addieT = addieTrends.rows[0] || {};
 
       res.json({
         // Member stats
@@ -269,6 +319,39 @@ export function setupStatsRoutes(apiRouter: Router): void {
         trials: parseInt(orgs.trials) || 0,
         paying_orgs: parseInt(orgs.paying) || 0,
         engaged_prospects: parseInt(orgs.engaged_prospects) || 0,
+
+        // Trend data for charts
+        bookings_trend: bookingsByMonth.rows.map((row: { month: string; count: string; revenue: string }) => ({
+          month: row.month,
+          count: parseInt(row.count) || 0,
+          revenue: Math.round((parseInt(row.revenue) || 0) / 100), // dollars, not cents
+        })),
+
+        slack_trend: slackByWeek.rows.map((row: { week_start: string; messages: string; active_users: string }) => ({
+          week: row.week_start,
+          messages: parseInt(row.messages) || 0,
+          active_users: parseInt(row.active_users) || 0,
+        })),
+
+        // Period-over-period trends (current 30d vs previous 30d)
+        trends: {
+          active_users: {
+            current: parseInt(engagement.active_users_current) || 0,
+            previous: parseInt(engagement.active_users_previous) || 0,
+          },
+          messages: {
+            current: parseInt(engagement.messages_current) || 0,
+            previous: parseInt(engagement.messages_previous) || 0,
+          },
+          addie_threads: {
+            current: parseInt(addieT.threads_current) || 0,
+            previous: parseInt(addieT.threads_previous) || 0,
+          },
+          revenue: {
+            current: parseInt(revenue.current_month_revenue) || 0,
+            previous: parseInt(revenue.last_month_revenue) || 0,
+          },
+        },
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching admin stats");
