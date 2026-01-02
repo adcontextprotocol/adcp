@@ -455,12 +455,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
 /**
  * Base URL for internal API calls
  * Uses BASE_URL env var in production, falls back to localhost for development
+ * Note: PORT takes precedence over CONDUCTOR_PORT for internal calls (inside Docker, PORT=8080)
  */
 function getBaseUrl(): string {
   if (process.env.BASE_URL) {
     return process.env.BASE_URL;
   }
-  const port = process.env.CONDUCTOR_PORT || process.env.PORT || '3000';
+  // PORT is the internal server port (8080 in Docker), CONDUCTOR_PORT is external mapping
+  const port = process.env.PORT || process.env.CONDUCTOR_PORT || '3000';
   return `http://localhost:${port}`;
 }
 
