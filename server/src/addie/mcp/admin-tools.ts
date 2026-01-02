@@ -648,7 +648,7 @@ export function createAdminToolHandlers(
     const searchPattern = `%${query}%`;
 
     try {
-      // Find the organization by name or domain
+      // Find organizations by name or domain - get up to 5 matches
       const result = await pool.query(
         `SELECT o.*,
                 p.name as parent_name
@@ -661,12 +661,34 @@ export function createAdminToolHandlers(
                 WHEN LOWER(o.name) LIKE LOWER($3) THEN 1
                 ELSE 2 END,
            o.updated_at DESC
-         LIMIT 1`,
+         LIMIT 5`,
         [searchPattern, query, `${query}%`]
       );
 
       if (result.rows.length === 0) {
         return `No organization found matching "${query}". Try searching by company name or domain.`;
+      }
+
+      // If multiple matches, present options to the user
+      if (result.rows.length > 1) {
+        let response = `## Found ${result.rows.length} organizations matching "${query}"\n\n`;
+        response += `Which one would you like to know more about?\n\n`;
+
+        for (let i = 0; i < result.rows.length; i++) {
+          const org = result.rows[i];
+          response += `**${i + 1}. ${org.name}**\n`;
+          if (org.email_domain) response += `   Domain: ${org.email_domain}\n`;
+          if (org.company_type) response += `   Type: ${org.company_type}\n`;
+          if (org.subscription_status === 'active') {
+            response += `   Status: ✅ Member\n`;
+          } else if (org.prospect_status) {
+            response += `   Status: 📋 Prospect (${org.prospect_status})\n`;
+          }
+          response += `\n`;
+        }
+
+        response += `_Reply with the company name or number for full details._`;
+        return response;
       }
 
       const org = result.rows[0];
