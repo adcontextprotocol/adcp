@@ -312,7 +312,7 @@
                       "additionalProperties": true
                     }
                   },
-                  "required": ["asset_id", "asset_type"]
+                  "required": ["asset_id", "asset_type", "required"]
                 }
               }
             },
