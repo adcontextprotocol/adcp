@@ -3850,7 +3850,7 @@ export class HTTPServer {
           logger.warn('organization_memberships table not found - run migrations and backfill');
           return res.status(503).json({
             error: 'User search not yet configured',
-            message: 'Run database migrations and then call POST /api/admin/backfill-memberships to populate user data',
+            message: 'Run database migrations and then call POST /api/admin/users/sync-workos to populate user data',
           });
         }
 

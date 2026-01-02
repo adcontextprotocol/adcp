@@ -235,6 +235,16 @@ export interface OutreachStats {
  * Database operations for member insights and proactive engagement
  */
 export class InsightsDatabase {
+  /**
+   * Execute a raw query (for admin routes that need direct access)
+   */
+  async query<T extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[]
+  ): Promise<{ rows: T[] }> {
+    return query<T>(sql, params);
+  }
+
   // ============== Insight Types ==============
 
   /**
