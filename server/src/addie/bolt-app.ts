@@ -771,6 +771,14 @@ async function handleAppMention({
     rawText = rawText.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
   }
 
+  // Handle empty mentions (just @Addie with no message)
+  // This commonly happens when Addie is added to a channel - provide clear context to Claude
+  const isEmptyMention = rawText.length === 0;
+  const originalUserInput = rawText; // Preserve for audit logging
+  if (isEmptyMention) {
+    rawText = '[Empty mention - user tagged me without a question. Briefly introduce myself and offer help. Do not assume they are new to the channel.]';
+  }
+
   const userId = event.user;
   if (!userId) {
     logger.warn('Addie Bolt: app_mention event missing user');
@@ -880,13 +888,13 @@ async function handleAppMention({
     ? `${threadContext}${messageWithMemberContext}`
     : messageWithMemberContext;
 
-  // Log user message to unified thread
+  // Log user message to unified thread (use original input, not synthetic instruction)
   const userMessageFlagged = inputValidation.flagged;
   await threadService.addMessage({
     thread_id: thread.thread_id,
     role: 'user',
-    content: rawText,
-    content_sanitized: inputValidation.sanitized,
+    content: originalUserInput,
+    content_sanitized: isEmptyMention ? '' : inputValidation.sanitized,
     flagged: userMessageFlagged,
     flag_reason: inputValidation.reason || undefined,
   });
