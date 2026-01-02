@@ -319,6 +319,21 @@ export interface ListMemberProfilesOptions {
 
 export type WorkingGroupStatus = 'active' | 'inactive' | 'archived';
 export type WorkingGroupMembershipStatus = 'active' | 'inactive';
+export type CommitteeType = 'working_group' | 'council' | 'chapter' | 'governance';
+
+export const VALID_COMMITTEE_TYPES: readonly CommitteeType[] = [
+  'working_group',
+  'council',
+  'chapter',
+  'governance',
+] as const;
+
+export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
+  working_group: 'Working Group',
+  council: 'Industry Council',
+  chapter: 'Regional Chapter',
+  governance: 'Governance',
+};
 
 export interface WorkingGroupLeader {
   user_id: string;
@@ -337,6 +352,8 @@ export interface WorkingGroup {
   is_private: boolean;
   status: WorkingGroupStatus;
   display_order: number;
+  committee_type: CommitteeType;
+  region?: string;
   created_at: Date;
   updated_at: Date;
   leaders?: WorkingGroupLeader[];
@@ -366,6 +383,8 @@ export interface CreateWorkingGroupInput {
   is_private?: boolean;
   status?: WorkingGroupStatus;
   display_order?: number;
+  committee_type?: CommitteeType;
+  region?: string;
 }
 
 export interface UpdateWorkingGroupInput {
@@ -377,6 +396,8 @@ export interface UpdateWorkingGroupInput {
   is_private?: boolean;
   status?: WorkingGroupStatus;
   display_order?: number;
+  committee_type?: CommitteeType;
+  region?: string;
 }
 
 export interface WorkingGroupWithMemberCount extends WorkingGroup {

@@ -1340,6 +1340,16 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'working-groups.html');
     });
 
+    // Industry Councils page
+    this.app.get("/councils", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'councils.html');
+    });
+
+    // Regional Chapters page
+    this.app.get("/chapters", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'chapters.html');
+    });
+
     this.app.get("/working-groups/:slug", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'working-groups/detail.html');
     });
@@ -3813,9 +3823,22 @@ export class HTTPServer {
     const workingGroupDb = new WorkingGroupDatabase();
 
     // GET /api/admin/working-groups - List all working groups
+    // Query params:
+    //   type: committee type filter (working_group, council, chapter, governance)
     this.app.get('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
       try {
-        const groups = await workingGroupDb.listWorkingGroups({ includePrivate: true });
+        // Parse committee type filter (admin can see all including governance)
+        const typeParam = req.query.type as string | undefined;
+        let committeeType: 'working_group' | 'council' | 'chapter' | 'governance' | undefined;
+        if (typeParam && ['working_group', 'council', 'chapter', 'governance'].includes(typeParam)) {
+          committeeType = typeParam as typeof committeeType;
+        }
+
+        const groups = await workingGroupDb.listWorkingGroups({
+          includePrivate: true,
+          committee_type: committeeType,
+          // Admin can see governance committees
+        });
         res.json(groups);
       } catch (error) {
         logger.error({ err: error }, 'List working groups error:');
@@ -3889,7 +3912,7 @@ export class HTTPServer {
     this.app.post('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { name, slug, description, slack_channel_url, is_private, status, display_order,
-                leader_user_ids } = req.body;
+                leader_user_ids, committee_type, region } = req.body;
 
         if (!name || !slug) {
           return res.status(400).json({
@@ -3907,6 +3930,17 @@ export class HTTPServer {
           });
         }
 
+        // Validate committee_type if provided
+        if (committee_type && !['working_group', 'council', 'chapter', 'governance'].includes(committee_type)) {
+          return res.status(400).json({
+            error: 'Invalid committee type',
+            message: 'Committee type must be working_group, council, chapter, or governance'
+          });
+        }
+
+        // Region is only valid for chapters - clear it for other types
+        const finalRegion = committee_type === 'chapter' ? region : null;
+
         // Check slug availability
         const slugAvailable = await workingGroupDb.isSlugAvailable(slug);
         if (!slugAvailable) {
@@ -3918,7 +3952,7 @@ export class HTTPServer {
 
         const group = await workingGroupDb.createWorkingGroup({
           name, slug, description, slack_channel_url, is_private, status, display_order,
-          leader_user_ids
+          leader_user_ids, committee_type, region: finalRegion
         });
 
         res.status(201).json(group);
@@ -3936,6 +3970,19 @@ export class HTTPServer {
       try {
         const { id } = req.params;
         const updates = req.body;
+
+        // Validate committee_type if provided
+        if (updates.committee_type && !['working_group', 'council', 'chapter', 'governance'].includes(updates.committee_type)) {
+          return res.status(400).json({
+            error: 'Invalid committee type',
+            message: 'Committee type must be working_group, council, chapter, or governance'
+          });
+        }
+
+        // Region is only valid for chapters - clear it for other types if committee_type is being changed
+        if (updates.committee_type && updates.committee_type !== 'chapter') {
+          updates.region = null;
+        }
 
         const group = await workingGroupDb.updateWorkingGroup(id, updates);
 
@@ -6274,18 +6321,39 @@ Disallow: /api/admin/
     // ========================================
 
     // GET /api/working-groups - List active working groups (public groups for everyone, private for members)
+    // Query params:
+    //   type: committee type filter (working_group, council, chapter, or comma-separated list)
     this.app.get('/api/working-groups', optionalAuth, async (req, res) => {
       try {
         const wgDb = new WorkingGroupDatabase();
         const user = req.user; // May be undefined for anonymous users
 
+        // Parse committee type filter
+        const typeParam = req.query.type as string | undefined;
+        let committeeTypes: ('working_group' | 'council' | 'chapter' | 'governance')[] | undefined;
+        if (typeParam) {
+          const validTypes = ['working_group', 'council', 'chapter', 'governance'] as const;
+          const filtered = typeParam.split(',').filter(t =>
+            validTypes.includes(t as typeof validTypes[number])
+          ) as typeof committeeTypes;
+          committeeTypes = filtered && filtered.length > 0 ? filtered : undefined;
+        }
+
         let groups;
         if (user?.id) {
           // Authenticated user - show public + private groups they're a member of
-          groups = await wgDb.listWorkingGroupsForUser(user.id);
+          groups = await wgDb.listWorkingGroupsForUser(user.id, {
+            committee_type: committeeTypes,
+            excludeGovernance: true, // Always hide governance from public listings
+          });
         } else {
           // Anonymous user - show only public active groups
-          groups = await wgDb.listWorkingGroups({ status: 'active', includePrivate: false });
+          groups = await wgDb.listWorkingGroups({
+            status: 'active',
+            includePrivate: false,
+            committee_type: committeeTypes,
+            excludeGovernance: true, // Always hide governance from public listings
+          });
         }
 
         res.json({ working_groups: groups });

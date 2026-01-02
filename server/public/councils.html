@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Working Groups | AgenticAdvertising.org</title>
-  <meta name="description" content="Collaborative working groups driving the future of agentic advertising standards. Join AAO members in shaping industry protocols.">
+  <title>Industry Councils | AgenticAdvertising.org</title>
+  <meta name="description" content="Industry councils bringing together leaders across advertising verticals to drive agentic advertising adoption.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="canonical" href="https://agenticadvertising.org/working-groups">
+  <link rel="canonical" href="https://agenticadvertising.org/councils">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://agenticadvertising.org/working-groups">
-  <meta property="og:title" content="Working Groups | AgenticAdvertising.org">
-  <meta property="og:description" content="Collaborative working groups driving the future of agentic advertising standards.">
+  <meta property="og:url" content="https://agenticadvertising.org/councils">
+  <meta property="og:title" content="Industry Councils | AgenticAdvertising.org">
+  <meta property="og:description" content="Industry councils bringing together leaders across advertising verticals.">
   <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
   <meta property="og:site_name" content="AgenticAdvertising.org">
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:url" content="https://agenticadvertising.org/working-groups">
-  <meta name="twitter:title" content="Working Groups | AgenticAdvertising.org">
-  <meta name="twitter:description" content="Collaborative working groups driving the future of agentic advertising standards.">
+  <meta name="twitter:url" content="https://agenticadvertising.org/councils">
+  <meta name="twitter:title" content="Industry Councils | AgenticAdvertising.org">
+  <meta name="twitter:description" content="Industry councils bringing together leaders across advertising verticals.">
   <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
 
   <link rel="stylesheet" href="/design-system.css">
@@ -225,50 +225,6 @@
       margin-bottom: var(--space-2);
     }
 
-    /* User's Groups Section */
-    .my-groups-section {
-      background: var(--color-primary-50);
-      border: var(--border-1) solid var(--color-primary-200);
-      border-radius: var(--card-radius);
-      padding: var(--space-6);
-      margin-bottom: var(--space-8);
-    }
-
-    .my-groups-section h2 {
-      font-size: var(--text-xl);
-      color: var(--color-brand);
-      margin-bottom: var(--space-4);
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .my-groups-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-3);
-    }
-
-    .my-group-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2) var(--space-4);
-      background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-primary-300);
-      border-radius: var(--radius-lg);
-      font-size: var(--text-sm);
-      color: var(--color-brand);
-      text-decoration: none;
-      font-weight: var(--font-medium);
-      transition: var(--transition-all);
-    }
-
-    .my-group-tag:hover {
-      background: var(--color-primary-100);
-      border-color: var(--color-brand);
-    }
-
     /* Section Headers */
     .section-header {
       margin-bottom: var(--space-6);
@@ -334,9 +290,9 @@
   {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    "name": "Working Groups",
-    "description": "Collaborative working groups driving the future of agentic advertising standards.",
-    "url": "https://agenticadvertising.org/working-groups",
+    "name": "Industry Councils",
+    "description": "Industry councils bringing together leaders across advertising verticals to drive agentic advertising adoption.",
+    "url": "https://agenticadvertising.org/councils",
     "publisher": {
       "@type": "Organization",
       "name": "AgenticAdvertising.org",
@@ -356,43 +312,27 @@
 
   <!-- Header -->
   <div class="header">
-    <h1>Working Groups</h1>
-    <p class="subtitle">Collaborate with industry leaders to shape the future of agentic advertising</p>
+    <h1>Industry Councils</h1>
+    <p class="subtitle">Driving agentic advertising adoption across industry verticals</p>
   </div>
 
   <div class="container">
-    <!-- User's Groups (shown when logged in and member of groups) -->
-    <div id="my-groups-section" class="my-groups-section" style="display: none;">
-      <h2>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-          <circle cx="9" cy="7" r="4"></circle>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-        Your Working Groups
-      </h2>
-      <div id="my-groups-list" class="my-groups-list">
-        <!-- Populated dynamically -->
-      </div>
-    </div>
-
     <!-- Loading State -->
     <div id="loading" class="loading-state">
-      Loading working groups...
+      Loading councils...
     </div>
 
     <!-- Empty State -->
     <div id="empty-state" class="empty-state" style="display: none;">
-      <h3>No Working Groups Yet</h3>
-      <p>Working groups are being set up. Check back soon!</p>
+      <h3>No Councils Yet</h3>
+      <p>Industry councils are being established. Check back soon!</p>
     </div>
 
-    <!-- All Working Groups Section -->
+    <!-- All Councils Section -->
     <section id="all-groups-section" style="display: none;">
       <div class="section-header">
-        <h2>All Working Groups</h2>
-        <p>Join a working group to contribute to standards development and connect with peers.</p>
+        <h2>All Industry Councils</h2>
+        <p>Industry councils convene stakeholders from specific advertising verticals to accelerate adoption of agentic advertising standards.</p>
       </div>
 
       <div id="groups-grid" class="groups-grid">
@@ -403,7 +343,7 @@
     <!-- Join CTA (for non-members) -->
     <div id="join-cta" class="join-cta" style="display: none;">
       <h2>Want to Get Involved?</h2>
-      <p>Become an AAO member to join working groups and help shape industry standards.</p>
+      <p>Become an AAO member to join industry councils and help shape your vertical's approach to agentic advertising.</p>
       <a href="/membership" class="join-cta-btn">Learn About Membership</a>
     </div>
   </div>
@@ -424,20 +364,11 @@
 
   <script>
     let currentUser = null;
-    let userGroups = [];
     let allGroups = [];
 
     async function init() {
-      // First, check if user is logged in
       await checkAuth();
-
-      // Load all working groups
-      await loadWorkingGroups();
-
-      // If logged in, also load user's groups
-      if (currentUser) {
-        await loadUserGroups();
-      }
+      await loadCouncils();
     }
 
     async function checkAuth() {
@@ -452,7 +383,7 @@
       }
     }
 
-    async function loadWorkingGroups() {
+    async function loadCouncils() {
       const loadingEl = document.getElementById('loading');
       const emptyEl = document.getElementById('empty-state');
       const sectionEl = document.getElementById('all-groups-section');
@@ -460,8 +391,8 @@
       const joinCtaEl = document.getElementById('join-cta');
 
       try {
-        const response = await fetch('/api/working-groups?type=working_group');
-        if (!response.ok) throw new Error('Failed to load working groups');
+        const response = await fetch('/api/working-groups?type=council');
+        if (!response.ok) throw new Error('Failed to load councils');
 
         const data = await response.json();
         allGroups = data.working_groups || [];
@@ -476,45 +407,13 @@
         sectionEl.style.display = 'block';
         gridEl.innerHTML = allGroups.map(group => renderGroupCard(group)).join('');
 
-        // Show join CTA if user is not logged in
         if (!currentUser) {
           joinCtaEl.style.display = 'block';
         }
 
       } catch (error) {
-        console.error('Error loading working groups:', error);
-        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load working groups. Please refresh the page.</p>';
-      }
-    }
-
-    async function loadUserGroups() {
-      const sectionEl = document.getElementById('my-groups-section');
-      const listEl = document.getElementById('my-groups-list');
-
-      try {
-        const response = await fetch('/api/me/working-groups', { credentials: 'include' });
-        if (!response.ok) return;
-
-        const data = await response.json();
-        userGroups = data.working_groups || [];
-
-        if (userGroups.length === 0) return;
-
-        sectionEl.style.display = 'block';
-        listEl.innerHTML = userGroups.map(group => `
-          <a href="/working-groups/${escapeHtml(group.slug)}" class="my-group-tag">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-            ${escapeHtml(group.name)}
-          </a>
-        `).join('');
-
-      } catch (error) {
-        console.error('Error loading user groups:', error);
+        console.error('Error loading councils:', error);
+        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load councils. Please refresh the page.</p>';
       }
     }
 
@@ -559,7 +458,7 @@
               ${group.member_count || 0} member${group.member_count !== 1 ? 's' : ''}
             </span>
             <span class="view-group-btn">
-              View Group
+              View Council
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 18l6-6-6-6"/>
               </svg>
@@ -586,7 +485,6 @@
       return div.innerHTML;
     }
 
-    // Initialize on page load
     init();
   </script>
 </body>
