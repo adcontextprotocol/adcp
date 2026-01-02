@@ -935,8 +935,17 @@
       background: var(--color-gray-100);
       border-radius: var(--radius-sm);
     }
-    .existing-feedback .stars {
-      color: var(--color-warning-500);
+    .existing-feedback .thumbs {
+      font-size: var(--text-sm);
+    }
+    .existing-feedback .rating-source {
+      font-size: var(--text-2xs);
+      color: var(--color-text-muted);
+      opacity: 0.7;
+    }
+    .thumbs-rating {
+      display: flex;
+      gap: var(--space-1);
     }
 
     /* Thread-level feedback panel */
@@ -1610,13 +1619,6 @@
               <button class="rating-btn thumbs-up" onclick="setThreadRating('positive')" id="thread-thumbs-up" title="Thumbs up">
                 <span>👍</span>
               </button>
-            </div>
-            <div class="star-rating" id="thread-star-rating">
-              <button class="star-btn" onclick="setThreadStars(1)" data-star="1">★</button>
-              <button class="star-btn" onclick="setThreadStars(2)" data-star="2">★</button>
-              <button class="star-btn" onclick="setThreadStars(3)" data-star="3">★</button>
-              <button class="star-btn" onclick="setThreadStars(4)" data-star="4">★</button>
-              <button class="star-btn" onclick="setThreadStars(5)" data-star="5">★</button>
             </div>
           </div>
           <textarea
@@ -3209,7 +3211,8 @@
       // Show existing feedback if any
       const existingFeedback = msg.rating ? `
         <div class="existing-feedback">
-          <span class="stars">${'★'.repeat(msg.rating)}${'☆'.repeat(5 - msg.rating)}</span>
+          <span class="thumbs">${msg.rating >= 3 ? '👍' : '👎'}</span>
+          <span class="rating-source">(${escapeHtml(msg.rating_source || 'unknown')})</span>
           ${msg.rating_notes ? `<span title="${escapeHtml(msg.rating_notes)}">"${escapeHtml(msg.rating_notes.substring(0, 30))}${msg.rating_notes.length > 30 ? '...' : ''}"</span>` : ''}
           ${msg.feedback_tags && msg.feedback_tags.length > 0 ? `<span>[${msg.feedback_tags.join(', ')}]</span>` : ''}
         </div>
@@ -3218,8 +3221,9 @@
       // Only show rating controls for assistant messages
       const feedbackControls = msg.role === 'assistant' ? `
         <div class="message-feedback" data-message-id="${msg.message_id}">
-          <div class="star-rating" data-message-id="${msg.message_id}">
-            ${[1,2,3,4,5].map(n => `<button class="star-btn ${msg.rating >= n ? 'filled' : ''}" onclick="setMessageRating('${msg.message_id}', ${n})" data-star="${n}">★</button>`).join('')}
+          <div class="thumbs-rating" data-message-id="${msg.message_id}">
+            <button class="rating-btn thumbs-up ${msg.rating >= 3 ? 'selected' : ''}" onclick="setMessageRating('${msg.message_id}', 5)" title="Good response">👍</button>
+            <button class="rating-btn thumbs-down ${msg.rating && msg.rating < 3 ? 'selected' : ''}" onclick="setMessageRating('${msg.message_id}', 1)" title="Bad response">👎</button>
           </div>
           <button class="feedback-expand-btn" onclick="toggleMessageFeedback('${msg.message_id}')">
             ${msg.rating_notes || (msg.feedback_tags && msg.feedback_tags.length > 0) ? 'Edit notes' : 'Add notes'}
@@ -3488,12 +3492,13 @@
     const pendingMessageFeedback = {};
 
     function setMessageRating(messageId, rating) {
-      // Update UI
-      const starContainer = document.querySelector(`.star-rating[data-message-id="${messageId}"]`);
-      if (starContainer) {
-        starContainer.querySelectorAll('.star-btn').forEach((btn, i) => {
-          btn.classList.toggle('filled', i < rating);
-        });
+      // Update UI - toggle thumbs buttons
+      const thumbsContainer = document.querySelector(`.thumbs-rating[data-message-id="${messageId}"]`);
+      if (thumbsContainer) {
+        const thumbsUp = thumbsContainer.querySelector('.thumbs-up');
+        const thumbsDown = thumbsContainer.querySelector('.thumbs-down');
+        if (thumbsUp) thumbsUp.classList.toggle('selected', rating >= 4);
+        if (thumbsDown) thumbsDown.classList.toggle('selected', rating <= 2);
       }
 
       // Track pending feedback
@@ -3530,9 +3535,12 @@
 
       // Get rating from UI if not already set
       if (!feedback.rating) {
-        const starContainer = document.querySelector(`.star-rating[data-message-id="${messageId}"]`);
-        if (starContainer) {
-          feedback.rating = starContainer.querySelectorAll('.star-btn.filled').length || 3;
+        const thumbsContainer = document.querySelector(`.thumbs-rating[data-message-id="${messageId}"]`);
+        if (thumbsContainer) {
+          const thumbsUp = thumbsContainer.querySelector('.thumbs-up.selected');
+          const thumbsDown = thumbsContainer.querySelector('.thumbs-down.selected');
+          if (thumbsUp) feedback.rating = 5;
+          else if (thumbsDown) feedback.rating = 1;
         }
       }
 
@@ -3601,7 +3609,6 @@
 
     let threadFeedbackState = {
       sentiment: null,
-      rating: null,
       tags: [],
       notes: ''
     };
@@ -3612,15 +3619,6 @@
       // Update UI
       document.getElementById('thread-thumbs-up').classList.toggle('selected', sentiment === 'positive');
       document.getElementById('thread-thumbs-down').classList.toggle('selected', sentiment === 'negative');
-    }
-
-    function setThreadStars(rating) {
-      threadFeedbackState.rating = rating;
-
-      // Update UI
-      document.querySelectorAll('#thread-star-rating .star-btn').forEach((btn, i) => {
-        btn.classList.toggle('filled', i < rating);
-      });
     }
 
     function toggleThreadTag(element) {
@@ -3638,12 +3636,11 @@
     }
 
     function clearThreadFeedback() {
-      threadFeedbackState = { sentiment: null, rating: null, tags: [], notes: '' };
+      threadFeedbackState = { sentiment: null, tags: [], notes: '' };
 
       // Reset UI
       document.getElementById('thread-thumbs-up').classList.remove('selected');
       document.getElementById('thread-thumbs-down').classList.remove('selected');
-      document.querySelectorAll('#thread-star-rating .star-btn').forEach(btn => btn.classList.remove('filled'));
       document.querySelectorAll('#thread-feedback-tags .feedback-tag').forEach(tag => tag.classList.remove('selected'));
       document.getElementById('thread-feedback-notes').value = '';
     }
@@ -3664,15 +3661,12 @@
         return;
       }
 
-      // Use the star rating if set, otherwise derive from sentiment
-      let rating = threadFeedbackState.rating;
-      if (!rating && threadFeedbackState.sentiment) {
-        rating = threadFeedbackState.sentiment === 'positive' ? 4 : 2;
-      }
-      if (!rating) {
-        alert('Please select a rating (stars or thumbs)');
+      // Derive rating from sentiment (thumbs)
+      if (!threadFeedbackState.sentiment) {
+        alert('Please select thumbs up or thumbs down');
         return;
       }
+      const rating = threadFeedbackState.sentiment === 'positive' ? 5 : 1;
 
       try {
         const response = await fetch(`/api/admin/addie/threads/messages/${lastAssistantMsg.message_id}/feedback`, {
