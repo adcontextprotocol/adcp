@@ -8,6 +8,7 @@ import type {
   WorkingGroupWithMemberCount,
   WorkingGroupWithDetails,
   AddWorkingGroupMemberInput,
+  CommitteeType,
 } from '../types.js';
 
 /**
@@ -69,8 +70,8 @@ export class WorkingGroupDatabase {
     const result = await query<WorkingGroup>(
       `INSERT INTO working_groups (
         name, slug, description, slack_channel_url, slack_channel_id,
-        is_private, status, display_order
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        is_private, status, display_order, committee_type, region
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         input.name,
@@ -81,6 +82,8 @@ export class WorkingGroupDatabase {
         input.is_private ?? false,
         input.status ?? 'active',
         input.display_order ?? 0,
+        input.committee_type ?? 'working_group',
+        input.region || null,
       ]
     );
 
@@ -145,6 +148,8 @@ export class WorkingGroupDatabase {
       is_private: 'is_private',
       status: 'status',
       display_order: 'display_order',
+      committee_type: 'committee_type',
+      region: 'region',
     };
 
     const setClauses: string[] = [];
@@ -201,6 +206,8 @@ export class WorkingGroupDatabase {
     status?: string;
     includePrivate?: boolean;
     search?: string;
+    committee_type?: CommitteeType | CommitteeType[];
+    excludeGovernance?: boolean;
   } = {}): Promise<WorkingGroupWithMemberCount[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -219,6 +226,20 @@ export class WorkingGroupDatabase {
       conditions.push(`(wg.name ILIKE $${paramIndex} OR wg.description ILIKE $${paramIndex})`);
       params.push(`%${escapeLikePattern(options.search)}%`);
       paramIndex++;
+    }
+
+    // Filter by committee type
+    if (options.committee_type) {
+      const types = Array.isArray(options.committee_type)
+        ? options.committee_type
+        : [options.committee_type];
+      conditions.push(`wg.committee_type = ANY($${paramIndex++})`);
+      params.push(types);
+    }
+
+    // Exclude governance committees from public listings
+    if (options.excludeGovernance) {
+      conditions.push(`wg.committee_type != 'governance'`);
     }
 
     const whereClause = conditions.length > 0
@@ -250,21 +271,46 @@ export class WorkingGroupDatabase {
   /**
    * List working groups visible to a specific user (public + private they're a member of)
    */
-  async listWorkingGroupsForUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
+  async listWorkingGroupsForUser(userId: string, options: {
+    committee_type?: CommitteeType | CommitteeType[];
+    excludeGovernance?: boolean;
+  } = {}): Promise<WorkingGroupWithMemberCount[]> {
+    const conditions: string[] = [
+      `wg.status = 'active'`,
+      `(wg.is_private = false OR EXISTS (
+        SELECT 1 FROM working_group_memberships wgm
+        WHERE wgm.working_group_id = wg.id
+          AND wgm.workos_user_id = $1
+          AND wgm.status = 'active'
+      ))`,
+    ];
+    const params: unknown[] = [userId];
+    let paramIndex = 2;
+
+    // Filter by committee type
+    if (options.committee_type) {
+      const types = Array.isArray(options.committee_type)
+        ? options.committee_type
+        : [options.committee_type];
+      conditions.push(`wg.committee_type = ANY($${paramIndex++})`);
+      params.push(types);
+    }
+
+    // Exclude governance committees from public listings
+    if (options.excludeGovernance) {
+      conditions.push(`wg.committee_type != 'governance'`);
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
     const result = await query<WorkingGroupWithMemberCount>(
       `SELECT wg.*, COUNT(wgm2.id)::int AS member_count
        FROM working_groups wg
        LEFT JOIN working_group_memberships wgm2 ON wg.id = wgm2.working_group_id AND wgm2.status = 'active'
-       WHERE wg.status = 'active'
-         AND (wg.is_private = false OR EXISTS (
-           SELECT 1 FROM working_group_memberships wgm
-           WHERE wgm.working_group_id = wg.id
-             AND wgm.workos_user_id = $1
-             AND wgm.status = 'active'
-         ))
+       ${whereClause}
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,
-      [userId]
+      params
     );
 
     // Batch fetch leaders for all groups

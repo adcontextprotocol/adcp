@@ -54,14 +54,19 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'list_working_groups',
     description:
-      'List active working groups in AgenticAdvertising.org. Shows public groups to everyone, and includes private groups for members. Use this to help users find groups that match their interests.',
-    usage_hints: 'use for "what groups exist?", browsing available groups',
+      'List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.',
+    usage_hints: 'use for "what groups exist?", browsing available groups, finding councils or chapters',
     input_schema: {
       type: 'object',
       properties: {
         limit: {
           type: 'number',
           description: 'Maximum number of groups to return (default 20, max 50)',
+        },
+        type: {
+          type: 'string',
+          enum: ['working_group', 'council', 'chapter', 'all'],
+          description: 'Filter by committee type. working_group=technical groups, council=industry verticals, chapter=regional groups, all=show all types (default)',
         },
       },
       required: [],
@@ -479,7 +484,15 @@ export function createMemberToolHandlers(
     const requestedLimit = (input.limit as number) || 20;
     const limit = Math.min(Math.max(requestedLimit, 1), 50);
 
-    const result = await callApi('GET', `/api/working-groups?limit=${limit}`, memberContext);
+    // Build query params with optional type filter
+    const typeFilter = input.type as string | undefined;
+    const validTypes = ['working_group', 'council', 'chapter', 'all'];
+    let queryParams = `limit=${limit}`;
+    if (typeFilter && typeFilter !== 'all' && validTypes.includes(typeFilter)) {
+      queryParams += `&type=${encodeURIComponent(typeFilter)}`;
+    }
+
+    const result = await callApi('GET', `/api/working-groups?${queryParams}`, memberContext);
 
     if (!result.ok) {
       return `Failed to fetch working groups: ${result.error}`;
@@ -491,17 +504,30 @@ export function createMemberToolHandlers(
       description: string;
       is_private: boolean;
       member_count: number;
+      committee_type: string;
+      region?: string;
     }>;
 
     if (groups.length === 0) {
-      return 'No active working groups found.';
+      const typeLabel = typeFilter && typeFilter !== 'all' ? ` (type: ${typeFilter})` : '';
+      return `No active committees found${typeLabel}.`;
     }
 
-    let response = `## AgenticAdvertising.org Working Groups\n\n`;
+    // Determine title based on filter
+    const typeLabels: Record<string, string> = {
+      working_group: 'Working Groups',
+      council: 'Industry Councils',
+      chapter: 'Regional Chapters',
+    };
+    const title = typeFilter && typeFilter !== 'all' ? typeLabels[typeFilter] || 'Committees' : 'Committees';
+
+    let response = `## AgenticAdvertising.org ${title}\n\n`;
     groups.forEach((group) => {
       const privacy = group.is_private ? '🔒 Private' : '🌐 Public';
-      response += `### ${group.name}\n`;
-      response += `**Slug:** ${group.slug} | **Members:** ${group.member_count} | ${privacy}\n`;
+      const typeLabel = group.committee_type !== 'working_group' ? ` [${group.committee_type.replace('_', ' ')}]` : '';
+      const regionInfo = group.region ? ` 📍 ${group.region}` : '';
+      response += `### ${group.name}${typeLabel}\n`;
+      response += `**Slug:** ${group.slug} | **Members:** ${group.member_count} | ${privacy}${regionInfo}\n`;
       response += `${group.description || 'No description'}\n\n`;
     });
 

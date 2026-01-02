@@ -159,10 +159,27 @@
       ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/perspectives') ? 'active' : ''}">Perspectives</a>`
       : '';
 
-    // Build working groups link (only on beta site)
-    const workingGroupsUrl = isLocal ? '/working-groups' : 'https://agenticadvertising.org/working-groups';
-    const workingGroupsLink = membershipEnabled
-      ? `<a href="${workingGroupsUrl}" class="navbar__link ${currentPath.startsWith('/working-groups') ? 'active' : ''}">Working Groups</a>`
+    // Build committees dropdown
+    const committeesBaseUrl = isLocal ? '/committees' : 'https://agenticadvertising.org/committees';
+    const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
+    const councilsUrl = `${committeesBaseUrl}?type=council`;
+    const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
+    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups');
+    const committeesDropdown = membershipEnabled
+      ? `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${isCommitteesActive ? 'active' : ''}">
+            Committees
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>
+            <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
+            <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
+            <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
+          </div>
+        </div>`
       : '';
 
     // Always use AAO logo
@@ -187,7 +204,7 @@
               ${aboutAdcpLink}
               ${registryDropdown}
               ${perspectivesLink}
-              ${workingGroupsLink}
+              ${committeesDropdown}
               ${aboutDropdown}
             </div>
           </div>
@@ -213,7 +230,11 @@
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           ${perspectivesLink}
-          ${workingGroupsLink}
+          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Committees</span>` : ''}
+          ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>` : ''}
+          ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
+          ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
+          ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
