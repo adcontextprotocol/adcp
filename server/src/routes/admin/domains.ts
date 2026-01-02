@@ -571,24 +571,50 @@ export function setupDomainRoutes(
 
         const contact = contactResult.rows[0];
 
-        // Get activity history for this contact
+        // Get activity history for this contact (emails + event registrations)
         const activitiesResult = await pool.query(
-          `SELECT
-            eca.id as activity_id,
-            eca.email_id,
-            eca.message_id,
-            eca.subject,
-            eca.direction,
-            eca.insights,
-            eca.metadata,
-            eca.email_date,
-            eca.created_at,
-            eac.role,
-            eac.is_primary
-          FROM email_contact_activities eca
-          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
-          WHERE eac.contact_id = $1
-          ORDER BY eca.email_date DESC`,
+          `SELECT * FROM (
+            -- Email activities
+            SELECT
+              eca.id as activity_id,
+              'email' as activity_type,
+              eca.subject as title,
+              eca.direction as description,
+              eca.insights,
+              eca.metadata,
+              eca.email_date as activity_date,
+              eca.created_at,
+              eac.role,
+              eac.is_primary
+            FROM email_contact_activities eca
+            INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+            WHERE eac.contact_id = $1
+
+            UNION ALL
+
+            -- Event registrations
+            SELECT
+              er.id as activity_id,
+              'event_registration' as activity_type,
+              e.title as title,
+              er.registration_status as description,
+              NULL as insights,
+              jsonb_build_object(
+                'event_id', er.event_id,
+                'event_slug', e.slug,
+                'ticket_type', er.ticket_type,
+                'attended', er.attended,
+                'registration_source', er.registration_source
+              ) as metadata,
+              er.registered_at as activity_date,
+              er.created_at,
+              'registrant' as role,
+              true as is_primary
+            FROM event_registrations er
+            INNER JOIN events e ON e.id = er.event_id
+            WHERE er.email_contact_id = $1
+          ) combined
+          ORDER BY activity_date DESC`,
           [id]
         );
 
@@ -649,24 +675,50 @@ export function setupDomainRoutes(
 
         const contact = contactResult.rows[0];
 
-        // Get activity history for this contact
+        // Get activity history for this contact (emails + event registrations)
         const activitiesResult = await pool.query(
-          `SELECT
-            eca.id as activity_id,
-            eca.email_id,
-            eca.message_id,
-            eca.subject,
-            eca.direction,
-            eca.insights,
-            eca.metadata,
-            eca.email_date,
-            eca.created_at,
-            eac.role,
-            eac.is_primary
-          FROM email_contact_activities eca
-          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
-          WHERE eac.contact_id = $1
-          ORDER BY eca.email_date DESC`,
+          `SELECT * FROM (
+            -- Email activities
+            SELECT
+              eca.id as activity_id,
+              'email' as activity_type,
+              eca.subject as title,
+              eca.direction as description,
+              eca.insights,
+              eca.metadata,
+              eca.email_date as activity_date,
+              eca.created_at,
+              eac.role,
+              eac.is_primary
+            FROM email_contact_activities eca
+            INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+            WHERE eac.contact_id = $1
+
+            UNION ALL
+
+            -- Event registrations
+            SELECT
+              er.id as activity_id,
+              'event_registration' as activity_type,
+              e.title as title,
+              er.registration_status as description,
+              NULL as insights,
+              jsonb_build_object(
+                'event_id', er.event_id,
+                'event_slug', e.slug,
+                'ticket_type', er.ticket_type,
+                'attended', er.attended,
+                'registration_source', er.registration_source
+              ) as metadata,
+              er.registered_at as activity_date,
+              er.created_at,
+              'registrant' as role,
+              true as is_primary
+            FROM event_registrations er
+            INNER JOIN events e ON e.id = er.event_id
+            WHERE er.email_contact_id = $1
+          ) combined
+          ORDER BY activity_date DESC`,
           [contact.id]
         );
 
