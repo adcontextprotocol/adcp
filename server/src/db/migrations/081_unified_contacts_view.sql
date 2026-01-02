@@ -172,7 +172,12 @@ SELECT
   'user' as contact_type,
   u.workos_user_id,
   u.email,
-  COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '') as full_name,
+  COALESCE(
+    NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+    sm.slack_real_name,
+    sm.slack_display_name,
+    SPLIT_PART(u.email, '@', 1)
+  ) as full_name,
   u.first_name,
   u.last_name,
 
