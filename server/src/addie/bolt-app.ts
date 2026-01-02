@@ -1179,6 +1179,213 @@ async function indexChannelMessage(
 }
 
 /**
+ * Handle direct messages (DMs) to Addie
+ *
+ * When a user DMs Addie directly (not through the Assistant flow), this handler
+ * processes the message and responds. This provides a simpler DM experience
+ * similar to chatting with a human user.
+ */
+async function handleDirectMessage(
+  event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string },
+  _context: { botUserId?: string }
+): Promise<void> {
+  if (!claudeClient || !boltApp) {
+    logger.warn('Addie Bolt: Not initialized for DM handling');
+    return;
+  }
+
+  // Skip bot messages to prevent loops (Addie talking to herself)
+  if (event.bot_id) {
+    logger.debug({ botId: event.bot_id }, 'Addie Bolt: Ignoring DM from bot');
+    return;
+  }
+
+  const userId = event.user;
+  const messageText = event.text;
+  const channelId = event.channel;
+  const threadTs = event.thread_ts || event.ts;
+
+  if (!userId || !messageText) {
+    logger.debug('Addie Bolt: Ignoring DM without user or text');
+    return;
+  }
+
+  const startTime = Date.now();
+  const threadService = getThreadService();
+
+  // Build external ID for Slack DMs: channel_id:thread_ts
+  const externalId = `${channelId}:${threadTs}`;
+
+  // Sanitize input
+  const inputValidation = sanitizeInput(messageText);
+
+  logger.info({ userId, channelId }, 'Addie Bolt: Processing direct message');
+
+  // Get member context
+  let memberContext: MemberContext | null = null;
+  try {
+    memberContext = await getMemberContext(userId);
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for DM');
+  }
+
+  // Get or create unified thread
+  const thread = await threadService.getOrCreateThread({
+    channel: 'slack',
+    external_id: externalId,
+    user_type: 'slack',
+    user_id: userId,
+    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    context: {
+      channel_type: 'im',
+    },
+  });
+
+  // Fetch conversation history from database for context
+  const MAX_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for DM'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch DM conversation history');
+  }
+
+  // Build message with member context
+  // Note: No thread context is passed for DMs since there's no "viewing channel" context
+  // like in the Assistant flow. DMs are direct conversations without channel context.
+  const { message: messageWithContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
+    userId,
+    inputValidation.sanitized
+  );
+  if (!memberContext && updatedMemberContext) {
+    memberContext = updatedMemberContext;
+  }
+
+  // Log user message to unified thread
+  const userMessageFlagged = inputValidation.flagged;
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'user',
+    content: messageText,
+    content_sanitized: inputValidation.sanitized,
+    flagged: userMessageFlagged,
+    flag_reason: inputValidation.reason || undefined,
+  });
+
+  // Create user-scoped tools
+  const userTools = await createUserScopedTools(memberContext, userId);
+
+  // Process with Claude
+  let response;
+  try {
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools);
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Error processing DM');
+    response = {
+      text: "I'm sorry, I encountered an error. Please try again.",
+      tools_used: [],
+      tool_executions: [],
+      flagged: true,
+      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+    };
+  }
+
+  // Validate output
+  const outputValidation = validateOutput(response.text);
+
+  // Send response in the DM thread
+  try {
+    await boltApp.client.chat.postMessage({
+      channel: channelId,
+      text: outputValidation.sanitized,
+      thread_ts: threadTs !== event.ts ? threadTs : undefined, // Only thread if already in a thread
+    });
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Failed to send DM response');
+  }
+
+  // Log assistant response to unified thread
+  const assistantFlagged = response.flagged || outputValidation.flagged;
+  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'assistant',
+    content: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    tool_calls: response.tool_executions?.map(exec => ({
+      name: exec.tool_name,
+      input: exec.parameters,
+      result: exec.result,
+      duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
+    })),
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    tokens_input: response.usage?.input_tokens,
+    tokens_output: response.usage?.output_tokens,
+    flagged: assistantFlagged,
+    flag_reason: flagReason || undefined,
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
+  });
+
+  // Flag the thread if any message was flagged
+  if (userMessageFlagged || assistantFlagged) {
+    await threadService.flagThread(
+      thread.thread_id,
+      [inputValidation.reason, flagReason].filter(Boolean).join('; ')
+    );
+  }
+
+  // Log to security audit
+  logInteraction({
+    id: thread.thread_id,
+    timestamp: new Date(),
+    event_type: 'dm',
+    channel_id: channelId,
+    thread_ts: threadTs,
+    user_id: userId,
+    input_text: messageText,
+    input_sanitized: inputValidation.sanitized,
+    output_text: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    flagged: userMessageFlagged || assistantFlagged,
+    flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
+  });
+
+  logger.info(
+    { userId, channelId, latencyMs: Date.now() - startTime },
+    'Addie Bolt: DM response sent'
+  );
+}
+
+/**
  * Handle channel messages (not mentions) for HITL proposed responses
  *
  * When Addie sees a message in a channel it's in, it uses the router to
@@ -1208,12 +1415,14 @@ async function handleChannelMessage({
     return;
   }
 
-  // Skip DMs - this is for channel messages only
+  const userId = 'user' in event ? event.user : undefined;
+
+  // Handle DMs differently - route to the user message handler
   if (event.channel_type === 'im') {
+    logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to user message handler');
+    await handleDirectMessage(event, context);
     return;
   }
-
-  const userId = 'user' in event ? event.user : undefined;
   if (!userId) {
     return;
   }
