@@ -40,6 +40,9 @@ export interface BillingProduct {
   is_invoiceable: boolean; // Can be paid via invoice request
   sort_order: number; // For custom ordering
   metadata: Record<string, string>;
+  // Event-managed product fields
+  managed_by?: string; // 'event' if managed by an event
+  event_id?: string; // The event ID if managed by an event
 }
 
 // Keep backward compatibility alias
@@ -155,6 +158,9 @@ export async function getBillingProducts(): Promise<BillingProduct[]> {
         is_invoiceable: isInvoiceable,
         sort_order: parseInt(metadata.sort_order || '0', 10),
         metadata,
+        // Event-managed product fields
+        managed_by: metadata.managed_by,
+        event_id: metadata.event_id,
       });
     }
 
@@ -841,6 +847,10 @@ export interface CheckoutSessionData {
   workosOrganizationId?: string;
   workosUserId?: string;
   isPersonalWorkspace?: boolean;
+  // Event sponsorship fields
+  eventId?: string;
+  eventSponsorshipId?: string;
+  sponsorshipTierId?: string;
 }
 
 /**
@@ -874,6 +884,9 @@ export async function createCheckoutSession(
         ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
         ...(data.workosUserId && { workos_user_id: data.workosUserId }),
         ...(data.isPersonalWorkspace !== undefined && { is_personal_workspace: String(data.isPersonalWorkspace) }),
+        ...(data.eventId && { event_id: data.eventId }),
+        ...(data.eventSponsorshipId && { event_sponsorship_id: data.eventSponsorshipId }),
+        ...(data.sponsorshipTierId && { sponsorship_tier_id: data.sponsorshipTierId }),
       },
     };
 
@@ -1271,5 +1284,123 @@ export async function deleteDraftInvoice(invoiceId: string): Promise<boolean> {
   } catch (error) {
     logger.error({ err: error, invoiceId }, 'Error deleting draft invoice');
     return false;
+  }
+}
+
+// ============================================================================
+// Event Sponsorship Product Management
+// ============================================================================
+
+export interface EventSponsorshipProductInput {
+  eventId: string;
+  eventSlug: string;
+  eventTitle: string;
+  defaultAmountCents?: number;
+}
+
+/**
+ * Create or update a Stripe product for event sponsorships
+ * Called automatically when sponsorship tiers are saved on an event
+ * Returns the Stripe product ID
+ */
+export async function createEventSponsorshipProduct(input: EventSponsorshipProductInput): Promise<string | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create event sponsorship product');
+    return null;
+  }
+
+  const lookupKey = `aao_sponsorship_${input.eventSlug.replace(/-/g, '_')}`;
+  const productName = `${input.eventTitle} Sponsorship`;
+  const defaultAmount = input.defaultAmountCents || 500000; // Default $5000
+
+  try {
+    // Check if a product with this lookup key already exists
+    const existingPrices = await stripe.prices.list({
+      lookup_keys: [lookupKey],
+      active: true,
+      limit: 1,
+      expand: ['data.product'],
+    });
+
+    if (existingPrices.data.length > 0) {
+      const existingPrice = existingPrices.data[0];
+      const product = existingPrice.product as Stripe.Product;
+
+      // Update the product name if it changed
+      if (product && typeof product !== 'string' && !product.deleted) {
+        if (product.name !== productName) {
+          await stripe.products.update(product.id, { name: productName });
+          logger.info({ productId: product.id, lookupKey }, 'Updated existing event sponsorship product name');
+        }
+        return product.id;
+      }
+    }
+
+    // Build metadata
+    const metadata: Record<string, string> = {
+      category: 'sponsorship',
+      display_name: productName,
+      event_id: input.eventId,
+      managed_by: 'event', // Mark as event-managed
+    };
+
+    // Create the product
+    const product = await stripe.products.create({
+      name: productName,
+      description: `Sponsorship opportunities for ${input.eventTitle}`,
+      metadata,
+    });
+
+    // Create the price with lookup key
+    await stripe.prices.create({
+      product: product.id,
+      unit_amount: defaultAmount,
+      currency: 'usd',
+      lookup_key: lookupKey,
+      transfer_lookup_key: true,
+    });
+
+    logger.info({
+      productId: product.id,
+      lookupKey,
+      eventId: input.eventId,
+    }, 'Created event sponsorship product in Stripe');
+
+    // Clear cache so new product appears
+    clearProductsCache();
+
+    return product.id;
+  } catch (error) {
+    logger.error({ err: error, input }, 'Error creating event sponsorship product');
+    throw error;
+  }
+}
+
+/**
+ * Get product info including whether it's managed by an event
+ */
+export async function getProductWithEventInfo(productId: string): Promise<{
+  product_id: string;
+  product_name: string;
+  managed_by?: string;
+  event_id?: string;
+} | null> {
+  if (!stripe) {
+    return null;
+  }
+
+  try {
+    const product = await stripe.products.retrieve(productId);
+    if (product.deleted) return null;
+
+    return {
+      product_id: product.id,
+      product_name: product.name,
+      managed_by: product.metadata?.managed_by,
+      event_id: product.metadata?.event_id,
+    };
+  } catch (error) {
+    logger.error({ err: error, productId }, 'Error getting product info');
+    return null;
   }
 }

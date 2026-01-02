@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Events | AgenticAdvertising.org</title>
+  <meta name="description" content="Upcoming summits, meetups, webinars, and events from the Agentic Advertising Organization. Join us to learn about the future of AI-powered advertising.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://agenticadvertising.org/events">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/events">
+  <meta property="og:title" content="Events | AgenticAdvertising.org">
+  <meta property="og:description" content="Upcoming summits, meetups, webinars, and events from the Agentic Advertising Organization.">
+  <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://agenticadvertising.org/events">
+  <meta name="twitter:title" content="Events | AgenticAdvertising.org">
+  <meta name="twitter:description" content="Upcoming summits, meetups, webinars, and events from the Agentic Advertising Organization.">
+  <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <style>
+    body { padding-top: 60px; background: var(--color-bg-page); }
+
+    .events-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .page-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 0.75rem;
+    }
+
+    .page-header p {
+      font-size: 1.1rem;
+      color: var(--color-text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .filter-bar select {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      cursor: pointer;
+    }
+
+    .filter-bar select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    .events-section {
+      margin-bottom: 3rem;
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid var(--color-brand);
+      display: inline-block;
+    }
+
+    .events-grid {
+      display: grid;
+      gap: 1.5rem;
+    }
+
+    .event-card {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.15s, box-shadow 0.15s;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+    }
+
+    .event-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .event-image {
+      background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+    }
+
+    .event-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .event-image .placeholder {
+      color: white;
+      font-size: 3rem;
+      opacity: 0.5;
+    }
+
+    .event-content {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .event-date {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--color-brand);
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .event-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+    }
+
+    .event-title:hover {
+      color: var(--color-brand);
+    }
+
+    .event-description {
+      font-size: 0.95rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: 1rem;
+      flex-grow: 1;
+    }
+
+    .event-meta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .event-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-in_person {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+
+    .badge-virtual {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+
+    .badge-hybrid {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+
+    .event-location {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+    }
+
+    .event-cta {
+      margin-left: auto;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.15s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-primary-700);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--color-brand);
+      border: 1px solid var(--color-brand);
+    }
+
+    .btn-outline:hover {
+      background: var(--color-primary-50);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state h3 {
+      font-size: 1.25rem;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 4rem;
+      color: var(--color-text-secondary);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .event-card {
+        grid-template-columns: 1fr;
+      }
+
+      .event-image {
+        min-height: 120px;
+      }
+
+      .page-header h1 {
+        font-size: 2rem;
+      }
+
+      .events-container {
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="events-container">
+    <div class="page-header">
+      <h1>Events</h1>
+      <p>Join us at upcoming summits, meetups, and webinars to learn about the future of AI-powered advertising.</p>
+    </div>
+
+    <div class="filter-bar">
+      <select id="typeFilter" onchange="filterEvents()">
+        <option value="">All Event Types</option>
+        <option value="summit">Summits</option>
+        <option value="meetup">Meetups</option>
+        <option value="webinar">Webinars</option>
+        <option value="workshop">Workshops</option>
+        <option value="conference">Conferences</option>
+      </select>
+      <select id="formatFilter" onchange="filterEvents()">
+        <option value="">All Formats</option>
+        <option value="in_person">In Person</option>
+        <option value="virtual">Virtual</option>
+        <option value="hybrid">Hybrid</option>
+      </select>
+    </div>
+
+    <div id="loading" class="loading">Loading events...</div>
+
+    <div id="eventsContent" style="display: none;">
+      <div id="upcomingSection" class="events-section">
+        <h2 class="section-title">Upcoming Events</h2>
+        <div id="upcomingEvents" class="events-grid"></div>
+      </div>
+
+      <div id="pastSection" class="events-section" style="display: none;">
+        <h2 class="section-title">Past Events</h2>
+        <div id="pastEvents" class="events-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allEvents = [];
+
+    async function loadEvents() {
+      try {
+        // Load upcoming events
+        const upcomingRes = await fetch('/api/events?upcoming=true');
+        const upcomingData = await upcomingRes.json();
+
+        // Load past events
+        const pastRes = await fetch('/api/events?past=true');
+        const pastData = await pastRes.json();
+
+        allEvents = [...(upcomingData.events || []), ...(pastData.events || [])];
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('eventsContent').style.display = 'block';
+
+        filterEvents();
+      } catch (error) {
+        console.error('Error loading events:', error);
+        document.getElementById('loading').innerHTML =
+          '<p>Unable to load events. Please try again later.</p>';
+      }
+    }
+
+    function filterEvents() {
+      const typeFilter = document.getElementById('typeFilter').value;
+      const formatFilter = document.getElementById('formatFilter').value;
+
+      const now = new Date();
+      const upcoming = allEvents.filter(e => {
+        const start = new Date(e.start_time);
+        if (start < now) return false;
+        if (typeFilter && e.event_type !== typeFilter) return false;
+        if (formatFilter && e.event_format !== formatFilter) return false;
+        return true;
+      });
+
+      const past = allEvents.filter(e => {
+        const start = new Date(e.start_time);
+        if (start >= now) return false;
+        if (typeFilter && e.event_type !== typeFilter) return false;
+        if (formatFilter && e.event_format !== formatFilter) return false;
+        return true;
+      });
+
+      // Sort upcoming by date ascending, past by date descending
+      upcoming.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+      past.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+
+      renderEvents('upcomingEvents', upcoming, false);
+      renderEvents('pastEvents', past, true);
+
+      // Show/hide sections
+      document.getElementById('upcomingSection').style.display = upcoming.length > 0 ? 'block' : 'none';
+      document.getElementById('pastSection').style.display = past.length > 0 ? 'block' : 'none';
+
+      // Empty state
+      if (upcoming.length === 0 && past.length === 0) {
+        document.getElementById('upcomingSection').style.display = 'block';
+        document.getElementById('upcomingEvents').innerHTML = `
+          <div class="empty-state">
+            <h3>No events found</h3>
+            <p>Check back soon for upcoming events!</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderEvents(containerId, events, isPast) {
+      const container = document.getElementById(containerId);
+
+      if (events.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+
+      container.innerHTML = events.map(event => {
+        const startDate = new Date(event.start_time);
+        const dateStr = startDate.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        });
+        const timeStr = startDate.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short'
+        });
+
+        const formatLabel = {
+          'in_person': 'In Person',
+          'virtual': 'Virtual',
+          'hybrid': 'Hybrid'
+        }[event.event_format] || event.event_format;
+
+        const locationText = event.venue_city
+          ? `${event.venue_city}${event.venue_state ? ', ' + event.venue_state : ''}`
+          : (event.event_format === 'virtual' ? 'Online' : '');
+
+        return `
+          <article class="event-card">
+            <div class="event-image">
+              ${event.featured_image_url
+                ? `<img src="${escapeHtml(event.featured_image_url)}" alt="${escapeHtml(event.title)}">`
+                : '<span class="placeholder">AAO</span>'
+              }
+            </div>
+            <div class="event-content">
+              <div class="event-date">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M4 0v1H1v14h14V1h-3V0h-1v1H5V0H4zm10 5H2v9h12V5z"/>
+                </svg>
+                ${dateStr} at ${timeStr}
+              </div>
+              <a href="/events/${escapeHtml(event.slug)}" class="event-title">${escapeHtml(event.title)}</a>
+              <p class="event-description">${escapeHtml(event.short_description || event.description?.substring(0, 150) || '')}</p>
+              <div class="event-meta">
+                <span class="event-badge badge-${event.event_format}">${formatLabel}</span>
+                ${locationText ? `
+                  <span class="event-location">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                      <path d="M7 0C4.24 0 2 2.24 2 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 7.5c-1.38 0-2.5-1.12-2.5-2.5S5.62 2.5 7 2.5s2.5 1.12 2.5 2.5S8.38 7.5 7 7.5z"/>
+                    </svg>
+                    ${escapeHtml(locationText)}
+                  </span>
+                ` : ''}
+                <span class="event-cta">
+                  ${isPast
+                    ? `<a href="/events/${escapeHtml(event.slug)}" class="btn btn-outline">View Details</a>`
+                    : event.luma_url
+                      ? `<a href="${escapeHtml(event.luma_url)}" class="btn btn-primary" target="_blank" rel="noopener">Register</a>`
+                      : `<a href="/events/${escapeHtml(event.slug)}" class="btn btn-primary">Learn More</a>`
+                  }
+                </span>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    loadEvents();
+  </script>
+</body>
+</html>
