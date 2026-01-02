@@ -9,116 +9,157 @@
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
-    /* =============================================================================
-       Admin Dashboard styles
-       Uses design system variables - see /design-system.css for tokens
-       ============================================================================= */
-
     body {
       background: var(--color-bg-page);
     }
 
-    .header-content {
-      max-width: var(--container-wide);
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .logo {
-      font-size: var(--text-xl);
-      font-weight: var(--font-bold);
-    }
-
     .container {
       max-width: var(--container-wide);
-      margin: var(--space-8) auto;
+      margin: var(--space-6) auto;
       padding: 0 var(--space-5);
     }
 
-    .card {
+    .page-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .page-header h1 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .page-header .subtitle {
+      color: var(--color-text-secondary);
+    }
+
+    /* Hero metrics - the big numbers */
+    .hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+
+    .hero-card {
       background: var(--color-bg-card);
       border-radius: var(--radius-lg);
-      padding: var(--space-6);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .hero-card.primary {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      color: white;
+    }
+
+    .hero-card.primary .hero-label {
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .hero-value {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      line-height: 1.2;
+    }
+
+    .hero-card.primary .hero-value {
+      color: white;
+    }
+
+    .hero-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    .hero-subtext {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+    }
+
+    .hero-card.primary .hero-subtext {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Section containers */
+    .dashboard-section {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
       margin-bottom: var(--space-5);
       box-shadow: var(--shadow-xs);
     }
 
-    h1 {
-      margin-bottom: var(--space-2.5);
-      color: var(--color-text-heading);
-    }
-
-    .subtitle {
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-8);
-    }
-
-    .admin-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: var(--space-5);
-      margin-bottom: var(--space-8);
-    }
-
-    .admin-card {
-      background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      cursor: pointer;
-      transition: var(--transition-all);
-      text-decoration: none;
-      color: inherit;
-      display: block;
-    }
-
-    .admin-card:hover {
-      border-color: var(--color-brand);
-      box-shadow: var(--shadow-primary-md);
-      transform: translateY(-2px);
-    }
-
-    .admin-card-icon {
-      font-size: var(--text-4xl);
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
       margin-bottom: var(--space-4);
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid var(--color-border);
     }
 
-    .admin-card h2 {
-      font-size: var(--text-xl);
-      margin-bottom: var(--space-2.5);
+    .section-icon {
+      font-size: var(--text-lg);
+    }
+
+    .section-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
       color: var(--color-text-heading);
     }
 
-    .admin-card p {
-      color: var(--color-text-secondary);
-      line-height: var(--leading-normal);
-    }
-
-    .stats-grid {
+    /* Metric rows inside sections */
+    .metrics-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: var(--space-4);
     }
 
-    .stat-card {
-      background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-5);
+    .metric {
+      text-align: center;
     }
 
-    .stat-value {
-      font-size: var(--text-4xl);
+    .metric-value {
+      font-size: var(--text-2xl);
       font-weight: var(--font-bold);
       color: var(--color-brand);
-      margin-bottom: var(--space-1);
     }
 
-    .stat-label {
+    .metric-value.muted {
+      color: var(--color-text-muted);
+    }
+
+    .metric-value.success {
+      color: var(--color-success-600);
+    }
+
+    .metric-value.warning {
+      color: var(--color-warning-600);
+    }
+
+    .metric-label {
+      font-size: var(--text-xs);
       color: var(--color-text-secondary);
-      font-size: var(--text-sm);
+      margin-top: var(--space-1);
+    }
+
+    /* Two column layout for sections */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-5);
+    }
+
+    @media (max-width: 768px) {
+      .hero-metrics {
+        grid-template-columns: 1fr;
+      }
+      .two-col {
+        grid-template-columns: 1fr;
+      }
     }
 
     .loading {
@@ -129,7 +170,6 @@
   </style>
 </head>
 <body>
-  <!-- AAO top navigation -->
   <div id="adcp-nav"></div>
 
   <div id="loading" class="loading">
@@ -138,160 +178,105 @@
 
   <div id="content" style="display: none;">
     <div class="container">
-      <div class="card">
-        <h1>Admin Dashboard</h1>
-        <p class="subtitle">Manage members, agreements, and system settings</p>
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <p class="subtitle">Key metrics at a glance</p>
+      </div>
 
-        <!-- Financial Metrics -->
-        <h2 style="margin-bottom: 15px; color: var(--color-text-heading);">Financial</h2>
-        <div class="stats-grid" id="financialGrid">
-          <div class="stat-card">
-            <div class="stat-value" id="arr">-</div>
-            <div class="stat-label">ARR</div>
+      <!-- Hero: Key Financial Metrics -->
+      <div class="hero-metrics">
+        <div class="hero-card primary">
+          <div class="hero-value" id="arr">-</div>
+          <div class="hero-label">Annual Recurring Revenue</div>
+          <div class="hero-subtext"><span id="activeSubscriptions">-</span> active subscriptions</div>
+        </div>
+        <div class="hero-card">
+          <div class="hero-value" id="mrr">-</div>
+          <div class="hero-label">Monthly Recurring Revenue</div>
+          <div class="hero-subtext" id="revenueChange">-</div>
+        </div>
+        <div class="hero-card">
+          <div class="hero-value" id="bookings30d">-</div>
+          <div class="hero-label">Bookings (30 days)</div>
+          <div class="hero-subtext"><span id="bookingsCount">-</span> transactions</div>
+        </div>
+      </div>
+
+      <!-- Two column layout for engagement metrics -->
+      <div class="two-col">
+        <!-- Community Activity -->
+        <div class="dashboard-section">
+          <div class="section-header">
+            <span class="section-icon">💬</span>
+            <span class="section-title">Community Activity</span>
           </div>
-          <div class="stat-card">
-            <div class="stat-value" id="mrr">-</div>
-            <div class="stat-label">MRR</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="totalRevenue">-</div>
-            <div class="stat-label">This Month</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="lastMonthRevenue">-</div>
-            <div class="stat-label">Last Month</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="bookings30d">-</div>
-            <div class="stat-label">Bookings (30d)</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="activeSubscriptions">-</div>
-            <div class="stat-label">Active Subs</div>
+          <div class="metrics-row">
+            <div class="metric">
+              <div class="metric-value" id="slackActiveUsers">-</div>
+              <div class="metric-label">Active Users (30d)</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="slackMessages7d">-</div>
+              <div class="metric-label">Messages (7d)</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value muted" id="slackTotalMessages">-</div>
+              <div class="metric-label">Total Messages</div>
+            </div>
           </div>
         </div>
 
-        <!-- Organizations & Users -->
-        <h2 style="margin: 30px 0 15px; color: var(--color-text-heading);">Organizations & Users</h2>
-        <div class="stats-grid" id="orgsGrid">
-          <div class="stat-card">
-            <div class="stat-value" id="totalOrgs">-</div>
-            <div class="stat-label">Total Orgs</div>
+        <!-- Addie Performance -->
+        <div class="dashboard-section">
+          <div class="section-header">
+            <span class="section-icon">🤖</span>
+            <span class="section-title">Addie</span>
           </div>
-          <div class="stat-card">
-            <div class="stat-value" id="activeOrgs">-</div>
-            <div class="stat-label">Active Orgs</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="engagedProspects">-</div>
-            <div class="stat-label">Engaged Prospects</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="totalUsers">-</div>
-            <div class="stat-label">Total Users</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="activeUsers">-</div>
-            <div class="stat-label">Active Users</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="championUsers">-</div>
-            <div class="stat-label">Champions</div>
-          </div>
-        </div>
-
-        <!-- Slack Activity -->
-        <h2 style="margin: 30px 0 15px; color: var(--color-text-heading);">Slack</h2>
-        <div class="stats-grid" id="slackGrid">
-          <div class="stat-card">
-            <div class="stat-value" id="slackTotalMessages">-</div>
-            <div class="stat-label">Total Messages</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="slackActiveUsers">-</div>
-            <div class="stat-label">Active Users (30d)</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="slackMessages7d">-</div>
-            <div class="stat-label">Messages (7d)</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="slackReactions7d">-</div>
-            <div class="stat-label">Reactions (7d)</div>
-          </div>
-        </div>
-
-        <!-- Addie Stats -->
-        <h2 style="margin: 30px 0 15px; color: var(--color-text-heading);">Addie</h2>
-        <div class="stats-grid" id="addieGrid">
-          <div class="stat-card">
-            <div class="stat-value" id="addieTotalThreads">-</div>
-            <div class="stat-label">Total Threads</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="addieTotalMessages">-</div>
-            <div class="stat-label">Total Messages</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="addieAvgRating">-</div>
-            <div class="stat-label">Avg Rating</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="addieRatedCount">-</div>
-            <div class="stat-label">Rated Messages</div>
+          <div class="metrics-row">
+            <div class="metric">
+              <div class="metric-value" id="addieAvgRating">-</div>
+              <div class="metric-label">Avg Rating</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="addieThreads30d">-</div>
+              <div class="metric-label">Threads (30d)</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value muted" id="addieTotalMessages">-</div>
+              <div class="metric-label">Total Messages</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <h2 style="margin-bottom: 15px; color: var(--color-text-heading);">Management</h2>
-      <div class="admin-grid">
-        <a href="/admin/members" class="admin-card">
-          <div class="admin-card-icon">👥</div>
-          <h2>Members</h2>
-          <p>View and manage all members, subscriptions, and company details. Export data and track subscription renewals.</p>
-        </a>
-
-        <a href="/admin/users" class="admin-card">
-          <div class="admin-card-icon">👤</div>
-          <h2>Users</h2>
-          <p>View all individual users across organizations. See working group participation and export membership data.</p>
-        </a>
-
-        <a href="/admin/working-groups" class="admin-card">
-          <div class="admin-card-icon">🏛️</div>
-          <h2>Working Groups</h2>
-          <p>Create and manage working groups. Assign leadership, manage memberships, and configure group settings.</p>
-        </a>
-
-        <a href="/admin/agreements" class="admin-card">
-          <div class="admin-card-icon">📄</div>
-          <h2>Agreements</h2>
-          <p>Create and edit membership agreements, terms of service, and privacy policies. Manage versions and effective dates.</p>
-        </a>
-
-        <a href="/admin/perspectives" class="admin-card">
-          <div class="admin-card-icon">📰</div>
-          <h2>Perspectives</h2>
-          <p>Manage insights, articles, and external links. Create and publish thought leadership content for the Perspectives section.</p>
-        </a>
-
-        <a href="/admin/analytics" class="admin-card">
-          <div class="admin-card-icon">📊</div>
-          <h2>Analytics</h2>
-          <p>View revenue metrics, customer health, subscription analytics, and business intelligence dashboards powered by Metabase.</p>
-        </a>
-
-        <a href="/admin/email" class="admin-card">
-          <div class="admin-card-icon">📧</div>
-          <h2>Email</h2>
-          <p>Manage email templates, send newsletters and announcements. View email engagement stats and manage campaigns.</p>
-        </a>
-
-        <a href="/admin/addie" class="admin-card">
-          <div class="admin-card-icon">🤖</div>
-          <h2>Addie</h2>
-          <p>Configure Addie's behavior, manage operating rules, review interactions, and monitor the AI assistant's knowledge base.</p>
-        </a>
+      <!-- Member Funnel -->
+      <div class="dashboard-section">
+        <div class="section-header">
+          <span class="section-icon">👥</span>
+          <span class="section-title">Member Funnel</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric">
+            <div class="metric-value muted" id="totalOrgs">-</div>
+            <div class="metric-label">Total Orgs</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="engagedProspects">-</div>
+            <div class="metric-label">Engaged Prospects</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value success" id="activeOrgs">-</div>
+            <div class="metric-label">Active Members</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="totalUsers">-</div>
+            <div class="metric-label">Total Users</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value success" id="championUsers">-</div>
+            <div class="metric-label">Champions</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -315,33 +300,34 @@
 
         const stats = await response.json();
 
-        // Financial metrics
+        // Hero metrics
         document.getElementById('arr').textContent = stats.arr || '$0';
         document.getElementById('mrr').textContent = stats.mrr || '$0';
-        document.getElementById('totalRevenue').textContent = stats.monthly_revenue || '$0';
-        document.getElementById('lastMonthRevenue').textContent = stats.last_month_revenue || '$0';
         document.getElementById('bookings30d').textContent = stats.bookings_30d_revenue || '$0';
         document.getElementById('activeSubscriptions').textContent = formatNumber(stats.active_subscriptions);
+        document.getElementById('bookingsCount').textContent = formatNumber(stats.bookings_30d_count);
 
-        // Organizations & Users
-        document.getElementById('totalOrgs').textContent = formatNumber(stats.total_orgs);
-        document.getElementById('activeOrgs').textContent = formatNumber(stats.active_orgs);
-        document.getElementById('engagedProspects').textContent = formatNumber(stats.engaged_prospects);
-        document.getElementById('totalUsers').textContent = formatNumber(stats.total_users);
-        document.getElementById('activeUsers').textContent = formatNumber(stats.active_users);
-        document.getElementById('championUsers').textContent = formatNumber(stats.champion_users);
+        // Revenue change indicator
+        const thisMonth = stats.monthly_revenue || '$0';
+        const lastMonth = stats.last_month_revenue || '$0';
+        document.getElementById('revenueChange').textContent = `${thisMonth} this month vs ${lastMonth} last month`;
 
-        // Slack stats
-        document.getElementById('slackTotalMessages').textContent = formatNumber(stats.slack_total_messages);
+        // Community
         document.getElementById('slackActiveUsers').textContent = formatNumber(stats.slack_active_users_30d);
         document.getElementById('slackMessages7d').textContent = formatNumber(stats.slack_messages_7d);
-        document.getElementById('slackReactions7d').textContent = formatNumber(stats.slack_reactions_7d);
+        document.getElementById('slackTotalMessages').textContent = formatNumber(stats.slack_total_messages);
 
-        // Addie stats
-        document.getElementById('addieTotalThreads').textContent = formatNumber(stats.addie_total_threads);
-        document.getElementById('addieTotalMessages').textContent = formatNumber(stats.addie_total_messages);
+        // Addie
         document.getElementById('addieAvgRating').textContent = stats.addie_avg_rating || '-';
-        document.getElementById('addieRatedCount').textContent = formatNumber(stats.addie_total_rated);
+        document.getElementById('addieThreads30d').textContent = formatNumber(stats.addie_threads_30d);
+        document.getElementById('addieTotalMessages').textContent = formatNumber(stats.addie_total_messages);
+
+        // Member Funnel
+        document.getElementById('totalOrgs').textContent = formatNumber(stats.total_orgs);
+        document.getElementById('engagedProspects').textContent = formatNumber(stats.engaged_prospects);
+        document.getElementById('activeOrgs').textContent = formatNumber(stats.active_orgs);
+        document.getElementById('totalUsers').textContent = formatNumber(stats.total_users);
+        document.getElementById('championUsers').textContent = formatNumber(stats.champion_users);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -352,7 +338,6 @@
       }
     }
 
-    // Initialize
     loadStats();
   </script>
 </body>
