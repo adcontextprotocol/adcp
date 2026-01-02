@@ -982,15 +982,21 @@ async function handleFeedbackAction({ ack, body, client }: any): Promise<void> {
         rating: isPositive ? 5 : 1,
         rating_category: isPositive ? 'helpful' : 'not_helpful',
         rated_by: userId,
+        rating_source: 'user',
       });
 
       logger.info({
         threadId: thread.thread_id,
         messageId: latestAssistant.message_id,
         feedback: isPositive ? 'positive' : 'negative',
+        ratingSource: 'user',
         userId,
       }, 'Addie Bolt: Feedback recorded');
+    } else {
+      logger.warn({ threadId: thread.thread_id, externalId }, 'Addie Bolt: No assistant messages found for feedback');
     }
+  } else {
+    logger.warn({ externalId, channelId, messageTs, threadTs }, 'Addie Bolt: Thread not found for feedback');
   }
 
   // Send ephemeral confirmation

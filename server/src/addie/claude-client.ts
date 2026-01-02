@@ -24,6 +24,14 @@ export interface RequestTools {
 }
 
 /**
+ * Override for rules - used by eval framework to test proposed rules
+ */
+export interface RulesOverride {
+  ruleIds: number[];
+  systemPrompt: string;
+}
+
+/**
  * Detailed record of a single tool execution
  */
 export interface ToolExecution {
@@ -178,11 +186,13 @@ export class AddieClaudeClient {
    * @param userMessage - The user's message
    * @param threadContext - Optional thread history
    * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
+   * @param rulesOverride - Optional rules override for eval framework (bypasses DB lookup)
    */
   async processMessage(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
-    requestTools?: RequestTools
+    requestTools?: RequestTools,
+    rulesOverride?: RulesOverride
   ): Promise<AddieResponse> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -200,13 +210,29 @@ export class AddieClaudeClient {
     let totalCacheCreationTokens = 0;
     let totalCacheReadTokens = 0;
 
-    // Get system prompt from database rules (or fallback)
+    // Get system prompt - use override if provided (for eval), otherwise from database
     const promptStart = Date.now();
-    const { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
+    let systemPrompt: string;
+    let ruleIds: number[];
+    let rulesSnapshot: RuleSnapshot[];
+
+    if (rulesOverride) {
+      // Eval mode: use provided rules
+      systemPrompt = rulesOverride.systemPrompt;
+      ruleIds = rulesOverride.ruleIds;
+      rulesSnapshot = []; // Not needed for eval - we don't track config version
+      logger.debug({ ruleIds }, 'Addie: Using rules override for eval');
+    } else {
+      // Normal mode: get from database
+      const promptResult = await this.getSystemPrompt();
+      systemPrompt = promptResult.prompt;
+      ruleIds = promptResult.ruleIds;
+      rulesSnapshot = promptResult.rulesSnapshot;
+    }
     systemPromptMs = Date.now() - promptStart;
 
-    // Get config version ID for this interaction (for tracking/analysis)
-    const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
+    // Get config version ID for this interaction (skip for eval mode)
+    const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
     const contextualMessage = buildContextWithThread(userMessage, threadContext);
 

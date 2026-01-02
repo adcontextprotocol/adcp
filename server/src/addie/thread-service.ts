@@ -145,6 +145,7 @@ export interface ThreadMessage {
   feedback_tags: string[];
   improvement_suggestion: string | null;
   rated_by: string | null;
+  rating_source: RatingSource | null;
   rated_at: Date | null;
   outcome: MessageOutcome | null;
   user_sentiment: UserSentiment | null;
@@ -208,6 +209,8 @@ export interface ThreadListFilters {
   offset?: number;
 }
 
+export type RatingSource = 'user' | 'admin';
+
 export interface MessageFeedback {
   rating: number;
   rating_category?: string;
@@ -215,6 +218,7 @@ export interface MessageFeedback {
   feedback_tags?: string[];
   improvement_suggestion?: string;
   rated_by: string;
+  rating_source: RatingSource;
 }
 
 export interface ChannelStats {
@@ -456,6 +460,7 @@ export class ThreadService {
          feedback_tags = $5,
          improvement_suggestion = $6,
          rated_by = $7,
+         rating_source = $8,
          rated_at = NOW()
        WHERE message_id = $1`,
       [
@@ -466,6 +471,7 @@ export class ThreadService {
         JSON.stringify(feedback.feedback_tags || []),
         feedback.improvement_suggestion || null,
         feedback.rated_by,
+        feedback.rating_source,
       ]
     );
   }
