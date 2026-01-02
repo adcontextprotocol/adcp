@@ -56,7 +56,7 @@ Formats may produce multiple rendered pieces (e.g., video + companion banner). D
 
 | Field | Description |
 |-------|-------------|
-| `formats` | Array of full format definitions (format_id, name, type, requirements, assets, renders) |
+| `formats` | Array of full format definitions (format_id, name, type, requirements, assets, assets_required, renders) |
 | `creative_agents` | Optional array of other creative agents providing additional formats |
 
 See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for complete format object structure.
@@ -422,6 +422,7 @@ Each format includes:
 | `type` | Format type (audio, video, display, dooh) |
 | `requirements` | Technical requirements (duration, file types, bitrate, etc.) |
 | `assets` | Array of all assets with `required` boolean indicating mandatory vs optional |
+| `assets_required` | *(Deprecated)* Array of required assets - use `assets` instead |
 | `renders` | Array of rendered output pieces (dimensions, role) |
 
 ### Asset Roles

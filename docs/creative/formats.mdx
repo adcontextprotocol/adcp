@@ -276,6 +276,7 @@ Formats are JSON objects with the following key fields:
 - **agent_url**: The creative agent authoritative for this format
 - **type**: Category (video, display, audio, native, dooh, rich_media)
 - **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional
+- **assets_required**: *(Deprecated)* Array of required asset specifications - use `assets` instead
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
 
@@ -289,7 +290,7 @@ The `assets` array enables comprehensive asset discovery. Each asset has a `requ
 This unified approach helps creative tools and AI agents understand the full capabilities of a format, enabling richer creative experiences when optional assets are available while clearly indicating minimum requirements.
 
 <Note>
-**Backward Compatibility**: The deprecated `assets_required` field is still supported for existing implementations. New implementations should use `assets` with the `required` boolean on each asset.
+**Backward Compatibility**: The `assets_required` field is deprecated but still supported. Existing implementations can continue using `assets_required` for required assets only. New implementations should use `assets` with the `required` boolean on each asset for full asset discovery.
 </Note>
 
 ### Rendered Outputs and Dimensions

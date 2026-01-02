@@ -377,7 +377,7 @@ Creative formats specify their assets using the `assets` array. Each asset has a
 ```
 
 <Note>
-**Backward Compatibility**: The deprecated `assets_required` field is still supported. New implementations should use `assets`.
+**Backward Compatibility**: The `assets_required` field is deprecated but still supported. Existing implementations can continue using `assets_required` for required assets only. New implementations should use `assets` with the `required` boolean for full asset discovery.
 </Note>
 
 ## Repeatable Asset Groups
