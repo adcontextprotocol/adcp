@@ -15,8 +15,11 @@ import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import { AdAgentsManager } from '../../adagents-manager.js';
 import type { MemberContext } from '../member-context.js';
+import { testAgent, formatTestResults, type TestScenario, type TestOptions } from './agent-tester.js';
+import { AgentContextDatabase } from '../../db/agent-context-db.js';
 
 const adagentsManager = new AdAgentsManager();
+const agentContextDb = new AgentContextDatabase();
 
 /**
  * Tool definitions for member-related operations
@@ -282,6 +285,130 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: {
           type: 'string',
           description: 'The agent URL to inspect',
+        },
+      },
+      required: ['agent_url'],
+    },
+  },
+  {
+    name: 'test_adcp_agent',
+    description:
+      'Run end-to-end tests against an AdCP agent to verify it works correctly. Tests the full workflow: discover products, create media buys, sync creatives, etc. By default runs in dry-run mode - set dry_run=false for real testing. Use this when users want to test their agent implementation, verify compliance, or debug issues. This replaces the testing.adcontextprotocol.org harness.',
+    usage_hints: 'use for "test my agent", "run the full flow", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The agent URL to test (e.g., "https://sales.example.com" or "https://test-agent.adcontextprotocol.org")',
+        },
+        scenario: {
+          type: 'string',
+          enum: [
+            'health_check',
+            'discovery',
+            'create_media_buy',
+            'full_sales_flow',
+            'creative_sync',
+            'creative_inline',
+            'creative_reference',
+            'pricing_models',
+            'creative_flow',
+            'signals_flow',
+            'error_handling',
+            'validation',
+            'pricing_edge_cases',
+            'temporal_validation',
+            'behavior_analysis',
+            'response_consistency',
+          ],
+          description: 'Test scenario: health_check (agent responds), discovery (products/formats/properties), create_media_buy (discovery + create), full_sales_flow (create + update + delivery), creative_sync (sync_creatives flow), creative_inline (inline creatives in create_media_buy), creative_reference (reference existing creatives), pricing_models (analyze pricing options), creative_flow (creative agents), signals_flow (signals agents), error_handling (proper error responses), validation (invalid input rejection), pricing_edge_cases (auction vs fixed, min spend), temporal_validation (date ordering, format), behavior_analysis (auth requirements, brief relevance, filtering behavior), response_consistency (schema errors, pagination bugs, data mismatches)',
+        },
+        brief: {
+          type: 'string',
+          description: 'Optional custom brief for product discovery (default: generic tech brand brief)',
+        },
+        budget: {
+          type: 'number',
+          description: 'Budget for test media buy in dollars (default: 1000)',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Whether to run in dry-run mode (default: true). Set to false for real testing that creates actual media buys.',
+        },
+        channels: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific channels to test (e.g., ["display", "video", "ctv"]). If not specified, tests all channels the agent supports.',
+        },
+        pricing_models: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific pricing models to test (e.g., ["cpm", "cpcv"]). If not specified, uses first available.',
+        },
+        auth_token: {
+          type: 'string',
+          description: 'Bearer token for agents that require authentication. For test-agent.adcontextprotocol.org, use the published test credentials.',
+        },
+      },
+      required: ['agent_url'],
+    },
+  },
+
+  // ============================================
+  // AGENT CONTEXT MANAGEMENT
+  // ============================================
+  {
+    name: 'save_agent',
+    description:
+      'Save an agent URL to the organization\'s context. Optionally store an auth token securely (encrypted, never shown in conversations). Use this when users want to save their agent for easy testing later, or when they provide an auth token.',
+    usage_hints: 'use for "save my agent", "remember this agent URL", "store my auth token"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The agent URL to save (e.g., "https://sales.example.com/mcp")',
+        },
+        agent_name: {
+          type: 'string',
+          description: 'Friendly name for the agent (e.g., "Production Sales Agent")',
+        },
+        auth_token: {
+          type: 'string',
+          description: 'Optional auth token to store securely. Will be encrypted and never shown again.',
+        },
+        protocol: {
+          type: 'string',
+          enum: ['mcp', 'a2a'],
+          description: 'Protocol type (default: mcp)',
+        },
+      },
+      required: ['agent_url'],
+    },
+  },
+  {
+    name: 'list_saved_agents',
+    description:
+      'List all agents saved for this organization. Shows agent URLs, names, types, and whether they have auth tokens stored (but never shows the actual tokens). Use this when users ask "what agents do I have saved?" or want to see their configured agents.',
+    usage_hints: 'use for "show my agents", "what agents are saved?", "list our agents"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'remove_saved_agent',
+    description:
+      'Remove a saved agent and its stored auth token. Use this when users want to delete or forget an agent configuration.',
+    usage_hints: 'use for "remove my agent", "delete the agent", "forget this agent"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The agent URL to remove',
         },
       },
       required: ['agent_url'],
@@ -995,6 +1122,104 @@ export function createMemberToolHandlers(
   });
 
   // ============================================
+  // E2E AGENT TESTING
+  // ============================================
+  handlers.set('test_adcp_agent', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const scenario = (input.scenario as TestScenario) || 'discovery';
+    const brief = input.brief as string | undefined;
+    const budget = input.budget as number | undefined;
+    const dryRun = input.dry_run as boolean | undefined;
+    const channels = input.channels as string[] | undefined;
+    const pricingModels = input.pricing_models as string[] | undefined;
+    let authToken = input.auth_token as string | undefined;
+
+    // Auto-lookup saved token if user didn't provide one and has org context
+    let usingSavedToken = false;
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    if (!authToken && organizationId) {
+      try {
+        const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
+          organizationId,
+          agentUrl
+        );
+        if (savedToken) {
+          authToken = savedToken;
+          usingSavedToken = true;
+          logger.info({ agentUrl }, 'Using saved auth token for agent test');
+        }
+      } catch (error) {
+        // Non-fatal - continue without saved token
+        logger.debug({ error, agentUrl }, 'Could not lookup saved token');
+      }
+    }
+
+    const options: TestOptions = {
+      test_session_id: `addie-test-${Date.now()}`,
+      dry_run: dryRun, // undefined means default to true
+    };
+    if (brief) options.brief = brief;
+    if (budget) options.budget = budget;
+    if (channels) options.channels = channels;
+    if (pricingModels) options.pricing_models = pricingModels;
+    if (authToken) options.auth = { type: 'bearer', token: authToken };
+
+    try {
+      const result = await testAgent(agentUrl, scenario, options);
+
+      // If user is authenticated and agent test succeeded, update the saved context
+      if (organizationId) {
+        try {
+          const context = await agentContextDb.getByOrgAndUrl(
+            organizationId,
+            agentUrl
+          );
+          if (context && result.agent_profile) {
+            // Update with discovered tools and test results
+            const tools = result.agent_profile.tools || [];
+            await agentContextDb.update(context.id, {
+              tools_discovered: tools,
+              agent_type: agentContextDb.inferAgentType(tools),
+              last_test_scenario: scenario,
+              last_test_passed: result.overall_passed,
+              last_test_summary: result.summary,
+            });
+
+            // Record test history
+            await agentContextDb.recordTest({
+              agent_context_id: context.id,
+              scenario,
+              overall_passed: result.overall_passed,
+              steps_passed: result.steps.filter((s) => s.passed).length,
+              steps_failed: result.steps.filter((s) => !s.passed).length,
+              total_duration_ms: result.total_duration_ms,
+              summary: result.summary,
+              dry_run: options.dry_run !== false,
+              brief: options.brief,
+              triggered_by: 'user',
+              user_id: memberContext?.workos_user?.workos_user_id,
+              steps_json: result.steps,
+              agent_profile_json: result.agent_profile,
+            });
+          }
+        } catch (error) {
+          // Non-fatal - test still ran
+          logger.debug({ error }, 'Could not update agent context after test');
+        }
+      }
+
+      let output = formatTestResults(result);
+      if (usingSavedToken) {
+        output = `_Using saved credentials for this agent._\n\n` + output;
+      }
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
+      return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
   // GITHUB ISSUE DRAFTING
   // ============================================
   handlers.set('draft_github_issue', async (input) => {
@@ -1052,6 +1277,173 @@ export function createMemberToolHandlers(
     response += `_Note: You'll need to be signed in to GitHub to create the issue. Feel free to edit the title, body, or labels before submitting._`;
 
     return response;
+  });
+
+  // ============================================
+  // AGENT CONTEXT MANAGEMENT
+  // ============================================
+  handlers.set('save_agent', async (input) => {
+    // Require authenticated user with organization
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const saveOrgId = memberContext.organization?.workos_organization_id;
+    if (!saveOrgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    const agentUrl = input.agent_url as string;
+    const agentName = input.agent_name as string | undefined;
+    const authToken = input.auth_token as string | undefined;
+    const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
+
+    try {
+      // Check if agent already exists for this org
+      let context = await agentContextDb.getByOrgAndUrl(saveOrgId, agentUrl);
+
+      if (context) {
+        // Update existing context
+        if (agentName) {
+          await agentContextDb.update(context.id, { agent_name: agentName, protocol });
+        }
+        if (authToken) {
+          await agentContextDb.saveAuthToken(context.id, authToken);
+        }
+        // Refresh context
+        context = await agentContextDb.getById(context.id);
+
+        let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
+        if (authToken) {
+          response += `🔐 Auth token saved securely (hint: ${context?.auth_token_hint})\n`;
+          response += `_The token is encrypted and will never be shown again._\n`;
+        }
+        return response;
+      }
+
+      // Create new context
+      context = await agentContextDb.create({
+        organization_id: saveOrgId,
+        agent_url: agentUrl,
+        agent_name: agentName,
+        protocol,
+        created_by: memberContext.workos_user.workos_user_id,
+      });
+
+      // Save auth token if provided
+      if (authToken) {
+        await agentContextDb.saveAuthToken(context.id, authToken);
+        context = await agentContextDb.getById(context.id);
+      }
+
+      let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
+      response += `**URL:** ${agentUrl}\n`;
+      response += `**Protocol:** ${protocol.toUpperCase()}\n`;
+      if (authToken) {
+        response += `\n🔐 Auth token saved securely (hint: ${context?.auth_token_hint})\n`;
+        response += `_The token is encrypted and will never be shown again._\n`;
+      }
+      response += `\nWhen you test this agent, I'll automatically use the saved credentials.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, agentUrl }, 'Addie: save_agent failed');
+      return `Failed to save agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('list_saved_agents', async () => {
+    // Require authenticated user with organization
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to list saved agents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const listOrgId = memberContext.organization?.workos_organization_id;
+    if (!listOrgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    try {
+      const agents = await agentContextDb.getByOrganization(listOrgId);
+
+      if (agents.length === 0) {
+        return 'No agents saved yet. Use `save_agent` to save an agent URL for easy testing.';
+      }
+
+      let response = `## Your Saved Agents\n\n`;
+
+      for (const agent of agents) {
+        const name = agent.agent_name || 'Unnamed Agent';
+        const type = agent.agent_type !== 'unknown' ? ` (${agent.agent_type})` : '';
+        const hasToken = agent.has_auth_token ? `🔐 ${agent.auth_token_hint}` : '🔓 No token';
+
+        response += `### ${name}${type}\n`;
+        response += `**URL:** ${agent.agent_url}\n`;
+        response += `**Protocol:** ${agent.protocol.toUpperCase()}\n`;
+        response += `**Auth:** ${hasToken}\n`;
+
+        if (agent.tools_discovered && agent.tools_discovered.length > 0) {
+          response += `**Tools:** ${agent.tools_discovered.slice(0, 5).join(', ')}`;
+          if (agent.tools_discovered.length > 5) {
+            response += ` (+${agent.tools_discovered.length - 5} more)`;
+          }
+          response += `\n`;
+        }
+
+        if (agent.last_tested_at) {
+          const lastTest = new Date(agent.last_tested_at).toLocaleDateString();
+          const status = agent.last_test_passed ? '✅' : '❌';
+          response += `**Last Test:** ${status} ${agent.last_test_scenario} (${lastTest})\n`;
+          response += `**Total Tests:** ${agent.total_tests_run}\n`;
+        }
+
+        response += `\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Addie: list_saved_agents failed');
+      return `Failed to list agents: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('remove_saved_agent', async (input) => {
+    // Require authenticated user with organization
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to remove saved agents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const removeOrgId = memberContext.organization?.workos_organization_id;
+    if (!removeOrgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    const agentUrl = input.agent_url as string;
+
+    try {
+      // Find the agent
+      const context = await agentContextDb.getByOrgAndUrl(removeOrgId, agentUrl);
+
+      if (!context) {
+        return `No saved agent found with URL: ${agentUrl}\n\nUse \`list_saved_agents\` to see your saved agents.`;
+      }
+
+      const agentName = context.agent_name || agentUrl;
+
+      // Delete it
+      await agentContextDb.delete(context.id);
+
+      let response = `✅ Removed saved agent: **${agentName}**\n\n`;
+      if (context.has_auth_token) {
+        response += `🔐 The stored auth token has been permanently deleted.\n`;
+      }
+      response += `All test history for this agent has also been removed.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, agentUrl }, 'Addie: remove_saved_agent failed');
+      return `Failed to remove agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
   });
 
   return handlers;
