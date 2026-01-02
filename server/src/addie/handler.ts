@@ -34,6 +34,11 @@ import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
 } from './mcp/member-tools.js';
+import {
+  EVENT_TOOLS,
+  createEventToolHandlers,
+  canCreateEvents,
+} from './mcp/event-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -176,8 +181,12 @@ async function buildMessageWithMemberContext(
  * Create user-scoped member tools
  * These tools are created per-request with the user's context
  * Admin users also get access to admin tools
+ * Event creators (admin or committee leads) get access to event tools
  */
-function createUserScopedTools(memberContext: MemberContext | null): RequestTools {
+async function createUserScopedTools(
+  memberContext: MemberContext | null,
+  slackUserId?: string
+): Promise<RequestTools> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
@@ -190,6 +199,17 @@ function createUserScopedTools(memberContext: MemberContext | null): RequestTool
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Admin tools enabled for this user');
+  }
+
+  // Add event tools if user can create events (admin or committee lead)
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : isAdmin(memberContext);
+  if (canCreate) {
+    const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
+    allTools.push(...EVENT_TOOLS);
+    for (const [name, handler] of eventHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Event tools enabled for this user');
   }
 
   return {
@@ -274,7 +294,7 @@ export async function handleAssistantMessage(
   );
 
   // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = createUserScopedTools(memberContext);
+  const userTools = await createUserScopedTools(memberContext, event.user);
 
   // Process with Claude
   let response;
@@ -393,7 +413,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   );
 
   // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = createUserScopedTools(memberContext);
+  const userTools = await createUserScopedTools(memberContext, event.user);
 
   // Process with Claude
   let response;

@@ -483,3 +483,222 @@ export interface DomainLookupResult {
     member?: { slug: string; display_name: string };
   }>;
 }
+
+// =====================================================
+// Events Types
+// =====================================================
+
+export type EventType = 'summit' | 'meetup' | 'webinar' | 'workshop' | 'conference' | 'other';
+export type EventFormat = 'in_person' | 'virtual' | 'hybrid';
+export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
+export type RegistrationStatus = 'registered' | 'waitlisted' | 'cancelled' | 'no_show';
+export type RegistrationSource = 'direct' | 'luma' | 'import' | 'admin';
+export type SponsorshipPaymentStatus = 'pending' | 'paid' | 'refunded' | 'cancelled';
+
+export interface SponsorshipTier {
+  tier_id: string;
+  name: string;
+  price_cents: number;
+  currency?: string;
+  benefits: string[];
+  max_sponsors?: number;
+}
+
+export interface Event {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string;
+  short_description?: string;
+  event_type: EventType;
+  event_format: EventFormat;
+  start_time: Date;
+  end_time?: Date;
+  timezone?: string;
+  venue_name?: string;
+  venue_address?: string;
+  venue_city?: string;
+  venue_state?: string;
+  venue_country?: string;
+  venue_lat?: number;
+  venue_lng?: number;
+  virtual_url?: string;
+  virtual_platform?: string;
+  luma_event_id?: string;
+  luma_url?: string;
+  featured_image_url?: string;
+  sponsorship_enabled: boolean;
+  sponsorship_tiers: SponsorshipTier[];
+  stripe_product_id?: string;
+  status: EventStatus;
+  published_at?: Date;
+  max_attendees?: number;
+  created_by_user_id?: string;
+  organization_id?: string;
+  metadata: Record<string, unknown>;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateEventInput {
+  slug: string;
+  title: string;
+  description?: string;
+  short_description?: string;
+  event_type?: EventType;
+  event_format?: EventFormat;
+  start_time: Date;
+  end_time?: Date;
+  timezone?: string;
+  venue_name?: string;
+  venue_address?: string;
+  venue_city?: string;
+  venue_state?: string;
+  venue_country?: string;
+  venue_lat?: number;
+  venue_lng?: number;
+  virtual_url?: string;
+  virtual_platform?: string;
+  luma_event_id?: string;
+  luma_url?: string;
+  featured_image_url?: string;
+  sponsorship_enabled?: boolean;
+  sponsorship_tiers?: SponsorshipTier[];
+  stripe_product_id?: string;
+  status?: EventStatus;
+  max_attendees?: number;
+  created_by_user_id?: string;
+  organization_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateEventInput {
+  title?: string;
+  description?: string;
+  short_description?: string;
+  event_type?: EventType;
+  event_format?: EventFormat;
+  start_time?: Date;
+  end_time?: Date;
+  timezone?: string;
+  venue_name?: string;
+  venue_address?: string;
+  venue_city?: string;
+  venue_state?: string;
+  venue_country?: string;
+  venue_lat?: number;
+  venue_lng?: number;
+  virtual_url?: string;
+  virtual_platform?: string;
+  luma_event_id?: string;
+  luma_url?: string;
+  featured_image_url?: string;
+  sponsorship_enabled?: boolean;
+  sponsorship_tiers?: SponsorshipTier[];
+  stripe_product_id?: string;
+  status?: EventStatus;
+  published_at?: Date;
+  max_attendees?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ListEventsOptions {
+  status?: EventStatus;
+  event_type?: EventType;
+  event_format?: EventFormat;
+  upcoming_only?: boolean;
+  past_only?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface EventRegistration {
+  id: string;
+  event_id: string;
+  workos_user_id?: string;
+  email_contact_id?: string;
+  email?: string;
+  name?: string;
+  registration_status: RegistrationStatus;
+  attended: boolean;
+  checked_in_at?: Date;
+  luma_guest_id?: string;
+  registration_source: RegistrationSource;
+  organization_id?: string;
+  ticket_type?: string;
+  ticket_code?: string;
+  registration_data: Record<string, unknown>;
+  registered_at: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateEventRegistrationInput {
+  event_id: string;
+  workos_user_id?: string;
+  email_contact_id?: string;
+  email?: string;
+  name?: string;
+  registration_status?: RegistrationStatus;
+  registration_source?: RegistrationSource;
+  organization_id?: string;
+  ticket_type?: string;
+  registration_data?: Record<string, unknown>;
+  luma_guest_id?: string;  // Luma guest ID if synced from Luma
+}
+
+export interface EventSponsorship {
+  id: string;
+  event_id: string;
+  organization_id: string;
+  purchased_by_user_id?: string;
+  tier_id: string;
+  tier_name?: string;
+  amount_cents: number;
+  currency: string;
+  payment_status: SponsorshipPaymentStatus;
+  stripe_checkout_session_id?: string;
+  stripe_payment_intent_id?: string;
+  stripe_invoice_id?: string;
+  benefits_delivered: Record<string, unknown>;
+  display_order: number;
+  show_logo: boolean;
+  logo_url?: string;
+  notes?: string;
+  paid_at?: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateEventSponsorshipInput {
+  event_id: string;
+  organization_id: string;
+  purchased_by_user_id?: string;
+  tier_id: string;
+  tier_name?: string;
+  amount_cents: number;
+  currency?: string;
+  stripe_checkout_session_id?: string;
+  logo_url?: string;
+  notes?: string;
+}
+
+export interface EventWithCounts extends Event {
+  registration_count?: number;
+  attendance_count?: number;
+  sponsor_count?: number;
+  sponsorship_revenue_cents?: number;
+}
+
+export interface EventSponsorDisplay {
+  event_id: string;
+  tier_id: string;
+  tier_name?: string;
+  display_order: number;
+  logo_url?: string;
+  organization_id: string;
+  organization_name: string;
+  display_logo_url?: string;
+  organization_website?: string;
+}

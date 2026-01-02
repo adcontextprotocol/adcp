@@ -55,6 +55,7 @@ import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
+import { createEventsRouter } from "./routes/events.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -504,6 +505,12 @@ export class HTTPServer {
     // Mount organization routes
     const organizationsRouter = createOrganizationsRouter();
     this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
+
+    // Mount events routes
+    const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
+    this.app.use('/admin', eventsPageRouter);               // Admin page: /admin/events
+    this.app.use('/api/admin/events', eventsAdminApiRouter); // Admin API: /api/admin/events/*
+    this.app.use('/api/events', eventsPublicApiRouter);      // Public API: /api/events/*
 
     // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();
@@ -1332,6 +1339,15 @@ export class HTTPServer {
     });
     this.app.get("/insights/:slug", (req, res) => {
       res.redirect(301, `/perspectives/${req.params.slug}`);
+    });
+
+    // Events section
+    this.app.get("/events", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'events.html');
+    });
+
+    this.app.get("/events/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'event-detail.html');
     });
 
     // Working Groups pages - public list, detail pages handled by single HTML

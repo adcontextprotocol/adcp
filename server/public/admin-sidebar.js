@@ -25,6 +25,7 @@
       {
         label: 'Community',
         items: [
+          { href: '/admin/events', label: 'Events', icon: '📅' },
           { href: '/admin/working-groups', label: 'Working Groups', icon: '🏛️' },
           { href: '/admin/perspectives', label: 'Perspectives', icon: '💡' },
         ]
