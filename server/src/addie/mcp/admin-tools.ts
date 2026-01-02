@@ -150,6 +150,31 @@ Returns a list of organizations with open or draft invoices.`,
       },
     },
   },
+  {
+    name: 'get_organization_details',
+    description: `Get comprehensive details about an organization including Slack activity, working group participation, engagement signals, enrichment data, and membership status.
+
+USE THIS for questions like:
+- "How many Slack users does [company] have?"
+- "Which working groups is [company] in?"
+- "What do we know about [company]?"
+- "Has [company] signed up yet?"
+- "How engaged is [company]?"
+- "What's the status of [company]?"
+
+Returns: Slack user count and activity, working groups, engagement level and signals, enrichment data (industry, revenue, employees), prospect status, and membership/subscription status.`,
+    usage_hints: 'Use this for ANY question about a specific organization beyond just "is it a prospect". This gives you the full picture.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Company name or domain to look up (e.g., "Boltive" or "boltive.com")',
+        },
+      },
+      required: ['query'],
+    },
+  },
 
   // ============================================
   // PROSPECT MANAGEMENT TOOLS
@@ -157,13 +182,14 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'add_prospect',
     description:
-      'Add a new prospect organization to track. Use this when someone mentions a company we should be talking to. Requires admin access.',
+      'Add a new prospect organization to track. Use this after find_prospect confirms the company does not exist. Capture as much info as possible: name, domain, contact details, and notes about their interest.',
+    usage_hints: 'Always use find_prospect first to check if company exists. Include champion info in notes (e.g., "Champion: Jane Doe, VP Sales").',
     input_schema: {
       type: 'object',
       properties: {
         name: {
           type: 'string',
-          description: 'Company name (e.g., "Acme Corporation")',
+          description: 'Company name (e.g., "Boltive")',
         },
         company_type: {
           type: 'string',
@@ -172,19 +198,23 @@ Returns a list of organizations with open or draft invoices.`,
         },
         domain: {
           type: 'string',
-          description: 'Company domain for enrichment (e.g., "acme.com"). Optional but helps with auto-enrichment.',
+          description: 'Company domain (e.g., "boltive.com"). Highly recommended for enrichment and deduplication.',
         },
         contact_name: {
           type: 'string',
-          description: 'Primary contact name at the company',
+          description: 'Primary contact/champion name (e.g., "Pamela Slea")',
         },
         contact_email: {
           type: 'string',
           description: 'Primary contact email',
         },
+        contact_title: {
+          type: 'string',
+          description: 'Primary contact job title (e.g., "President", "VP Engineering")',
+        },
         notes: {
           type: 'string',
-          description: 'Any notes about the prospect (e.g., how we heard about them, why they\'re relevant)',
+          description: 'Notes about the prospect - include champion info, their interest areas, which working groups they want to join, etc.',
         },
         source: {
           type: 'string',
@@ -197,13 +227,14 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'find_prospect',
     description:
-      'Search for existing prospects by name or domain. Use this to check if a company is already in our system before adding them.',
+      'Search for existing prospects by name or domain. USE THIS FIRST whenever an admin mentions any company - check if they already exist before offering to add them. Searches both company names and email domains.',
+    usage_hints: 'Always use this before add_prospect. When an admin says "check on [company]" or mentions any company name, use this tool first.',
     input_schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query - company name or domain',
+          description: 'Search query - company name or domain (e.g., "Boltive" or "boltive.com")',
         },
       },
       required: ['query'],
@@ -465,6 +496,9 @@ export function createAdminToolHandlers(
 
   // Lookup organization
   handlers.set('lookup_organization', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
     const companyName = input.company_name as string;
 
     logger.info({ companyName }, 'Addie: Admin looking up organization');
@@ -541,6 +575,9 @@ export function createAdminToolHandlers(
 
   // List pending invoices across all orgs
   handlers.set('list_pending_invoices', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
     const limit = (input.limit as number) || 10;
 
     logger.info({ limit }, 'Addie: Admin listing pending invoices');
@@ -601,6 +638,238 @@ export function createAdminToolHandlers(
     }
   });
 
+  // Get comprehensive organization details
+  handlers.set('get_organization_details', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const query = input.query as string;
+    const searchPattern = `%${query}%`;
+
+    try {
+      // Find organizations by name or domain - get up to 5 matches
+      const result = await pool.query(
+        `SELECT o.*,
+                p.name as parent_name
+         FROM organizations o
+         LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+         WHERE o.is_personal = false
+           AND (LOWER(o.name) LIKE LOWER($1) OR LOWER(o.email_domain) LIKE LOWER($1))
+         ORDER BY
+           CASE WHEN LOWER(o.name) = LOWER($2) THEN 0
+                WHEN LOWER(o.name) LIKE LOWER($3) THEN 1
+                ELSE 2 END,
+           o.updated_at DESC
+         LIMIT 5`,
+        [searchPattern, query, `${query}%`]
+      );
+
+      if (result.rows.length === 0) {
+        return `No organization found matching "${query}". Try searching by company name or domain.`;
+      }
+
+      // If multiple matches, present options to the user
+      if (result.rows.length > 1) {
+        let response = `## Found ${result.rows.length} organizations matching "${query}"\n\n`;
+        response += `Which one would you like to know more about?\n\n`;
+
+        for (let i = 0; i < result.rows.length; i++) {
+          const org = result.rows[i];
+          response += `**${i + 1}. ${org.name}**\n`;
+          if (org.email_domain) response += `   Domain: ${org.email_domain}\n`;
+          if (org.company_type) response += `   Type: ${org.company_type}\n`;
+          if (org.subscription_status === 'active') {
+            response += `   Status: ✅ Member\n`;
+          } else if (org.prospect_status) {
+            response += `   Status: 📋 Prospect (${org.prospect_status})\n`;
+          }
+          response += `\n`;
+        }
+
+        response += `_Reply with the company name or number for full details._`;
+        return response;
+      }
+
+      const org = result.rows[0];
+      const orgId = org.workos_organization_id;
+
+      // Gather all the data in parallel
+      const [
+        slackUsersResult,
+        slackActivityResult,
+        workingGroupsResult,
+        activitiesResult,
+        engagementSignals,
+      ] = await Promise.all([
+        // Slack users count for this org
+        pool.query(
+          `SELECT COUNT(DISTINCT sm.slack_user_id) as slack_user_count
+           FROM slack_user_mappings sm
+           JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+           WHERE om.workos_organization_id = $1
+             AND sm.mapping_status = 'mapped'`,
+          [orgId]
+        ),
+        // Slack activity (last 30 days)
+        pool.query(
+          `SELECT
+             COUNT(DISTINCT sad.slack_user_id) as active_users,
+             SUM(sad.message_count) as messages,
+             SUM(sad.reaction_count) as reactions,
+             SUM(sad.thread_reply_count) as thread_replies
+           FROM slack_activity_daily sad
+           WHERE sad.organization_id = $1
+             AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'`,
+          [orgId]
+        ),
+        // Working groups
+        pool.query(
+          `SELECT DISTINCT wg.name, wg.slug, wgm.status, wgm.joined_at
+           FROM working_group_memberships wgm
+           JOIN working_groups wg ON wgm.working_group_id = wg.id
+           WHERE wgm.workos_organization_id = $1 AND wgm.status = 'active'`,
+          [orgId]
+        ),
+        // Recent activities
+        pool.query(
+          `SELECT activity_type, description, activity_date, logged_by_name
+           FROM org_activities
+           WHERE organization_id = $1
+           ORDER BY activity_date DESC
+           LIMIT 5`,
+          [orgId]
+        ),
+        // Engagement signals
+        orgDb.getEngagementSignals(orgId),
+      ]);
+
+      const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
+      const slackActivity = slackActivityResult.rows[0] || { active_users: 0, messages: 0, reactions: 0, thread_replies: 0 };
+      const workingGroups = workingGroupsResult.rows;
+      const recentActivities = activitiesResult.rows;
+
+      // Build comprehensive response
+      let response = `## ${org.name}\n\n`;
+
+      // Basic info
+      if (org.company_type) response += `**Type:** ${org.company_type}\n`;
+      if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
+      if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
+      response += '\n';
+
+      // Membership status
+      response += `### Membership Status\n`;
+      if (org.subscription_status === 'active') {
+        response += `✅ **Active Member** - ${org.subscription_product_name || 'Subscription'}\n`;
+        if (org.subscription_current_period_end) {
+          response += `   Renews: ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+        }
+      } else if (org.prospect_status) {
+        const statusEmojiMap: Record<string, string> = {
+          prospect: '🔍',
+          contacted: '📧',
+          responded: '💬',
+          interested: '⭐',
+          negotiating: '🤝',
+          declined: '❌',
+        };
+        const statusEmoji = statusEmojiMap[org.prospect_status as string] || '📋';
+        response += `${statusEmoji} **Prospect** - Status: ${org.prospect_status}\n`;
+        if (org.prospect_contact_name) {
+          response += `   Contact: ${org.prospect_contact_name}`;
+          if (org.prospect_contact_title) response += ` (${org.prospect_contact_title})`;
+          response += '\n';
+        }
+      } else {
+        response += `⚪ Not a member yet\n`;
+      }
+      response += '\n';
+
+      // Slack presence
+      response += `### Slack Presence\n`;
+      response += `**Users in Slack:** ${slackUserCount}\n`;
+      if (slackActivity.active_users > 0) {
+        response += `**Active (30d):** ${slackActivity.active_users} users\n`;
+        response += `**Messages (30d):** ${slackActivity.messages || 0}\n`;
+        response += `**Reactions (30d):** ${slackActivity.reactions || 0}\n`;
+      } else {
+        response += `_No Slack activity in the last 30 days_\n`;
+      }
+      response += '\n';
+
+      // Working groups
+      response += `### Working Groups\n`;
+      if (workingGroups.length > 0) {
+        for (const wg of workingGroups) {
+          response += `- ${wg.name} (joined ${formatDate(new Date(wg.joined_at))})\n`;
+        }
+      } else {
+        response += `_Not participating in any working groups_\n`;
+      }
+      response += '\n';
+
+      // Engagement
+      response += `### Engagement\n`;
+      const engagementLabels = ['', 'Low', 'Some', 'Moderate', 'High', 'Very High'];
+      let engagementLevel = 1;
+      if (engagementSignals.interest_level === 'very_high') engagementLevel = 5;
+      else if (engagementSignals.interest_level === 'high') engagementLevel = 4;
+      else if (engagementSignals.working_group_count > 0) engagementLevel = 4;
+      else if (engagementSignals.has_member_profile) engagementLevel = 4;
+      else if (engagementSignals.login_count_30d > 3) engagementLevel = 3;
+      else if (slackUserCount > 0) engagementLevel = 3;
+      else if (engagementSignals.login_count_30d > 0) engagementLevel = 2;
+
+      response += `**Level:** ${engagementLabels[engagementLevel]} (${engagementLevel}/5)\n`;
+      if (engagementSignals.interest_level) {
+        response += `**Interest:** ${engagementSignals.interest_level}`;
+        if (engagementSignals.interest_level_set_by) response += ` (set by ${engagementSignals.interest_level_set_by})`;
+        if (engagementSignals.interest_level_note) response += `\n   Note: "${engagementSignals.interest_level_note}"`;
+        response += '\n';
+      }
+      if (engagementSignals.login_count_30d > 0) {
+        response += `**Dashboard logins (30d):** ${engagementSignals.login_count_30d}\n`;
+      }
+      response += '\n';
+
+      // Enrichment data
+      if (org.enrichment_at) {
+        response += `### Company Info (Enriched)\n`;
+        if (org.enrichment_industry) response += `**Industry:** ${org.enrichment_industry}\n`;
+        if (org.enrichment_sub_industry) response += `**Sub-industry:** ${org.enrichment_sub_industry}\n`;
+        if (org.enrichment_employee_count) response += `**Employees:** ${org.enrichment_employee_count.toLocaleString()}\n`;
+        if (org.enrichment_revenue_range) response += `**Revenue:** ${org.enrichment_revenue_range}\n`;
+        if (org.enrichment_country) response += `**Location:** ${org.enrichment_city ? org.enrichment_city + ', ' : ''}${org.enrichment_country}\n`;
+        if (org.enrichment_description) response += `**About:** ${org.enrichment_description}\n`;
+        response += '\n';
+      }
+
+      // Recent activities
+      if (recentActivities.length > 0) {
+        response += `### Recent Activity\n`;
+        for (const activity of recentActivities) {
+          const date = formatDate(new Date(activity.activity_date));
+          response += `- ${date}: ${activity.activity_type}`;
+          if (activity.description) response += ` - ${activity.description}`;
+          if (activity.logged_by_name) response += ` (${activity.logged_by_name})`;
+          response += '\n';
+        }
+        response += '\n';
+      }
+
+      // Prospect notes
+      if (org.prospect_notes) {
+        response += `### Notes\n${org.prospect_notes}\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query }, 'Addie: Error getting organization details');
+      return `❌ Failed to get organization details. Please try again or contact support.`;
+    }
+  });
+
   // ============================================
   // PROSPECT MANAGEMENT HANDLERS
   // ============================================
@@ -615,6 +884,7 @@ export function createAdminToolHandlers(
     const domain = input.domain as string | undefined;
     const contactName = input.contact_name as string | undefined;
     const contactEmail = input.contact_email as string | undefined;
+    const contactTitle = input.contact_title as string | undefined;
     const notes = input.notes as string | undefined;
     const source = (input.source as string) || 'addie_conversation';
 
@@ -627,6 +897,7 @@ export function createAdminToolHandlers(
       prospect_notes: notes,
       prospect_contact_name: contactName,
       prospect_contact_email: contactEmail,
+      prospect_contact_title: contactTitle,
     });
 
     if (!result.success) {
@@ -640,7 +911,11 @@ export function createAdminToolHandlers(
     let response = `✅ Added **${org.name}** as a new prospect!\n\n`;
     if (org.company_type) response += `**Type:** ${org.company_type}\n`;
     if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
-    if (contactName) response += `**Contact:** ${contactName}\n`;
+    if (contactName) {
+      response += `**Contact:** ${contactName}`;
+      if (contactTitle) response += ` (${contactTitle})`;
+      response += `\n`;
+    }
     if (contactEmail) response += `**Email:** ${contactEmail}\n`;
     response += `**Status:** ${org.prospect_status}\n`;
     response += `**ID:** ${org.workos_organization_id}\n`;

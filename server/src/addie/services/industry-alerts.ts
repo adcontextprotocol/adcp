@@ -16,6 +16,7 @@ import {
 } from '../../db/industry-feeds-db.js';
 import {
   getActiveChannels,
+  isWebsiteOnlyChannel,
   type NotificationChannel,
   type FallbackRules,
 } from '../../db/notification-channels-db.js';
@@ -326,10 +327,24 @@ export async function processAlerts(): Promise<{
 
     // Send to each target channel
     for (const channelId of targetChannelIds) {
+      const channel = channelMap.get(channelId);
+
+      // Skip Slack delivery for website-only channels but still record the alert
+      if (channel && isWebsiteOnlyChannel(channel)) {
+        await recordPerspectiveAlert(article.perspective_id, alertLevel, channelId);
+        alerted++;
+        byChannel[channel.name] = (byChannel[channel.name] || 0) + 1;
+        logger.debug(
+          { perspectiveId: article.perspective_id, channelId, channelName: channel.name },
+          'Recorded website-only alert (no Slack delivery)'
+        );
+        continue;
+      }
+
       const success = await sendAlertToChannel(article, channelId, alertLevel);
       if (success) {
         alerted++;
-        const channelName = channelMap.get(channelId)?.name || channelId;
+        const channelName = channel?.name || channelId;
         byChannel[channelName] = (byChannel[channelName] || 0) + 1;
       }
 
@@ -349,9 +364,12 @@ export async function processAlerts(): Promise<{
 export async function sendDailyDigest(): Promise<boolean> {
   const channels = await getActiveChannels();
 
+  // Filter out website-only channels (they don't receive Slack messages)
+  const slackChannels = channels.filter(c => !isWebsiteOnlyChannel(c));
+
   // Fall back to legacy channel if no channels configured
-  const targetChannels = channels.length > 0
-    ? channels.map(c => c.slack_channel_id)
+  const targetChannels = slackChannels.length > 0
+    ? slackChannels.map(c => c.slack_channel_id)
     : LEGACY_CHANNEL_ID
       ? [LEGACY_CHANNEL_ID]
       : [];

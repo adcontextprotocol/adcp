@@ -55,6 +55,8 @@ import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
+import { createEventsRouter } from "./routes/events.js";
+import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -504,6 +506,17 @@ export class HTTPServer {
     // Mount organization routes
     const organizationsRouter = createOrganizationsRouter();
     this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
+
+    // Mount events routes
+    const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
+    this.app.use('/admin', eventsPageRouter);               // Admin page: /admin/events
+    this.app.use('/api/admin/events', eventsAdminApiRouter); // Admin API: /api/admin/events/*
+    this.app.use('/api/events', eventsPublicApiRouter);      // Public API: /api/events/*
+
+    // Mount latest content routes (The Latest section)
+    const { pageRouter: latestPageRouter, apiRouter: latestApiRouter } = createLatestRouter();
+    this.app.use('/', latestPageRouter);                    // Page routes: /latest, /latest/:slug
+    this.app.use('/api', latestApiRouter);                  // API routes: /api/latest/*
 
     // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();
@@ -1316,22 +1329,27 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'governance.html');
     });
 
-    // Perspectives section
-    this.app.get("/perspectives", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'perspectives/index.html');
+    // Legacy redirects to The Latest section
+    this.app.get("/perspectives", (req, res) => {
+      res.redirect(301, "/latest/research");
     });
-
-    // Dynamic article route - serves article.html which loads content from API
-    this.app.get("/perspectives/:slug", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'perspectives/article.html');
+    this.app.get("/perspectives/:slug", (req, res) => {
+      res.redirect(301, "/latest/research");
     });
-
-    // Legacy redirect from /insights to /perspectives
     this.app.get("/insights", (req, res) => {
-      res.redirect(301, "/perspectives");
+      res.redirect(301, "/latest/research");
     });
     this.app.get("/insights/:slug", (req, res) => {
-      res.redirect(301, `/perspectives/${req.params.slug}`);
+      res.redirect(301, "/latest/research");
+    });
+
+    // Events section
+    this.app.get("/events", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'events.html');
+    });
+
+    this.app.get("/events/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'event-detail.html');
     });
 
     // Working Groups pages - public list, detail pages handled by single HTML

@@ -661,7 +661,7 @@
         <div class="filters">
           <div class="filter-group">
             <label>Search</label>
-            <input type="text" id="filterSearch" placeholder="Company name..." oninput="applyFilters()">
+            <input type="text" id="filterSearch" placeholder="Name, domain, or contact..." oninput="applyFilters()">
           </div>
           <div class="filter-group">
             <label>Owner</label>
@@ -2279,7 +2279,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
     function applyFilters() {
       const ownerFilter = document.getElementById('filterOwner').value;
       const typeFilter = document.getElementById('filterType').value;
-      const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+      const searchFilter = document.getElementById('filterSearch').value.toLowerCase().trim();
       const accountTypeFilter = document.getElementById('filterAccountType').value;
 
       filteredProspects = allProspects.filter(prospect => {
@@ -2289,7 +2289,19 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
         if (ownerFilter && prospect.prospect_owner !== ownerFilter) return false;
         if (typeFilter && prospect.company_type !== typeFilter) return false;
-        if (searchFilter && !prospect.name.toLowerCase().includes(searchFilter)) return false;
+
+        // Search filter: match name, email_domain, or any linked domain
+        if (searchFilter) {
+          const nameMatch = prospect.name.toLowerCase().includes(searchFilter);
+          const emailDomainMatch = prospect.email_domain && prospect.email_domain.toLowerCase().includes(searchFilter);
+          const linkedDomainMatch = prospect.domains && prospect.domains.some(d =>
+            d.domain && d.domain.toLowerCase().includes(searchFilter)
+          );
+          const contactMatch = prospect.prospect_contact_name &&
+            prospect.prospect_contact_name.toLowerCase().includes(searchFilter);
+
+          if (!nameMatch && !emailDomainMatch && !linkedDomainMatch && !contactMatch) return false;
+        }
         return true;
       });
 

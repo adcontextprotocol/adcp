@@ -21,6 +21,9 @@ export interface NotificationChannel {
   description: string;
   fallback_rules: FallbackRules;
   is_active: boolean;
+  website_slug: string | null;
+  website_enabled: boolean;
+  display_order: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -31,6 +34,9 @@ export interface NotificationChannelInput {
   description: string;
   fallback_rules?: FallbackRules;
   is_active?: boolean;
+  website_slug?: string | null;
+  website_enabled?: boolean;
+  display_order?: number;
 }
 
 // ============== Channel Operations ==============
@@ -82,8 +88,8 @@ export async function getChannelBySlackId(slackChannelId: string): Promise<Notif
  */
 export async function createChannel(data: NotificationChannelInput): Promise<NotificationChannel> {
   const result = await query<NotificationChannel>(
-    `INSERT INTO notification_channels (name, slack_channel_id, description, fallback_rules, is_active)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO notification_channels (name, slack_channel_id, description, fallback_rules, is_active, website_slug, website_enabled, display_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       data.name,
@@ -91,6 +97,9 @@ export async function createChannel(data: NotificationChannelInput): Promise<Not
       data.description,
       JSON.stringify(data.fallback_rules || {}),
       data.is_active ?? true,
+      data.website_slug ?? null,
+      data.website_enabled ?? false,
+      data.display_order ?? 0,
     ]
   );
   return result.rows[0];
@@ -126,6 +135,18 @@ export async function updateChannel(
   if (data.is_active !== undefined) {
     updates.push(`is_active = $${paramIndex++}`);
     values.push(data.is_active);
+  }
+  if (data.website_slug !== undefined) {
+    updates.push(`website_slug = $${paramIndex++}`);
+    values.push(data.website_slug);
+  }
+  if (data.website_enabled !== undefined) {
+    updates.push(`website_enabled = $${paramIndex++}`);
+    values.push(data.website_enabled);
+  }
+  if (data.display_order !== undefined) {
+    updates.push(`display_order = $${paramIndex++}`);
+    values.push(data.display_order);
   }
 
   if (updates.length === 0) {
@@ -166,6 +187,39 @@ export async function deleteChannel(id: number): Promise<boolean> {
     [id]
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+// ============== Website Channel Operations ==============
+
+/**
+ * Get website-enabled channels for public display
+ */
+export async function getWebsiteChannels(): Promise<NotificationChannel[]> {
+  const result = await query<NotificationChannel>(
+    `SELECT * FROM notification_channels
+     WHERE website_enabled = true AND is_active = true
+     ORDER BY display_order, name`
+  );
+  return result.rows;
+}
+
+/**
+ * Get a channel by its website slug
+ */
+export async function getChannelByWebsiteSlug(slug: string): Promise<NotificationChannel | null> {
+  const result = await query<NotificationChannel>(
+    `SELECT * FROM notification_channels
+     WHERE website_slug = $1 AND website_enabled = true AND is_active = true`,
+    [slug]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Check if a channel is website-only (no Slack delivery)
+ */
+export function isWebsiteOnlyChannel(channel: NotificationChannel): boolean {
+  return channel.slack_channel_id.startsWith('WEBSITE_ONLY_');
 }
 
 // ============== Routing Operations ==============

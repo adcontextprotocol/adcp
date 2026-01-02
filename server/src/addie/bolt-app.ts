@@ -430,12 +430,21 @@ async function handleUserMessage({
     logger.debug({ error }, 'Addie Bolt: Could not get thread context');
   }
 
-  // Get or create unified thread
+  // Get member context early so we can include display name in thread creation
+  let memberContext: MemberContext | null = null;
+  try {
+    memberContext = await getMemberContext(userId);
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for thread creation');
+  }
+
+  // Get or create unified thread (including user_display_name for admin UI)
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
+    user_display_name: memberContext?.slack_user?.display_name || undefined,
     context: slackThreadContext,
   });
 
@@ -468,12 +477,16 @@ async function handleUserMessage({
     logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history');
   }
 
-  // Build message with member context
-  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
+  // Build message with member context (memberContext is fetched again but cached)
+  const { message: messageWithContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
     userId,
     inputValidation.sanitized,
     slackThreadContext
   );
+  // Use the updated memberContext if we didn't have one before
+  if (!memberContext && updatedMemberContext) {
+    memberContext = updatedMemberContext;
+  }
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
