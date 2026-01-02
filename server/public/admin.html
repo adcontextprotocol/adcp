@@ -142,23 +142,103 @@
         <h1>Admin Dashboard</h1>
         <p class="subtitle">Manage members, agreements, and system settings</p>
 
-        <h2 style="margin-bottom: 15px; color: var(--color-text-heading);">Quick Stats</h2>
-        <div class="stats-grid" id="statsGrid">
+        <!-- Financial Metrics -->
+        <h2 style="margin-bottom: 15px; color: var(--color-text-heading);">Financial</h2>
+        <div class="stats-grid" id="financialGrid">
           <div class="stat-card">
-            <div class="stat-value" id="totalMembers">-</div>
-            <div class="stat-label">Total Members</div>
+            <div class="stat-value" id="arr">-</div>
+            <div class="stat-label">ARR</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value" id="activeSubscriptions">-</div>
-            <div class="stat-label">Active Subscriptions</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="expiringCount">-</div>
-            <div class="stat-label">Expiring This Month</div>
+            <div class="stat-value" id="mrr">-</div>
+            <div class="stat-label">MRR</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" id="totalRevenue">-</div>
-            <div class="stat-label">Monthly Revenue</div>
+            <div class="stat-label">This Month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="lastMonthRevenue">-</div>
+            <div class="stat-label">Last Month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="bookings30d">-</div>
+            <div class="stat-label">Bookings (30d)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="activeSubscriptions">-</div>
+            <div class="stat-label">Active Subs</div>
+          </div>
+        </div>
+
+        <!-- Organizations & Users -->
+        <h2 style="margin: 30px 0 15px; color: var(--color-text-heading);">Organizations & Users</h2>
+        <div class="stats-grid" id="orgsGrid">
+          <div class="stat-card">
+            <div class="stat-value" id="totalOrgs">-</div>
+            <div class="stat-label">Total Orgs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="activeOrgs">-</div>
+            <div class="stat-label">Active Orgs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="engagedProspects">-</div>
+            <div class="stat-label">Engaged Prospects</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="totalUsers">-</div>
+            <div class="stat-label">Total Users</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="activeUsers">-</div>
+            <div class="stat-label">Active Users</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="championUsers">-</div>
+            <div class="stat-label">Champions</div>
+          </div>
+        </div>
+
+        <!-- Slack Activity -->
+        <h2 style="margin: 30px 0 15px; color: var(--color-text-heading);">Slack</h2>
+        <div class="stats-grid" id="slackGrid">
+          <div class="stat-card">
+            <div class="stat-value" id="slackTotalMessages">-</div>
+            <div class="stat-label">Total Messages</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="slackActiveUsers">-</div>
+            <div class="stat-label">Active Users (30d)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="slackMessages7d">-</div>
+            <div class="stat-label">Messages (7d)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="slackReactions7d">-</div>
+            <div class="stat-label">Reactions (7d)</div>
+          </div>
+        </div>
+
+        <!-- Addie Stats -->
+        <h2 style="margin: 30px 0 15px; color: var(--color-text-heading);">Addie</h2>
+        <div class="stats-grid" id="addieGrid">
+          <div class="stat-card">
+            <div class="stat-value" id="addieTotalThreads">-</div>
+            <div class="stat-label">Total Threads</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="addieTotalMessages">-</div>
+            <div class="stat-label">Total Messages</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="addieAvgRating">-</div>
+            <div class="stat-label">Avg Rating</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="addieRatedCount">-</div>
+            <div class="stat-label">Rated Messages</div>
           </div>
         </div>
       </div>
@@ -217,6 +297,11 @@
   </div>
 
   <script>
+    function formatNumber(num) {
+      if (!num && num !== 0) return '-';
+      return num.toLocaleString();
+    }
+
     async function loadStats() {
       try {
         const response = await fetch('/api/admin/stats');
@@ -230,10 +315,33 @@
 
         const stats = await response.json();
 
-        document.getElementById('totalMembers').textContent = stats.total_members || 0;
-        document.getElementById('activeSubscriptions').textContent = stats.active_subscriptions || 0;
-        document.getElementById('expiringCount').textContent = stats.expiring_this_month || 0;
+        // Financial metrics
+        document.getElementById('arr').textContent = stats.arr || '$0';
+        document.getElementById('mrr').textContent = stats.mrr || '$0';
         document.getElementById('totalRevenue').textContent = stats.monthly_revenue || '$0';
+        document.getElementById('lastMonthRevenue').textContent = stats.last_month_revenue || '$0';
+        document.getElementById('bookings30d').textContent = stats.bookings_30d_revenue || '$0';
+        document.getElementById('activeSubscriptions').textContent = formatNumber(stats.active_subscriptions);
+
+        // Organizations & Users
+        document.getElementById('totalOrgs').textContent = formatNumber(stats.total_orgs);
+        document.getElementById('activeOrgs').textContent = formatNumber(stats.active_orgs);
+        document.getElementById('engagedProspects').textContent = formatNumber(stats.engaged_prospects);
+        document.getElementById('totalUsers').textContent = formatNumber(stats.total_users);
+        document.getElementById('activeUsers').textContent = formatNumber(stats.active_users);
+        document.getElementById('championUsers').textContent = formatNumber(stats.champion_users);
+
+        // Slack stats
+        document.getElementById('slackTotalMessages').textContent = formatNumber(stats.slack_total_messages);
+        document.getElementById('slackActiveUsers').textContent = formatNumber(stats.slack_active_users_30d);
+        document.getElementById('slackMessages7d').textContent = formatNumber(stats.slack_messages_7d);
+        document.getElementById('slackReactions7d').textContent = formatNumber(stats.slack_reactions_7d);
+
+        // Addie stats
+        document.getElementById('addieTotalThreads').textContent = formatNumber(stats.addie_total_threads);
+        document.getElementById('addieTotalMessages').textContent = formatNumber(stats.addie_total_messages);
+        document.getElementById('addieAvgRating').textContent = stats.addie_avg_rating || '-';
+        document.getElementById('addieRatedCount').textContent = formatNumber(stats.addie_total_rated);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
