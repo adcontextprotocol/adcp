@@ -121,6 +121,7 @@
     }
     .badge-active { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-inactive { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-website { background: var(--color-info-100); color: var(--color-info-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -324,6 +325,31 @@
         </div>
 
         <div class="form-section">
+          <h3>Website Distribution</h3>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="websiteEnabled">
+              Enable as website section
+            </label>
+            <small>Show this channel as a section in "The Latest" on the website</small>
+          </div>
+
+          <div class="form-row" id="websiteFields" style="display: none;">
+            <div class="form-group">
+              <label>Website Slug</label>
+              <input type="text" id="websiteSlug" placeholder="e.g., industry-news" pattern="[a-z0-9-]+">
+              <small>URL path: /latest/<span id="slugPreview">slug</span></small>
+            </div>
+            <div class="form-group">
+              <label>Display Order</label>
+              <input type="number" id="displayOrder" value="0" min="0">
+              <small>Lower numbers appear first in navigation</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h3>Fallback Rules (when Addie isn't certain)</h3>
 
           <div class="form-group">
@@ -452,8 +478,12 @@
           ? '<span class="badge badge-active">Active</span>'
           : '<span class="badge badge-inactive">Inactive</span>';
 
+        const websiteBadge = channel.website_enabled
+          ? `<span class="badge badge-website">Website: /latest/${escapeHtml(channel.website_slug)}</span>`
+          : '';
+
         const rules = channel.fallback_rules || {};
-        let rulesText = [];
+        const rulesText = [];
         if (rules.min_quality) rulesText.push(`Quality ${rules.min_quality}+`);
         if (rules.require_tags?.length) rulesText.push(`Tags: ${rules.require_tags.join(', ')}`);
         if (rules.require_mentions_adcp) rulesText.push('AdCP mentions');
@@ -467,7 +497,7 @@
           <div class="channel-item ${channel.is_active ? '' : 'inactive'}" data-id="${channel.id}">
             <div class="channel-header">
               <div class="channel-info">
-                <h3>${escapeHtml(channel.name)} ${statusBadge}</h3>
+                <h3>${escapeHtml(channel.name)} ${statusBadge} ${websiteBadge}</h3>
                 <div class="channel-id">${escapeHtml(channel.slack_channel_id)}</div>
               </div>
               <div class="channel-actions">
@@ -486,12 +516,29 @@
       listDiv.innerHTML = html;
     }
 
+    // Toggle website fields visibility
+    function toggleWebsiteFields() {
+      const enabled = document.getElementById('websiteEnabled').checked;
+      document.getElementById('websiteFields').style.display = enabled ? 'grid' : 'none';
+    }
+
+    // Update slug preview
+    function updateSlugPreview() {
+      const slug = document.getElementById('websiteSlug').value || 'slug';
+      document.getElementById('slugPreview').textContent = slug;
+    }
+
     // Show add modal
     function showAddModal() {
       editingChannelId = null;
       document.getElementById('modalTitle').textContent = 'Add Notification Channel';
       document.getElementById('channelForm').reset();
       document.getElementById('channelId').value = '';
+      document.getElementById('websiteEnabled').checked = false;
+      document.getElementById('websiteSlug').value = '';
+      document.getElementById('displayOrder').value = '0';
+      toggleWebsiteFields();
+      updateSlugPreview();
       hideStatusMessage();
       document.getElementById('channelModal').style.display = 'flex';
     }
@@ -507,6 +554,13 @@
       document.getElementById('channelName').value = channel.name;
       document.getElementById('slackChannelId').value = channel.slack_channel_id;
       document.getElementById('channelDescription').value = channel.description;
+
+      // Website fields
+      document.getElementById('websiteEnabled').checked = channel.website_enabled || false;
+      document.getElementById('websiteSlug').value = channel.website_slug || '';
+      document.getElementById('displayOrder').value = channel.display_order || 0;
+      toggleWebsiteFields();
+      updateSlugPreview();
 
       const rules = channel.fallback_rules || {};
       document.getElementById('minQuality').value = rules.min_quality || '';
@@ -542,11 +596,18 @@
       if (document.getElementById('requireAdcp').checked) fallbackRules.require_mentions_adcp = true;
       if (document.getElementById('requireAgentic').checked) fallbackRules.require_mentions_agentic = true;
 
+      const websiteEnabled = document.getElementById('websiteEnabled').checked;
+      const websiteSlug = document.getElementById('websiteSlug').value.toLowerCase().trim();
+      const displayOrder = parseInt(document.getElementById('displayOrder').value) || 0;
+
       const data = {
         name: document.getElementById('channelName').value,
         slack_channel_id: document.getElementById('slackChannelId').value.toUpperCase(),
         description: document.getElementById('channelDescription').value,
         fallback_rules: fallbackRules,
+        website_enabled: websiteEnabled,
+        website_slug: websiteEnabled ? websiteSlug : null,
+        display_order: displayOrder,
       };
 
       try {
@@ -688,6 +749,10 @@
 
     // Initialize
     loadChannels();
+
+    // Event listeners for website fields
+    document.getElementById('websiteEnabled').addEventListener('change', toggleWebsiteFields);
+    document.getElementById('websiteSlug').addEventListener('input', updateSlugPreview);
   </script>
 </body>
 </html>
