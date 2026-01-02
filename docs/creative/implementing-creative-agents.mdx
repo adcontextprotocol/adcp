@@ -169,7 +169,7 @@ When validating manifests:
 
 When updating format definitions:
 
-- **Additive changes** (new optional assets in `assets_optional`) are safe
+- **Additive changes** (new optional assets with `required: false` in `assets`) are safe
 - **Breaking changes** (removing assets, changing requirements) require new format_id
 - Consider versioning: `youragency.com:format_name_v2`
 - Maintain backward compatibility when possible
