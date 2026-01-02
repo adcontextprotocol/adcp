@@ -1077,6 +1077,114 @@
     }
 
     // =========================================================================
+    // Outreach Functions
+    // =========================================================================
+
+    async function previewOutreach(slackUserId) {
+      const previewDiv = document.getElementById(`outreachPreview-${slackUserId}`);
+      if (!previewDiv) return;
+
+      previewDiv.innerHTML = '<div style="padding: var(--space-3); color: var(--color-text-tertiary);">Loading preview...</div>';
+      previewDiv.style.display = 'block';
+
+      try {
+        const response = await fetch(`/api/admin/outreach/preview/${slackUserId}`);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to load preview');
+        }
+
+        const data = await response.json();
+
+        let html = '<div style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-3);">';
+
+        // Mode warning
+        if (data.mode === 'disabled') {
+          html += '<div style="background: var(--color-warning-100); color: var(--color-warning-700); padding: var(--space-2); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs);">⚠️ Outreach is currently disabled (OUTREACH_MODE=disabled)</div>';
+        } else if (data.mode === 'dry_run') {
+          html += '<div style="background: var(--color-info-100); color: var(--color-info-700); padding: var(--space-2); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs);">ℹ️ Dry run mode - messages will be logged but not sent</div>';
+        } else if (data.mode === 'test') {
+          html += '<div style="background: var(--color-info-100); color: var(--color-info-700); padding: var(--space-2); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs);">ℹ️ Test mode - only test accounts will receive messages</div>';
+        }
+
+        // Eligibility
+        if (!data.eligibility.canContact) {
+          html += `<div style="background: var(--color-error-100); color: var(--color-error-700); padding: var(--space-2); border-radius: var(--radius-sm); margin-bottom: var(--space-3); font-size: var(--text-xs);">❌ Cannot contact: ${escapeHtml(data.eligibility.reason)}</div>`;
+        }
+
+        // Outreach type and goal
+        html += `<div style="margin-bottom: var(--space-2); font-size: var(--text-xs);">
+          <strong>Type:</strong> ${escapeHtml(data.outreach_type)}
+          ${data.variant ? ` · <strong>Variant:</strong> ${escapeHtml(data.variant.name)} (${escapeHtml(data.variant.tone)})` : ''}
+        </div>`;
+
+        if (data.addie_goal?.goal_name) {
+          html += `<div style="margin-bottom: var(--space-2); font-size: var(--text-xs);">
+            <strong>Addie's Goal:</strong> ${escapeHtml(data.addie_goal.goal_name)}
+          </div>`;
+        }
+
+        // Preview message
+        html += `<div style="margin-top: var(--space-2);">
+          <div style="font-size: var(--text-xs); color: var(--color-text-tertiary); margin-bottom: var(--space-1);">Message Preview:</div>
+          <div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap;">${escapeHtml(data.preview_message)}</div>
+        </div>`;
+
+        html += '</div>';
+        previewDiv.innerHTML = html;
+
+      } catch (error) {
+        previewDiv.innerHTML = `<div style="padding: var(--space-3); color: var(--color-error-600);">Error: ${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    async function sendOutreach(slackUserId) {
+      const btn = document.getElementById(`sendOutreachBtn-${slackUserId}`);
+      if (!btn) return;
+
+      if (!confirm('Send outreach to this user? This will DM them via Slack.')) {
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const response = await fetch(`/api/admin/outreach/send/${slackUserId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to send outreach');
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          btn.textContent = '✓ Sent!';
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-success');
+
+          // Refresh context to show updated outreach info
+          setTimeout(() => {
+            const userId = currentContextUser?.workos_user_id || currentContextUser?.slack_user_id;
+            if (userId) viewContext(userId);
+          }, 1500);
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
+      } catch (error) {
+        alert('Failed to send outreach: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = 'Send Outreach';
+      }
+    }
+
+    let currentContextUser = null;
+
+    // =========================================================================
     // Context Modal Functions
     // =========================================================================
 
@@ -1097,6 +1205,10 @@
           throw new Error('Failed to fetch context');
         }
         const context = await response.json();
+
+        // Store current user for outreach refresh
+        currentContextUser = context;
+
         modalBody.innerHTML = renderContext(context, userId);
       } catch (error) {
         console.error('Error fetching context:', error);
@@ -1107,6 +1219,17 @@
           </div>
         `;
       }
+    }
+
+    // Refresh context for current user (used after sending outreach)
+    async function viewContext(userId) {
+      if (!currentContextUser) return;
+      const type = currentContextUser.workos_user?.workos_user_id ? 'workos' : 'slack';
+      const name = currentContextUser.workos_user?.email ||
+                   currentContextUser.slack_user?.display_name ||
+                   currentContextUser.slack_user?.real_name ||
+                   'User';
+      await showUserContext(userId, type, name);
     }
 
     function closeContextModal(event) {
@@ -1253,8 +1376,26 @@
         html += '</div></div>';
       }
 
-      // Addie History Section
-      if (context.addie_history) {
+      // Recent Conversations Section (from new threads API)
+      if (context.recent_conversations && context.recent_conversations.length > 0) {
+        html += '<div class="context-section">';
+        html += '<h3>Recent Conversations</h3>';
+        html += '<div style="max-height: 200px; overflow-y: auto;">';
+        context.recent_conversations.forEach(conv => {
+          const date = new Date(conv.last_message_at).toLocaleDateString();
+          const channel = conv.channel === 'slack' ? '💬 Slack' : conv.channel === 'web' ? '🌐 Web' : conv.channel;
+          const title = conv.title || `${conv.message_count} messages`;
+          html += `<a href="/admin/addie?thread=${conv.thread_id}" target="_blank" style="display: block; background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); text-decoration: none; color: inherit;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(title)}</span>
+              <span style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${channel}</span>
+            </div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${date} · ${conv.message_count} messages</div>
+          </a>`;
+        });
+        html += '</div></div>';
+      } else if (context.addie_history) {
+        // Fallback to old format if available
         html += '<div class="context-section">';
         html += '<h3>Conversation History</h3>';
         html += '<div class="context-grid">';
@@ -1273,6 +1414,44 @@
           });
           html += '</ul></div>';
         }
+        html += '</div>';
+      }
+
+      // Outreach Section (for Slack users)
+      if (context.outreach || context.slack_user) {
+        html += '<div class="context-section">';
+        html += '<h3>Proactive Outreach</h3>';
+        html += '<div class="context-grid">';
+
+        if (context.outreach) {
+          if (context.outreach.last_outreach_at) {
+            const lastDate = new Date(context.outreach.last_outreach_at).toLocaleDateString();
+            const daysAgo = context.outreach.days_since_outreach;
+            html += renderContextItem('Last Outreach', `${lastDate} (${daysAgo} days ago)`);
+          } else {
+            html += renderContextItem('Last Outreach', 'Never contacted');
+          }
+          html += renderContextItem('Total Outreaches', context.outreach.total_outreach_count.toString());
+          html += renderContextItem('Responses', context.outreach.responses_received.toString());
+          if (context.outreach.opted_out) {
+            html += `<div class="context-item" style="grid-column: 1 / -1;">
+              <span class="context-badge" style="background: var(--color-error-100); color: var(--color-error-700);">Opted Out</span>
+            </div>`;
+          }
+        }
+
+        html += '</div>';
+
+        // Show outreach actions if user has Slack
+        const slackUserId = context.slack_user?.slack_user_id;
+        if (slackUserId && !context.outreach?.opted_out) {
+          html += `<div style="margin-top: var(--space-3); display: flex; gap: var(--space-2);">
+            <button onclick="previewOutreach('${slackUserId}')" class="btn btn-secondary btn-small">Preview Outreach</button>
+            <button onclick="sendOutreach('${slackUserId}')" class="btn btn-primary btn-small" id="sendOutreachBtn-${slackUserId}">Send Outreach</button>
+          </div>`;
+          html += `<div id="outreachPreview-${slackUserId}" style="display: none; margin-top: var(--space-3);"></div>`;
+        }
+
         html += '</div>';
       }
 

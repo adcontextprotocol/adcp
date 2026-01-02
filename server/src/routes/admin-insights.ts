@@ -740,5 +740,104 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
+  // GET /api/admin/outreach/preview/:slackUserId - Preview what outreach message would be sent
+  apiRouter.get('/outreach/preview/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { slackUserId } = req.params;
+      const pool = getPool();
+
+      // Get user info
+      const userResult = await pool.query(`
+        SELECT
+          sm.*,
+          uc.goal_key,
+          uc.goal_name,
+          uc.goal_reasoning
+        FROM slack_user_mappings sm
+        LEFT JOIN unified_contacts_with_goals uc ON uc.slack_user_id = sm.slack_user_id
+        WHERE sm.slack_user_id = $1
+      `, [slackUserId]);
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const user = userResult.rows[0];
+
+      // Determine outreach type
+      let outreachType: string;
+      if (!user.workos_user_id) {
+        outreachType = 'account_link';
+      } else if (!user.last_outreach_at) {
+        outreachType = 'introduction';
+      } else {
+        outreachType = 'insight_goal';
+      }
+
+      // Get active variant for message template
+      const variantResult = await pool.query(`
+        SELECT name, message_template, tone, approach
+        FROM outreach_variants
+        WHERE is_active = TRUE
+        ORDER BY weight DESC
+        LIMIT 1
+      `);
+
+      const variant = variantResult.rows[0];
+
+      // Get insight goal if applicable
+      let goalQuestion: string | null = null;
+      if (outreachType === 'insight_goal') {
+        const goalResult = await pool.query(`
+          SELECT question FROM insight_goals
+          WHERE is_active = TRUE AND target_unmapped_only = FALSE
+          ORDER BY priority DESC
+          LIMIT 1
+        `);
+        if (goalResult.rows.length > 0) {
+          goalQuestion = goalResult.rows[0].question;
+        }
+      }
+
+      // Build preview message
+      const userName = user.slack_display_name || user.slack_real_name || 'there';
+      let previewMessage = variant?.message_template || '[No active outreach variant configured]';
+      previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
+      if (goalQuestion) {
+        previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
+      }
+
+      // Check eligibility
+      const eligibility = await canContactUser(slackUserId);
+
+      res.json({
+        user: {
+          slack_user_id: user.slack_user_id,
+          slack_display_name: user.slack_display_name,
+          slack_real_name: user.slack_real_name,
+          workos_user_id: user.workos_user_id,
+          last_outreach_at: user.last_outreach_at,
+        },
+        outreach_type: outreachType,
+        addie_goal: {
+          goal_key: user.goal_key,
+          goal_name: user.goal_name,
+          reasoning: user.goal_reasoning,
+        },
+        variant: variant ? {
+          name: variant.name,
+          tone: variant.tone,
+          approach: variant.approach,
+        } : null,
+        preview_message: previewMessage,
+        eligibility,
+        mode: getOutreachMode(),
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing outreach');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   return { pageRouter, apiRouter };
 }

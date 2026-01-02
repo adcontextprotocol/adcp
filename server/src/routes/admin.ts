@@ -174,6 +174,47 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           if (insightsResult.rows.length > 0) {
             extendedContext.insights = insightsResult.rows;
           }
+
+          // Get outreach info (if Slack user)
+          if (slackUserId) {
+            const outreachQuery = `
+              SELECT
+                sm.last_outreach_at,
+                sm.outreach_opt_out,
+                EXTRACT(EPOCH FROM (NOW() - sm.last_outreach_at)) / 86400 as days_since_outreach,
+                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id) as total_outreach_count,
+                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id AND po.response_received = TRUE) as responses_received
+              FROM slack_user_mappings sm
+              WHERE sm.slack_user_id = $1`;
+            const outreachResult = await pool.query(outreachQuery, [slackUserId]);
+            if (outreachResult.rows.length > 0) {
+              const row = outreachResult.rows[0];
+              (extendedContext as typeof extendedContext & { outreach?: unknown }).outreach = {
+                last_outreach_at: row.last_outreach_at,
+                days_since_outreach: row.days_since_outreach ? Math.floor(row.days_since_outreach) : null,
+                total_outreach_count: parseInt(row.total_outreach_count) || 0,
+                responses_received: parseInt(row.responses_received) || 0,
+                opted_out: row.outreach_opt_out || false,
+              };
+            }
+          }
+
+          // Get recent conversations (threads) for this user
+          const threadsQuery = workosUserId
+            ? `SELECT thread_id, channel, title, message_count, started_at, last_message_at
+               FROM addie_threads
+               WHERE user_type = 'workos' AND user_id = $1
+               ORDER BY last_message_at DESC
+               LIMIT 5`
+            : `SELECT thread_id, channel, title, message_count, started_at, last_message_at
+               FROM addie_threads
+               WHERE user_type = 'slack' AND user_id = $1
+               ORDER BY last_message_at DESC
+               LIMIT 5`;
+          const threadsResult = await pool.query(threadsQuery, [workosUserId || slackUserId]);
+          if (threadsResult.rows.length > 0) {
+            (extendedContext as typeof extendedContext & { recent_conversations?: unknown }).recent_conversations = threadsResult.rows;
+          }
         }
 
         res.json(extendedContext);
