@@ -2601,6 +2601,14 @@
       return div.innerHTML;
     }
 
+    function copyThreadId(el) {
+      const threadId = el.dataset.threadId;
+      navigator.clipboard.writeText(threadId);
+      const original = el.textContent;
+      el.textContent = 'Copied!';
+      setTimeout(() => el.textContent = original, 1500);
+    }
+
     // Event listeners
     document.getElementById('source-type-filter').addEventListener('change', loadKnowledge);
     document.getElementById('category-filter').addEventListener('change', loadKnowledge);
@@ -3076,7 +3084,8 @@
                 ${data.message_count} messages • Started ${new Date(data.started_at).toLocaleString()}
               </span>
             </div>
-            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2);">
+            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center;">
+              <code style="font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-bg-muted); padding: 2px 6px; border-radius: var(--radius-sm); cursor: pointer;" data-thread-id="${escapeHtml(data.thread_id)}" onclick="copyThreadId(this)" title="Click to copy thread ID">${escapeHtml(data.thread_id)}</code>
               ${!data.reviewed ? `<button class="btn btn-small btn-primary" onclick="markThreadReviewed('${data.thread_id}')">Mark Reviewed</button>` : ''}
               ${!data.flagged ? `<button class="btn btn-small btn-secondary" onclick="flagThread('${data.thread_id}')">Flag</button>` : `<button class="btn btn-small btn-secondary" onclick="unflagThread('${data.thread_id}')">Unflag</button>`}
             </div>
