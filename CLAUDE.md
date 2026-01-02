@@ -89,6 +89,12 @@ Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (n
 - **MINOR**: Add optional fields, new enum values, new tasks
 - **MAJOR**: Remove/rename fields, change types, remove enum values
 
+## Deployment
+
+Production deploys to **Fly.io** (not Vercel). Migrations run automatically on startup.
+- Deploy logs: `fly logs -a <app-name>`
+- SSH access: `fly ssh console -a <app-name>`
+
 ## Local Development
 
 ### Docker (Preferred)
