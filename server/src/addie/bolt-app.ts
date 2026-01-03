@@ -67,6 +67,11 @@ import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
+import {
+  isManagedChannel,
+  extractArticleUrls,
+  queueCommunityArticle,
+} from './services/community-articles.js';
 
 /**
  * Slack attachment type for forwarded messages
@@ -1627,6 +1632,51 @@ async function handleChannelMessage({
   indexChannelMessage(channelId, userId, messageText, event.ts).catch(() => {
     // Errors already logged in indexChannelMessage
   });
+
+  // Check for community article shares in managed channels
+  // This happens before routing so we can react quickly
+  const articleUrls = extractArticleUrls(messageText);
+  if (articleUrls.length > 0 && !isInThread) {
+    // Only process articles in top-level messages (not thread replies)
+    const isManaged = await isManagedChannel(channelId);
+    if (isManaged) {
+      // React with eyes to acknowledge we're looking at it
+      try {
+        await boltApp?.client.reactions.add({
+          channel: channelId,
+          timestamp: event.ts,
+          name: 'eyes',
+        });
+      } catch (reactionError) {
+        // Ignore - may already have reaction
+      }
+
+      // Get user display name for context
+      let displayName: string | undefined;
+      try {
+        const slackUser = await getSlackUser(userId);
+        displayName = slackUser?.profile?.display_name || slackUser?.profile?.real_name;
+      } catch {
+        // Ignore
+      }
+
+      // Queue each article URL for processing
+      for (const url of articleUrls) {
+        await queueCommunityArticle({
+          url,
+          sharedByUserId: userId,
+          channelId,
+          messageTs: event.ts,
+          sharedByDisplayName: displayName,
+        });
+      }
+
+      logger.info(
+        { channelId, userId, articleCount: articleUrls.length },
+        'Addie Bolt: Queued community articles for processing'
+      );
+    }
+  }
 
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');

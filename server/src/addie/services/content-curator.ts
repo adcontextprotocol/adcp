@@ -538,6 +538,145 @@ function checkMentionsAdcp(content: string, _summary: string): boolean {
 }
 
 /**
+ * Process pending community articles in batches
+ * These are articles shared by members in managed channels
+ */
+export async function processCommunityArticles(options: {
+  limit?: number;
+} = {}): Promise<{ processed: number; succeeded: number; failed: number }> {
+  const limit = options.limit ?? 5;
+
+  // Get pending community articles
+  const result = await query<{
+    id: number;
+    source_url: string;
+    title: string;
+    discovery_context: {
+      shared_by_user_id: string;
+      shared_by_display_name?: string;
+      channel_id: string;
+      message_ts: string;
+    };
+  }>(
+    `SELECT id, source_url, title, discovery_context
+     FROM addie_knowledge
+     WHERE source_type = 'community'
+       AND fetch_status = 'pending'
+     ORDER BY created_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+
+  if (result.rows.length === 0) {
+    logger.debug('No community articles need processing');
+    return { processed: 0, succeeded: 0, failed: 0 };
+  }
+
+  logger.debug({ count: result.rows.length }, 'Processing pending community articles');
+
+  // Fetch active notification channels for routing decisions
+  const activeChannels = await getActiveChannels();
+  const channelsForRouting: ChannelForRouting[] = activeChannels.map(ch => ({
+    slack_channel_id: ch.slack_channel_id,
+    name: ch.name,
+    description: ch.description,
+  }));
+
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const article of result.rows) {
+    try {
+      // Fetch content
+      const content = await fetchUrlContent(article.source_url);
+
+      if (content.length < 100) {
+        logger.warn({ id: article.id }, 'Community article content too short');
+        await query(
+          `UPDATE addie_knowledge SET fetch_status = 'failed', updated_at = NOW() WHERE id = $1`,
+          [article.id]
+        );
+        failed++;
+        continue;
+      }
+
+      // Generate analysis with channel routing
+      const analysis = await generateAnalysis(
+        article.title || 'Shared article',
+        content,
+        article.source_url,
+        channelsForRouting
+      );
+
+      // Update knowledge entry
+      await query(
+        `UPDATE addie_knowledge SET
+           title = $2,
+           content = $3,
+           summary = $4,
+           key_insights = $5,
+           addie_notes = $6,
+           relevance_tags = $7,
+           quality_score = $8,
+           mentions_agentic = $9,
+           mentions_adcp = $10,
+           notification_channel_ids = $11,
+           fetch_status = 'success',
+           last_fetched_at = NOW(),
+           updated_at = NOW()
+         WHERE id = $1`,
+        [
+          article.id,
+          extractTitleFromContent(content) || article.title || 'Shared article',
+          content,
+          analysis.summary,
+          analysis.key_insights ? JSON.stringify(analysis.key_insights) : null,
+          analysis.addie_notes,
+          analysis.relevance_tags,
+          analysis.quality_score,
+          checkMentionsAgentic(content, '', analysis.relevance_tags),
+          checkMentionsAdcp(content, ''),
+          analysis.notification_channels || [],
+        ]
+      );
+
+      logger.debug(
+        { id: article.id, quality: analysis.quality_score, url: article.source_url },
+        'Successfully processed community article'
+      );
+      succeeded++;
+    } catch (error) {
+      logger.error({ error, id: article.id }, 'Failed to process community article');
+      await query(
+        `UPDATE addie_knowledge SET fetch_status = 'failed', updated_at = NOW() WHERE id = $1`,
+        [article.id]
+      );
+      failed++;
+    }
+
+    // Small delay between requests
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  return { processed: result.rows.length, succeeded, failed };
+}
+
+/**
+ * Extract a title from article content (first heading or first sentence)
+ */
+function extractTitleFromContent(content: string): string | null {
+  // Try to find a heading at the start
+  const lines = content.split('\n').filter(l => l.trim());
+  if (lines.length > 0) {
+    const firstLine = lines[0].trim();
+    if (firstLine.length > 10 && firstLine.length < 200) {
+      return firstLine;
+    }
+  }
+  return null;
+}
+
+/**
  * Process pending RSS perspectives in batches
  * Called by background job alongside processPendingResources
  */

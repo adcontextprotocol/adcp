@@ -51,7 +51,7 @@ import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter } from "./routes/admin/index.js";
 import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
-import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts.js";
+import { processAlerts } from "./addie/services/industry-alerts.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
@@ -60,7 +60,9 @@ import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
-import { queuePerspectiveLink, processPendingResources, processRssPerspectives } from "./addie/services/content-curator.js";
+import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
+import { sendCommunityReplies } from "./addie/services/community-articles.js";
+import { sendChannelMessage } from "./slack/client.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -256,7 +258,6 @@ export class HTTPServer {
   private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
   private alertProcessorIntervalId: NodeJS.Timeout | null = null;
   private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
-  private dailyDigestTimeoutId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -7178,6 +7179,19 @@ Disallow: /api/admin/
         if (rssResult.processed > 0) {
           logger.info(rssResult, 'Content curator: processed RSS perspectives');
         }
+        // Process community articles
+        const communityResult = await processCommunityArticles({ limit: 5 });
+        if (communityResult.processed > 0) {
+          logger.info(communityResult, 'Content curator: processed community articles');
+        }
+        // Send replies to processed community articles
+        const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
+          const result = await sendChannelMessage(channelId, { text, thread_ts: threadTs });
+          return result.ok;
+        });
+        if (replyResult.sent > 0) {
+          logger.info(replyResult, 'Content curator: sent community article replies');
+        }
       } catch (err) {
         logger.error({ err }, 'Content curator: initial processing failed');
       }
@@ -7195,6 +7209,19 @@ Disallow: /api/admin/
         const rssResult = await processRssPerspectives({ limit: 5 });
         if (rssResult.processed > 0) {
           logger.info(rssResult, 'Content curator: processed RSS perspectives');
+        }
+        // Process community articles
+        const communityResult = await processCommunityArticles({ limit: 5 });
+        if (communityResult.processed > 0) {
+          logger.info(communityResult, 'Content curator: processed community articles');
+        }
+        // Send replies to processed community articles
+        const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
+          const result = await sendChannelMessage(channelId, { text, thread_ts: threadTs });
+          return result.ok;
+        });
+        if (replyResult.sent > 0) {
+          logger.info(replyResult, 'Content curator: sent community article replies');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: periodic processing failed');
@@ -7262,46 +7289,10 @@ Disallow: /api/admin/
       }
     }, ALERT_CHECK_INTERVAL_MINUTES * 60 * 1000);
 
-    // Daily digest - schedule for 9am local time
-    this.scheduleDailyDigest();
-
     logger.info({
       feedFetchIntervalMinutes: FEED_FETCH_INTERVAL_MINUTES,
       alertCheckIntervalMinutes: ALERT_CHECK_INTERVAL_MINUTES,
     }, 'Industry monitor started');
-  }
-
-  /**
-   * Schedule daily digest to run at 9am local time
-   */
-  private scheduleDailyDigest(): void {
-    const now = new Date();
-    const targetHour = 9; // 9am local time
-
-    // Calculate next 9am
-    const nextRun = new Date(now);
-    nextRun.setHours(targetHour, 0, 0, 0);
-
-    // If it's past 9am today, schedule for tomorrow
-    if (now >= nextRun) {
-      nextRun.setDate(nextRun.getDate() + 1);
-    }
-
-    const msUntilNextRun = nextRun.getTime() - now.getTime();
-
-    logger.info({ nextRun: nextRun.toISOString(), msUntilNextRun }, 'Daily digest scheduled');
-
-    this.dailyDigestTimeoutId = setTimeout(async () => {
-      try {
-        await sendDailyDigest();
-        logger.info('Industry monitor: sent daily digest');
-      } catch (err) {
-        logger.error({ err }, 'Industry monitor: daily digest failed');
-      }
-
-      // Schedule next day's digest
-      this.scheduleDailyDigest();
-    }, msUntilNextRun);
   }
 
   /**
@@ -7347,10 +7338,6 @@ Disallow: /api/admin/
     if (this.alertProcessorIntervalId) {
       clearInterval(this.alertProcessorIntervalId);
       this.alertProcessorIntervalId = null;
-    }
-    if (this.dailyDigestTimeoutId) {
-      clearTimeout(this.dailyDigestTimeoutId);
-      this.dailyDigestTimeoutId = null;
     }
     logger.info('Industry monitor stopped');
 
