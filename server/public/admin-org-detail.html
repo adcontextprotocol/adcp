@@ -2142,8 +2142,38 @@
       }
     });
 
+    // Check for link_domain query parameter
+    async function checkLinkDomainParam() {
+      const params = new URLSearchParams(window.location.search);
+      const linkDomain = params.get('link_domain');
+
+      // Validate domain format (alphanumeric, hyphens, dots only, reasonable length)
+      const isValidDomain = linkDomain && /^[a-z0-9][a-z0-9.-]{0,252}[a-z0-9]$/i.test(linkDomain);
+
+      if (isValidDomain) {
+        // Wait for org to load
+        await loadOrganization();
+
+        // Pre-fill domain modal and show it
+        document.getElementById('domainInput').value = linkDomain;
+        document.getElementById('domainIsPrimary').checked = true;
+        openAddDomainModal();
+
+        // Clean up URL (wrap in try/catch for edge cases)
+        try {
+          const url = new URL(window.location);
+          url.searchParams.delete('link_domain');
+          window.history.replaceState({}, '', url);
+        } catch (e) {
+          console.warn('Could not clean up URL:', e);
+        }
+      } else {
+        loadOrganization();
+      }
+    }
+
     // Initialize
-    loadOrganization();
+    checkLinkDomainParam();
   </script>
 </body>
 </html>
