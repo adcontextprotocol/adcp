@@ -54,6 +54,7 @@
       {
         label: 'Settings',
         items: [
+          { href: '/admin/settings', label: 'System Settings', icon: '⚙️' },
           { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
           { href: '/admin/outreach', label: 'Outreach Config', icon: '📣' },
           { href: '/admin/insights', label: 'Raw Insights', icon: '🧠' },
