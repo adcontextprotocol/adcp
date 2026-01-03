@@ -358,14 +358,18 @@ USE THIS when an admin says things like:
 - "Get a payment link for Boltive"
 - "Invoice The Trade Desk"
 - "Help [company] pay for membership"
+- "Give Acme a 20% discount and send them a payment link"
+- "Send a discounted link to the startup"
 
 This tool will:
 1. Find the company (or create it if it doesn't exist)
 2. Show you the users/contacts on file
-3. Generate a direct Stripe payment link OR send an invoice
+3. Apply a discount if requested (or use their existing discount)
+4. Generate a direct Stripe payment link OR send an invoice
 
 For payment links: Returns a direct Stripe checkout URL you can share with the prospect.
-For invoices: Sends an email from Stripe with a payment link - good for companies that need NET30/PO.`,
+For invoices: Sends an email from Stripe with a payment link - good for companies that need NET30/PO.
+For discounts: Can create a new discount or auto-apply an existing org discount.`,
     usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed.',
     input_schema: {
       type: 'object',
@@ -411,6 +415,22 @@ For invoices: Sends an email from Stripe with a payment link - good for companie
             postal_code: { type: 'string' },
             country: { type: 'string', description: 'Two-letter country code (e.g., "US")' },
           },
+        },
+        discount_percent: {
+          type: 'number',
+          description: 'Apply a percentage discount (e.g., 20 = 20% off). Creates a Stripe coupon.',
+        },
+        discount_amount_dollars: {
+          type: 'number',
+          description: 'Apply a fixed dollar discount (e.g., 500 = $500 off). Creates a Stripe coupon.',
+        },
+        discount_reason: {
+          type: 'string',
+          description: 'Reason for the discount (e.g., "Startup discount", "Early adopter")',
+        },
+        use_existing_discount: {
+          type: 'boolean',
+          description: 'If the org already has a discount, use it (default: true)',
         },
       },
       required: ['company_name'],
@@ -1522,6 +1542,11 @@ export function createAdminToolHandlers(
       postal_code?: string;
       country?: string;
     } | undefined;
+    // Discount parameters
+    const discountPercent = input.discount_percent as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const discountReason = input.discount_reason as string | undefined;
+    const useExistingDiscount = input.use_existing_discount !== false; // default true
 
     const pool = getPool();
     let org: {
@@ -1534,6 +1559,11 @@ export function createAdminToolHandlers(
       prospect_contact_name?: string;
       enrichment_employee_count?: number;
       enrichment_revenue?: number;
+      // Discount fields
+      discount_percent?: number;
+      discount_amount_cents?: number;
+      stripe_coupon_id?: string;
+      stripe_promotion_code?: string;
     } | null = null;
     let created = false;
 
@@ -1542,7 +1572,8 @@ export function createAdminToolHandlers(
     const searchResult = await pool.query(
       `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
               prospect_contact_email, prospect_contact_name,
-              enrichment_employee_count, enrichment_revenue
+              enrichment_employee_count, enrichment_revenue,
+              discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
        FROM organizations
        WHERE is_personal = false
          AND (LOWER(name) LIKE LOWER($1) ${domain ? 'OR LOWER(email_domain) LIKE LOWER($2)' : ''})
@@ -1575,7 +1606,8 @@ export function createAdminToolHandlers(
       const newOrgResult = await pool.query(
         `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
                 prospect_contact_email, prospect_contact_name,
-                enrichment_employee_count, enrichment_revenue
+                enrichment_employee_count, enrichment_revenue,
+                discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
          FROM organizations WHERE workos_organization_id = $1`,
         [createResult.organization.workos_organization_id]
       );
@@ -1735,6 +1767,51 @@ export function createAdminToolHandlers(
       const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
 
       try {
+        // Handle discounts
+        let couponId: string | undefined;
+        let appliedDiscount: string | undefined;
+
+        // Check if a new discount was requested
+        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+          if (!discountReason) {
+            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+          }
+
+          // Create a new discount/coupon for this org
+          const grantedBy = memberContext?.workos_user?.email || 'Addie';
+          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
+            percent_off: discountPercent,
+            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
+            duration: 'forever',
+            reason: discountReason,
+          });
+
+          if (stripeDiscount) {
+            couponId = stripeDiscount.coupon_id;
+            // Also save to the org record
+            await orgDb.setDiscount(org.workos_organization_id, {
+              discount_percent: discountPercent ?? null,
+              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+              reason: discountReason,
+              granted_by: grantedBy,
+              stripe_coupon_id: stripeDiscount.coupon_id,
+              stripe_promotion_code: stripeDiscount.promotion_code,
+            });
+            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
+            logger.info({
+              orgId: org.workos_organization_id,
+              discount: appliedDiscount,
+              reason: discountReason,
+            }, 'Created discount for payment link');
+          }
+        } else if (useExistingDiscount && org.stripe_coupon_id) {
+          // Use the org's existing discount
+          couponId = org.stripe_coupon_id;
+          appliedDiscount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : `$${(org.discount_amount_cents || 0) / 100} off`;
+        }
+
         const session = await createCheckoutSession({
           priceId: finalProduct.price_id,
           customerEmail: emailToUse || undefined,
@@ -1742,6 +1819,7 @@ export function createAdminToolHandlers(
           cancelUrl: `${baseUrl}/membership?payment=cancelled`,
           workosOrganizationId: org.workos_organization_id,
           isPersonalWorkspace: org.is_personal,
+          couponId, // Pre-apply the discount if available
         });
 
         if (!session?.url) {
@@ -1751,13 +1829,17 @@ export function createAdminToolHandlers(
         response += `### 💳 Payment Link Generated\n\n`;
         response += `**Product:** ${finalProduct.display_name}\n`;
         if (finalProduct.amount_cents) {
-          response += `**Amount:** $${(finalProduct.amount_cents / 100).toLocaleString()}/year\n`;
+          const originalAmount = finalProduct.amount_cents / 100;
+          response += `**Amount:** $${originalAmount.toLocaleString()}/year\n`;
+        }
+        if (appliedDiscount) {
+          response += `**Discount:** ${appliedDiscount} (pre-applied)\n`;
         }
         response += `\n**Payment Link:**\n${session.url}\n`;
         response += `\n_Share this link with ${org.prospect_contact_name || emailToUse || 'the prospect'}. It expires in 24 hours._`;
 
         logger.info(
-          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key },
+          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
           'Addie generated payment link'
         );
 
