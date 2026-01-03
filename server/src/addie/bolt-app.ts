@@ -67,6 +67,137 @@ import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
+import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
+
+/**
+ * Slack attachment type for forwarded messages
+ */
+interface SlackAttachment {
+  author_name?: string;
+  pretext?: string;
+  text?: string;
+  footer?: string;
+  fallback?: string;
+  title?: string;
+  title_link?: string;
+}
+
+/**
+ * Slack file type for file shares
+ */
+interface SlackFile {
+  id: string;
+  name?: string;
+  title?: string;
+  mimetype?: string;
+  filetype?: string;
+  size?: number;
+  url_private?: string;
+  permalink?: string;
+}
+
+/**
+ * Reactions that mean "yes, proceed" or "approved"
+ */
+const POSITIVE_REACTIONS = new Set([
+  'thumbsup', '+1', 'white_check_mark', 'heavy_check_mark', 'ok', 'ok_hand',
+  'the_horns', 'raised_hands', 'clap', 'fire', 'rocket', 'star', 'heart',
+  'green_heart', 'blue_heart', 'tada', 'sparkles', 'muscle', 'pray',
+]);
+
+/**
+ * Reactions that mean "no, don't proceed" or "rejected"
+ */
+const NEGATIVE_REACTIONS = new Set([
+  'thumbsdown', '-1', 'x', 'negative_squared_cross_mark', 'no_entry',
+  'no_entry_sign', 'octagonal_sign', 'stop_sign', 'hand', 'raised_hand',
+]);
+
+/**
+ * Extract text content from forwarded messages in Slack attachments.
+ * When users forward a message, Slack puts the forwarded content in the attachments array.
+ */
+function extractForwardedContent(attachments?: SlackAttachment[]): string {
+  if (!attachments || attachments.length === 0) {
+    return '';
+  }
+
+  const attachmentTexts: string[] = [];
+  for (const attachment of attachments) {
+    const parts: string[] = [];
+    if (attachment.author_name) {
+      parts.push(`From: ${attachment.author_name}`);
+    }
+    if (attachment.pretext) {
+      parts.push(attachment.pretext);
+    }
+    if (attachment.text) {
+      parts.push(attachment.text);
+    }
+    if (attachment.footer) {
+      parts.push(`(${attachment.footer})`);
+    }
+    if (parts.length > 0) {
+      attachmentTexts.push(parts.join('\n'));
+    }
+  }
+
+  if (attachmentTexts.length === 0) {
+    return '';
+  }
+
+  logger.debug({ attachmentCount: attachments.length, extractedLength: attachmentTexts.join('').length }, 'Addie Bolt: Extracted forwarded message content from attachments');
+  return `\n\n[Forwarded message]\n${attachmentTexts.join('\n---\n')}`;
+}
+
+/**
+ * Extract file information from Slack file shares.
+ * Provides context about shared files so Claude knows what was shared.
+ */
+function extractFileInfo(files?: SlackFile[]): string {
+  if (!files || files.length === 0) {
+    return '';
+  }
+
+  const fileDescriptions: string[] = [];
+  for (const file of files) {
+    const parts: string[] = [];
+    const name = file.title || file.name || 'Unnamed file';
+    parts.push(`File: ${name}`);
+    if (file.filetype) {
+      parts.push(`Type: ${file.filetype.toUpperCase()}`);
+    }
+    if (file.size) {
+      const sizeKB = Math.round(file.size / 1024);
+      parts.push(`Size: ${sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${sizeKB} KB`}`);
+    }
+    if (file.permalink) {
+      parts.push(`Link: ${file.permalink}`);
+    }
+    fileDescriptions.push(parts.join(' | '));
+  }
+
+  logger.debug({ fileCount: files.length }, 'Addie Bolt: Extracted file information');
+  return `\n\n[Shared files]\n${fileDescriptions.join('\n')}`;
+}
+
+/**
+ * Extract URLs from message text for context.
+ * Returns a list of URLs that could be fetched for more context.
+ */
+function extractUrls(text: string): string[] {
+  // Match URLs in Slack format <url|label> or plain URLs
+  const slackUrlPattern = /<(https?:\/\/[^|>]+)(?:\|[^>]*)?>|(?<![<|])(https?:\/\/[^\s<>]+)/gi;
+  const urls: string[] = [];
+  let match;
+  while ((match = slackUrlPattern.exec(text)) !== null) {
+    const url = match[1] || match[2];
+    if (url && !urls.includes(url)) {
+      urls.push(url);
+    }
+  }
+  return urls;
+}
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +280,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     }
   }
 
+  // Register URL fetching tools (for reading links and files shared in Slack)
+  const urlHandlers = createUrlToolHandlers(botToken);
+  for (const tool of URL_TOOLS) {
+    const handler = urlHandlers[tool.name];
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   // Create the Assistant
   const assistant = new Assistant({
     threadContextStore,
@@ -202,6 +342,9 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   boltApp.action('addie_home_update_profile', handleUpdateProfile);
   boltApp.action('addie_home_browse_groups', handleBrowseGroups);
   boltApp.action('addie_home_view_flagged', handleViewFlagged);
+
+  // Register reaction handler for thumbs up/down confirmations
+  boltApp.event('reaction_added', handleReactionAdded);
 
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie Bolt: Ready');
@@ -784,12 +927,23 @@ async function handleAppMention({
     rawText = rawText.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
   }
 
+  // Extract forwarded message content from attachments
+  const attachments = 'attachments' in event ? (event.attachments as SlackAttachment[]) : undefined;
+  const forwardedContent = extractForwardedContent(attachments);
+
+  // Extract file information from file shares
+  const files = 'files' in event ? (event.files as SlackFile[]) : undefined;
+  const fileInfo = extractFileInfo(files);
+
   // Handle empty mentions (just @Addie with no message)
   // This commonly happens when Addie is added to a channel - provide clear context to Claude
-  const isEmptyMention = rawText.length === 0;
-  const originalUserInput = rawText; // Preserve for audit logging
+  const isEmptyMention = rawText.length === 0 && forwardedContent.length === 0 && fileInfo.length === 0;
+  const originalUserInput = rawText + forwardedContent + fileInfo; // Preserve for audit logging
   if (isEmptyMention) {
     rawText = '[Empty mention - user tagged me without a question. Briefly introduce myself and offer help. Do not assume they are new to the channel.]';
+  } else {
+    // Append forwarded content and file info to the user's message
+    rawText = rawText + forwardedContent + fileInfo;
   }
 
   const userId = event.user;
@@ -1207,7 +1361,7 @@ async function indexChannelMessage(
  * similar to chatting with a human user.
  */
 async function handleDirectMessage(
-  event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string },
+  event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string; attachments?: SlackAttachment[]; files?: SlackFile[] },
   _context: { botUserId?: string }
 ): Promise<void> {
   if (!claudeClient || !boltApp) {
@@ -1222,11 +1376,19 @@ async function handleDirectMessage(
   }
 
   const userId = event.user;
-  const messageText = event.text;
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.ts;
 
-  if (!userId || !messageText) {
+  // Extract forwarded message content from attachments
+  const forwardedContent = extractForwardedContent(event.attachments);
+
+  // Extract file information from file shares
+  const fileInfo = extractFileInfo(event.files);
+
+  // Combine message text with any forwarded content and file info
+  const messageText = (event.text || '') + forwardedContent + fileInfo;
+
+  if (!userId || !messageText.trim()) {
     logger.debug('Addie Bolt: Ignoring DM without user or text');
     return;
   }
@@ -1421,27 +1583,41 @@ async function handleChannelMessage({
     return;
   }
 
-  // Type guard for message events - skip subtypes (edits, deletes, etc.)
-  if (!('text' in event) || !event.text || ('subtype' in event && event.subtype)) {
-    return;
-  }
-
   // Skip bot messages (including our own)
   if ('bot_id' in event && event.bot_id) {
     return;
   }
 
-  // Skip if this is a mention (handled by handleAppMention)
-  if (context.botUserId && event.text.includes(`<@${context.botUserId}>`)) {
-    return;
-  }
+  // Skip subtypes (edits, deletes, etc.) - but only for non-DM messages
+  // DMs can have forwarded messages where text is empty but attachments have content
+  const hasText = 'text' in event && event.text;
+  const hasAttachments = 'attachments' in event && Array.isArray(event.attachments) && event.attachments.length > 0;
+  const hasFiles = 'files' in event && Array.isArray(event.files) && event.files.length > 0;
+  const hasSubtype = 'subtype' in event && event.subtype;
 
   const userId = 'user' in event ? event.user : undefined;
 
   // Handle DMs differently - route to the user message handler
+  // For DMs, allow messages with attachments or files even if text is empty
   if (event.channel_type === 'im') {
+    if (!hasText && !hasAttachments && !hasFiles) {
+      return;
+    }
+    if (hasSubtype) {
+      return;
+    }
     logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to user message handler');
-    await handleDirectMessage(event, context);
+    await handleDirectMessage(event as typeof event & { attachments?: SlackAttachment[]; files?: SlackFile[] }, context);
+    return;
+  }
+
+  // For channel messages, require text and skip subtypes
+  if (!hasText || hasSubtype) {
+    return;
+  }
+
+  // Skip if this is a mention (handled by handleAppMention)
+  if (context.botUserId && event.text && event.text.includes(`<@${context.botUserId}>`)) {
     return;
   }
   if (!userId) {
@@ -1449,7 +1625,8 @@ async function handleChannelMessage({
   }
 
   const channelId = event.channel;
-  const messageText = event.text;
+  // At this point we know hasText is true, so event.text exists
+  const messageText = event.text!;
   const threadTs = ('thread_ts' in event ? event.thread_ts : undefined) || event.ts;
   const isInThread = !!('thread_ts' in event && event.thread_ts);
   const startTime = Date.now();
@@ -1891,4 +2068,197 @@ async function handleViewFlagged({ ack, body, client }: any): Promise<void> {
   } catch (error) {
     logger.error({ error, userId }, 'Addie Bolt: Failed to send flagged threads link');
   }
+}
+
+/**
+ * Handle reaction_added events
+ * When users react to Addie's messages, interpret the reaction as input:
+ * - Thumbs up / check = "yes, proceed" or positive feedback
+ * - Thumbs down / X = "no, don't do that" or negative feedback
+ */
+async function handleReactionAdded({
+  event,
+  context,
+}: SlackEventMiddlewareArgs<'reaction_added'> & { context: { botUserId?: string } }): Promise<void> {
+  if (!claudeClient || !boltApp) {
+    return;
+  }
+
+  // Use boltApp.client for API calls
+  const client = boltApp.client;
+
+  const reaction = event.reaction;
+  const reactingUserId = event.user;
+  const itemChannel = event.item.channel;
+  const itemTs = event.item.ts;
+  const itemUser = event.item_user; // Who authored the message that received the reaction
+
+  // Only process reactions on Addie's messages
+  if (!context.botUserId || itemUser !== context.botUserId) {
+    return;
+  }
+
+  // Check if this is a meaningful reaction (positive or negative)
+  const isPositive = POSITIVE_REACTIONS.has(reaction);
+  const isNegative = NEGATIVE_REACTIONS.has(reaction);
+
+  if (!isPositive && !isNegative) {
+    // Not a reaction we care about
+    return;
+  }
+
+  logger.info(
+    { reaction, isPositive, isNegative, reactingUserId, itemChannel, itemTs },
+    'Addie Bolt: Received reaction on Addie message'
+  );
+
+  const threadService = getThreadService();
+
+  // Build external ID to find the thread
+  // For thread replies, itemTs is the reply ts; we need to find the thread
+  // First, try to get the message to find its thread_ts
+  let threadTs = itemTs;
+  try {
+    const result = await client.conversations.replies({
+      channel: itemChannel,
+      ts: itemTs,
+      limit: 1,
+      inclusive: true,
+    });
+    if (result.messages && result.messages.length > 0) {
+      // If the message has a thread_ts, use that; otherwise use the message ts
+      threadTs = result.messages[0].thread_ts || result.messages[0].ts || itemTs;
+    }
+  } catch (error) {
+    logger.debug({ error, itemChannel, itemTs }, 'Addie Bolt: Could not fetch message for thread_ts');
+  }
+
+  const externalId = `${itemChannel}:${threadTs}`;
+
+  // Find the thread
+  const thread = await threadService.getThreadByExternalId('slack', externalId);
+  if (!thread) {
+    logger.debug({ externalId }, 'Addie Bolt: No thread found for reaction');
+    return;
+  }
+
+  // Get the last few messages to understand context
+  const messages = await threadService.getThreadMessages(thread.thread_id);
+  const lastAssistantMessage = messages
+    .filter(m => m.role === 'assistant')
+    .pop();
+
+  if (!lastAssistantMessage) {
+    return;
+  }
+
+  // Check if the last assistant message was asking for confirmation
+  const messageContent = lastAssistantMessage.content.toLowerCase();
+  const isConfirmationRequest =
+    messageContent.includes('should i') ||
+    messageContent.includes('shall i') ||
+    messageContent.includes('want me to') ||
+    messageContent.includes('go ahead') ||
+    messageContent.includes('proceed') ||
+    messageContent.includes('confirm') ||
+    messageContent.includes('would you like me to') ||
+    messageContent.includes('do you want me to');
+
+  // Determine the user's intent
+  let userInput: string;
+  if (isConfirmationRequest) {
+    if (isPositive) {
+      userInput = '[User reacted with ' + reaction + ' emoji to confirm: Yes, go ahead]';
+    } else {
+      userInput = '[User reacted with ' + reaction + ' emoji to decline: No, don\'t do that]';
+    }
+  } else {
+    // Not a confirmation, just feedback
+    if (isPositive) {
+      userInput = '[User reacted with ' + reaction + ' emoji as positive feedback]';
+      // Record as positive feedback
+      await threadService.addMessageFeedback(lastAssistantMessage.message_id, {
+        rating: 5,
+        rating_category: 'emoji_feedback',
+        rating_notes: `User reacted with :${reaction}:`,
+        rated_by: reactingUserId,
+        rating_source: 'user',
+      });
+      // Don't respond to general positive feedback
+      return;
+    } else {
+      userInput = '[User reacted with ' + reaction + ' emoji as negative feedback]';
+      // Record as negative feedback
+      await threadService.addMessageFeedback(lastAssistantMessage.message_id, {
+        rating: 1,
+        rating_category: 'emoji_feedback',
+        rating_notes: `User reacted with :${reaction}:`,
+        rated_by: reactingUserId,
+        rating_source: 'user',
+      });
+      // Don't respond to general negative feedback
+      return;
+    }
+  }
+
+  // Log the reaction as a user message
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'user',
+    content: userInput,
+    content_sanitized: userInput,
+  });
+
+  // Get member context
+  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
+    reactingUserId,
+    userInput
+  );
+
+  // Create user-scoped tools
+  const userTools = await createUserScopedTools(memberContext, reactingUserId);
+
+  // Process with Claude
+  let response;
+  try {
+    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Error processing reaction response');
+    response = {
+      text: isPositive ? "Got it, I'll proceed!" : "Understood, I won't do that.",
+      tools_used: [],
+      tool_executions: [],
+      flagged: false,
+    };
+  }
+
+  // Send response in thread
+  try {
+    await client.chat.postMessage({
+      channel: itemChannel,
+      text: response.text,
+      thread_ts: threadTs,
+    });
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Failed to send reaction response');
+  }
+
+  // Log assistant response
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'assistant',
+    content: response.text,
+    tools_used: response.tools_used,
+    tool_calls: response.tool_executions?.map(exec => ({
+      name: exec.tool_name,
+      input: exec.parameters,
+      result: exec.result,
+    })),
+    model: AddieModelConfig.chat,
+  });
+
+  logger.info(
+    { threadId: thread.thread_id, reaction, isConfirmation: isConfirmationRequest },
+    'Addie Bolt: Processed reaction and responded'
+  );
 }

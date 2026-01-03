@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <title>Admin - Users - AdCP Registry</title>
+  <title>Admin - Users & Actions - AgenticAdvertising.org</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
@@ -483,6 +483,193 @@
       color: var(--color-text-heading);
     }
 
+    /* Action Items Panel */
+    .action-items-panel {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    .action-items-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+    .action-items-header h2 {
+      margin: 0;
+      font-size: var(--text-lg);
+      color: var(--color-text-heading);
+    }
+    .action-items-stats {
+      display: flex;
+      gap: var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .action-stat {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .action-stat-count {
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .action-stat-label {
+      color: var(--color-text-secondary);
+    }
+    .action-stat-high .action-stat-count { color: var(--color-error-600); }
+    .action-stat-medium .action-stat-count { color: var(--color-warning-600); }
+    .action-stat-low .action-stat-count { color: var(--color-success-600); }
+    .action-items-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+    .action-item-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+      border-left: 3px solid var(--color-gray-400);
+    }
+    .action-item-card.priority-high { border-left-color: var(--color-error-500); }
+    .action-item-card.priority-medium { border-left-color: var(--color-warning-500); }
+    .action-item-card.priority-low { border-left-color: var(--color-success-500); }
+    .action-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .action-item-title {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+    .action-item-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .action-item-user {
+      color: var(--color-brand);
+      font-weight: var(--font-medium);
+    }
+    .action-type-badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .action-type-nudge { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .action-type-warm_lead { background: var(--color-info-100); color: var(--color-info-700); }
+    .action-type-momentum { background: var(--color-success-100); color: var(--color-success-700); }
+    .action-type-feedback { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .action-type-alert { background: var(--color-error-100); color: var(--color-error-700); }
+    .action-type-follow_up { background: #9c27b020; color: #9c27b0; }
+    .action-type-celebration { background: #f3e8ff; color: #7c3aed; }
+    .action-item-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    .empty-actions {
+      text-align: center;
+      padding: var(--space-6);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+
+    /* Tab Navigation */
+    .tab-nav {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      margin-bottom: var(--space-5);
+    }
+    .tab-btn {
+      padding: var(--space-3) var(--space-4);
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: var(--transition-all);
+    }
+    .tab-btn:hover {
+      color: var(--color-text-heading);
+    }
+    .tab-btn.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* My Accounts View */
+    .accounts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: var(--space-4);
+    }
+    .account-card {
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      position: relative;
+    }
+    .account-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-3);
+    }
+    .account-name {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .account-email {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .account-role-badge {
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .role-owner { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .role-interested { background: var(--color-info-100); color: var(--color-info-700); }
+    .role-connected { background: var(--color-gray-200); color: var(--color-gray-600); }
+    .account-stats {
+      display: flex;
+      gap: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+    }
+    .account-actions-count {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .account-actions-count.has-items {
+      color: var(--color-warning-600);
+      font-weight: var(--font-medium);
+    }
+
     /* Responsive table */
     @media (max-width: 768px) {
       .users-table thead { display: none; }
@@ -516,11 +703,35 @@
 
   <div id="content" style="display: none;">
     <div class="container">
+      <!-- Action Items Panel -->
+      <div id="actionItemsPanel" class="action-items-panel" style="display: none;">
+        <div class="action-items-header">
+          <h2>Action Items</h2>
+          <div class="action-items-stats">
+            <div class="action-stat action-stat-high">
+              <span id="actionHighCount" class="action-stat-count">0</span>
+              <span class="action-stat-label">High</span>
+            </div>
+            <div class="action-stat action-stat-medium">
+              <span id="actionMediumCount" class="action-stat-count">0</span>
+              <span class="action-stat-label">Medium</span>
+            </div>
+            <div class="action-stat action-stat-low">
+              <span id="actionLowCount" class="action-stat-count">0</span>
+              <span class="action-stat-label">Low</span>
+            </div>
+          </div>
+        </div>
+        <div id="actionItemsList" class="action-items-list">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
       <div class="card">
         <div class="header-bar">
           <div>
-            <h1>Users</h1>
-            <p class="subtitle">Unified view of AAO members and Slack workspace users</p>
+            <h1>Users & Actions</h1>
+            <p class="subtitle">Account management, action items, and engagement tracking</p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
             <button id="syncWorkosBtn" class="btn btn-outline" onclick="syncWorkosUsers()">
@@ -564,6 +775,14 @@
           </div>
         </div>
 
+        <!-- Tabs -->
+        <div class="tab-nav">
+          <button class="tab-btn active" onclick="switchTab('all-users')">All Users</button>
+          <button class="tab-btn" onclick="switchTab('my-accounts')">My Accounts</button>
+        </div>
+
+        <!-- All Users Tab -->
+        <div id="tab-all-users" class="tab-content active">
         <!-- Stats -->
         <div class="stats-row">
           <div class="stat-card clickable" onclick="filterByStatus('')" id="stat-all">
@@ -628,6 +847,22 @@
         <div id="emptyState" class="empty-state" style="display: none;">
           No users found matching your filters.
         </div>
+        </div><!-- End All Users Tab -->
+
+        <!-- My Accounts Tab -->
+        <div id="tab-my-accounts" class="tab-content">
+          <div id="myAccountsContainer">
+            <div id="myAccountsGrid" class="accounts-grid">
+              <!-- Populated by JS -->
+            </div>
+            <div id="emptyAccountsState" class="empty-state" style="display: none;">
+              <p>No accounts assigned to you yet.</p>
+              <p style="font-size: var(--text-sm); margin-top: var(--space-2);">
+                Accounts are auto-assigned when you send outreach or have conversations.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -652,13 +887,17 @@
     let searchTimeout = null;
     let slackConfigured = false;
     let currentStatusFilter = '';
+    let actionItems = [];
+    let myAccounts = [];
+    let currentTab = 'all-users';
 
     async function init() {
       try {
-        // Load working groups and goal types in parallel
-        const [groupsResponse, goalsResponse] = await Promise.all([
+        // Load working groups, goal types, and action items in parallel
+        const [groupsResponse, goalsResponse, actionResponse] = await Promise.all([
           fetch('/api/admin/working-groups'),
-          fetch('/api/admin/goal-types')
+          fetch('/api/admin/goal-types'),
+          fetch('/api/admin/action-items/mine')
         ]);
 
         if (!groupsResponse.ok) {
@@ -678,6 +917,13 @@
           console.error('Failed to load goal types:', goalsResponse.status);
         }
 
+        // Load action items
+        if (actionResponse.ok) {
+          const actionData = await actionResponse.json();
+          actionItems = actionData.items || [];
+          renderActionItems();
+        }
+
         // Check Slack sync status
         await checkSlackStatus();
 
@@ -691,6 +937,210 @@
         document.getElementById('loading').innerHTML =
           '<p style="color: var(--color-error-600);">Failed to load users. <a href="/auth/login">Try logging in again</a></p>';
       }
+    }
+
+    // =========================================================================
+    // Action Items Functions
+    // =========================================================================
+
+    function renderActionItems() {
+      const panel = document.getElementById('actionItemsPanel');
+      const list = document.getElementById('actionItemsList');
+
+      if (!actionItems || actionItems.length === 0) {
+        panel.style.display = 'none';
+        return;
+      }
+
+      panel.style.display = 'block';
+
+      // Update counts
+      const highCount = actionItems.filter(a => a.priority === 'high').length;
+      const mediumCount = actionItems.filter(a => a.priority === 'medium').length;
+      const lowCount = actionItems.filter(a => a.priority === 'low').length;
+      document.getElementById('actionHighCount').textContent = highCount;
+      document.getElementById('actionMediumCount').textContent = mediumCount;
+      document.getElementById('actionLowCount').textContent = lowCount;
+
+      // Render items (limit to 5)
+      const displayItems = actionItems.slice(0, 5);
+      list.innerHTML = displayItems.map(item => {
+        const userName = item.user_name || item.user_email || 'Unknown User';
+        const created = new Date(item.created_at).toLocaleDateString();
+        return `
+          <div class="action-item-card priority-${item.priority}">
+            <div class="action-item-content">
+              <div class="action-item-title">${escapeHtml(item.title)}</div>
+              <div class="action-item-meta">
+                <span class="action-item-user">${escapeHtml(userName)}</span>
+                <span class="action-type-badge action-type-${item.action_type}">${formatActionType(item.action_type)}</span>
+                <span>${created}</span>
+              </div>
+            </div>
+            <div class="action-item-actions">
+              <button class="btn btn-success btn-small" onclick="completeActionItem(${item.id})" title="Mark complete">✓</button>
+              <button class="btn btn-secondary btn-small" onclick="snoozeActionItem(${item.id})" title="Snooze 1 day">⏰</button>
+              <button class="btn btn-secondary btn-small" onclick="dismissActionItem(${item.id})" title="Dismiss">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (actionItems.length > 5) {
+        list.innerHTML += `<div style="text-align: center; padding: var(--space-2);"><em>${actionItems.length - 5} more action items...</em></div>`;
+      }
+    }
+
+    function formatActionType(type) {
+      const labels = {
+        nudge: 'Nudge',
+        warm_lead: 'Warm Lead',
+        momentum: 'Momentum',
+        feedback: 'Feedback',
+        alert: 'Alert',
+        follow_up: 'Follow Up',
+        celebration: '🎉 Celebration'
+      };
+      return labels[type] || type;
+    }
+
+    async function completeActionItem(id) {
+      try {
+        const response = await fetch(`/api/admin/action-items/${id}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolution_note: 'Completed from users page' })
+        });
+        if (response.ok) {
+          actionItems = actionItems.filter(a => a.id !== id);
+          renderActionItems();
+        }
+      } catch (error) {
+        console.error('Error completing action item:', error);
+      }
+    }
+
+    async function snoozeActionItem(id) {
+      try {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const response = await fetch(`/api/admin/action-items/${id}/snooze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ until: tomorrow.toISOString() })
+        });
+        if (response.ok) {
+          actionItems = actionItems.filter(a => a.id !== id);
+          renderActionItems();
+        }
+      } catch (error) {
+        console.error('Error snoozing action item:', error);
+      }
+    }
+
+    async function dismissActionItem(id) {
+      if (!confirm('Dismiss this action item?')) return;
+      try {
+        const response = await fetch(`/api/admin/action-items/${id}/dismiss`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolution_note: 'Dismissed from users page' })
+        });
+        if (response.ok) {
+          actionItems = actionItems.filter(a => a.id !== id);
+          renderActionItems();
+        }
+      } catch (error) {
+        console.error('Error dismissing action item:', error);
+      }
+    }
+
+    // =========================================================================
+    // Tab Navigation
+    // =========================================================================
+
+    function switchTab(tabId) {
+      currentTab = tabId;
+
+      // Update tab buttons
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(tabId.replace('-', ' ').replace('all ', ''))) {
+          btn.classList.add('active');
+        }
+      });
+
+      // Show/hide tab content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+
+      // Load data for the tab if needed
+      if (tabId === 'my-accounts' && myAccounts.length === 0) {
+        loadMyAccounts();
+      }
+    }
+
+    // =========================================================================
+    // My Accounts Functions
+    // =========================================================================
+
+    async function loadMyAccounts() {
+      try {
+        const response = await fetch('/api/admin/my-accounts');
+        if (!response.ok) throw new Error('Failed to load accounts');
+        myAccounts = await response.json();
+        renderMyAccounts();
+      } catch (error) {
+        console.error('Error loading my accounts:', error);
+      }
+    }
+
+    function renderMyAccounts() {
+      const grid = document.getElementById('myAccountsGrid');
+      const emptyState = document.getElementById('emptyAccountsState');
+
+      if (!myAccounts || myAccounts.length === 0) {
+        grid.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+
+      grid.innerHTML = myAccounts.map(account => {
+        const actionsClass = account.open_action_items > 0 ? 'has-items' : '';
+        const lastActivity = account.last_slack_activity
+          ? new Date(account.last_slack_activity).toLocaleDateString()
+          : 'Never';
+        const lastConvo = account.last_conversation
+          ? new Date(account.last_conversation).toLocaleDateString()
+          : 'Never';
+
+        return `
+          <div class="account-card">
+            <div class="account-card-header">
+              <div>
+                <div class="account-name">${escapeHtml(account.account_name || 'Unknown')}</div>
+                <div class="account-email">${escapeHtml(account.account_email || '')}</div>
+                ${account.org_name ? `<div class="account-email">${escapeHtml(account.org_name)}</div>` : ''}
+              </div>
+              <span class="account-role-badge role-${account.role}">${account.role}</span>
+            </div>
+            <div class="account-stats">
+              <span>Last Slack: ${lastActivity}</span>
+              <span>Last Chat: ${lastConvo}</span>
+            </div>
+            <div class="account-actions-count ${actionsClass}">
+              ${account.open_action_items > 0 ? `⚠️ ${account.open_action_items} action items` : '✓ No pending actions'}
+            </div>
+            <div style="margin-top: var(--space-3); display: flex; gap: var(--space-2);">
+              <button class="btn btn-info btn-small" onclick="showUserContext('${escapeHtml(account.account_id)}', '${account.account_type === 'user' ? 'workos' : 'org'}', '${escapeHtml(account.account_name || 'Account')}')">View</button>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     function populateGoalFilter() {
@@ -913,7 +1363,7 @@
         const contextUserId = user.workos_user_id || user.slack_user_id;
         const contextType = user.workos_user_id ? 'workos' : 'slack';
         if (contextUserId) {
-          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${contextUserId}', '${contextType}', '${escapeHtml(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
+          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${escapeHtml(contextUserId)}', '${contextType}', '${escapeHtml(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
         }
 
         if (user.mapping_status === 'suggested_match') {
@@ -1215,7 +1665,7 @@
         modalBody.innerHTML = `
           <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
             <p>Failed to load context.</p>
-            <button class="btn btn-secondary btn-small" onclick="showUserContext('${userId}', '${type}', '${escapeHtml(userName)}')">Retry</button>
+            <button class="btn btn-secondary btn-small" onclick="showUserContext('${escapeHtml(userId)}', '${type}', '${escapeHtml(userName)}')">Retry</button>
           </div>
         `;
       }

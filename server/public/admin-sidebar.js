@@ -15,11 +15,11 @@
         ]
       },
       {
-        label: 'Members',
+        label: 'Account Management',
         items: [
+          { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
           { href: '/admin/prospects', label: 'Prospects', icon: '🎯' },
-          { href: '/admin/members', label: 'Members', icon: '🏢' },
-          { href: '/admin/users', label: 'Users', icon: '👤' },
+          { href: '/admin/members', label: 'Organizations', icon: '🏢' },
         ]
       },
       {
@@ -38,14 +38,6 @@
         ]
       },
       {
-        label: 'Engagement',
-        items: [
-          { href: '/admin/insights', label: 'Member Insights', icon: '🧠' },
-          { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
-          { href: '/admin/outreach', label: 'Outreach', icon: '📣' },
-        ]
-      },
-      {
         label: 'System',
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
@@ -56,6 +48,14 @@
           { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
           { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
           { href: '/admin/audit', label: 'Audit Log', icon: '📜' },
+        ]
+      },
+      {
+        label: 'Settings',
+        items: [
+          { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
+          { href: '/admin/outreach', label: 'Outreach Config', icon: '📣' },
+          { href: '/admin/insights', label: 'Raw Insights', icon: '🧠' },
         ]
       }
     ]

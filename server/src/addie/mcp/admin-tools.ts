@@ -37,6 +37,7 @@ import {
   getFeedStats,
   type FeedWithStats,
 } from '../../db/industry-feeds-db.js';
+import { InsightsDatabase } from '../../db/insights-db.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -437,6 +438,93 @@ Returns: Slack user count and activity, working groups, engagement level and sig
       type: 'object',
       properties: {},
       required: [],
+    },
+  },
+
+  // ============================================
+  // SENSITIVE TOPICS & MEDIA CONTACT TOOLS
+  // ============================================
+  {
+    name: 'add_media_contact',
+    description:
+      'Flag a Slack user as a known media contact (journalist, reporter, editor). Messages from this user will be handled with extra care and sensitive topics will be deflected.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID of the media contact (e.g., "U0123456789")',
+        },
+        email: {
+          type: 'string',
+          description: 'Email address of the media contact',
+        },
+        name: {
+          type: 'string',
+          description: 'Full name of the media contact',
+        },
+        organization: {
+          type: 'string',
+          description: 'Media organization they work for (e.g., "TechCrunch", "AdExchanger")',
+        },
+        role: {
+          type: 'string',
+          description: 'Their role (e.g., "Reporter", "Editor", "Journalist")',
+        },
+        notes: {
+          type: 'string',
+          description: 'Additional notes about this contact',
+        },
+        handling_level: {
+          type: 'string',
+          enum: ['standard', 'careful', 'executive_only'],
+          description: 'How carefully to handle this contact: standard (deflect sensitive topics), careful (deflect more topics), executive_only (always escalate)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_flagged_conversations',
+    description:
+      'List conversations that have been flagged for sensitive topic detection. These need human review to ensure appropriate handling.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        unreviewed_only: {
+          type: 'boolean',
+          description: 'Only show conversations that haven\'t been reviewed yet (default: true)',
+        },
+        severity: {
+          type: 'string',
+          enum: ['high', 'medium', 'low'],
+          description: 'Filter by severity level',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'review_flagged_conversation',
+    description:
+      'Mark a flagged conversation as reviewed. Use this after you\'ve looked at a flagged message and determined if any follow-up action is needed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        flagged_id: {
+          type: 'number',
+          description: 'ID of the flagged conversation to review',
+        },
+        notes: {
+          type: 'string',
+          description: 'Notes about the review (e.g., "False positive - user was asking about child-safe ad practices for their company", "Escalated to Brian")',
+        },
+      },
+      required: ['flagged_id'],
     },
   },
 ];
@@ -1439,6 +1527,154 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error getting feed stats');
       return '❌ Failed to get feed statistics. Please try again.';
+    }
+  });
+
+  // ============================================
+  // SENSITIVE TOPICS & MEDIA CONTACT HANDLERS
+  // ============================================
+
+  const insightsDb = new InsightsDatabase();
+
+  // Add media contact
+  handlers.set('add_media_contact', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const slackUserId = input.slack_user_id as string | undefined;
+    const email = input.email as string | undefined;
+    const name = input.name as string | undefined;
+    const organization = input.organization as string | undefined;
+    const role = input.role as string | undefined;
+    const notes = input.notes as string | undefined;
+    const handlingLevel = (input.handling_level as 'standard' | 'careful' | 'executive_only') || 'standard';
+
+    if (!slackUserId && !email) {
+      return '❌ Please provide either a slack_user_id or email to identify the media contact.';
+    }
+
+    try {
+      const contact = await insightsDb.addMediaContact({
+        slackUserId,
+        email,
+        name,
+        organization,
+        role,
+        notes,
+        handlingLevel,
+      });
+
+      let response = `✅ Added media contact\n\n`;
+      if (contact.name) response += `**Name:** ${contact.name}\n`;
+      if (contact.organization) response += `**Organization:** ${contact.organization}\n`;
+      if (contact.role) response += `**Role:** ${contact.role}\n`;
+      if (contact.slackUserId) response += `**Slack ID:** ${contact.slackUserId}\n`;
+      if (contact.email) response += `**Email:** ${contact.email}\n`;
+      response += `**Handling Level:** ${contact.handlingLevel}\n`;
+
+      const levelExplanation = {
+        standard: 'Sensitive topics will be deflected to human contacts.',
+        careful: 'More topics will be deflected, extra caution applied.',
+        executive_only: 'All questions will be escalated for executive review.',
+      };
+      response += `\n_${levelExplanation[contact.handlingLevel]}_`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error adding media contact');
+      return '❌ Failed to add media contact. Please try again.';
+    }
+  });
+
+  // List flagged conversations
+  handlers.set('list_flagged_conversations', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const unreviewedOnly = input.unreviewed_only !== false; // Default to true
+    const severity = input.severity as 'high' | 'medium' | 'low' | undefined;
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
+
+    try {
+      const flagged = await insightsDb.getFlaggedConversations({
+        unreviewedOnly,
+        severity,
+        limit,
+      });
+
+      if (flagged.length === 0) {
+        let msg = 'No flagged conversations found';
+        if (unreviewedOnly) msg += ' pending review';
+        if (severity) msg += ` with severity "${severity}"`;
+        return msg + '. 🎉';
+      }
+
+      let response = `## Flagged Conversations`;
+      if (unreviewedOnly) response += ` (Pending Review)`;
+      response += `\n\n`;
+
+      const severityIcon = {
+        high: '🔴',
+        medium: '🟡',
+        low: '🟢',
+      };
+
+      for (const conv of flagged) {
+        const icon = severityIcon[conv.severity || 'low'];
+        response += `### ${icon} ID: ${conv.id}\n`;
+        if (conv.userName) response += `**From:** ${conv.userName}`;
+        if (conv.userEmail) response += ` (${conv.userEmail})`;
+        response += `\n`;
+        response += `**Category:** ${conv.matchedCategory || 'unknown'}\n`;
+        response += `**Message:** "${conv.messageText.substring(0, 150)}${conv.messageText.length > 150 ? '...' : ''}"\n`;
+        if (conv.wasDeflected) {
+          response += `**Deflected:** Yes\n`;
+          if (conv.responseGiven) {
+            response += `**Response:** "${conv.responseGiven.substring(0, 100)}..."\n`;
+          }
+        }
+        response += `**When:** ${formatDate(conv.createdAt)}\n`;
+        response += `\n`;
+      }
+
+      response += `\n_Use review_flagged_conversation to mark items as reviewed._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing flagged conversations');
+      return '❌ Failed to list flagged conversations. Please try again.';
+    }
+  });
+
+  // Review flagged conversation
+  handlers.set('review_flagged_conversation', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const flaggedId = input.flagged_id as number;
+    const notes = input.notes as string | undefined;
+
+    if (!flaggedId) {
+      return '❌ Please provide the flagged_id to review.';
+    }
+
+    try {
+      // Get reviewer user ID from member context if available
+      const reviewerId = memberContext?.workos_user?.workos_user_id
+        ? parseInt(memberContext.workos_user.workos_user_id, 10) || 0
+        : 0;
+
+      await insightsDb.reviewFlaggedConversation(flaggedId, reviewerId, notes);
+
+      let response = `✅ Marked conversation #${flaggedId} as reviewed.\n`;
+      if (notes) {
+        response += `\n**Notes:** ${notes}`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, flaggedId }, 'Error reviewing flagged conversation');
+      return '❌ Failed to mark conversation as reviewed. Please check the ID and try again.';
     }
   });
 
