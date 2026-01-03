@@ -45,7 +45,7 @@ import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
-import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter } from "./addie/index.js";
+import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -1240,10 +1240,32 @@ export class HTTPServer {
       });
     });
 
-    // Health check
-    this.app.get("/health", (req, res) => {
-      res.json({
-        status: "ok",
+    // Health check - verifies critical services are operational
+    this.app.get("/health", async (req, res) => {
+      const checks: Record<string, boolean> = {};
+      let allHealthy = true;
+
+      // Check database connectivity
+      try {
+        const pool = getPool();
+        await pool.query('SELECT 1');
+        checks.database = true;
+      } catch {
+        checks.database = false;
+        allHealthy = false;
+      }
+
+      // Check Addie status
+      checks.addie = isAddieBoltReady();
+      if (!checks.addie) {
+        allHealthy = false;
+      }
+
+      // Return appropriate status code
+      const statusCode = allHealthy ? 200 : 503;
+      res.status(statusCode).json({
+        status: allHealthy ? "ok" : "degraded",
+        checks,
         registry: {
           mode: "database",
           using_database: true,
