@@ -1245,6 +1245,128 @@ export async function getPendingInvoicesByEmail(email: string): Promise<PendingI
 }
 
 /**
+ * Open invoice with customer information
+ * Used for listing all unpaid invoices across all customers
+ */
+export interface OpenInvoiceWithCustomer {
+  id: string;
+  status: 'draft' | 'open';
+  amount_due: number;
+  currency: string;
+  created: Date;
+  due_date: Date | null;
+  hosted_invoice_url: string | null;
+  product_name: string | null;
+  customer_id: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  workos_organization_id: string | null;
+}
+
+/**
+ * Convert a Stripe invoice to OpenInvoiceWithCustomer format
+ */
+function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | null {
+  const customer = invoice.customer;
+  let customerId: string;
+  let customerName: string | null = null;
+  let customerEmail: string | null = null;
+  let workosOrgId: string | null = null;
+
+  if (typeof customer === 'string') {
+    customerId = customer;
+  } else if (customer && 'id' in customer && !('deleted' in customer)) {
+    // Customer is expanded and not deleted
+    customerId = customer.id;
+    customerName = customer.name || null;
+    customerEmail = customer.email || null;
+    if (customer.metadata?.workos_organization_id) {
+      workosOrgId = customer.metadata.workos_organization_id;
+    }
+  } else if (customer && 'id' in customer) {
+    // Deleted customer - just get the ID
+    customerId = customer.id;
+  } else {
+    return null; // Skip invoices without customer
+  }
+
+  // Get product name from first line item
+  let productName: string | null = null;
+  const firstLine = invoice.lines?.data[0];
+  if (firstLine?.price?.product) {
+    const product = firstLine.price.product;
+    if (typeof product === 'object' && 'name' in product) {
+      productName = product.name;
+    }
+  }
+
+  return {
+    id: invoice.id,
+    status: (invoice.status === 'draft' || invoice.status === 'open') ? invoice.status : 'open',
+    amount_due: invoice.amount_due,
+    currency: invoice.currency,
+    created: new Date(invoice.created * 1000),
+    due_date: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+    hosted_invoice_url: invoice.hosted_invoice_url || null,
+    product_name: productName,
+    customer_id: customerId,
+    customer_name: customerName,
+    customer_email: customerEmail || (typeof invoice.customer_email === 'string' ? invoice.customer_email : null),
+    workos_organization_id: workosOrgId,
+  };
+}
+
+/**
+ * Get ALL open invoices across all Stripe customers
+ * This queries Stripe directly, not our database, so it finds invoices
+ * even for customers not linked to organizations in our system.
+ */
+export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoiceWithCustomer[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch open invoices');
+    return [];
+  }
+
+  try {
+    const openInvoices: OpenInvoiceWithCustomer[] = [];
+
+    // Query Stripe directly for all open invoices (sent, waiting for payment)
+    for await (const invoice of stripe.invoices.list({
+      status: 'open',
+      limit: 100,
+      expand: ['data.customer', 'data.lines.data.price.product'],
+    })) {
+      const parsed = parseStripeInvoice(invoice);
+      if (parsed) {
+        openInvoices.push(parsed);
+        if (openInvoices.length >= limit) break;
+      }
+    }
+
+    // Also get draft invoices (not yet sent)
+    if (openInvoices.length < limit) {
+      for await (const invoice of stripe.invoices.list({
+        status: 'draft',
+        limit: 100,
+        expand: ['data.customer', 'data.lines.data.price.product'],
+      })) {
+        const parsed = parseStripeInvoice(invoice);
+        if (parsed) {
+          openInvoices.push(parsed);
+          if (openInvoices.length >= limit) break;
+        }
+      }
+    }
+
+    logger.info({ count: openInvoices.length }, 'Fetched all open invoices from Stripe');
+    return openInvoices;
+  } catch (error) {
+    logger.error({ err: error }, 'Error fetching all open invoices');
+    return [];
+  }
+}
+
+/**
  * Void an invoice (cancel it)
  * Only works on open or uncollectible invoices
  */

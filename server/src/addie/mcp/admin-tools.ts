@@ -19,10 +19,12 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import {
   getPendingInvoices,
+  getAllOpenInvoices,
   createOrgDiscount,
   createCoupon,
   createPromotionCode,
   type PendingInvoice,
+  type OpenInvoiceWithCustomer,
 } from '../../billing/stripe-client.js';
 import {
   enrichOrganization,
@@ -678,6 +680,23 @@ function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> 
 }
 
 /**
+ * Format open invoice with customer info for response
+ */
+function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unknown> {
+  return {
+    id: invoice.id,
+    status: invoice.status,
+    amount: formatCurrency(invoice.amount_due, invoice.currency),
+    product: invoice.product_name || 'Unknown product',
+    customer_name: invoice.customer_name || 'Unknown',
+    customer_email: invoice.customer_email || 'Unknown',
+    created: formatDate(invoice.created),
+    due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
+    payment_url: invoice.hosted_invoice_url || null,
+  };
+}
+
+/**
  * Admin tool handler implementations
  * Includes both billing/invoice tools and prospect management tools
  */
@@ -777,61 +796,60 @@ export function createAdminToolHandlers(
     }
   });
 
-  // List pending invoices across all orgs
+  // List pending invoices across all customers (queries Stripe directly)
   handlers.set('list_pending_invoices', async (input) => {
     const adminCheck = requireAdminFromContext();
     if (adminCheck) return adminCheck;
 
-    const limit = (input.limit as number) || 10;
+    const limit = (input.limit as number) || 20;
 
     logger.info({ limit }, 'Addie: Admin listing pending invoices');
 
     try {
-      // Get all organizations with Stripe customers
-      const allOrgs = await orgDb.listOrganizations();
-      const orgsWithStripe = allOrgs.filter(org => org.stripe_customer_id);
+      // Query Stripe directly for all open invoices
+      // This finds invoices even for customers not linked to organizations in our database
+      const openInvoices = await getAllOpenInvoices(limit);
 
-      const orgsWithPendingInvoices: Array<{
-        name: string;
-        invoices: ReturnType<typeof formatPendingInvoice>[];
-      }> = [];
-
-      // Check each org for pending invoices
-      for (const org of orgsWithStripe) {
-        if (!org.stripe_customer_id) continue;
-
-        const pendingInvoices = await getPendingInvoices(org.stripe_customer_id);
-
-        if (pendingInvoices.length > 0) {
-          orgsWithPendingInvoices.push({
-            name: org.name,
-            invoices: pendingInvoices.map(formatPendingInvoice),
-          });
-        }
-
-        // Stop if we've found enough
-        if (orgsWithPendingInvoices.length >= limit) {
-          break;
-        }
-      }
-
-      if (orgsWithPendingInvoices.length === 0) {
+      if (openInvoices.length === 0) {
         return JSON.stringify({
           success: true,
-          message: 'No pending invoices found across all organizations.',
-          organizations: [],
+          message: 'No pending invoices found.',
+          invoices: [],
         });
       }
 
-      const totalInvoices = orgsWithPendingInvoices.reduce(
-        (sum, org) => sum + org.invoices.length,
-        0
+      // Try to match invoices to organizations by workos_organization_id or stripe_customer_id
+      const allOrgs = await orgDb.listOrganizations();
+      const orgByWorkosId = new Map(allOrgs.map(org => [org.workos_organization_id, org]));
+      const orgByStripeId = new Map(
+        allOrgs.filter(org => org.stripe_customer_id).map(org => [org.stripe_customer_id, org])
       );
+
+      const invoicesWithOrgs = openInvoices.map(invoice => {
+        // Try to find matching org
+        let orgName: string | null = null;
+        if (invoice.workos_organization_id) {
+          const org = orgByWorkosId.get(invoice.workos_organization_id);
+          if (org) orgName = org.name;
+        }
+        if (!orgName) {
+          const org = orgByStripeId.get(invoice.customer_id);
+          if (org) orgName = org.name;
+        }
+
+        return {
+          ...formatOpenInvoice(invoice),
+          organization: orgName || invoice.customer_name || 'Unknown organization',
+        };
+      });
+
+      const totalAmount = openInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+      const formattedTotal = formatCurrency(totalAmount, openInvoices[0]?.currency || 'usd');
 
       return JSON.stringify({
         success: true,
-        message: `Found ${totalInvoices} pending invoice(s) across ${orgsWithPendingInvoices.length} organization(s)`,
-        organizations: orgsWithPendingInvoices,
+        message: `Found ${openInvoices.length} pending invoice(s) totaling ${formattedTotal}`,
+        invoices: invoicesWithOrgs,
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error listing pending invoices');
