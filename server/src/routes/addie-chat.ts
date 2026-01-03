@@ -13,6 +13,7 @@ import { validate as uuidValidate } from "uuid";
 import rateLimit from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { optionalAuth } from "../middleware/auth.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient } from "../addie/claude-client.js";
 import {
   sanitizeInput,
@@ -145,9 +146,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // PAGE ROUTES (mounted at /chat)
   // =========================================================================
 
-  // Note: The chat page (/chat -> chat.html) is served by the global middleware
-  // in http.ts that handles extensionless paths. This middleware injects the
-  // user config needed for the navigation bar. No explicit route needed here.
+  // GET / - Serve the chat page (mounted at /chat, so this serves /chat)
+  pageRouter.get("/", optionalAuth, (req, res) => {
+    serveHtmlWithConfig(req, res, "chat.html").catch((err) => {
+      logger.error({ err }, "Error serving chat page");
+      res.status(500).send("Internal server error");
+    });
+  });
 
   // =========================================================================
   // API ROUTES (mounted at /api/addie/chat)
