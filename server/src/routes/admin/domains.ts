@@ -1138,7 +1138,7 @@ export function setupDomainRoutes(
         // Build parameterized query for free email exclusion
         const freeEmailPlaceholders = freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ');
 
-        // 1. Orphan corporate domains
+        // 1. Orphan corporate domains - domains not linked to any org, but users may already be members
         const orphanResult = await pool.query(`
           WITH user_domains AS (
             SELECT
@@ -1159,10 +1159,32 @@ export function setupDomainRoutes(
             SELECT LOWER(domain) as domain FROM organization_domains
             UNION
             SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+          ),
+          domain_orgs AS (
+            -- Find which orgs users with each domain actually belong to
+            SELECT
+              LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
+              array_agg(DISTINCT jsonb_build_object(
+                'org_id', o.workos_organization_id,
+                'name', o.name,
+                'is_personal', o.is_personal,
+                'user_count', (
+                  SELECT COUNT(DISTINCT om2.workos_user_id)
+                  FROM organization_memberships om2
+                  WHERE om2.workos_organization_id = o.workos_organization_id
+                    AND LOWER(SPLIT_PART(om2.email, '@', 2)) = LOWER(SPLIT_PART(om.email, '@', 2))
+                )
+              )) as existing_orgs
+            FROM organization_memberships om
+            JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+            WHERE om.email IS NOT NULL
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
+            GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
           )
-          SELECT ud.domain, ud.user_count, ud.users
+          SELECT ud.domain, ud.user_count, ud.users, dorgs.existing_orgs
           FROM user_domains ud
           LEFT JOIN claimed_domains cd ON cd.domain = ud.domain
+          LEFT JOIN domain_orgs dorgs ON dorgs.domain = ud.domain
           WHERE cd.domain IS NULL
           ORDER BY ud.user_count DESC
           LIMIT $${freeEmailDomains.length + 1}
@@ -1260,6 +1282,7 @@ export function setupDomainRoutes(
             domain: row.domain,
             user_count: parseInt(row.user_count, 10),
             users: row.users.slice(0, 10), // Limit to 10 users per domain
+            existing_orgs: row.existing_orgs || [], // Orgs users already belong to
           })),
           misaligned_users: Object.entries(misalignedByDomain).map(([domain, users]) => ({
             domain,
