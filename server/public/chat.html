@@ -1377,9 +1377,33 @@
         }
       });
 
+      // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
+      function checkQueryPrompt() {
+        const params = new URLSearchParams(window.location.search);
+        const prompt = params.get('prompt');
+        if (prompt && prompt.trim()) {
+          // Wait for Addie to be ready before sending
+          const waitForReady = setInterval(() => {
+            if (isReady) {
+              clearInterval(waitForReady);
+              chatInput.value = prompt.trim();
+              autoResize();
+              updateSendButton();
+              sendMessage();
+              // Clean URL without reloading
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          }, 100);
+          // Timeout after 10 seconds
+          setTimeout(() => clearInterval(waitForReady), 10000);
+        }
+      }
+
       // Initialize
       checkStatus();
       checkImpersonation();
+      // Check for prompt in URL after status check
+      setTimeout(checkQueryPrompt, 500);
       // Check status periodically
       setInterval(checkStatus, 30000);
 
