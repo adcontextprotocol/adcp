@@ -83,6 +83,9 @@ export interface OutreachTestAccount {
   created_at: Date;
 }
 
+export type ResponseSentiment = 'positive' | 'neutral' | 'negative' | 'refusal';
+export type ResponseIntent = 'converted' | 'interested' | 'deferred' | 'question' | 'objection' | 'refusal' | 'ignored';
+
 export interface MemberOutreach {
   id: number;
   slack_user_id: string;
@@ -97,8 +100,21 @@ export interface MemberOutreach {
   user_responded: boolean;
   response_received_at: Date | null;
   insight_extracted: boolean;
+  // Enhanced response tracking
+  response_text: string | null;
+  response_sentiment: ResponseSentiment | null;
+  response_intent: ResponseIntent | null;
+  follow_up_date: Date | null;
+  follow_up_reason: string | null;
   sent_at: Date;
   created_at: Date;
+}
+
+export interface ResponseAnalysis {
+  sentiment: ResponseSentiment;
+  intent: ResponseIntent;
+  followUpDays: number | null;
+  analysisNote: string;
 }
 
 // Input types
@@ -207,6 +223,49 @@ export interface EmailActivityInsight {
   role: 'sender' | 'recipient' | 'cc';
 }
 
+// Sensitive topic detection types
+export type SensitiveCategory =
+  | 'vulnerable_populations'
+  | 'political'
+  | 'named_individual'
+  | 'organization_position'
+  | 'competitive'
+  | 'privacy_surveillance'
+  | 'ethical_concerns'
+  | 'media_inquiry';
+
+export type SensitiveSeverity = 'high' | 'medium' | 'low';
+
+export interface SensitiveTopicResult {
+  isSensitive: boolean;
+  patternId: number | null;
+  category: SensitiveCategory | null;
+  severity: SensitiveSeverity | null;
+  deflectResponse: string | null;
+}
+
+export interface KnownMediaContact {
+  id: number;
+  slackUserId: string | null;
+  email: string | null;
+  name: string | null;
+  organization: string | null;
+  role: string | null;
+  handlingLevel: 'standard' | 'careful' | 'executive_only';
+}
+
+export interface FlaggedConversation {
+  id: number;
+  slackUserId: string;
+  slackChannelId: string | null;
+  messageText: string;
+  matchedCategory: SensitiveCategory | null;
+  severity: SensitiveSeverity | null;
+  responseGiven: string | null;
+  wasDeflected: boolean;
+  createdAt: Date;
+}
+
 export interface OutreachVariantStats {
   variant_id: number;
   variant_name: string;
@@ -235,6 +294,16 @@ export interface OutreachStats {
  * Database operations for member insights and proactive engagement
  */
 export class InsightsDatabase {
+  /**
+   * Execute a raw query (for admin routes that need direct access)
+   */
+  async query<T extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[]
+  ): Promise<{ rows: T[] }> {
+    return query<T>(sql, params);
+  }
+
   // ============== Insight Types ==============
 
   /**
@@ -784,7 +853,7 @@ export class InsightsDatabase {
   }
 
   /**
-   * Mark outreach as responded
+   * Mark outreach as responded (legacy - use markOutreachRespondedWithAnalysis for full tracking)
    */
   async markOutreachResponded(id: number, insightExtracted = false): Promise<void> {
     await query(
@@ -793,6 +862,253 @@ export class InsightsDatabase {
        WHERE id = $1`,
       [id, insightExtracted]
     );
+  }
+
+  /**
+   * Analyze a response to detect sentiment, intent, and scheduling needs
+   * Uses database functions for pattern matching
+   */
+  async analyzeResponse(responseText: string): Promise<ResponseAnalysis> {
+    const result = await query<{
+      sentiment: ResponseSentiment;
+      intent: ResponseIntent;
+      follow_up_days: number | null;
+      analysis_note: string;
+    }>(
+      'SELECT * FROM analyze_outreach_response($1)',
+      [responseText]
+    );
+
+    const row = result.rows[0];
+    return {
+      sentiment: row.sentiment,
+      intent: row.intent,
+      followUpDays: row.follow_up_days,
+      analysisNote: row.analysis_note,
+    };
+  }
+
+  /**
+   * Mark outreach as responded with full sentiment/intent analysis
+   */
+  async markOutreachRespondedWithAnalysis(
+    id: number,
+    responseText: string,
+    insightExtracted = false
+  ): Promise<ResponseAnalysis> {
+    // Analyze the response
+    const analysis = await this.analyzeResponse(responseText);
+
+    // Calculate follow-up date if needed
+    const followUpDate = analysis.followUpDays
+      ? new Date(Date.now() + analysis.followUpDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    // Update the outreach record with all analysis
+    await query(
+      `UPDATE member_outreach
+       SET
+         user_responded = TRUE,
+         response_received_at = NOW(),
+         insight_extracted = $2,
+         response_text = $3,
+         response_sentiment = $4,
+         response_intent = $5,
+         follow_up_date = $6,
+         follow_up_reason = $7
+       WHERE id = $1`,
+      [
+        id,
+        insightExtracted,
+        responseText,
+        analysis.sentiment,
+        analysis.intent,
+        followUpDate,
+        analysis.followUpDays ? analysis.analysisNote : null,
+      ]
+    );
+
+    // If this is a hard refusal, update the user's opt-out status
+    if (analysis.sentiment === 'refusal') {
+      const outreach = await query<{ slack_user_id: string }>(
+        'SELECT slack_user_id FROM member_outreach WHERE id = $1',
+        [id]
+      );
+      if (outreach.rows[0]) {
+        await query(
+          `UPDATE slack_user_mappings
+           SET outreach_opt_out = TRUE, outreach_opt_out_at = NOW()
+           WHERE slack_user_id = $1`,
+          [outreach.rows[0].slack_user_id]
+        );
+      }
+    }
+
+    return analysis;
+  }
+
+  /**
+   * Check if a user should be contacted (respects refusals, rate limits, grace period)
+   */
+  async canContactUser(slackUserId: string): Promise<{
+    canContact: boolean;
+    reason: string;
+    nextContactDate?: Date;
+  }> {
+    const result = await query<{
+      outreach_opt_out: boolean;
+      last_outreach_at: Date | null;
+      slack_joined_at: Date | null;
+      has_refusal: boolean;
+      has_pending_follow_up: boolean;
+      follow_up_date: Date | null;
+    }>(
+      `SELECT
+        sm.outreach_opt_out,
+        sm.last_outreach_at,
+        sm.slack_joined_at,
+        EXISTS(
+          SELECT 1 FROM member_outreach mo
+          WHERE mo.slack_user_id = sm.slack_user_id
+            AND mo.response_sentiment = 'refusal'
+        ) as has_refusal,
+        EXISTS(
+          SELECT 1 FROM member_outreach mo
+          WHERE mo.slack_user_id = sm.slack_user_id
+            AND mo.follow_up_date IS NOT NULL
+            AND mo.follow_up_date > CURRENT_DATE
+        ) as has_pending_follow_up,
+        (
+          SELECT mo.follow_up_date FROM member_outreach mo
+          WHERE mo.slack_user_id = sm.slack_user_id
+            AND mo.follow_up_date IS NOT NULL
+          ORDER BY mo.follow_up_date DESC LIMIT 1
+        ) as follow_up_date
+      FROM slack_user_mappings sm
+      WHERE sm.slack_user_id = $1`,
+      [slackUserId]
+    );
+
+    if (result.rows.length === 0) {
+      return { canContact: false, reason: 'User not found' };
+    }
+
+    const user = result.rows[0];
+    const RATE_LIMIT_DAYS = 7;
+    const GRACE_PERIOD_HOURS = 24;
+
+    // Check for explicit opt-out
+    if (user.outreach_opt_out) {
+      return { canContact: false, reason: 'User has opted out of outreach' };
+    }
+
+    // Check for past refusal
+    if (user.has_refusal) {
+      return { canContact: false, reason: 'User previously refused - requires human review' };
+    }
+
+    // Check grace period for new users
+    if (user.slack_joined_at) {
+      const hoursSinceJoined = (Date.now() - new Date(user.slack_joined_at).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceJoined < GRACE_PERIOD_HOURS) {
+        const nextDate = new Date(new Date(user.slack_joined_at).getTime() + GRACE_PERIOD_HOURS * 60 * 60 * 1000);
+        return {
+          canContact: false,
+          reason: `User joined recently - grace period until ${nextDate.toISOString()}`,
+          nextContactDate: nextDate,
+        };
+      }
+    }
+
+    // Check for pending scheduled follow-up
+    if (user.has_pending_follow_up && user.follow_up_date) {
+      const followUpDate = new Date(user.follow_up_date);
+      if (followUpDate > new Date()) {
+        return {
+          canContact: false,
+          reason: `Scheduled follow-up on ${followUpDate.toISOString().split('T')[0]}`,
+          nextContactDate: followUpDate,
+        };
+      }
+    }
+
+    // Check rate limit
+    if (user.last_outreach_at) {
+      const daysSinceOutreach = (Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceOutreach < RATE_LIMIT_DAYS) {
+        const nextDate = new Date(new Date(user.last_outreach_at).getTime() + RATE_LIMIT_DAYS * 24 * 60 * 60 * 1000);
+        return {
+          canContact: false,
+          reason: `Rate limited - last contact ${Math.round(daysSinceOutreach)} days ago`,
+          nextContactDate: nextDate,
+        };
+      }
+    }
+
+    return { canContact: true, reason: 'OK' };
+  }
+
+  /**
+   * Get users with scheduled follow-ups that are due
+   */
+  async getDueFollowUps(): Promise<Array<{
+    outreachId: number;
+    slackUserId: string;
+    userName: string | null;
+    email: string | null;
+    followUpDate: Date;
+    followUpReason: string | null;
+    responseText: string | null;
+  }>> {
+    const result = await query<{
+      outreach_id: number;
+      slack_user_id: string;
+      slack_real_name: string | null;
+      slack_email: string | null;
+      follow_up_date: Date;
+      follow_up_reason: string | null;
+      response_text: string | null;
+    }>(
+      `SELECT * FROM outreach_scheduled_followups
+       WHERE follow_up_date <= CURRENT_DATE`
+    );
+
+    return result.rows.map(row => ({
+      outreachId: row.outreach_id,
+      slackUserId: row.slack_user_id,
+      userName: row.slack_real_name,
+      email: row.slack_email,
+      followUpDate: row.follow_up_date,
+      followUpReason: row.follow_up_reason,
+      responseText: row.response_text,
+    }));
+  }
+
+  /**
+   * Get users who have explicitly refused outreach (for human review)
+   */
+  async getRefusedUsers(): Promise<Array<{
+    slackUserId: string;
+    userName: string | null;
+    email: string | null;
+    responseText: string | null;
+    refusedAt: Date;
+  }>> {
+    const result = await query<{
+      slack_user_id: string;
+      slack_real_name: string | null;
+      slack_email: string | null;
+      response_text: string | null;
+      refused_at: Date;
+    }>('SELECT * FROM outreach_refused_users');
+
+    return result.rows.map(row => ({
+      slackUserId: row.slack_user_id,
+      userName: row.slack_real_name,
+      email: row.slack_email,
+      responseText: row.response_text,
+      refusedAt: row.refused_at,
+    }));
   }
 
   /**
@@ -1114,5 +1430,262 @@ export class InsightsDatabase {
       first_seen_at: emailContact.first_seen_at,
       last_activity_at: emailContact.last_seen_at,
     };
+  }
+
+  // ============== Sensitive Topic Detection ==============
+
+  /**
+   * Check if a message contains sensitive topics
+   * Uses database patterns for journalist-proofing
+   */
+  async checkSensitiveTopic(messageText: string): Promise<SensitiveTopicResult> {
+    const result = await query<{
+      is_sensitive: boolean;
+      pattern_id: number | null;
+      category: SensitiveCategory | null;
+      severity: SensitiveSeverity | null;
+      deflect_response: string | null;
+    }>(
+      'SELECT * FROM check_sensitive_topic($1)',
+      [messageText]
+    );
+
+    const row = result.rows[0];
+    return {
+      isSensitive: row?.is_sensitive ?? false,
+      patternId: row?.pattern_id ?? null,
+      category: row?.category ?? null,
+      severity: row?.severity ?? null,
+      deflectResponse: row?.deflect_response ?? null,
+    };
+  }
+
+  /**
+   * Check if a Slack user is a known media contact
+   */
+  async isKnownMediaContact(slackUserId: string): Promise<KnownMediaContact | null> {
+    const result = await query<{
+      id: number;
+      slack_user_id: string | null;
+      email: string | null;
+      name: string | null;
+      organization: string | null;
+      role: string | null;
+      handling_level: 'standard' | 'careful' | 'executive_only';
+    }>(
+      `SELECT id, slack_user_id, email, name, organization, role, handling_level
+       FROM known_media_contacts
+       WHERE slack_user_id = $1 AND is_active = TRUE`,
+      [slackUserId]
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      slackUserId: row.slack_user_id,
+      email: row.email,
+      name: row.name,
+      organization: row.organization,
+      role: row.role,
+      handlingLevel: row.handling_level,
+    };
+  }
+
+  /**
+   * Flag a conversation for review
+   */
+  async flagConversation(params: {
+    slackUserId: string;
+    slackChannelId?: string;
+    messageText: string;
+    matchedPatternId?: number;
+    matchedCategory?: SensitiveCategory;
+    severity?: SensitiveSeverity;
+    responseGiven?: string;
+    wasDeflected?: boolean;
+  }): Promise<FlaggedConversation> {
+    const result = await query<{
+      id: number;
+      slack_user_id: string;
+      slack_channel_id: string | null;
+      message_text: string;
+      matched_category: SensitiveCategory | null;
+      severity: SensitiveSeverity | null;
+      response_given: string | null;
+      was_deflected: boolean;
+      created_at: Date;
+    }>(
+      `INSERT INTO flagged_conversations (
+        slack_user_id, slack_channel_id, message_text,
+        matched_pattern_id, matched_category, severity,
+        response_given, was_deflected
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, slack_user_id, slack_channel_id, message_text,
+                matched_category, severity, response_given, was_deflected, created_at`,
+      [
+        params.slackUserId,
+        params.slackChannelId || null,
+        params.messageText,
+        params.matchedPatternId || null,
+        params.matchedCategory || null,
+        params.severity || null,
+        params.responseGiven || null,
+        params.wasDeflected ?? false,
+      ]
+    );
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      slackUserId: row.slack_user_id,
+      slackChannelId: row.slack_channel_id,
+      messageText: row.message_text,
+      matchedCategory: row.matched_category,
+      severity: row.severity,
+      responseGiven: row.response_given,
+      wasDeflected: row.was_deflected,
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
+   * Add a known media contact
+   */
+  async addMediaContact(params: {
+    slackUserId?: string;
+    email?: string;
+    name?: string;
+    organization?: string;
+    role?: string;
+    notes?: string;
+    handlingLevel?: 'standard' | 'careful' | 'executive_only';
+    addedBy?: number;
+  }): Promise<KnownMediaContact> {
+    const result = await query<{
+      id: number;
+      slack_user_id: string | null;
+      email: string | null;
+      name: string | null;
+      organization: string | null;
+      role: string | null;
+      handling_level: 'standard' | 'careful' | 'executive_only';
+    }>(
+      `INSERT INTO known_media_contacts (
+        slack_user_id, email, name, organization, role, notes, handling_level, added_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (slack_user_id) DO UPDATE SET
+        email = EXCLUDED.email,
+        name = EXCLUDED.name,
+        organization = EXCLUDED.organization,
+        role = EXCLUDED.role,
+        notes = EXCLUDED.notes,
+        handling_level = EXCLUDED.handling_level,
+        updated_at = NOW()
+      RETURNING id, slack_user_id, email, name, organization, role, handling_level`,
+      [
+        params.slackUserId || null,
+        params.email || null,
+        params.name || null,
+        params.organization || null,
+        params.role || null,
+        params.notes || null,
+        params.handlingLevel || 'standard',
+        params.addedBy || null,
+      ]
+    );
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      slackUserId: row.slack_user_id,
+      email: row.email,
+      name: row.name,
+      organization: row.organization,
+      role: row.role,
+      handlingLevel: row.handling_level,
+    };
+  }
+
+  /**
+   * Get flagged conversations pending review
+   */
+  async getFlaggedConversations(options: {
+    unreviewedOnly?: boolean;
+    severity?: SensitiveSeverity;
+    limit?: number;
+  } = {}): Promise<Array<FlaggedConversation & { userName?: string; userEmail?: string }>> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (options.unreviewedOnly) {
+      conditions.push('reviewed_at IS NULL');
+    }
+    if (options.severity) {
+      conditions.push(`severity = $${paramIndex++}`);
+      params.push(options.severity);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit || 100;
+
+    const result = await query<{
+      id: number;
+      slack_user_id: string;
+      slack_channel_id: string | null;
+      message_text: string;
+      matched_category: SensitiveCategory | null;
+      severity: SensitiveSeverity | null;
+      response_given: string | null;
+      was_deflected: boolean;
+      created_at: Date;
+      user_name: string | null;
+      user_email: string | null;
+    }>(
+      `SELECT
+        fc.id, fc.slack_user_id, fc.slack_channel_id, fc.message_text,
+        fc.matched_category, fc.severity, fc.response_given, fc.was_deflected, fc.created_at,
+        sm.slack_real_name as user_name, sm.slack_email as user_email
+      FROM flagged_conversations fc
+      LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = fc.slack_user_id
+      ${whereClause}
+      ORDER BY
+        CASE fc.severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
+        fc.created_at DESC
+      LIMIT $${paramIndex}`,
+      [...params, limit]
+    );
+
+    return result.rows.map(row => ({
+      id: row.id,
+      slackUserId: row.slack_user_id,
+      slackChannelId: row.slack_channel_id,
+      messageText: row.message_text,
+      matchedCategory: row.matched_category,
+      severity: row.severity,
+      responseGiven: row.response_given,
+      wasDeflected: row.was_deflected,
+      createdAt: row.created_at,
+      userName: row.user_name ?? undefined,
+      userEmail: row.user_email ?? undefined,
+    }));
+  }
+
+  /**
+   * Mark a flagged conversation as reviewed
+   */
+  async reviewFlaggedConversation(
+    id: number,
+    reviewedBy: number,
+    notes?: string
+  ): Promise<void> {
+    await query(
+      `UPDATE flagged_conversations
+       SET reviewed_by = $2, reviewed_at = NOW(), review_notes = $3
+       WHERE id = $1`,
+      [id, reviewedBy, notes || null]
+    );
   }
 }

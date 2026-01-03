@@ -1,9 +1,12 @@
 /**
  * Industry Alerts Service
  *
- * Sends Slack notifications for industry articles based on:
- * 1. AI-driven channel routing (from addie_knowledge.notification_channel_ids)
- * 2. Fallback rules when AI routing is empty/null
+ * Sends Slack notifications for industry articles with pacing:
+ * - Quality 5 articles: Post immediately
+ * - Quality 4 articles: Post only if channel has been quiet for 3+ hours
+ * - Quality < 4: Ignored (not relevant enough for our community)
+ *
+ * Posts one article at a time to encourage engagement.
  */
 
 import { logger } from '../../logger.js';
@@ -16,12 +19,13 @@ import {
 } from '../../db/industry-feeds-db.js';
 import {
   getActiveChannels,
+  isWebsiteOnlyChannel,
   type NotificationChannel,
   type FallbackRules,
 } from '../../db/notification-channels-db.js';
 
-// Legacy channel for backward compatibility (deprecated)
-const LEGACY_CHANNEL_ID = process.env.INDUSTRY_INTEL_CHANNEL_ID;
+// Minimum hours of quiet before posting a quality 4 article
+const QUIET_PERIOD_HOURS = 3;
 
 interface ArticleToAlert {
   id: string;
@@ -99,25 +103,12 @@ function evaluateFallbackRules(
 }
 
 /**
- * Build Slack message blocks for an article alert
+ * Build Slack message blocks for a single article alert
+ * Format: Title header, source link, Addie's take with discussion CTA
  */
-function buildAlertBlocks(
-  article: ArticleToAlert,
-  alertLevel: 'urgent' | 'high' | 'medium' | 'digest'
-): SlackBlock[] {
-  const emoji = {
-    urgent: ':rotating_light:',
-    high: ':star:',
-    medium: ':newspaper:',
-    digest: ':bookmark:',
-  }[alertLevel];
-
-  const levelText = {
-    urgent: 'URGENT - AdCP/Agentic Mention',
-    high: 'HIGH - Agentic AI in Advertising',
-    medium: 'Notable Industry Article',
-    digest: 'Industry Update',
-  }[alertLevel];
+function buildAlertBlocks(article: ArticleToAlert): SlackBlock[] {
+  // Slack header blocks have a 150 character limit for plain_text
+  const headerTitle = (article.title || 'Industry Alert').substring(0, 150);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blocks: any[] = [
@@ -125,54 +116,31 @@ function buildAlertBlocks(
       type: 'header',
       text: {
         type: 'plain_text',
-        text: `${emoji} ${levelText}`,
+        text: headerTitle,
         emoji: true,
       },
     },
     {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*<${article.link}|${article.title}>*\n_Source: ${article.feed_name}_`,
-      },
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `<${article.link}|${article.feed_name}>`,
+        },
+      ],
     },
   ];
 
-  if (article.summary) {
+  // Addie's take includes emoji and discussion prompt baked in from content curator
+  if (article.addie_notes) {
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: article.summary,
+        text: article.addie_notes,
       },
     });
   }
-
-  if (article.addie_notes) {
-    blocks.push({
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: `*Why this matters:* ${article.addie_notes}`,
-        },
-      ],
-    });
-  }
-
-  if (article.relevance_tags && article.relevance_tags.length > 0) {
-    blocks.push({
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: `Tags: ${article.relevance_tags.map(t => `\`${t}\``).join(' ')}`,
-        },
-      ],
-    });
-  }
-
-  blocks.push({ type: 'divider' });
 
   return blocks;
 }
@@ -186,7 +154,7 @@ async function sendAlertToChannel(
   alertLevel: 'urgent' | 'high' | 'medium' | 'digest'
 ): Promise<boolean> {
   try {
-    const blocks = buildAlertBlocks(article, alertLevel);
+    const blocks = buildAlertBlocks(article);
     const fallbackText = `${article.title} - ${article.feed_name}`;
 
     const result = await sendChannelMessage(channelId, {
@@ -201,6 +169,7 @@ async function sendAlertToChannel(
           perspectiveId: article.perspective_id,
           channelId,
           alertLevel,
+          qualityScore: article.quality_score,
           title: article.title,
         },
         'Sent industry alert'
@@ -223,9 +192,30 @@ async function sendAlertToChannel(
 }
 
 /**
- * Get articles ready for alerting (processed with analysis, not yet alerted)
+ * Check if a channel has been quiet (no Addie posts) for the specified hours
  */
-async function getArticlesToAlert(): Promise<ArticleToAlert[]> {
+async function isChannelQuiet(channelId: string, hours: number): Promise<boolean> {
+  const result = await query<{ last_post: Date | null }>(
+    `SELECT MAX(sent_at) as last_post
+     FROM industry_alerts
+     WHERE channel_id = $1
+       AND sent_at > NOW() - INTERVAL '1 hour' * $2`,
+    [channelId, hours]
+  );
+  return !result.rows[0]?.last_post;
+}
+
+/**
+ * Get a single high-quality article ready for alerting to a specific channel
+ * Quality 5 articles are always eligible; quality 4 only if channel is quiet
+ */
+async function getNextArticleForChannel(
+  channelId: string,
+  channelQuiet: boolean
+): Promise<ArticleToAlert | null> {
+  // Build quality filter: always include 5, include 4 if quiet
+  const minQuality = channelQuiet ? 4 : 5;
+
   const result = await query<ArticleToAlert>(
     `SELECT
        k.id,
@@ -245,200 +235,101 @@ async function getArticlesToAlert(): Promise<ArticleToAlert[]> {
      JOIN industry_feeds f ON p.feed_id = f.id
      WHERE p.source_type = 'rss'
        AND k.fetch_status = 'success'
+       AND k.quality_score >= $1
+       AND (
+         $2 = ANY(k.notification_channel_ids)
+         OR k.notification_channel_ids IS NULL
+         OR array_length(k.notification_channel_ids, 1) = 0
+       )
        AND NOT EXISTS (
          SELECT 1 FROM industry_alerts ia
          WHERE ia.perspective_id = p.id
+           AND ia.channel_id = $2
        )
      ORDER BY
+       k.quality_score DESC,
        k.mentions_adcp DESC,
        k.mentions_agentic DESC,
-       k.quality_score DESC NULLS LAST
-     LIMIT 20`
+       k.created_at ASC
+     LIMIT 1`,
+    [minQuality, channelId]
   );
-  return result.rows;
+  return result.rows[0] || null;
 }
+
 
 /**
  * Process and send alerts for qualifying articles
- * Uses AI-driven routing with fallback rules
+ *
+ * Pacing rules:
+ * - Only posts ONE article per channel per run
+ * - Quality 5: Post immediately
+ * - Quality 4: Post only if channel has been quiet for 3+ hours
+ * - Quality < 4: Ignored (not posted anywhere)
  */
 export async function processAlerts(): Promise<{
   checked: number;
   alerted: number;
   byChannel: Record<string, number>;
 }> {
-  const articles = await getArticlesToAlert();
-
-  if (articles.length === 0) {
-    logger.debug('No articles need alerting');
-    return { checked: 0, alerted: 0, byChannel: {} };
-  }
-
-  logger.debug({ count: articles.length }, 'Processing articles for alerting');
-
   // Get active notification channels
   const channels = await getActiveChannels();
-  const channelMap = new Map<string, NotificationChannel>();
-  for (const ch of channels) {
-    channelMap.set(ch.slack_channel_id, ch);
-  }
-
-  let alerted = 0;
   const byChannel: Record<string, number> = {};
+  let alerted = 0;
+  let checked = 0;
 
-  for (const article of articles) {
+  // Process each Slack channel (skip website-only)
+  for (const channel of channels) {
+    if (isWebsiteOnlyChannel(channel)) {
+      continue;
+    }
+
+    const channelId = channel.slack_channel_id;
+
+    // Check if channel has been quiet
+    const isQuiet = await isChannelQuiet(channelId, QUIET_PERIOD_HOURS);
+
+    // Get next article for this channel
+    const article = await getNextArticleForChannel(channelId, isQuiet);
+    checked++;
+
+    if (!article) {
+      logger.debug({ channelId, channelName: channel.name, isQuiet }, 'No article ready for channel');
+      continue;
+    }
+
     // Skip if already alerted (race condition protection)
     if (await hasAlertedPerspective(article.perspective_id)) {
       continue;
     }
 
-    const alertLevel = determineAlertLevel(article);
-
-    // Determine which channels to send to
-    let targetChannelIds: string[] = [];
-
-    // 1. Use AI-routed channels if available
-    if (article.notification_channel_ids && article.notification_channel_ids.length > 0) {
-      // Filter to only active channels
-      targetChannelIds = article.notification_channel_ids.filter(id => channelMap.has(id));
-    }
-
-    // 2. If no AI routing, apply fallback rules
-    if (targetChannelIds.length === 0 && channels.length > 0) {
-      for (const channel of channels) {
-        if (evaluateFallbackRules(article, channel.fallback_rules)) {
-          targetChannelIds.push(channel.slack_channel_id);
-        }
-      }
-    }
-
-    // 3. Legacy fallback: use env var channel if no channels configured
-    if (targetChannelIds.length === 0 && channels.length === 0 && LEGACY_CHANNEL_ID) {
-      targetChannelIds = [LEGACY_CHANNEL_ID];
-    }
-
-    // 4. If still no channels, record as digest (no notification)
-    if (targetChannelIds.length === 0) {
-      await recordPerspectiveAlert(article.perspective_id, 'digest');
-      byChannel['(no-channel)'] = (byChannel['(no-channel)'] || 0) + 1;
+    // Verify pacing: quality 5 always posts, quality 4 only if quiet
+    if (article.quality_score === 4 && !isQuiet) {
+      logger.debug(
+        { channelId, channelName: channel.name, qualityScore: article.quality_score },
+        'Skipping quality 4 article - channel not quiet'
+      );
       continue;
     }
 
-    // Send to each target channel
-    for (const channelId of targetChannelIds) {
-      const success = await sendAlertToChannel(article, channelId, alertLevel);
-      if (success) {
-        alerted++;
-        const channelName = channelMap.get(channelId)?.name || channelId;
-        byChannel[channelName] = (byChannel[channelName] || 0) + 1;
-      }
+    const alertLevel = determineAlertLevel(article);
+    const success = await sendAlertToChannel(article, channelId, alertLevel);
 
-      // Small delay between alerts
-      await new Promise(resolve => setTimeout(resolve, 300));
+    if (success) {
+      alerted++;
+      byChannel[channel.name] = (byChannel[channel.name] || 0) + 1;
     }
   }
 
-  logger.debug({ checked: articles.length, alerted, byChannel }, 'Completed alert processing');
+  logger.debug({ checked, alerted, byChannel }, 'Completed alert processing');
 
-  return { checked: articles.length, alerted, byChannel };
+  return { checked, alerted, byChannel };
 }
 
 /**
- * Send a daily digest to all active channels
+ * @deprecated Daily digest is no longer used - replaced by paced single-article posts
  */
 export async function sendDailyDigest(): Promise<boolean> {
-  const channels = await getActiveChannels();
-
-  // Fall back to legacy channel if no channels configured
-  const targetChannels = channels.length > 0
-    ? channels.map(c => c.slack_channel_id)
-    : LEGACY_CHANNEL_ID
-      ? [LEGACY_CHANNEL_ID]
-      : [];
-
-  if (targetChannels.length === 0) {
-    logger.debug('No channels configured for daily digest');
-    return false;
-  }
-
-  // Get articles from last 24 hours that weren't sent as real-time alerts
-  const result = await query<{
-    id: number;
-    title: string;
-    link: string;
-    summary: string;
-    feed_name: string;
-    quality_score: number;
-  }>(
-    `SELECT DISTINCT ON (k.source_url)
-       k.id, k.title, k.source_url as link, k.summary, f.name as feed_name, k.quality_score
-     FROM addie_knowledge k
-     JOIN perspectives p ON k.source_url = p.external_url
-     JOIN industry_feeds f ON p.feed_id = f.id
-     LEFT JOIN industry_alerts ia ON ia.perspective_id = p.id
-     WHERE p.source_type = 'rss'
-       AND k.fetch_status = 'success'
-       AND k.created_at > NOW() - INTERVAL '24 hours'
-       AND (ia.id IS NULL OR ia.alert_level = 'digest')
-     ORDER BY k.source_url, k.quality_score DESC NULLS LAST
-     LIMIT 10`
-  );
-
-  if (result.rows.length === 0) {
-    logger.debug('No digest articles to send');
-    return true;
-  }
-
-  const articles = result.rows;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const blocks: any[] = [
-    {
-      type: 'header',
-      text: {
-        type: 'plain_text',
-        text: ':newspaper: Daily Industry Digest',
-        emoji: true,
-      },
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `Here are ${articles.length} notable articles from the last 24 hours:`,
-      },
-    },
-    { type: 'divider' },
-  ];
-
-  for (const article of articles) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*<${article.link}|${article.title}>*\n_${article.feed_name}_ • Quality: ${article.quality_score || '?'}/5\n${article.summary?.substring(0, 200) || ''}${article.summary && article.summary.length > 200 ? '...' : ''}`,
-      },
-    });
-  }
-
-  blocks.push({ type: 'divider' });
-
-  let success = false;
-  for (const channelId of targetChannels) {
-    try {
-      const msgResult = await sendChannelMessage(channelId, {
-        text: `Daily Industry Digest - ${articles.length} articles`,
-        blocks,
-      });
-
-      if (msgResult.ok) {
-        logger.info({ channelId, articleCount: articles.length }, 'Sent daily digest');
-        success = true;
-      }
-    } catch (error) {
-      logger.error({ error, channelId }, 'Failed to send daily digest');
-    }
-  }
-
-  return success;
+  logger.debug('Daily digest is deprecated - using paced single-article posts instead');
+  return true;
 }

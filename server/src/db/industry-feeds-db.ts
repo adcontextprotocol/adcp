@@ -11,7 +11,7 @@ import { logger } from '../logger.js';
 export interface IndustryFeed {
   id: number;
   name: string;
-  feed_url: string;
+  feed_url: string | null;
   category: string | null;
   fetch_interval_minutes: number;
   last_fetched_at: Date | null;
@@ -137,7 +137,7 @@ export async function updateFeedStatus(
  */
 export async function addFeed(
   name: string,
-  feedUrl: string,
+  feedUrl: string | null,
   category?: string
 ): Promise<IndustryFeed> {
   const result = await query<IndustryFeed>(

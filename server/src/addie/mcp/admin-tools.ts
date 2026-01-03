@@ -19,7 +19,12 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import {
   getPendingInvoices,
+  getAllOpenInvoices,
+  createOrgDiscount,
+  createCoupon,
+  createPromotionCode,
   type PendingInvoice,
+  type OpenInvoiceWithCustomer,
 } from '../../billing/stripe-client.js';
 import {
   enrichOrganization,
@@ -31,6 +36,25 @@ import {
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
 import { createProspect } from '../../services/prospect.js';
+import {
+  getAllFeedsWithStats,
+  addFeed,
+  getFeedStats,
+  type FeedWithStats,
+} from '../../db/industry-feeds-db.js';
+import { InsightsDatabase } from '../../db/insights-db.js';
+import {
+  createChannel,
+  setChannelPurpose,
+} from '../../slack/client.js';
+import {
+  getProductsForCustomer,
+  createCheckoutSession,
+  createAndSendInvoice,
+  type BillingProduct,
+} from '../../billing/stripe-client.js';
+import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
+import { workos } from '../../auth/workos-client.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -144,6 +168,31 @@ Returns a list of organizations with open or draft invoices.`,
       },
     },
   },
+  {
+    name: 'get_organization_details',
+    description: `Get comprehensive details about an organization including Slack activity, working group participation, engagement signals, enrichment data, and membership status.
+
+USE THIS for questions like:
+- "How many Slack users does [company] have?"
+- "Which working groups is [company] in?"
+- "What do we know about [company]?"
+- "Has [company] signed up yet?"
+- "How engaged is [company]?"
+- "What's the status of [company]?"
+
+Returns: Slack user count and activity, working groups, engagement level and signals, enrichment data (industry, revenue, employees), prospect status, and membership/subscription status.`,
+    usage_hints: 'Use this for ANY question about a specific organization beyond just "is it a prospect". This gives you the full picture.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Company name or domain to look up (e.g., "Boltive" or "boltive.com")',
+        },
+      },
+      required: ['query'],
+    },
+  },
 
   // ============================================
   // PROSPECT MANAGEMENT TOOLS
@@ -151,13 +200,14 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'add_prospect',
     description:
-      'Add a new prospect organization to track. Use this when someone mentions a company we should be talking to. Requires admin access.',
+      'Add a new prospect organization to track. Use this after find_prospect confirms the company does not exist. Capture as much info as possible: name, domain, contact details, and notes about their interest.',
+    usage_hints: 'Always use find_prospect first to check if company exists. Include champion info in notes (e.g., "Champion: Jane Doe, VP Sales").',
     input_schema: {
       type: 'object',
       properties: {
         name: {
           type: 'string',
-          description: 'Company name (e.g., "Acme Corporation")',
+          description: 'Company name (e.g., "Boltive")',
         },
         company_type: {
           type: 'string',
@@ -166,19 +216,23 @@ Returns a list of organizations with open or draft invoices.`,
         },
         domain: {
           type: 'string',
-          description: 'Company domain for enrichment (e.g., "acme.com"). Optional but helps with auto-enrichment.',
+          description: 'Company domain (e.g., "boltive.com"). Highly recommended for enrichment and deduplication.',
         },
         contact_name: {
           type: 'string',
-          description: 'Primary contact name at the company',
+          description: 'Primary contact/champion name (e.g., "Pamela Slea")',
         },
         contact_email: {
           type: 'string',
           description: 'Primary contact email',
         },
+        contact_title: {
+          type: 'string',
+          description: 'Primary contact job title (e.g., "President", "VP Engineering")',
+        },
         notes: {
           type: 'string',
-          description: 'Any notes about the prospect (e.g., how we heard about them, why they\'re relevant)',
+          description: 'Notes about the prospect - include champion info, their interest areas, which working groups they want to join, etc.',
         },
         source: {
           type: 'string',
@@ -191,13 +245,14 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'find_prospect',
     description:
-      'Search for existing prospects by name or domain. Use this to check if a company is already in our system before adding them.',
+      'Search for existing prospects by name or domain. USE THIS FIRST whenever an admin mentions any company - check if they already exist before offering to add them. Searches both company names and email domains.',
+    usage_hints: 'Always use this before add_prospect. When an admin says "check on [company]" or mentions any company name, use this tool first.',
     input_schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query - company name or domain',
+          description: 'Search query - company name or domain (e.g., "Boltive" or "boltive.com")',
         },
       },
       required: ['query'],
@@ -206,7 +261,7 @@ Returns a list of organizations with open or draft invoices.`,
   {
     name: 'update_prospect',
     description:
-      'Update information about an existing prospect. Use this to add notes, change status, or update contact info.',
+      'Update information about an existing prospect. Use this to add notes, change status, update contact info, or set interest level. IMPORTANT: When adding notes that indicate excitement, resource commitment, or intent to join, also set interest_level accordingly.',
     input_schema: {
       type: 'object',
       properties: {
@@ -223,6 +278,11 @@ Returns a list of organizations with open or draft invoices.`,
           type: 'string',
           enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'],
           description: 'Prospect status',
+        },
+        interest_level: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'very_high'],
+          description: 'How interested is this prospect? Set based on signals: low=not interested, medium=lukewarm, high=actively engaged/excited, very_high=ready to move forward/committed resources',
         },
         contact_name: {
           type: 'string',
@@ -298,6 +358,93 @@ Returns a list of organizations with open or draft invoices.`,
     },
   },
   {
+    name: 'send_payment_request',
+    description: `Send a payment link or invoice to a prospect. This is the ONE tool to use when you want to get someone to pay.
+
+USE THIS when an admin says things like:
+- "Send Joe Root at Permutive a membership link"
+- "Get a payment link for Boltive"
+- "Invoice The Trade Desk"
+- "Help [company] pay for membership"
+- "Give Acme a 20% discount and send them a payment link"
+- "Send a discounted link to the startup"
+
+This tool will:
+1. Find the company (or create it if it doesn't exist)
+2. Show you the users/contacts on file
+3. Apply a discount if requested (or use their existing discount)
+4. Generate a direct Stripe payment link OR send an invoice
+
+For payment links: Returns a direct Stripe checkout URL you can share with the prospect.
+For invoices: Sends an email from Stripe with a payment link - good for companies that need NET30/PO.
+For discounts: Can create a new discount or auto-apply an existing org discount.`,
+    usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        company_name: {
+          type: 'string',
+          description: 'Company name to search for or create',
+        },
+        domain: {
+          type: 'string',
+          description: 'Company domain (helps with lookup and creation)',
+        },
+        contact_name: {
+          type: 'string',
+          description: 'Contact person name (e.g., "Joe Root")',
+        },
+        contact_email: {
+          type: 'string',
+          description: 'Contact email address (required for invoice, optional for payment link)',
+        },
+        contact_title: {
+          type: 'string',
+          description: 'Contact job title',
+        },
+        action: {
+          type: 'string',
+          enum: ['payment_link', 'invoice', 'lookup_only'],
+          description: 'What to do: payment_link (default), invoice (sends email), or lookup_only (just show info)',
+        },
+        product: {
+          type: 'string',
+          enum: ['bronze', 'silver', 'gold', 'platinum'],
+          description: 'Membership tier (will suggest based on company size if not specified)',
+        },
+        billing_address: {
+          type: 'object',
+          description: 'Required for invoices - company billing address',
+          properties: {
+            line1: { type: 'string' },
+            line2: { type: 'string' },
+            city: { type: 'string' },
+            state: { type: 'string' },
+            postal_code: { type: 'string' },
+            country: { type: 'string', description: 'Two-letter country code (e.g., "US")' },
+          },
+        },
+        discount_percent: {
+          type: 'number',
+          description: 'Apply a percentage discount (e.g., 20 = 20% off). Creates a Stripe coupon.',
+        },
+        discount_amount_dollars: {
+          type: 'number',
+          description: 'Apply a fixed dollar discount (e.g., 500 = $500 off). Creates a Stripe coupon.',
+        },
+        discount_reason: {
+          type: 'string',
+          description: 'Reason for the discount (e.g., "Startup discount", "Early adopter")',
+        },
+        use_existing_discount: {
+          type: 'boolean',
+          description: 'If the org already has a discount, use it (default: true)',
+        },
+      },
+      required: ['company_name'],
+    },
+  },
+  {
     name: 'prospect_search_lusha',
     description:
       'Search Lusha\'s database for potential prospects matching criteria. Use this to find new companies to reach out to based on industry, size, or location.',
@@ -330,6 +477,395 @@ Returns a list of organizations with open or draft invoices.`,
         limit: {
           type: 'number',
           description: 'Maximum results (default 10)',
+        },
+      },
+      required: [],
+    },
+  },
+
+  // ============================================
+  // INDUSTRY FEED MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'search_industry_feeds',
+    description:
+      'Search and list RSS industry feeds. Use this to find feeds by name, URL, or category, or to see feeds with errors that need attention.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query - feed name, URL, or category (optional)',
+        },
+        status: {
+          type: 'string',
+          enum: ['all', 'active', 'inactive', 'errors'],
+          description: 'Filter by status: all, active, inactive, or errors (feeds with fetch errors)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default 10)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'add_industry_feed',
+    description:
+      'Add a new RSS feed to monitor for industry news. Provide the feed URL and a name.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name for the feed (e.g., "AdExchanger", "Digiday")',
+        },
+        feed_url: {
+          type: 'string',
+          description: 'RSS feed URL (e.g., "https://www.adexchanger.com/feed/")',
+        },
+        category: {
+          type: 'string',
+          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'tech'],
+          description: 'Category for the feed',
+        },
+      },
+      required: ['name', 'feed_url'],
+    },
+  },
+  {
+    name: 'get_feed_stats',
+    description:
+      'Get statistics about industry feeds - total feeds, active feeds, articles collected, processing status, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
+  // SENSITIVE TOPICS & MEDIA CONTACT TOOLS
+  // ============================================
+  {
+    name: 'add_media_contact',
+    description:
+      'Flag a Slack user as a known media contact (journalist, reporter, editor). Messages from this user will be handled with extra care and sensitive topics will be deflected.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID of the media contact (e.g., "U0123456789")',
+        },
+        email: {
+          type: 'string',
+          description: 'Email address of the media contact',
+        },
+        name: {
+          type: 'string',
+          description: 'Full name of the media contact',
+        },
+        organization: {
+          type: 'string',
+          description: 'Media organization they work for (e.g., "TechCrunch", "AdExchanger")',
+        },
+        role: {
+          type: 'string',
+          description: 'Their role (e.g., "Reporter", "Editor", "Journalist")',
+        },
+        notes: {
+          type: 'string',
+          description: 'Additional notes about this contact',
+        },
+        handling_level: {
+          type: 'string',
+          enum: ['standard', 'careful', 'executive_only'],
+          description: 'How carefully to handle this contact: standard (deflect sensitive topics), careful (deflect more topics), executive_only (always escalate)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_flagged_conversations',
+    description:
+      'List conversations that have been flagged for sensitive topic detection. These need human review to ensure appropriate handling.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        unreviewed_only: {
+          type: 'boolean',
+          description: 'Only show conversations that haven\'t been reviewed yet (default: true)',
+        },
+        severity: {
+          type: 'string',
+          enum: ['high', 'medium', 'low'],
+          description: 'Filter by severity level',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'review_flagged_conversation',
+    description:
+      'Mark a flagged conversation as reviewed. Use this after you\'ve looked at a flagged message and determined if any follow-up action is needed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        flagged_id: {
+          type: 'number',
+          description: 'ID of the flagged conversation to review',
+        },
+        notes: {
+          type: 'string',
+          description: 'Notes about the review (e.g., "False positive - user was asking about child-safe ad practices for their company", "Escalated to Brian")',
+        },
+      },
+      required: ['flagged_id'],
+    },
+  },
+
+  // ============================================
+  // DISCOUNT MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'grant_discount',
+    description: `Grant a discount to an organization. Use this when an admin wants to give a company a special rate.
+You can grant either a percentage discount (e.g., 20% off) or a fixed dollar amount discount (e.g., $500 off).
+Optionally creates a Stripe coupon/promotion code they can use at checkout.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'Organization ID (workos_organization_id)',
+        },
+        org_name: {
+          type: 'string',
+          description: 'Company name (alternative to org_id - will search for the org)',
+        },
+        discount_percent: {
+          type: 'number',
+          description: 'Percentage off (e.g., 20 = 20% off). Use this OR discount_amount_dollars, not both.',
+        },
+        discount_amount_dollars: {
+          type: 'number',
+          description: 'Fixed dollar amount off (e.g., 500 = $500 off). Use this OR discount_percent, not both.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Why this discount is being granted (e.g., "Startup discount", "Early adopter", "Nonprofit")',
+        },
+        create_promotion_code: {
+          type: 'boolean',
+          description: 'Create a Stripe promotion code the org can use at checkout (default: true)',
+        },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'remove_discount',
+    description: 'Remove a discount from an organization. Note: This does not delete any Stripe coupons that were created.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'Organization ID (workos_organization_id)',
+        },
+        org_name: {
+          type: 'string',
+          description: 'Company name (alternative to org_id - will search for the org)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_discounts',
+    description: 'List all organizations that currently have active discounts. Shows discount percentage/amount, reason, and who granted it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'create_promotion_code',
+    description: `Create a standalone Stripe promotion code that anyone can use. Useful for marketing campaigns or special offers.
+The code will be usable at checkout for any customer.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          description: 'The code customers will enter at checkout (e.g., "LAUNCH2025", "EARLYBIRD"). Will be converted to uppercase.',
+        },
+        name: {
+          type: 'string',
+          description: 'Internal name for the coupon (e.g., "Launch 2025 Campaign")',
+        },
+        percent_off: {
+          type: 'number',
+          description: 'Percentage off (e.g., 20 = 20% off). Use this OR amount_off_dollars, not both.',
+        },
+        amount_off_dollars: {
+          type: 'number',
+          description: 'Fixed dollar amount off (e.g., 100 = $100 off). Use this OR percent_off, not both.',
+        },
+        duration: {
+          type: 'string',
+          enum: ['once', 'repeating', 'forever'],
+          description: 'How long the discount applies: once (first payment only), repeating (multiple months), forever (all payments). Default: once.',
+        },
+        max_redemptions: {
+          type: 'number',
+          description: 'Maximum number of times the code can be used (optional)',
+        },
+      },
+      required: ['code'],
+    },
+  },
+
+  // ============================================
+  // CHAPTER MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'create_chapter',
+    description: `Create a new regional chapter with a Slack channel. Use this when a member wants to start a chapter in their city/region.
+
+This tool:
+1. Creates a working group with committee_type 'chapter'
+2. Creates a public Slack channel for the chapter
+3. Sets the founding member as the chapter leader
+
+Example: If someone in Austin says "I want to start a chapter", use this to create an Austin Chapter with a #austin-chapter Slack channel.`,
+    usage_hints: 'Use this when a member wants to start a chapter. Ask them what they want to call it first (e.g., "Austin Chapter" vs "Texas Chapter").',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Chapter name (e.g., "Austin Chapter", "Bay Area Chapter")',
+        },
+        region: {
+          type: 'string',
+          description: 'Geographic region this chapter covers (e.g., "Austin", "Bay Area", "Southern California")',
+        },
+        founding_member_id: {
+          type: 'string',
+          description: 'WorkOS user ID of the founding member who will become chapter leader',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description for the chapter',
+        },
+      },
+      required: ['name', 'region'],
+    },
+  },
+  {
+    name: 'list_chapters',
+    description: 'List all regional chapters with their member counts and Slack channels.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
+  // ORGANIZATION MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'merge_organizations',
+    description: `Merge two duplicate organization records into one.
+Use this when you discover duplicate organizations (same company with multiple records).
+All data from the secondary organization will be moved to the primary, then the secondary will be deleted.
+
+IMPORTANT: This is a destructive operation that cannot be undone.
+
+Workflow:
+1. Use find_prospect or get_organization_details to identify both org IDs
+2. Call merge_organizations (defaults to preview=true) to see what will be merged
+3. Show the preview to the user and ask if they want to proceed
+4. If yes, call merge_organizations again with preview=false to execute
+
+CRITICAL: A preview does NOT execute the merge. You MUST call again with preview=false to actually merge.`,
+    usage_hints: 'Preview first, then execute with preview=false. The preview response will remind you to call again.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        primary_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the organization to KEEP (all data will be merged into this one)',
+        },
+        secondary_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the organization to REMOVE (data will be moved from here)',
+        },
+        preview: {
+          type: 'boolean',
+          description: 'If true, show what would be merged without actually doing it (default: true for safety)',
+        },
+      },
+      required: ['primary_org_id', 'secondary_org_id'],
+    },
+  },
+  {
+    name: 'find_duplicate_orgs',
+    description: `Search for potential duplicate organizations by name or domain.
+Use this to discover organizations that might need to be merged.
+
+Returns organizations that share the same name (case-insensitive) or email domain.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        search_type: {
+          type: 'string',
+          enum: ['name', 'domain', 'all'],
+          description: 'What to search for duplicates: name (same org name), domain (same email domain), or all (both)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'check_domain_health',
+    description: `Check domain health across the system to find data quality issues.
+
+This tool identifies:
+1. **Orphan corporate domains** - Users with corporate email domains (not gmail, etc.) that have no matching organization
+2. **Unverified org domains** - Organizations with users but no verified domain mapping
+3. **Domain conflicts** - Multiple orgs claiming the same domain
+4. **Personal workspace corporate users** - Users with company emails in personal workspaces instead of company orgs
+
+The goal: Every corporate email domain should map to a known organization (member or prospect).`,
+    usage_hints: 'Use this for data quality audits. The results can guide follow-up actions like creating prospects or merging orgs.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        check_type: {
+          type: 'string',
+          enum: ['orphan_domains', 'unverified_domains', 'domain_conflicts', 'misaligned_users', 'all'],
+          description: 'What to check: orphan_domains (corporate emails without orgs), unverified_domains (orgs missing domain verification), domain_conflicts (multiple orgs per domain), misaligned_users (corporate users in personal workspaces), or all',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results per category (default: 20)',
         },
       },
       required: [],
@@ -375,6 +911,23 @@ function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> 
 }
 
 /**
+ * Format open invoice with customer info for response
+ */
+function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unknown> {
+  return {
+    id: invoice.id,
+    status: invoice.status,
+    amount: formatCurrency(invoice.amount_due, invoice.currency),
+    product: invoice.product_name || 'Unknown product',
+    customer_name: invoice.customer_name || 'Unknown',
+    customer_email: invoice.customer_email || 'Unknown',
+    created: formatDate(invoice.created),
+    due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
+    payment_url: invoice.hosted_invoice_url || null,
+  };
+}
+
+/**
  * Admin tool handler implementations
  * Includes both billing/invoice tools and prospect management tools
  */
@@ -397,6 +950,9 @@ export function createAdminToolHandlers(
 
   // Lookup organization
   handlers.set('lookup_organization', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
     const companyName = input.company_name as string;
 
     logger.info({ companyName }, 'Addie: Admin looking up organization');
@@ -471,58 +1027,60 @@ export function createAdminToolHandlers(
     }
   });
 
-  // List pending invoices across all orgs
+  // List pending invoices across all customers (queries Stripe directly)
   handlers.set('list_pending_invoices', async (input) => {
-    const limit = (input.limit as number) || 10;
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const limit = (input.limit as number) || 20;
 
     logger.info({ limit }, 'Addie: Admin listing pending invoices');
 
     try {
-      // Get all organizations with Stripe customers
-      const allOrgs = await orgDb.listOrganizations();
-      const orgsWithStripe = allOrgs.filter(org => org.stripe_customer_id);
+      // Query Stripe directly for all open invoices
+      // This finds invoices even for customers not linked to organizations in our database
+      const openInvoices = await getAllOpenInvoices(limit);
 
-      const orgsWithPendingInvoices: Array<{
-        name: string;
-        invoices: ReturnType<typeof formatPendingInvoice>[];
-      }> = [];
-
-      // Check each org for pending invoices
-      for (const org of orgsWithStripe) {
-        if (!org.stripe_customer_id) continue;
-
-        const pendingInvoices = await getPendingInvoices(org.stripe_customer_id);
-
-        if (pendingInvoices.length > 0) {
-          orgsWithPendingInvoices.push({
-            name: org.name,
-            invoices: pendingInvoices.map(formatPendingInvoice),
-          });
-        }
-
-        // Stop if we've found enough
-        if (orgsWithPendingInvoices.length >= limit) {
-          break;
-        }
-      }
-
-      if (orgsWithPendingInvoices.length === 0) {
+      if (openInvoices.length === 0) {
         return JSON.stringify({
           success: true,
-          message: 'No pending invoices found across all organizations.',
-          organizations: [],
+          message: 'No pending invoices found.',
+          invoices: [],
         });
       }
 
-      const totalInvoices = orgsWithPendingInvoices.reduce(
-        (sum, org) => sum + org.invoices.length,
-        0
+      // Try to match invoices to organizations by workos_organization_id or stripe_customer_id
+      const allOrgs = await orgDb.listOrganizations();
+      const orgByWorkosId = new Map(allOrgs.map(org => [org.workos_organization_id, org]));
+      const orgByStripeId = new Map(
+        allOrgs.filter(org => org.stripe_customer_id).map(org => [org.stripe_customer_id, org])
       );
+
+      const invoicesWithOrgs = openInvoices.map(invoice => {
+        // Try to find matching org
+        let orgName: string | null = null;
+        if (invoice.workos_organization_id) {
+          const org = orgByWorkosId.get(invoice.workos_organization_id);
+          if (org) orgName = org.name;
+        }
+        if (!orgName) {
+          const org = orgByStripeId.get(invoice.customer_id);
+          if (org) orgName = org.name;
+        }
+
+        return {
+          ...formatOpenInvoice(invoice),
+          organization: orgName || invoice.customer_name || 'Unknown organization',
+        };
+      });
+
+      const totalAmount = openInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+      const formattedTotal = formatCurrency(totalAmount, openInvoices[0]?.currency || 'usd');
 
       return JSON.stringify({
         success: true,
-        message: `Found ${totalInvoices} pending invoice(s) across ${orgsWithPendingInvoices.length} organization(s)`,
-        organizations: orgsWithPendingInvoices,
+        message: `Found ${openInvoices.length} pending invoice(s) totaling ${formattedTotal}`,
+        invoices: invoicesWithOrgs,
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error listing pending invoices');
@@ -530,6 +1088,238 @@ export function createAdminToolHandlers(
         success: false,
         error: 'Failed to list pending invoices. Please try again.',
       });
+    }
+  });
+
+  // Get comprehensive organization details
+  handlers.set('get_organization_details', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const query = input.query as string;
+    const searchPattern = `%${query}%`;
+
+    try {
+      // Find organizations by name or domain - get up to 5 matches
+      const result = await pool.query(
+        `SELECT o.*,
+                p.name as parent_name
+         FROM organizations o
+         LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+         WHERE o.is_personal = false
+           AND (LOWER(o.name) LIKE LOWER($1) OR LOWER(o.email_domain) LIKE LOWER($1))
+         ORDER BY
+           CASE WHEN LOWER(o.name) = LOWER($2) THEN 0
+                WHEN LOWER(o.name) LIKE LOWER($3) THEN 1
+                ELSE 2 END,
+           o.updated_at DESC
+         LIMIT 5`,
+        [searchPattern, query, `${query}%`]
+      );
+
+      if (result.rows.length === 0) {
+        return `No organization found matching "${query}". Try searching by company name or domain.`;
+      }
+
+      // If multiple matches, present options to the user
+      if (result.rows.length > 1) {
+        let response = `## Found ${result.rows.length} organizations matching "${query}"\n\n`;
+        response += `Which one would you like to know more about?\n\n`;
+
+        for (let i = 0; i < result.rows.length; i++) {
+          const org = result.rows[i];
+          response += `**${i + 1}. ${org.name}**\n`;
+          if (org.email_domain) response += `   Domain: ${org.email_domain}\n`;
+          if (org.company_type) response += `   Type: ${org.company_type}\n`;
+          if (org.subscription_status === 'active') {
+            response += `   Status: ✅ Member\n`;
+          } else if (org.prospect_status) {
+            response += `   Status: 📋 Prospect (${org.prospect_status})\n`;
+          }
+          response += `\n`;
+        }
+
+        response += `_Reply with the company name or number for full details._`;
+        return response;
+      }
+
+      const org = result.rows[0];
+      const orgId = org.workos_organization_id;
+
+      // Gather all the data in parallel
+      const [
+        slackUsersResult,
+        slackActivityResult,
+        workingGroupsResult,
+        activitiesResult,
+        engagementSignals,
+      ] = await Promise.all([
+        // Slack users count for this org
+        pool.query(
+          `SELECT COUNT(DISTINCT sm.slack_user_id) as slack_user_count
+           FROM slack_user_mappings sm
+           JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+           WHERE om.workos_organization_id = $1
+             AND sm.mapping_status = 'mapped'`,
+          [orgId]
+        ),
+        // Slack activity (last 30 days)
+        pool.query(
+          `SELECT
+             COUNT(DISTINCT sad.slack_user_id) as active_users,
+             SUM(sad.message_count) as messages,
+             SUM(sad.reaction_count) as reactions,
+             SUM(sad.thread_reply_count) as thread_replies
+           FROM slack_activity_daily sad
+           WHERE sad.organization_id = $1
+             AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'`,
+          [orgId]
+        ),
+        // Working groups
+        pool.query(
+          `SELECT DISTINCT wg.name, wg.slug, wgm.status, wgm.joined_at
+           FROM working_group_memberships wgm
+           JOIN working_groups wg ON wgm.working_group_id = wg.id
+           WHERE wgm.workos_organization_id = $1 AND wgm.status = 'active'`,
+          [orgId]
+        ),
+        // Recent activities
+        pool.query(
+          `SELECT activity_type, description, activity_date, logged_by_name
+           FROM org_activities
+           WHERE organization_id = $1
+           ORDER BY activity_date DESC
+           LIMIT 5`,
+          [orgId]
+        ),
+        // Engagement signals
+        orgDb.getEngagementSignals(orgId),
+      ]);
+
+      const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
+      const slackActivity = slackActivityResult.rows[0] || { active_users: 0, messages: 0, reactions: 0, thread_replies: 0 };
+      const workingGroups = workingGroupsResult.rows;
+      const recentActivities = activitiesResult.rows;
+
+      // Build comprehensive response
+      let response = `## ${org.name}\n\n`;
+
+      // Basic info
+      if (org.company_type) response += `**Type:** ${org.company_type}\n`;
+      if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
+      if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
+      response += '\n';
+
+      // Membership status
+      response += `### Membership Status\n`;
+      if (org.subscription_status === 'active') {
+        response += `✅ **Active Member** - ${org.subscription_product_name || 'Subscription'}\n`;
+        if (org.subscription_current_period_end) {
+          response += `   Renews: ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+        }
+      } else if (org.prospect_status) {
+        const statusEmojiMap: Record<string, string> = {
+          prospect: '🔍',
+          contacted: '📧',
+          responded: '💬',
+          interested: '⭐',
+          negotiating: '🤝',
+          declined: '❌',
+        };
+        const statusEmoji = statusEmojiMap[org.prospect_status as string] || '📋';
+        response += `${statusEmoji} **Prospect** - Status: ${org.prospect_status}\n`;
+        if (org.prospect_contact_name) {
+          response += `   Contact: ${org.prospect_contact_name}`;
+          if (org.prospect_contact_title) response += ` (${org.prospect_contact_title})`;
+          response += '\n';
+        }
+      } else {
+        response += `⚪ Not a member yet\n`;
+      }
+      response += '\n';
+
+      // Slack presence
+      response += `### Slack Presence\n`;
+      response += `**Users in Slack:** ${slackUserCount}\n`;
+      if (slackActivity.active_users > 0) {
+        response += `**Active (30d):** ${slackActivity.active_users} users\n`;
+        response += `**Messages (30d):** ${slackActivity.messages || 0}\n`;
+        response += `**Reactions (30d):** ${slackActivity.reactions || 0}\n`;
+      } else {
+        response += `_No Slack activity in the last 30 days_\n`;
+      }
+      response += '\n';
+
+      // Working groups
+      response += `### Working Groups\n`;
+      if (workingGroups.length > 0) {
+        for (const wg of workingGroups) {
+          response += `- ${wg.name} (joined ${formatDate(new Date(wg.joined_at))})\n`;
+        }
+      } else {
+        response += `_Not participating in any working groups_\n`;
+      }
+      response += '\n';
+
+      // Engagement
+      response += `### Engagement\n`;
+      const engagementLabels = ['', 'Low', 'Some', 'Moderate', 'High', 'Very High'];
+      let engagementLevel = 1;
+      if (engagementSignals.interest_level === 'very_high') engagementLevel = 5;
+      else if (engagementSignals.interest_level === 'high') engagementLevel = 4;
+      else if (engagementSignals.working_group_count > 0) engagementLevel = 4;
+      else if (engagementSignals.has_member_profile) engagementLevel = 4;
+      else if (engagementSignals.login_count_30d > 3) engagementLevel = 3;
+      else if (slackUserCount > 0) engagementLevel = 3;
+      else if (engagementSignals.login_count_30d > 0) engagementLevel = 2;
+
+      response += `**Level:** ${engagementLabels[engagementLevel]} (${engagementLevel}/5)\n`;
+      if (engagementSignals.interest_level) {
+        response += `**Interest:** ${engagementSignals.interest_level}`;
+        if (engagementSignals.interest_level_set_by) response += ` (set by ${engagementSignals.interest_level_set_by})`;
+        if (engagementSignals.interest_level_note) response += `\n   Note: "${engagementSignals.interest_level_note}"`;
+        response += '\n';
+      }
+      if (engagementSignals.login_count_30d > 0) {
+        response += `**Dashboard logins (30d):** ${engagementSignals.login_count_30d}\n`;
+      }
+      response += '\n';
+
+      // Enrichment data
+      if (org.enrichment_at) {
+        response += `### Company Info (Enriched)\n`;
+        if (org.enrichment_industry) response += `**Industry:** ${org.enrichment_industry}\n`;
+        if (org.enrichment_sub_industry) response += `**Sub-industry:** ${org.enrichment_sub_industry}\n`;
+        if (org.enrichment_employee_count) response += `**Employees:** ${org.enrichment_employee_count.toLocaleString()}\n`;
+        if (org.enrichment_revenue_range) response += `**Revenue:** ${org.enrichment_revenue_range}\n`;
+        if (org.enrichment_country) response += `**Location:** ${org.enrichment_city ? org.enrichment_city + ', ' : ''}${org.enrichment_country}\n`;
+        if (org.enrichment_description) response += `**About:** ${org.enrichment_description}\n`;
+        response += '\n';
+      }
+
+      // Recent activities
+      if (recentActivities.length > 0) {
+        response += `### Recent Activity\n`;
+        for (const activity of recentActivities) {
+          const date = formatDate(new Date(activity.activity_date));
+          response += `- ${date}: ${activity.activity_type}`;
+          if (activity.description) response += ` - ${activity.description}`;
+          if (activity.logged_by_name) response += ` (${activity.logged_by_name})`;
+          response += '\n';
+        }
+        response += '\n';
+      }
+
+      // Prospect notes
+      if (org.prospect_notes) {
+        response += `### Notes\n${org.prospect_notes}\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query }, 'Addie: Error getting organization details');
+      return `❌ Failed to get organization details. Please try again or contact support.`;
     }
   });
 
@@ -547,6 +1337,7 @@ export function createAdminToolHandlers(
     const domain = input.domain as string | undefined;
     const contactName = input.contact_name as string | undefined;
     const contactEmail = input.contact_email as string | undefined;
+    const contactTitle = input.contact_title as string | undefined;
     const notes = input.notes as string | undefined;
     const source = (input.source as string) || 'addie_conversation';
 
@@ -559,6 +1350,7 @@ export function createAdminToolHandlers(
       prospect_notes: notes,
       prospect_contact_name: contactName,
       prospect_contact_email: contactEmail,
+      prospect_contact_title: contactTitle,
     });
 
     if (!result.success) {
@@ -572,7 +1364,11 @@ export function createAdminToolHandlers(
     let response = `✅ Added **${org.name}** as a new prospect!\n\n`;
     if (org.company_type) response += `**Type:** ${org.company_type}\n`;
     if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
-    if (contactName) response += `**Contact:** ${contactName}\n`;
+    if (contactName) {
+      response += `**Contact:** ${contactName}`;
+      if (contactTitle) response += ` (${contactTitle})`;
+      response += `\n`;
+    }
     if (contactEmail) response += `**Email:** ${contactEmail}\n`;
     response += `**Status:** ${org.prospect_status}\n`;
     response += `**ID:** ${org.workos_organization_id}\n`;
@@ -664,6 +1460,13 @@ export function createAdminToolHandlers(
       updates.push(`prospect_status = $${paramIndex++}`);
       values.push(input.status);
     }
+    if (input.interest_level) {
+      updates.push(`interest_level = $${paramIndex++}`);
+      values.push(input.interest_level);
+      updates.push(`interest_level_set_by = $${paramIndex++}`);
+      values.push('Addie');
+      updates.push(`interest_level_set_at = NOW()`);
+    }
     if (input.contact_name) {
       updates.push(`prospect_contact_name = $${paramIndex++}`);
       values.push(input.contact_name);
@@ -688,7 +1491,7 @@ export function createAdminToolHandlers(
     }
 
     if (updates.length === 0) {
-      return `No updates provided. Specify at least one field to update (company_type, status, contact_name, contact_email, domain, notes).`;
+      return `No updates provided. Specify at least one field to update (company_type, status, interest_level, contact_name, contact_email, domain, notes).`;
     }
 
     updates.push(`updated_at = NOW()`);
@@ -702,6 +1505,7 @@ export function createAdminToolHandlers(
     let response = `✅ Updated **${orgName}**\n\n`;
     if (input.company_type) response += `• Company type → ${input.company_type}\n`;
     if (input.status) response += `• Status → ${input.status}\n`;
+    if (input.interest_level) response += `• Interest level → ${input.interest_level}\n`;
     if (input.contact_name) response += `• Contact → ${input.contact_name}\n`;
     if (input.contact_email) response += `• Email → ${input.contact_email}\n`;
     if (input.domain) response += `• Domain → ${input.domain}\n`;
@@ -874,6 +1678,404 @@ export function createAdminToolHandlers(
     return response;
   });
 
+  // Send payment request - the unified tool for getting prospects to pay
+  handlers.set('send_payment_request', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const companyName = input.company_name as string;
+    const domain = input.domain as string | undefined;
+    const contactName = input.contact_name as string | undefined;
+    const contactEmail = input.contact_email as string | undefined;
+    const contactTitle = input.contact_title as string | undefined;
+    const action = (input.action as string) || 'payment_link';
+    const productTier = input.product as string | undefined;
+    const billingAddress = input.billing_address as {
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+    } | undefined;
+    // Discount parameters
+    const discountPercent = input.discount_percent as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const discountReason = input.discount_reason as string | undefined;
+    const useExistingDiscount = input.use_existing_discount !== false; // default true
+
+    const pool = getPool();
+    let org: {
+      workos_organization_id: string;
+      name: string;
+      is_personal: boolean;
+      company_type?: string;
+      revenue_tier?: string;
+      prospect_contact_email?: string;
+      prospect_contact_name?: string;
+      enrichment_employee_count?: number;
+      enrichment_revenue?: number;
+      // Discount fields
+      discount_percent?: number;
+      discount_amount_cents?: number;
+      stripe_coupon_id?: string;
+      stripe_promotion_code?: string;
+    } | null = null;
+    let created = false;
+
+    // Step 1: Find the organization
+    const searchPattern = `%${companyName}%`;
+    const searchResult = await pool.query(
+      `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+              prospect_contact_email, prospect_contact_name,
+              enrichment_employee_count, enrichment_revenue,
+              discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
+       FROM organizations
+       WHERE is_personal = false
+         AND (LOWER(name) LIKE LOWER($1) ${domain ? 'OR LOWER(email_domain) LIKE LOWER($2)' : ''})
+       ORDER BY
+         CASE WHEN LOWER(name) = LOWER($3) THEN 0
+              WHEN LOWER(name) LIKE LOWER($4) THEN 1
+              ELSE 2 END
+       LIMIT 5`,
+      domain
+        ? [searchPattern, `%${domain}%`, companyName, `${companyName}%`]
+        : [searchPattern, companyName, `${companyName}%`]
+    );
+
+    if (searchResult.rows.length === 0) {
+      // Create the prospect
+      const createResult = await createProspect({
+        name: companyName,
+        domain,
+        prospect_source: 'addie_payment_request',
+        prospect_contact_name: contactName,
+        prospect_contact_email: contactEmail,
+        prospect_contact_title: contactTitle,
+      });
+
+      if (!createResult.success || !createResult.organization) {
+        return `❌ Failed to create prospect: ${createResult.error}`;
+      }
+
+      // Re-fetch with full fields
+      const newOrgResult = await pool.query(
+        `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+                prospect_contact_email, prospect_contact_name,
+                enrichment_employee_count, enrichment_revenue,
+                discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
+         FROM organizations WHERE workos_organization_id = $1`,
+        [createResult.organization.workos_organization_id]
+      );
+      org = newOrgResult.rows[0];
+      created = true;
+    } else if (searchResult.rows.length === 1) {
+      org = searchResult.rows[0];
+    } else {
+      // Multiple matches - ask user to clarify
+      let response = `## Found ${searchResult.rows.length} companies matching "${companyName}"\n\n`;
+      response += `Which one do you mean?\n\n`;
+
+      for (let i = 0; i < searchResult.rows.length; i++) {
+        const o = searchResult.rows[i];
+        response += `**${i + 1}. ${o.name}**\n`;
+        if (o.prospect_contact_name) response += `   Contact: ${o.prospect_contact_name}\n`;
+        if (o.company_type) response += `   Type: ${o.company_type}\n`;
+        response += `\n`;
+      }
+
+      response += `_Reply with the company name to proceed._`;
+      return response;
+    }
+
+    if (!org) {
+      return `❌ Could not find or create organization "${companyName}"`;
+    }
+
+    // Update contact info if provided
+    if (contactName || contactEmail || contactTitle) {
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      if (contactName) {
+        updates.push(`prospect_contact_name = $${paramIndex++}`);
+        values.push(contactName);
+      }
+      if (contactEmail) {
+        updates.push(`prospect_contact_email = $${paramIndex++}`);
+        values.push(contactEmail);
+      }
+      if (contactTitle) {
+        updates.push(`prospect_contact_title = $${paramIndex++}`);
+        values.push(contactTitle);
+      }
+
+      if (updates.length > 0) {
+        updates.push(`updated_at = NOW()`);
+        values.push(org.workos_organization_id);
+        await pool.query(
+          `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
+          values
+        );
+        // Update local object
+        if (contactName) org.prospect_contact_name = contactName;
+        if (contactEmail) org.prospect_contact_email = contactEmail;
+      }
+    }
+
+    // Get users in this org (WorkOS memberships)
+    const membersResult = await pool.query(
+      `SELECT om.workos_user_id, u.email, u.first_name, u.last_name
+       FROM organization_memberships om
+       LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+       WHERE om.workos_organization_id = $1
+       LIMIT 10`,
+      [org.workos_organization_id]
+    );
+    const members = membersResult.rows;
+
+    // Determine the email to use
+    const emailToUse = contactEmail || org.prospect_contact_email || members[0]?.email;
+
+    // Get available products
+    const customerType = org.is_personal ? 'individual' : 'company';
+    let products: BillingProduct[] = [];
+    try {
+      products = await getProductsForCustomer({
+        customerType,
+        category: 'membership',
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch products');
+    }
+
+    // Suggest a product based on company size/revenue if not specified
+    let suggestedProduct: BillingProduct | undefined;
+    let selectedProduct: BillingProduct | undefined;
+
+    if (productTier) {
+      selectedProduct = products.find(p =>
+        p.lookup_key?.toLowerCase().includes(productTier.toLowerCase())
+      );
+    }
+
+    if (!selectedProduct && products.length > 0) {
+      // Suggest based on enrichment data
+      const employeeCount = org.enrichment_employee_count || 0;
+      const revenue = org.enrichment_revenue || 0;
+
+      // Simple heuristic for suggestion
+      if (revenue > 250000000 || employeeCount > 500) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('platinum'));
+      } else if (revenue > 50000000 || employeeCount > 100) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('gold'));
+      } else if (revenue > 5000000 || employeeCount > 20) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('silver'));
+      }
+      suggestedProduct = suggestedProduct || products.find(p => p.lookup_key?.includes('bronze')) || products[0];
+    }
+
+    const finalProduct = selectedProduct || suggestedProduct;
+
+    // Build response
+    let response = `## ${created ? '✅ Created' : '📋'} ${org.name}\n\n`;
+
+    // Show contacts/users
+    response += `### Contacts\n`;
+    if (org.prospect_contact_name || org.prospect_contact_email) {
+      response += `**Primary Contact:** ${org.prospect_contact_name || 'Unknown'}`;
+      if (org.prospect_contact_email) response += ` (${org.prospect_contact_email})`;
+      response += `\n`;
+    }
+    if (members.length > 0) {
+      response += `**Registered Users:** ${members.length}\n`;
+      for (const m of members.slice(0, 3)) {
+        const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown';
+        response += `  • ${name} (${m.email})\n`;
+      }
+      if (members.length > 3) {
+        response += `  _...and ${members.length - 3} more_\n`;
+      }
+    } else if (!org.prospect_contact_email) {
+      response += `_No contacts on file - add a contact_email to proceed._\n`;
+    }
+    response += `\n`;
+
+    // If lookup only, stop here
+    if (action === 'lookup_only') {
+      response += `### Available Products\n`;
+      for (const p of products.slice(0, 5)) {
+        const amount = p.amount_cents ? `$${(p.amount_cents / 100).toLocaleString()}/yr` : 'Custom';
+        const suggested = p === suggestedProduct ? ' ⭐ Suggested' : '';
+        response += `• ${p.display_name} - ${amount}${suggested}\n`;
+      }
+      response += `\n_Use this tool again with action="payment_link" or action="invoice" to proceed._`;
+      return response;
+    }
+
+    // Generate payment link
+    if (action === 'payment_link') {
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+      try {
+        // Handle discounts
+        let couponId: string | undefined;
+        let appliedDiscount: string | undefined;
+
+        // Check if a new discount was requested
+        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+          if (!discountReason) {
+            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+          }
+
+          // Create a new discount/coupon for this org
+          const grantedBy = memberContext?.workos_user?.email || 'Addie';
+          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
+            percent_off: discountPercent,
+            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
+            duration: 'forever',
+            reason: discountReason,
+          });
+
+          if (stripeDiscount) {
+            couponId = stripeDiscount.coupon_id;
+            // Also save to the org record
+            await orgDb.setDiscount(org.workos_organization_id, {
+              discount_percent: discountPercent ?? null,
+              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+              reason: discountReason,
+              granted_by: grantedBy,
+              stripe_coupon_id: stripeDiscount.coupon_id,
+              stripe_promotion_code: stripeDiscount.promotion_code,
+            });
+            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
+            logger.info({
+              orgId: org.workos_organization_id,
+              discount: appliedDiscount,
+              reason: discountReason,
+            }, 'Created discount for payment link');
+          }
+        } else if (useExistingDiscount && org.stripe_coupon_id) {
+          // Use the org's existing discount
+          couponId = org.stripe_coupon_id;
+          appliedDiscount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : `$${(org.discount_amount_cents || 0) / 100} off`;
+        }
+
+        const session = await createCheckoutSession({
+          priceId: finalProduct.price_id,
+          customerEmail: emailToUse || undefined,
+          successUrl: `${baseUrl}/dashboard?payment=success`,
+          cancelUrl: `${baseUrl}/membership?payment=cancelled`,
+          workosOrganizationId: org.workos_organization_id,
+          isPersonalWorkspace: org.is_personal,
+          couponId, // Pre-apply the discount if available
+        });
+
+        if (!session?.url) {
+          return response + `\n❌ Failed to generate payment link. Stripe may not be configured.`;
+        }
+
+        response += `### 💳 Payment Link Generated\n\n`;
+        response += `**Product:** ${finalProduct.display_name}\n`;
+        if (finalProduct.amount_cents) {
+          const originalAmount = finalProduct.amount_cents / 100;
+          response += `**Amount:** $${originalAmount.toLocaleString()}/year\n`;
+        }
+        if (appliedDiscount) {
+          response += `**Discount:** ${appliedDiscount} (pre-applied)\n`;
+        }
+        response += `\n**Payment Link:**\n${session.url}\n`;
+        response += `\n_Share this link with ${org.prospect_contact_name || emailToUse || 'the prospect'}. It expires in 24 hours._`;
+
+        logger.info(
+          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
+          'Addie generated payment link'
+        );
+
+        return response;
+      } catch (err) {
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to create checkout session');
+        return response + `\n❌ Failed to create payment link: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+    }
+
+    // Send invoice
+    if (action === 'invoice') {
+      if (!emailToUse) {
+        return response + `\n❌ Cannot send invoice without an email address. Please provide contact_email.`;
+      }
+
+      if (!billingAddress?.line1 || !billingAddress?.city || !billingAddress?.postal_code || !billingAddress?.country) {
+        response += `### 📄 Invoice - Need Billing Address\n\n`;
+        response += `To send an invoice, I need the full billing address:\n`;
+        response += `• line1 (street address)\n`;
+        response += `• city\n`;
+        response += `• state (if applicable)\n`;
+        response += `• postal_code\n`;
+        response += `• country (two-letter code, e.g., "US")\n`;
+        response += `\n_Call this tool again with the billing_address to send the invoice._`;
+        return response;
+      }
+
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      try {
+        const invoiceResult = await createAndSendInvoice({
+          companyName: org.name,
+          contactName: org.prospect_contact_name || contactName || 'Billing',
+          contactEmail: emailToUse,
+          billingAddress: {
+            line1: billingAddress.line1,
+            line2: billingAddress.line2,
+            city: billingAddress.city || '',
+            state: billingAddress.state || '',
+            postal_code: billingAddress.postal_code || '',
+            country: billingAddress.country || 'US',
+          },
+          lookupKey: finalProduct.lookup_key || '',
+          workosOrganizationId: org.workos_organization_id,
+        });
+
+        if (!invoiceResult) {
+          return response + `\n❌ Failed to create invoice. Stripe may not be configured.`;
+        }
+
+        response += `### 📧 Invoice Sent!\n\n`;
+        response += `**Product:** ${finalProduct.display_name}\n`;
+        if (finalProduct.amount_cents) {
+          response += `**Amount:** $${(finalProduct.amount_cents / 100).toLocaleString()}\n`;
+        }
+        response += `**Sent to:** ${emailToUse}\n`;
+        response += `**Invoice ID:** ${invoiceResult.invoiceId}\n`;
+        if (invoiceResult.invoiceUrl) {
+          response += `\n**Invoice URL:**\n${invoiceResult.invoiceUrl}\n`;
+        }
+        response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
+
+        logger.info(
+          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId },
+          'Addie sent invoice'
+        );
+
+        return response;
+      } catch (err) {
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send invoice');
+        return response + `\n❌ Failed to send invoice: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+    }
+
+    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "invoice", or "lookup_only".`;
+  });
+
   // Search Lusha for prospects
   handlers.set('prospect_search_lusha', async (input) => {
     const adminCheck = requireAdminFromContext();
@@ -922,6 +2124,1250 @@ export function createAdminToolHandlers(
     response += `\n_Use add_prospect to add any of these companies to your prospect list._`;
 
     return response;
+  });
+
+  // ============================================
+  // INDUSTRY FEED MANAGEMENT HANDLERS
+  // ============================================
+
+  // Search industry feeds
+  handlers.set('search_industry_feeds', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const query = (input.query as string)?.toLowerCase().trim() || '';
+    const status = (input.status as string) || 'all';
+    const limit = Math.min(Math.max((input.limit as number) || 10, 1), 50);
+
+    try {
+      const allFeeds = await getAllFeedsWithStats();
+
+      // Filter feeds based on criteria
+      let filtered = allFeeds;
+
+      // Apply status filter
+      if (status === 'active') {
+        filtered = filtered.filter(f => f.is_active);
+      } else if (status === 'inactive') {
+        filtered = filtered.filter(f => !f.is_active);
+      } else if (status === 'errors') {
+        filtered = filtered.filter(f => f.error_count > 0);
+      }
+
+      // Apply search query
+      if (query) {
+        filtered = filtered.filter(f =>
+          f.name.toLowerCase().includes(query) ||
+          (f.feed_url || '').toLowerCase().includes(query) ||
+          (f.category || '').toLowerCase().includes(query)
+        );
+      }
+
+      // Limit results
+      const results = filtered.slice(0, limit);
+
+      if (results.length === 0) {
+        let msg = 'No feeds found';
+        if (query) msg += ` matching "${query}"`;
+        if (status !== 'all') msg += ` with status "${status}"`;
+        return msg + '.';
+      }
+
+      let response = `## Industry Feeds`;
+      if (status !== 'all') response += ` (${status})`;
+      if (query) response += ` matching "${query}"`;
+      response += `\n\n`;
+
+      for (const feed of results) {
+        const statusIcon = feed.is_active ? '✅' : '⏸️';
+        const errorIcon = feed.error_count > 0 ? ' ⚠️' : '';
+
+        response += `${statusIcon}${errorIcon} **${feed.name}**\n`;
+        response += `   URL: ${feed.feed_url}\n`;
+        if (feed.category) response += `   Category: ${feed.category}\n`;
+        response += `   Articles: ${feed.article_count} (${feed.articles_this_week} this week)\n`;
+        if (feed.error_count > 0) {
+          response += `   Errors: ${feed.error_count}`;
+          if (feed.last_error) response += ` - ${feed.last_error}`;
+          response += `\n`;
+        }
+        if (feed.last_fetched_at) {
+          response += `   Last fetched: ${formatDate(new Date(feed.last_fetched_at))}\n`;
+        }
+        response += `\n`;
+      }
+
+      if (filtered.length > limit) {
+        response += `_Showing ${limit} of ${filtered.length} feeds._\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error searching feeds');
+      return '❌ Failed to search feeds. Please try again.';
+    }
+  });
+
+  // Add industry feed
+  handlers.set('add_industry_feed', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = (input.name as string)?.trim();
+    const feedUrl = (input.feed_url as string)?.trim();
+    const category = input.category as string | undefined;
+
+    if (!name || name.length < 1) {
+      return '❌ Feed name is required.';
+    }
+    if (name.length > 200) {
+      return '❌ Feed name must be 200 characters or less.';
+    }
+    if (!feedUrl) {
+      return '❌ Feed URL is required.';
+    }
+    if (feedUrl.length > 2000) {
+      return '❌ Feed URL must be 2000 characters or less.';
+    }
+
+    // Validate URL
+    try {
+      new URL(feedUrl);
+    } catch {
+      return `❌ Invalid feed URL: ${feedUrl}`;
+    }
+
+    try {
+      const feed = await addFeed(name, feedUrl, category);
+      logger.info({ feedId: feed.id, name, feedUrl }, 'Feed created via Addie');
+
+      let response = `✅ Added feed **${name}**\n\n`;
+      response += `**URL:** ${feedUrl}\n`;
+      if (category) response += `**Category:** ${category}\n`;
+      response += `**ID:** ${feed.id}\n`;
+      response += `\n_The feed will be fetched on the next scheduled run._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, feedUrl }, 'Error adding feed');
+      if (error instanceof Error && error.message.includes('duplicate')) {
+        return `❌ A feed with this URL already exists.`;
+      }
+      return '❌ Failed to add feed. Please try again.';
+    }
+  });
+
+  // Get feed stats
+  handlers.set('get_feed_stats', async () => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    try {
+      const stats = await getFeedStats();
+
+      let response = `## Industry Feed Statistics\n\n`;
+      response += `**Total Feeds:** ${stats.total_feeds}\n`;
+      response += `**Active Feeds:** ${stats.active_feeds}\n\n`;
+
+      response += `### Articles\n`;
+      response += `**Total Collected:** ${stats.total_rss_perspectives.toLocaleString()}\n`;
+      response += `**Today:** ${stats.rss_perspectives_today}\n\n`;
+
+      response += `### Processing Status\n`;
+      response += `**Pending:** ${stats.pending_processing}\n`;
+      response += `**Processed:** ${stats.processed_success}\n`;
+      if (stats.processed_failed > 0) {
+        response += `**Failed:** ${stats.processed_failed} ⚠️\n`;
+      }
+      response += `**Alerts Sent Today:** ${stats.alerts_sent_today}\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error getting feed stats');
+      return '❌ Failed to get feed statistics. Please try again.';
+    }
+  });
+
+  // ============================================
+  // SENSITIVE TOPICS & MEDIA CONTACT HANDLERS
+  // ============================================
+
+  const insightsDb = new InsightsDatabase();
+
+  // Add media contact
+  handlers.set('add_media_contact', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const slackUserId = input.slack_user_id as string | undefined;
+    const email = input.email as string | undefined;
+    const name = input.name as string | undefined;
+    const organization = input.organization as string | undefined;
+    const role = input.role as string | undefined;
+    const notes = input.notes as string | undefined;
+    const handlingLevel = (input.handling_level as 'standard' | 'careful' | 'executive_only') || 'standard';
+
+    if (!slackUserId && !email) {
+      return '❌ Please provide either a slack_user_id or email to identify the media contact.';
+    }
+
+    try {
+      const contact = await insightsDb.addMediaContact({
+        slackUserId,
+        email,
+        name,
+        organization,
+        role,
+        notes,
+        handlingLevel,
+      });
+
+      let response = `✅ Added media contact\n\n`;
+      if (contact.name) response += `**Name:** ${contact.name}\n`;
+      if (contact.organization) response += `**Organization:** ${contact.organization}\n`;
+      if (contact.role) response += `**Role:** ${contact.role}\n`;
+      if (contact.slackUserId) response += `**Slack ID:** ${contact.slackUserId}\n`;
+      if (contact.email) response += `**Email:** ${contact.email}\n`;
+      response += `**Handling Level:** ${contact.handlingLevel}\n`;
+
+      const levelExplanation = {
+        standard: 'Sensitive topics will be deflected to human contacts.',
+        careful: 'More topics will be deflected, extra caution applied.',
+        executive_only: 'All questions will be escalated for executive review.',
+      };
+      response += `\n_${levelExplanation[contact.handlingLevel]}_`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error adding media contact');
+      return '❌ Failed to add media contact. Please try again.';
+    }
+  });
+
+  // List flagged conversations
+  handlers.set('list_flagged_conversations', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const unreviewedOnly = input.unreviewed_only !== false; // Default to true
+    const severity = input.severity as 'high' | 'medium' | 'low' | undefined;
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
+
+    try {
+      const flagged = await insightsDb.getFlaggedConversations({
+        unreviewedOnly,
+        severity,
+        limit,
+      });
+
+      if (flagged.length === 0) {
+        let msg = 'No flagged conversations found';
+        if (unreviewedOnly) msg += ' pending review';
+        if (severity) msg += ` with severity "${severity}"`;
+        return msg + '. 🎉';
+      }
+
+      let response = `## Flagged Conversations`;
+      if (unreviewedOnly) response += ` (Pending Review)`;
+      response += `\n\n`;
+
+      const severityIcon = {
+        high: '🔴',
+        medium: '🟡',
+        low: '🟢',
+      };
+
+      for (const conv of flagged) {
+        const icon = severityIcon[conv.severity || 'low'];
+        response += `### ${icon} ID: ${conv.id}\n`;
+        if (conv.userName) response += `**From:** ${conv.userName}`;
+        if (conv.userEmail) response += ` (${conv.userEmail})`;
+        response += `\n`;
+        response += `**Category:** ${conv.matchedCategory || 'unknown'}\n`;
+        response += `**Message:** "${conv.messageText.substring(0, 150)}${conv.messageText.length > 150 ? '...' : ''}"\n`;
+        if (conv.wasDeflected) {
+          response += `**Deflected:** Yes\n`;
+          if (conv.responseGiven) {
+            response += `**Response:** "${conv.responseGiven.substring(0, 100)}..."\n`;
+          }
+        }
+        response += `**When:** ${formatDate(conv.createdAt)}\n`;
+        response += `\n`;
+      }
+
+      response += `\n_Use review_flagged_conversation to mark items as reviewed._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing flagged conversations');
+      return '❌ Failed to list flagged conversations. Please try again.';
+    }
+  });
+
+  // Review flagged conversation
+  handlers.set('review_flagged_conversation', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const flaggedId = input.flagged_id as number;
+    const notes = input.notes as string | undefined;
+
+    if (!flaggedId) {
+      return '❌ Please provide the flagged_id to review.';
+    }
+
+    try {
+      // Get reviewer user ID from member context if available
+      const reviewerId = memberContext?.workos_user?.workos_user_id
+        ? parseInt(memberContext.workos_user.workos_user_id, 10) || 0
+        : 0;
+
+      await insightsDb.reviewFlaggedConversation(flaggedId, reviewerId, notes);
+
+      let response = `✅ Marked conversation #${flaggedId} as reviewed.\n`;
+      if (notes) {
+        response += `\n**Notes:** ${notes}`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, flaggedId }, 'Error reviewing flagged conversation');
+      return '❌ Failed to mark conversation as reviewed. Please check the ID and try again.';
+    }
+  });
+
+  // ============================================
+  // DISCOUNT MANAGEMENT HANDLERS
+  // ============================================
+
+  // Grant discount to an organization
+  handlers.set('grant_discount', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const orgId = input.org_id as string | undefined;
+    const orgName = input.org_name as string | undefined;
+    const discountPercent = input.discount_percent as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const reason = input.reason as string;
+    const createPromoCode = input.create_promotion_code !== false; // default true
+
+    // Validate inputs
+    if (!reason) {
+      return '❌ Please provide a reason for the discount.';
+    }
+
+    if (discountPercent === undefined && discountAmountDollars === undefined) {
+      return '❌ Please provide either discount_percent or discount_amount_dollars.';
+    }
+
+    if (discountPercent !== undefined && discountAmountDollars !== undefined) {
+      return '❌ Please provide either discount_percent OR discount_amount_dollars, not both.';
+    }
+
+    if (discountPercent !== undefined && (discountPercent < 1 || discountPercent > 100)) {
+      return '❌ Discount percent must be between 1 and 100.';
+    }
+
+    if (discountAmountDollars !== undefined && discountAmountDollars < 1) {
+      return '❌ Discount amount must be a positive number.';
+    }
+
+    try {
+      // Find the organization
+      let org;
+      if (orgId) {
+        org = await orgDb.getOrganization(orgId);
+      } else if (orgName) {
+        const orgs = await orgDb.searchOrganizations({ query: orgName, limit: 1 });
+        if (orgs.length > 0) {
+          org = await orgDb.getOrganization(orgs[0].workos_organization_id);
+        }
+      } else {
+        return '❌ Please provide either org_id or org_name to identify the organization.';
+      }
+
+      if (!org) {
+        return `❌ Organization not found${orgName ? ` matching "${orgName}"` : ''}.`;
+      }
+
+      // Get the admin's name for attribution
+      const grantedBy = memberContext?.workos_user?.email || 'Unknown admin';
+
+      let stripeCouponId: string | null = null;
+      let stripePromoCode: string | null = null;
+
+      // Create Stripe coupon if requested
+      if (createPromoCode) {
+        const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
+          percent_off: discountPercent,
+          amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
+          duration: 'forever',
+          reason,
+        });
+
+        if (stripeDiscount) {
+          stripeCouponId = stripeDiscount.coupon_id;
+          stripePromoCode = stripeDiscount.promotion_code;
+        }
+      }
+
+      // Update the organization
+      await orgDb.setDiscount(org.workos_organization_id, {
+        discount_percent: discountPercent ?? null,
+        discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+        reason,
+        granted_by: grantedBy,
+        stripe_coupon_id: stripeCouponId,
+        stripe_promotion_code: stripePromoCode,
+      });
+
+      logger.info({
+        orgId: org.workos_organization_id,
+        orgName: org.name,
+        discountPercent,
+        discountAmountDollars,
+        grantedBy,
+        stripePromoCode,
+      }, 'Addie: Granted discount to organization');
+
+      // Build response
+      const discountDescription = discountPercent
+        ? `${discountPercent}% off`
+        : `$${discountAmountDollars} off`;
+
+      let response = `✅ Granted **${discountDescription}** discount to **${org.name}**\n\n`;
+      response += `**Reason:** ${reason}\n`;
+      response += `**Granted by:** ${grantedBy}\n`;
+
+      if (stripePromoCode) {
+        response += `\n**Promotion Code:** \`${stripePromoCode}\`\n`;
+        response += `_The customer can enter this code at checkout to receive their discount._`;
+      } else {
+        response += `\n_No Stripe promotion code was created. The discount is recorded but the customer will need a manual adjustment._`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, orgName }, 'Error granting discount');
+      return '❌ Failed to grant discount. Please try again.';
+    }
+  });
+
+  // Remove discount from an organization
+  handlers.set('remove_discount', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const orgId = input.org_id as string | undefined;
+    const orgName = input.org_name as string | undefined;
+
+    try {
+      // Find the organization
+      let org;
+      if (orgId) {
+        org = await orgDb.getOrganization(orgId);
+      } else if (orgName) {
+        const orgs = await orgDb.searchOrganizations({ query: orgName, limit: 1 });
+        if (orgs.length > 0) {
+          org = await orgDb.getOrganization(orgs[0].workos_organization_id);
+        }
+      } else {
+        return '❌ Please provide either org_id or org_name to identify the organization.';
+      }
+
+      if (!org) {
+        return `❌ Organization not found${orgName ? ` matching "${orgName}"` : ''}.`;
+      }
+
+      if (!org.discount_percent && !org.discount_amount_cents) {
+        return `ℹ️ **${org.name}** doesn't have an active discount.`;
+      }
+
+      const previousDiscount = org.discount_percent
+        ? `${org.discount_percent}% off`
+        : `$${(org.discount_amount_cents || 0) / 100} off`;
+
+      await orgDb.removeDiscount(org.workos_organization_id);
+
+      logger.info({
+        orgId: org.workos_organization_id,
+        orgName: org.name,
+        previousDiscount,
+        removedBy: memberContext?.workos_user?.email,
+      }, 'Addie: Removed discount from organization');
+
+      let response = `✅ Removed discount from **${org.name}**\n\n`;
+      response += `**Previous discount:** ${previousDiscount}\n`;
+
+      if (org.stripe_coupon_id) {
+        response += `\n_Note: The Stripe coupon (${org.stripe_coupon_id}) still exists. If needed, delete it from the Stripe dashboard._`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, orgName }, 'Error removing discount');
+      return '❌ Failed to remove discount. Please try again.';
+    }
+  });
+
+  // List organizations with active discounts
+  handlers.set('list_discounts', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const limit = (input.limit as number) || 20;
+
+    try {
+      const orgsWithDiscounts = await orgDb.listOrganizationsWithDiscounts();
+
+      if (orgsWithDiscounts.length === 0) {
+        return 'ℹ️ No organizations currently have active discounts.';
+      }
+
+      const limited = orgsWithDiscounts.slice(0, limit);
+
+      let response = `## Organizations with Active Discounts\n\n`;
+      response += `Found **${orgsWithDiscounts.length}** organization(s) with discounts:\n\n`;
+
+      for (const org of limited) {
+        const discountDescription = org.discount_percent
+          ? `${org.discount_percent}% off`
+          : `$${(org.discount_amount_cents || 0) / 100} off`;
+
+        response += `### ${org.name}\n`;
+        response += `**Discount:** ${discountDescription}\n`;
+        response += `**Reason:** ${org.discount_reason || 'Not specified'}\n`;
+        response += `**Granted by:** ${org.discount_granted_by || 'Unknown'}\n`;
+
+        if (org.discount_granted_at) {
+          response += `**When:** ${formatDate(new Date(org.discount_granted_at))}\n`;
+        }
+
+        if (org.stripe_promotion_code) {
+          response += `**Promo Code:** \`${org.stripe_promotion_code}\`\n`;
+        }
+
+        response += '\n';
+      }
+
+      if (orgsWithDiscounts.length > limit) {
+        response += `_Showing ${limit} of ${orgsWithDiscounts.length} organizations._`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing discounts');
+      return '❌ Failed to list discounts. Please try again.';
+    }
+  });
+
+  // Create standalone promotion code
+  handlers.set('create_promotion_code', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const code = input.code as string;
+    const name = input.name as string | undefined;
+    const percentOff = input.percent_off as number | undefined;
+    const amountOffDollars = input.amount_off_dollars as number | undefined;
+    const duration = (input.duration as 'once' | 'repeating' | 'forever') || 'once';
+    const maxRedemptions = input.max_redemptions as number | undefined;
+
+    // Validate inputs
+    if (!code) {
+      return '❌ Please provide a promotion code.';
+    }
+
+    if (percentOff === undefined && amountOffDollars === undefined) {
+      return '❌ Please provide either percent_off or amount_off_dollars.';
+    }
+
+    if (percentOff !== undefined && amountOffDollars !== undefined) {
+      return '❌ Please provide either percent_off OR amount_off_dollars, not both.';
+    }
+
+    if (percentOff !== undefined && (percentOff < 1 || percentOff > 100)) {
+      return '❌ Percent off must be between 1 and 100.';
+    }
+
+    if (amountOffDollars !== undefined && amountOffDollars < 1) {
+      return '❌ Amount off must be a positive number.';
+    }
+
+    try {
+      const createdBy = memberContext?.workos_user?.email || 'Unknown admin';
+
+      // Create the coupon
+      const coupon = await createCoupon({
+        name: name || `Promotion: ${code}`,
+        percent_off: percentOff,
+        amount_off_cents: amountOffDollars ? amountOffDollars * 100 : undefined,
+        duration,
+        max_redemptions: maxRedemptions,
+        metadata: {
+          created_by: createdBy,
+        },
+      });
+
+      if (!coupon) {
+        return '❌ Failed to create coupon in Stripe. Please try again.';
+      }
+
+      // Create the promotion code
+      const promoCode = await createPromotionCode({
+        coupon_id: coupon.coupon_id,
+        code,
+        max_redemptions: maxRedemptions,
+        metadata: {
+          created_by: createdBy,
+        },
+      });
+
+      if (!promoCode) {
+        return `⚠️ Coupon created but failed to create promotion code. Coupon ID: ${coupon.coupon_id}`;
+      }
+
+      logger.info({
+        couponId: coupon.coupon_id,
+        code: promoCode.code,
+        createdBy,
+      }, 'Addie: Created standalone promotion code');
+
+      const discountDescription = percentOff
+        ? `${percentOff}% off`
+        : `$${amountOffDollars} off`;
+
+      let response = `✅ Created promotion code **${promoCode.code}**\n\n`;
+      response += `**Discount:** ${discountDescription}\n`;
+      response += `**Duration:** ${duration}\n`;
+
+      if (maxRedemptions) {
+        response += `**Max uses:** ${maxRedemptions}\n`;
+      }
+
+      response += `**Created by:** ${createdBy}\n`;
+      response += `\n_Customers can enter this code at checkout to receive their discount._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, code }, 'Error creating promotion code');
+      return '❌ Failed to create promotion code. Please try again.';
+    }
+  });
+
+  // ============================================
+  // CHAPTER MANAGEMENT HANDLERS
+  // ============================================
+
+  // Create chapter
+  handlers.set('create_chapter', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = (input.name as string)?.trim();
+    const region = (input.region as string)?.trim();
+    const foundingMemberId = input.founding_member_id as string | undefined;
+    const description = input.description as string | undefined;
+
+    if (!name) {
+      return '❌ Please provide a chapter name (e.g., "Austin Chapter").';
+    }
+
+    if (!region) {
+      return '❌ Please provide a region (e.g., "Austin", "Bay Area").';
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 50);
+
+    try {
+      // Check if chapter with this slug already exists
+      const existingChapter = await wgDb.getWorkingGroupBySlug(slug);
+      if (existingChapter) {
+        return `⚠️ A chapter with slug "${slug}" already exists: **${existingChapter.name}**\n\nJoin their Slack channel: ${existingChapter.slack_channel_url || 'Not set'}`;
+      }
+
+      // Create Slack channel first
+      const channelResult = await createChannel(slug);
+      if (!channelResult) {
+        return `❌ Failed to create Slack channel #${slug}. The channel name might already be taken. Try a different chapter name.`;
+      }
+
+      // Set channel purpose
+      const purpose = description || `Connect with AgenticAdvertising.org members in the ${region} area.`;
+      await setChannelPurpose(channelResult.channel.id, purpose);
+
+      // Create the chapter working group
+      const chapter = await wgDb.createChapter({
+        name,
+        slug,
+        region,
+        description: purpose,
+        slack_channel_url: channelResult.url,
+        slack_channel_id: channelResult.channel.id,
+        founding_member_id: foundingMemberId,
+      });
+
+      logger.info({
+        chapterId: chapter.id,
+        name: chapter.name,
+        region,
+        slackChannelId: channelResult.channel.id,
+        foundingMemberId,
+      }, 'Addie: Created new regional chapter');
+
+      let response = `✅ Created **${name}**!\n\n`;
+      response += `**Region:** ${region}\n`;
+      response += `**Slack Channel:** <#${channelResult.channel.id}>\n`;
+      response += `**Channel URL:** ${channelResult.url}\n`;
+
+      if (foundingMemberId) {
+        response += `\n🎉 The founding member has been set as chapter leader.\n`;
+      }
+
+      response += `\n_Anyone who joins the Slack channel will automatically be added to the chapter._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, region }, 'Error creating chapter');
+      return '❌ Failed to create chapter. Please try again.';
+    }
+  });
+
+  // List chapters
+  handlers.set('list_chapters', async () => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    try {
+      const chapters = await wgDb.getChapters();
+
+      if (chapters.length === 0) {
+        return 'ℹ️ No regional chapters exist yet. Use create_chapter to start one!';
+      }
+
+      let response = `## Regional Chapters\n\n`;
+      response += `Found **${chapters.length}** chapter(s):\n\n`;
+
+      for (const chapter of chapters) {
+        response += `### ${chapter.name}\n`;
+        response += `**Region:** ${chapter.region || 'Not set'}\n`;
+        response += `**Members:** ${chapter.member_count}\n`;
+
+        if (chapter.slack_channel_id) {
+          response += `**Slack:** <#${chapter.slack_channel_id}>\n`;
+        } else {
+          response += `**Slack:** _No channel linked_\n`;
+        }
+
+        if (chapter.leaders && chapter.leaders.length > 0) {
+          const leaderNames = chapter.leaders.map(l => l.name || 'Unknown').join(', ');
+          response += `**Leaders:** ${leaderNames}\n`;
+        }
+
+        response += '\n';
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing chapters');
+      return '❌ Failed to list chapters. Please try again.';
+    }
+  });
+
+  // ============================================
+  // ORGANIZATION MANAGEMENT HANDLERS
+  // ============================================
+
+  // Merge organizations
+  handlers.set('merge_organizations', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const primaryOrgId = input.primary_org_id as string;
+    const secondaryOrgId = input.secondary_org_id as string;
+    const preview = input.preview !== false; // Default to preview mode for safety
+
+    if (!primaryOrgId || !secondaryOrgId) {
+      return '❌ Both primary_org_id and secondary_org_id are required.';
+    }
+
+    if (primaryOrgId === secondaryOrgId) {
+      return '❌ Primary and secondary organization IDs must be different.';
+    }
+
+    try {
+      if (preview) {
+        // Preview mode - show what would be merged
+        const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
+
+        // Also check WorkOS memberships
+        let workosUserCount = 0;
+        let workosCheckFailed = false;
+        try {
+          const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: secondaryOrgId,
+            limit: 100,
+          });
+          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: primaryOrgId,
+            limit: 100,
+          });
+          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+
+          workosUserCount = secondaryMemberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
+            .length;
+        } catch {
+          workosCheckFailed = true;
+        }
+
+        let response = `## Merge Preview\n\n`;
+        response += `**Keep:** ${previewResult.primary_org.name} (${previewResult.primary_org.id})\n`;
+        response += `**Remove:** ${previewResult.secondary_org.name} (${previewResult.secondary_org.id})\n\n`;
+
+        if (previewResult.estimated_changes.length === 0) {
+          response += `_No data to merge from the secondary organization._\n`;
+        } else {
+          response += `### Data to Move\n`;
+          for (const change of previewResult.estimated_changes) {
+            response += `- **${change.table_name}**: ${change.rows_to_move} row(s)\n`;
+          }
+        }
+
+        // WorkOS section
+        response += `\n### WorkOS Sync\n`;
+        if (workosCheckFailed) {
+          response += `⚠️ Could not check WorkOS memberships\n`;
+        } else if (workosUserCount > 0) {
+          response += `- ${workosUserCount} user(s) will be added to the primary org in WorkOS\n`;
+          response += `- Secondary org will be deleted from WorkOS\n`;
+        } else {
+          response += `- No new users to migrate in WorkOS\n`;
+          response += `- Secondary org will be deleted from WorkOS\n`;
+        }
+
+        if (previewResult.warnings.length > 0) {
+          response += `\n### Warnings\n`;
+          for (const warning of previewResult.warnings) {
+            response += `⚠️ ${warning}\n`;
+          }
+        }
+
+        response += `\n---\n`;
+        response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
+
+        return response;
+      } else {
+        // Execute the merge
+        logger.info({ primaryOrgId, secondaryOrgId, mergedBy: memberContext?.workos_user?.workos_user_id }, 'Admin executing org merge via Addie');
+
+        // Step 1: Get users from secondary org in WorkOS before merge
+        let workosUsersToMigrate: string[] = [];
+        let workosErrors: string[] = [];
+
+        try {
+          // Get all memberships from the secondary org in WorkOS
+          const memberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: secondaryOrgId,
+            limit: 100,
+          });
+
+          // Warn if there are more than 100 members (pagination not implemented)
+          if (memberships.listMetadata?.after) {
+            workosErrors.push('Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.');
+          }
+
+          // Check which users are NOT already in the primary org
+          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: primaryOrgId,
+            limit: 100,
+          });
+          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+
+          workosUsersToMigrate = memberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
+            .map(m => m.userId);
+
+          logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
+        } catch (err) {
+          logger.warn({ error: err, secondaryOrgId }, 'Failed to fetch WorkOS memberships (will continue with DB merge)');
+          workosErrors.push('Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed');
+        }
+
+        // Step 2: Execute the database merge
+        const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
+        const result = await mergeOrganizations(primaryOrgId, secondaryOrgId, mergedBy);
+
+        // Step 3: Add users to primary org in WorkOS
+        let workosAdded = 0;
+        let workosSkipped = 0;
+
+        for (const userId of workosUsersToMigrate) {
+          try {
+            await workos.userManagement.createOrganizationMembership({
+              userId,
+              organizationId: primaryOrgId,
+              roleSlug: 'member', // Default to member role
+            });
+            workosAdded++;
+            logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');
+          } catch (err: any) {
+            // User might already be in org (race condition) or other error
+            if (err?.code === 'organization_membership_already_exists') {
+              workosSkipped++;
+            } else {
+              logger.warn({ error: err, userId }, 'Failed to add user to primary org in WorkOS');
+              workosErrors.push(`Failed to add user ${userId} to WorkOS org`);
+            }
+          }
+        }
+
+        // Step 4: Delete the secondary org from WorkOS
+        let workosOrgDeleted = false;
+        try {
+          await workos.organizations.deleteOrganization(secondaryOrgId);
+          workosOrgDeleted = true;
+          logger.info({ secondaryOrgId }, 'Deleted secondary org from WorkOS');
+        } catch (err) {
+          logger.warn({ error: err, secondaryOrgId }, 'Failed to delete secondary org from WorkOS');
+          workosErrors.push(`Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`);
+        }
+
+        let response = `## Merge Complete ✅\n\n`;
+        response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
+
+        response += `### Data Moved\n`;
+        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + t.rows_skipped_duplicate, 0);
+
+        for (const table of result.tables_merged) {
+          if (table.rows_moved > 0 || table.rows_skipped_duplicate > 0) {
+            response += `- **${table.table_name}**: ${table.rows_moved} moved`;
+            if (table.rows_skipped_duplicate > 0) {
+              response += ` (${table.rows_skipped_duplicate} skipped as duplicates)`;
+            }
+            response += `\n`;
+          }
+        }
+
+        response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
+
+        // WorkOS sync results
+        if (workosUsersToMigrate.length > 0 || workosOrgDeleted || workosErrors.length > 0) {
+          response += `\n### WorkOS Sync\n`;
+          if (workosAdded > 0) {
+            response += `- ✅ Added ${workosAdded} user(s) to primary org in WorkOS\n`;
+          }
+          if (workosSkipped > 0) {
+            response += `- ⏭️ Skipped ${workosSkipped} user(s) (already in primary org)\n`;
+          }
+          if (workosOrgDeleted) {
+            response += `- 🗑️ Deleted secondary org from WorkOS\n`;
+          }
+        }
+
+        if (result.prospect_notes_merged) {
+          response += `\n📝 Prospect notes were merged.\n`;
+        }
+
+        if (result.enrichment_data_preserved) {
+          response += `📊 Enrichment data was preserved from the secondary organization.\n`;
+        }
+
+        // Combine all warnings
+        const allWarnings = [...result.warnings, ...workosErrors];
+        if (allWarnings.length > 0) {
+          response += `\n### Warnings\n`;
+          for (const warning of allWarnings) {
+            response += `⚠️ ${warning}\n`;
+          }
+        }
+
+        response += `\nThe secondary organization has been deleted.`;
+
+        return response;
+      }
+    } catch (error) {
+      logger.error({ error, primaryOrgId, secondaryOrgId }, 'Error merging organizations');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to merge organizations: ${errorMessage}`;
+    }
+  });
+
+  // Find duplicate organizations
+  handlers.set('find_duplicate_orgs', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const searchType = (input.search_type as string) || 'all';
+    const pool = getPool();
+
+    let response = `## Duplicate Organization Search\n\n`;
+
+    try {
+      // Find duplicates by name
+      if (searchType === 'name' || searchType === 'all') {
+        const nameResult = await pool.query(`
+          SELECT
+            LOWER(name) as normalized_name,
+            COUNT(*) as count,
+            STRING_AGG(name, ', ' ORDER BY name) as actual_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false
+          GROUP BY LOWER(name)
+          HAVING COUNT(*) > 1
+          ORDER BY count DESC, normalized_name
+        `);
+
+        response += `### Duplicate Names\n`;
+        if (nameResult.rows.length === 0) {
+          response += `✅ No organizations share the same name.\n`;
+        } else {
+          response += `⚠️ Found ${nameResult.rows.length} duplicate name(s):\n\n`;
+          for (const row of nameResult.rows) {
+            response += `**${row.normalized_name}** (${row.count} orgs)\n`;
+            response += `  Names: ${row.actual_names}\n`;
+            response += `  IDs: ${row.org_ids}\n\n`;
+          }
+        }
+      }
+
+      // Find duplicates by domain
+      if (searchType === 'domain' || searchType === 'all') {
+        const domainResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as count,
+            STRING_AGG(name, ', ' ORDER BY name) as org_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY count DESC, email_domain
+        `);
+
+        response += `### Duplicate Email Domains\n`;
+        if (domainResult.rows.length === 0) {
+          response += `✅ No organizations share the same email domain.\n`;
+        } else {
+          response += `⚠️ Found ${domainResult.rows.length} shared domain(s):\n\n`;
+          for (const row of domainResult.rows) {
+            response += `**${row.email_domain}** (${row.count} orgs)\n`;
+            response += `  Orgs: ${row.org_names}\n`;
+            response += `  IDs: ${row.org_ids}\n\n`;
+          }
+        }
+      }
+
+      response += `\n_Use merge_organizations to consolidate duplicates._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error finding duplicate organizations');
+      return '❌ Failed to search for duplicates. Please try again.';
+    }
+  });
+
+  // Check domain health
+  handlers.set('check_domain_health', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const checkType = (input.check_type as string) || 'all';
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
+    const pool = getPool();
+
+    // Common free email providers to exclude
+    const freeEmailDomains = [
+      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+    ];
+
+    let response = `## Domain Health Check\n\n`;
+    let issueCount = 0;
+
+    try {
+      // 1. Orphan corporate domains - users with corporate emails but no org with that domain
+      if (checkType === 'orphan_domains' || checkType === 'all') {
+        const orphanResult = await pool.query(`
+          WITH user_domains AS (
+            SELECT
+              LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
+              COUNT(DISTINCT om.workos_user_id) as user_count,
+              STRING_AGG(DISTINCT om.email, ', ' ORDER BY om.email) as sample_emails
+            FROM organization_memberships om
+            WHERE om.email IS NOT NULL
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+            GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
+          ),
+          claimed_domains AS (
+            SELECT LOWER(domain) as domain FROM organization_domains
+            UNION
+            SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+          )
+          SELECT ud.domain, ud.user_count, ud.sample_emails
+          FROM user_domains ud
+          LEFT JOIN claimed_domains cd ON cd.domain = ud.domain
+          WHERE cd.domain IS NULL
+          ORDER BY ud.user_count DESC
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        response += `### Orphan Corporate Domains\n`;
+        response += `_Corporate email domains with users but no matching organization_\n\n`;
+
+        if (orphanResult.rows.length === 0) {
+          response += `✅ No orphan domains found.\n\n`;
+        } else {
+          issueCount += orphanResult.rows.length;
+          for (const row of orphanResult.rows) {
+            response += `**${row.domain}** - ${row.user_count} user(s)\n`;
+            const emails = row.sample_emails.split(', ').slice(0, 3).join(', ');
+            response += `  Users: ${emails}${row.user_count > 3 ? '...' : ''}\n`;
+          }
+          response += `\n_Action: Create prospects for these domains or map users to existing orgs._\n\n`;
+        }
+      }
+
+      // 2. Users in personal workspaces with corporate emails
+      if (checkType === 'misaligned_users' || checkType === 'all') {
+        const misalignedResult = await pool.query(`
+          SELECT
+            om.email,
+            om.first_name,
+            om.last_name,
+            LOWER(SPLIT_PART(om.email, '@', 2)) as email_domain,
+            o.name as workspace_name,
+            om.workos_organization_id
+          FROM organization_memberships om
+          JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+          WHERE o.is_personal = true
+            AND om.email IS NOT NULL
+            AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+          ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        response += `### Corporate Users in Personal Workspaces\n`;
+        response += `_Users with company emails who are in personal workspaces instead of company orgs_\n\n`;
+
+        if (misalignedResult.rows.length === 0) {
+          response += `✅ No misaligned users found.\n\n`;
+        } else {
+          issueCount += misalignedResult.rows.length;
+          // Group by domain
+          const byDomain = new Map<string, typeof misalignedResult.rows>();
+          for (const row of misalignedResult.rows) {
+            const existing = byDomain.get(row.email_domain) || [];
+            existing.push(row);
+            byDomain.set(row.email_domain, existing);
+          }
+
+          for (const [domain, users] of byDomain) {
+            response += `**${domain}** (${users.length} user(s))\n`;
+            for (const user of users.slice(0, 3)) {
+              response += `  - ${user.email} (${user.first_name || ''} ${user.last_name || ''})\n`;
+            }
+            if (users.length > 3) {
+              response += `  - ... and ${users.length - 3} more\n`;
+            }
+          }
+          response += `\n_Action: Create company org and move these users, or verify they should be individuals._\n\n`;
+        }
+      }
+
+      // 3. Orgs with users but no verified domain
+      if (checkType === 'unverified_domains' || checkType === 'all') {
+        const unverifiedResult = await pool.query(`
+          SELECT
+            o.workos_organization_id,
+            o.name,
+            o.email_domain,
+            COUNT(DISTINCT om.workos_user_id) as user_count,
+            STRING_AGG(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2)), ', ') as user_domains
+          FROM organizations o
+          JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+          LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id AND od.verified = true
+          WHERE o.is_personal = false
+            AND od.id IS NULL
+          GROUP BY o.workos_organization_id, o.name, o.email_domain
+          HAVING COUNT(DISTINCT om.workos_user_id) > 0
+          ORDER BY COUNT(DISTINCT om.workos_user_id) DESC
+          LIMIT $1
+        `, [limit]);
+
+        response += `### Organizations Without Verified Domains\n`;
+        response += `_Organizations with members but no verified domain mapping_\n\n`;
+
+        if (unverifiedResult.rows.length === 0) {
+          response += `✅ All organizations with users have verified domains.\n\n`;
+        } else {
+          issueCount += unverifiedResult.rows.length;
+          for (const row of unverifiedResult.rows) {
+            response += `**${row.name}** - ${row.user_count} user(s)\n`;
+            response += `  User domains: ${row.user_domains}\n`;
+            if (row.email_domain) {
+              response += `  Claimed domain: ${row.email_domain} (not verified)\n`;
+            }
+          }
+          response += `\n_Action: Verify domain ownership for these organizations._\n\n`;
+        }
+      }
+
+      // 4. Domain conflicts (multiple orgs claiming same domain)
+      if (checkType === 'domain_conflicts' || checkType === 'all') {
+        const conflictResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as org_count,
+            STRING_AGG(name, ', ' ORDER BY name) as org_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY COUNT(*) DESC
+          LIMIT $1
+        `, [limit]);
+
+        response += `### Domain Conflicts\n`;
+        response += `_Multiple organizations claiming the same email domain_\n\n`;
+
+        if (conflictResult.rows.length === 0) {
+          response += `✅ No domain conflicts found.\n\n`;
+        } else {
+          issueCount += conflictResult.rows.length;
+          for (const row of conflictResult.rows) {
+            response += `**${row.email_domain}** - ${row.org_count} orgs\n`;
+            response += `  Orgs: ${row.org_names}\n`;
+          }
+          response += `\n_Action: Merge duplicate organizations._\n\n`;
+        }
+      }
+
+      // Summary
+      response += `---\n`;
+      if (issueCount === 0) {
+        response += `✅ **Domain health is good!** No issues found.`;
+      } else {
+        response += `⚠️ **Found ${issueCount} issue(s)** that need attention.\n`;
+        response += `\nUse the suggested actions or visit the admin Domain Health page for more details.`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error checking domain health');
+      return '❌ Failed to check domain health. Please try again.';
+    }
   });
 
   return handlers;

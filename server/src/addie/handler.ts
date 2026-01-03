@@ -34,6 +34,11 @@ import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
 } from './mcp/member-tools.js';
+import {
+  EVENT_TOOLS,
+  createEventToolHandlers,
+  canCreateEvents,
+} from './mcp/event-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -43,6 +48,7 @@ import {
   checkAndMarkOutreachResponse,
   type ExtractionContext,
 } from './services/insight-extractor.js';
+import { checkForSensitiveTopics } from './sensitive-topics.js';
 import type { RequestTools } from './claude-client.js';
 import type {
   AssistantThreadStartedEvent,
@@ -176,8 +182,12 @@ async function buildMessageWithMemberContext(
  * Create user-scoped member tools
  * These tools are created per-request with the user's context
  * Admin users also get access to admin tools
+ * Event creators (admin or committee leads) get access to event tools
  */
-function createUserScopedTools(memberContext: MemberContext | null): RequestTools {
+async function createUserScopedTools(
+  memberContext: MemberContext | null,
+  slackUserId?: string
+): Promise<RequestTools> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
@@ -190,6 +200,17 @@ function createUserScopedTools(memberContext: MemberContext | null): RequestTool
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Admin tools enabled for this user');
+  }
+
+  // Add event tools if user can create events (admin or committee lead)
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : isAdmin(memberContext);
+  if (canCreate) {
+    const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
+    allTools.push(...EVENT_TOOLS);
+    for (const [name, handler] of eventHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Event tools enabled for this user');
   }
 
   return {
@@ -273,33 +294,58 @@ export async function handleAssistantMessage(
     isAdmin
   );
 
-  // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = createUserScopedTools(memberContext);
+  // Check for sensitive topics before processing
+  const sensitiveCheck = await checkForSensitiveTopics(
+    inputValidation.sanitized,
+    event.user,
+    channelId
+  );
 
-  // Process with Claude
+  // If we should deflect, return the deflection response instead of processing
   let response;
-  try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
-  } catch (error) {
-    logger.error({ error }, 'Addie: Error processing message');
+  if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
+    logger.info({
+      userId: event.user,
+      category: sensitiveCheck.topicResult.category,
+      severity: sensitiveCheck.topicResult.severity,
+      isKnownMedia: sensitiveCheck.isKnownMedia,
+    }, 'Addie: Deflecting sensitive topic');
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: sensitiveCheck.deflectResponse,
       tools_used: [],
       tool_executions: [],
       flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
     };
+  } else {
+    // Create user-scoped tools (these can only operate on behalf of this user)
+    const userTools = await createUserScopedTools(memberContext, event.user);
+
+    // Process with Claude
+    try {
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error processing message');
+      response = {
+        text: "I'm sorry, I encountered an error. Please try again.",
+        tools_used: [],
+        tool_executions: [],
+        flagged: true,
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+    }
   }
 
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response using Addie's bot token
+  // Send response
   try {
     await sendChannelMessage(channelId, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts,
-    }, true); // useAddieToken = true
+    });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send response');
   }
@@ -392,33 +438,59 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     isAdmin
   );
 
-  // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = createUserScopedTools(memberContext);
+  // Check for sensitive topics before processing (channel mentions are more public)
+  const sensitiveCheck = await checkForSensitiveTopics(
+    inputValidation.sanitized,
+    event.user,
+    event.channel
+  );
 
-  // Process with Claude
+  // If we should deflect, return the deflection response instead of processing
   let response;
-  try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
-  } catch (error) {
-    logger.error({ error }, 'Addie: Error processing mention');
+  if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
+    logger.info({
+      userId: event.user,
+      channel: event.channel,
+      category: sensitiveCheck.topicResult.category,
+      severity: sensitiveCheck.topicResult.severity,
+      isKnownMedia: sensitiveCheck.isKnownMedia,
+    }, 'Addie: Deflecting sensitive topic (mention)');
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: sensitiveCheck.deflectResponse,
       tools_used: [],
       tool_executions: [],
       flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
     };
+  } else {
+    // Create user-scoped tools (these can only operate on behalf of this user)
+    const userTools = await createUserScopedTools(memberContext, event.user);
+
+    // Process with Claude
+    try {
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error processing mention');
+      response = {
+        text: "I'm sorry, I encountered an error. Please try again.",
+        tools_used: [],
+        tool_executions: [],
+        flagged: true,
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+    }
   }
 
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in thread using Addie's bot token
+  // Send response in thread
   try {
     await sendChannelMessage(event.channel, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts || event.ts,
-    }, true); // useAddieToken = true
+    });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send mention response');
   }
@@ -559,7 +631,7 @@ export async function sendAccountLinkedMessage(
     await sendChannelMessage(recentThread.channel_id, {
       text: message,
       thread_ts: recentThread.thread_ts,
-    }, true); // useAddieToken = true
+    });
     logger.info({ slackUserId, channelId: recentThread.channel_id }, 'Addie: Sent account linked message');
     return true;
   } catch (error) {

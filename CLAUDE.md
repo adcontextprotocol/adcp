@@ -89,20 +89,21 @@ Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (n
 - **MINOR**: Add optional fields, new enum values, new tasks
 - **MAJOR**: Remove/rename fields, change types, remove enum values
 
+## Deployment
+
+Production deploys to **Fly.io** (not Vercel). Migrations run automatically on startup.
+- Deploy logs: `fly logs -a <app-name>`
+- SSH access: `fly ssh console -a <app-name>`
+
 ## Local Development
 
-### Docker (Preferred)
+**Always use Docker for local testing:**
 ```bash
 docker compose up --build  # Start postgres + app with auto-migrations
 docker compose down -v     # Reset database
 ```
-**Note:** Docker maps to `$CONDUCTOR_PORT` (from `.env.local`), not port 3000. Check `docker compose ps` for the actual port.
 
-### Without Docker
-```bash
-npm run db:migrate
-npm run start
-```
+The app runs on `$CONDUCTOR_PORT` (from `.env.local`), defaulting to 3000. Static files in `server/public/` are hot-reloaded via volume mount.
 
 ### Environment Variables
 - `CONDUCTOR_PORT` - Server port (default: 3000)
@@ -173,12 +174,12 @@ Visual formats use `renders` array with structured dimensions:
 
 ### Useful Commands
 ```bash
-npm run dev          # Dev server
-npm run build        # Build
-npm test             # Run tests
-npm run lint         # Lint
-npm run typecheck    # Type check
-npm run docs:dev     # Docs dev server
+docker compose up --build  # Local dev server (preferred)
+npm run build              # Build TypeScript
+npm test                   # Run tests
+npm run lint               # Lint
+npm run typecheck          # Type check
+mintlify dev               # Docs dev server (requires mintlify CLI)
 ```
 
 ### Protocol Design Principles

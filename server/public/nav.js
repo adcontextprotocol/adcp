@@ -153,16 +153,79 @@
         </div>`
       : '';
 
-    // Build perspectives link (only on beta site)
-    const perspectivesUrl = isLocal ? '/perspectives' : 'https://agenticadvertising.org/perspectives';
-    const perspectivesLink = membershipEnabled
-      ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/perspectives') ? 'active' : ''}">Perspectives</a>`
+    // Build Projects dropdown
+    const adagentsUrl = isLocal ? '/adagents' : `${aaoBaseUrl}/adagents`;
+    const salesAgentUrl = isLocal ? '/sales-agent' : `${aaoBaseUrl}/sales-agent`;
+    const isProjectsActive = currentPath === '/adagents' || currentPath === '/sales-agent' ||
+                             currentPath === '/members' || currentPath.startsWith('/members/') ||
+                             currentPath === '/registry' || currentPath === '/publishers' || currentPath === '/properties';
+    const projectsDropdown = `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${isProjectsActive ? 'active' : ''}">
+            Projects
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="https://adcontextprotocol.org" class="navbar__dropdown-item">AdCP</a>
+            <a href="${adagentsUrl}" class="navbar__dropdown-item ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
+            <a href="${salesAgentUrl}" class="navbar__dropdown-item ${currentPath === '/sales-agent' ? 'active' : ''}">Sales Agent</a>
+            <div class="navbar__dropdown-divider"></div>
+            <span class="navbar__dropdown-header-text">Registry</span>
+            <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
+            <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
+            <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
+            <a href="${propertiesUrl}" class="navbar__dropdown-item ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
+          </div>
+        </div>`;
+
+    // Build Events link
+    const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
+    const eventsLink = membershipEnabled
+      ? `<a href="${eventsUrl}" class="navbar__link ${currentPath.startsWith('/events') ? 'active' : ''}">Events</a>`
       : '';
 
-    // Build working groups link (only on beta site)
-    const workingGroupsUrl = isLocal ? '/working-groups' : 'https://agenticadvertising.org/working-groups';
-    const workingGroupsLink = membershipEnabled
-      ? `<a href="${workingGroupsUrl}" class="navbar__link ${currentPath.startsWith('/working-groups') ? 'active' : ''}">Working Groups</a>`
+    // Build "The Latest" dropdown
+    const latestBaseUrl = isLocal ? '/latest' : `${aaoBaseUrl}/latest`;
+    const isLatestActive = currentPath.startsWith('/latest') || currentPath.startsWith('/perspectives');
+    const latestDropdown = membershipEnabled
+      ? `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${isLatestActive ? 'active' : ''}">
+            The Latest
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${latestBaseUrl}/research" class="navbar__dropdown-item ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>
+            <a href="${latestBaseUrl}/industry-news" class="navbar__dropdown-item ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>
+            <a href="${latestBaseUrl}/learning" class="navbar__dropdown-item ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>
+            <a href="${latestBaseUrl}/announcements" class="navbar__dropdown-item ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>
+          </div>
+        </div>`
+      : '';
+
+    // Build committees dropdown
+    const committeesBaseUrl = isLocal ? '/committees' : 'https://agenticadvertising.org/committees';
+    const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
+    const councilsUrl = `${committeesBaseUrl}?type=council`;
+    const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
+    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups');
+    const committeesDropdown = membershipEnabled
+      ? `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${isCommitteesActive ? 'active' : ''}">
+            Committees
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>
+            <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
+            <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
+            <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
+          </div>
+        </div>`
       : '';
 
     // Always use AAO logo
@@ -170,9 +233,6 @@
     const logoAlt = 'Agentic Advertising';
     // AAO logo is white, needs invert on light background
     const logoNeedsInvert = true;
-
-    // About AdCP link always shown
-    const aboutAdcpLink = '<a href="https://adcontextprotocol.org" class="navbar__link">About AdCP</a>';
 
     return `
       <nav class="navbar">
@@ -184,10 +244,10 @@
               </div>
             </a>
             <div class="navbar__links-desktop">
-              ${aboutAdcpLink}
-              ${registryDropdown}
-              ${perspectivesLink}
-              ${workingGroupsLink}
+              ${projectsDropdown}
+              ${eventsLink}
+              ${latestDropdown}
+              ${committeesDropdown}
               ${aboutDropdown}
             </div>
           </div>
@@ -206,14 +266,26 @@
           </div>
         </div>
         <div class="navbar__mobile-menu" id="mobileMenu">
-          ${aboutAdcpLink}
-          <span class="navbar__link navbar__link--header">Registry</span>
+          <span class="navbar__link navbar__link--header">Projects</span>
+          <a href="https://adcontextprotocol.org" class="navbar__link navbar__link--indent">AdCP</a>
+          <a href="${adagentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
+          <a href="${salesAgentUrl}" class="navbar__link navbar__link--indent ${currentPath === '/sales-agent' ? 'active' : ''}">Sales Agent</a>
+          <span class="navbar__link navbar__link--subheader">Registry</span>
           <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
-          ${perspectivesLink}
-          ${workingGroupsLink}
+          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link ${currentPath.startsWith('/events') ? 'active' : ''}">Events</a>` : ''}
+          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
+          ${membershipEnabled ? `<a href="${latestBaseUrl}/research" class="navbar__link navbar__link--indent ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>` : ''}
+          ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
+          ${membershipEnabled ? `<a href="${latestBaseUrl}/learning" class="navbar__link navbar__link--indent ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>` : ''}
+          ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}
+          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Committees</span>` : ''}
+          ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>` : ''}
+          ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
+          ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
+          ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
@@ -459,6 +531,16 @@
         background: #f3f4f6;
       }
 
+      .navbar__dropdown-header-text {
+        display: block;
+        padding: 0.5rem 1rem 0.25rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #6b7280;
+      }
+
       .navbar__dropdown-item--danger {
         color: #dc2626;
       }
@@ -667,6 +749,16 @@
         color: #6b7280;
         font-size: 0.75rem;
         font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: default;
+      }
+
+      .navbar__mobile-menu .navbar__link--subheader {
+        padding: 0.5rem 1rem;
+        color: #9ca3af;
+        font-size: 0.7rem;
+        font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         cursor: default;

@@ -433,8 +433,8 @@
       margin-left: var(--space-2);
     }
     .stakeholder-role.owner {
-      background: var(--color-success-100);
-      color: var(--color-success-700);
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
     }
     .stakeholder-role.interested {
       background: var(--color-primary-100);
@@ -443,6 +443,10 @@
     .stakeholder-role.connected {
       background: var(--color-gray-200);
       color: var(--color-text-heading);
+    }
+    #myRoleSelect {
+      cursor: pointer;
+      border: var(--border-1) solid var(--color-gray-300);
     }
     .btn-connected {
       background: var(--color-success-100);
@@ -661,6 +665,24 @@
       <div class="grid-2">
         <!-- Left Column -->
         <div>
+          <!-- Account Stakeholders (moved to top) -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+              <h2 style="margin-bottom: 0;">Account Team</h2>
+              <div id="connectBtnGroup" style="display: flex; gap: var(--space-2);">
+                <select id="myRoleSelect" class="btn btn-secondary btn-sm" style="padding: var(--space-1) var(--space-2);" onchange="updateMyRole()">
+                  <option value="">+ Join team</option>
+                  <option value="owner">Owner</option>
+                  <option value="interested">Interested</option>
+                  <option value="connected">Connected</option>
+                </select>
+              </div>
+            </div>
+            <div id="stakeholdersList" class="empty-state">
+              No team members assigned
+            </div>
+          </div>
+
           <!-- Engagement Signals -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
@@ -735,17 +757,6 @@
             </div>
             <div id="domainsList" class="empty-state">
               No domains linked
-            </div>
-          </div>
-
-          <!-- Account Stakeholders -->
-          <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-              <h2 style="margin-bottom: 0;">Account Team</h2>
-              <button id="connectBtn" class="btn btn-secondary btn-sm" onclick="toggleMyConnection()">I'm connected</button>
-            </div>
-            <div id="stakeholdersList" class="empty-state">
-              No team members assigned
             </div>
           </div>
         </div>
@@ -1504,17 +1515,16 @@
     // Stakeholder functions
     function renderStakeholders() {
       const container = document.getElementById('stakeholdersList');
-      const connectBtn = document.getElementById('connectBtn');
+      const roleSelect = document.getElementById('myRoleSelect');
 
       // Check if current user is already a stakeholder
       const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
 
+      // Update the dropdown to reflect current role
       if (myStakeholder) {
-        connectBtn.textContent = 'Connected';
-        connectBtn.classList.add('btn-connected');
+        roleSelect.value = myStakeholder.role;
       } else {
-        connectBtn.textContent = "I'm connected";
-        connectBtn.classList.remove('btn-connected');
+        roleSelect.value = '';
       }
 
       if (!stakeholders || stakeholders.length === 0) {
@@ -1542,20 +1552,24 @@
       </ul>`;
     }
 
-    async function toggleMyConnection() {
-      const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
+    async function updateMyRole() {
+      const roleSelect = document.getElementById('myRoleSelect');
+      const newRole = roleSelect.value;
+
+      if (!newRole) {
+        // If selecting the placeholder option, remove from team
+        const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
+        if (myStakeholder) {
+          await removeMyConnection();
+        }
+        return;
+      }
 
       try {
-        if (myStakeholder) {
-          // Already connected - do nothing (use Remove button instead)
-          return;
-        }
-
-        // Add self as connected
         const response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'connected' })
+          body: JSON.stringify({ role: newRole })
         });
 
         if (!response.ok) {
@@ -1563,7 +1577,7 @@
             window.AdminNav.redirectToLogin();
             return;
           }
-          throw new Error('Failed to update connection');
+          throw new Error('Failed to update role');
         }
 
         // Refresh stakeholders list
@@ -1572,6 +1586,9 @@
         renderStakeholders();
       } catch (error) {
         alert('Error: ' + error.message);
+        // Revert dropdown to previous value
+        const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
+        roleSelect.value = myStakeholder ? myStakeholder.role : '';
       }
     }
 
@@ -1880,7 +1897,7 @@
         note.value = orgData.engagement_signals.interest_level_note || '';
       }
 
-      modal.style.display = 'flex';
+      modal.style.display = 'block';
     }
 
     function closeInterestLevelModal() {

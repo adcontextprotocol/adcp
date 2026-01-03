@@ -15,16 +15,18 @@
         ]
       },
       {
-        label: 'Members',
+        label: 'Account Management',
         items: [
+          { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
           { href: '/admin/prospects', label: 'Prospects', icon: '🎯' },
-          { href: '/admin/members', label: 'Members', icon: '🏢' },
-          { href: '/admin/users', label: 'Users', icon: '👤' },
+          { href: '/admin/members', label: 'Organizations', icon: '🏢' },
+          { href: '/admin/domain-health', label: 'Domain Health', icon: '🔗' },
         ]
       },
       {
         label: 'Community',
         items: [
+          { href: '/admin/events', label: 'Events', icon: '📅' },
           { href: '/admin/working-groups', label: 'Working Groups', icon: '🏛️' },
           { href: '/admin/perspectives', label: 'Perspectives', icon: '💡' },
         ]
@@ -34,15 +36,6 @@
         items: [
           { href: '/admin/products', label: 'Products', icon: '💳' },
           { href: '/admin/billing', label: 'Stripe Linking', icon: '🔗' },
-        ]
-      },
-      {
-        label: 'Insights',
-        items: [
-          { href: '/admin/insights', label: 'Member Insights', icon: '🧠' },
-          { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
-          { href: '/admin/insight-goals', label: 'Insight Goals', icon: '🎯' },
-          { href: '/admin/outreach', label: 'Outreach', icon: '📣' },
         ]
       },
       {
@@ -56,6 +49,15 @@
           { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
           { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
           { href: '/admin/audit', label: 'Audit Log', icon: '📜' },
+        ]
+      },
+      {
+        label: 'Settings',
+        items: [
+          { href: '/admin/settings', label: 'System Settings', icon: '⚙️' },
+          { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
+          { href: '/admin/outreach', label: 'Outreach Config', icon: '📣' },
+          { href: '/admin/insights', label: 'Raw Insights', icon: '🧠' },
         ]
       }
     ]

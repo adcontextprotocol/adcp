@@ -632,6 +632,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         feedback_tags: feedback_tags || undefined,
         improvement_suggestion: improvement_suggestion || undefined,
         rated_by: req.user?.id || "anonymous",
+        rating_source: 'user',
       });
 
       logger.info(

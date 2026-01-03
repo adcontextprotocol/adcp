@@ -13,6 +13,7 @@ import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { serveHtmlWithConfig } from '../utils/html-config.js';
 import { InsightsDatabase } from '../db/insights-db.js';
+import { getPool } from '../db/client.js';
 import {
   runOutreachScheduler,
   manualOutreach,
@@ -20,6 +21,22 @@ import {
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
 import { invalidateInsightsCache, invalidateGoalsCache } from '../addie/insights-cache.js';
+import {
+  getActionItems,
+  getOpenActionItems,
+  getActionItemStats,
+  completeActionItem,
+  dismissActionItem,
+  snoozeActionItem,
+  createActionItem,
+  getMyAccounts,
+  assignUserStakeholder,
+  removeUserStakeholder,
+  getUserStakeholders,
+  type ActionType,
+  type ActionPriority,
+} from '../db/account-management-db.js';
+import { runMomentumCheck, dryRunMomentumCheck, previewMomentumForUser } from '../addie/jobs/momentum-check.js';
 
 const logger = createLogger('admin-insights-routes');
 const insightsDb = new InsightsDatabase();
@@ -75,6 +92,23 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   // =========================================================================
   // INSIGHT TYPES API
   // =========================================================================
+
+  // GET /api/admin/goal-types - List Addie goal types (for contacts/users filtering)
+  apiRouter.get('/goal-types', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pool = getPool();
+      const result = await pool.query(`
+        SELECT goal_key, name, description, priority
+        FROM addie_goal_types
+        WHERE is_active = TRUE
+        ORDER BY priority DESC
+      `);
+      res.json(result.rows);
+    } catch (error) {
+      logger.error({ err: error }, 'Error listing goal types');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // GET /api/admin/insight-types - List all insight types
   apiRouter.get('/insight-types', requireAuth, requireAdmin, async (req, res) => {
@@ -697,7 +731,14 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         return res.status(400).json({ error: eligibility.reason });
       }
 
-      const result = await manualOutreach(slackUserId);
+      // Pass admin info for auto-assignment
+      const triggeredBy = req.user ? {
+        id: req.user.id,
+        name: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email,
+        email: req.user.email,
+      } : undefined;
+
+      const result = await manualOutreach(slackUserId, triggeredBy);
 
       if (result.success) {
         logger.info({ slackUserId, triggeredBy: req.user?.id }, 'Manual outreach sent');
@@ -718,6 +759,417 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       res.json(eligibility);
     } catch (error) {
       logger.error({ err: error }, 'Error checking outreach eligibility');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/outreach/preview/:slackUserId - Preview what outreach message would be sent
+  apiRouter.get('/outreach/preview/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { slackUserId } = req.params;
+      const pool = getPool();
+
+      // Get user info
+      const userResult = await pool.query(`
+        SELECT
+          sm.*,
+          uc.goal_key,
+          uc.goal_name,
+          uc.goal_reasoning
+        FROM slack_user_mappings sm
+        LEFT JOIN unified_contacts_with_goals uc ON uc.slack_user_id = sm.slack_user_id
+        WHERE sm.slack_user_id = $1
+      `, [slackUserId]);
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const user = userResult.rows[0];
+
+      // Determine outreach type
+      let outreachType: string;
+      if (!user.workos_user_id) {
+        outreachType = 'account_link';
+      } else if (!user.last_outreach_at) {
+        outreachType = 'introduction';
+      } else {
+        outreachType = 'insight_goal';
+      }
+
+      // Get active variant for message template
+      const variantResult = await pool.query(`
+        SELECT name, message_template, tone, approach
+        FROM outreach_variants
+        WHERE is_active = TRUE
+        ORDER BY weight DESC
+        LIMIT 1
+      `);
+
+      const variant = variantResult.rows[0];
+
+      // Get insight goal if applicable
+      let goalQuestion: string | null = null;
+      if (outreachType === 'insight_goal') {
+        const goalResult = await pool.query(`
+          SELECT question FROM insight_goals
+          WHERE is_active = TRUE AND target_unmapped_only = FALSE
+          ORDER BY priority DESC
+          LIMIT 1
+        `);
+        if (goalResult.rows.length > 0) {
+          goalQuestion = goalResult.rows[0].question;
+        }
+      }
+
+      // Build preview message
+      const userName = user.slack_display_name || user.slack_real_name || 'there';
+      let previewMessage = variant?.message_template || '[No active outreach variant configured]';
+      previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
+      if (goalQuestion) {
+        previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
+      }
+
+      // Check eligibility
+      const eligibility = await canContactUser(slackUserId);
+
+      res.json({
+        user: {
+          slack_user_id: user.slack_user_id,
+          slack_display_name: user.slack_display_name,
+          slack_real_name: user.slack_real_name,
+          workos_user_id: user.workos_user_id,
+          last_outreach_at: user.last_outreach_at,
+        },
+        outreach_type: outreachType,
+        addie_goal: {
+          goal_key: user.goal_key,
+          goal_name: user.goal_name,
+          reasoning: user.goal_reasoning,
+        },
+        variant: variant ? {
+          name: variant.name,
+          tone: variant.tone,
+          approach: variant.approach,
+        } : null,
+        preview_message: previewMessage,
+        eligibility,
+        mode: getOutreachMode(),
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing outreach');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =========================================================================
+  // ACTION ITEMS API ROUTES
+  // =========================================================================
+
+  // GET /api/admin/action-items - Get action items with filters
+  apiRouter.get('/action-items', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const {
+        assigned_to,
+        slack_user_id,
+        workos_user_id,
+        org_id,
+        status,
+        action_type,
+        priority,
+        limit,
+        offset,
+      } = req.query;
+
+      const items = await getActionItems({
+        assignedTo: assigned_to as string,
+        slackUserId: slack_user_id as string,
+        workosUserId: workos_user_id as string,
+        orgId: org_id as string,
+        status: status as 'open' | 'snoozed' | 'completed' | 'dismissed',
+        actionType: action_type as ActionType,
+        priority: priority as ActionPriority,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+      });
+
+      res.json({ items });
+    } catch (error) {
+      logger.error({ err: error }, 'Error fetching action items');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/action-items/mine - Get my action items
+  apiRouter.get('/action-items/mine', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const items = await getOpenActionItems(req.user?.id, limit);
+      const stats = await getActionItemStats(req.user?.id);
+
+      res.json({ items, stats });
+    } catch (error) {
+      logger.error({ err: error }, 'Error fetching my action items');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/action-items/stats - Get action item statistics
+  apiRouter.get('/action-items/stats', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const assignedTo = req.query.assigned_to as string | undefined;
+      const stats = await getActionItemStats(assignedTo);
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, 'Error fetching action item stats');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/action-items - Create an action item
+  apiRouter.post('/action-items', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const {
+        slack_user_id,
+        workos_user_id,
+        org_id,
+        assigned_to,
+        action_type,
+        priority,
+        title,
+        description,
+        context,
+      } = req.body;
+
+      if (!action_type || !title) {
+        return res.status(400).json({ error: 'action_type and title are required' });
+      }
+
+      const item = await createActionItem({
+        slackUserId: slack_user_id,
+        workosUserId: workos_user_id,
+        orgId: org_id,
+        assignedTo: assigned_to || req.user?.id,
+        actionType: action_type,
+        priority: priority || 'medium',
+        title,
+        description,
+        context,
+        triggerType: 'manual',
+        triggerId: `manual-${Date.now()}`,
+      });
+
+      res.json(item);
+    } catch (error) {
+      logger.error({ err: error }, 'Error creating action item');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/action-items/:id/complete - Complete an action item
+  apiRouter.post('/action-items/:id/complete', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseIntId(req.params.id);
+      if (id === null) {
+        return res.status(400).json({ error: 'Invalid action item ID' });
+      }
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'User ID not available' });
+      }
+
+      const { resolution_note } = req.body;
+      const item = await completeActionItem(id, req.user.id, resolution_note);
+
+      if (!item) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+
+      res.json(item);
+    } catch (error) {
+      logger.error({ err: error }, 'Error completing action item');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/action-items/:id/dismiss - Dismiss an action item
+  apiRouter.post('/action-items/:id/dismiss', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseIntId(req.params.id);
+      if (id === null) {
+        return res.status(400).json({ error: 'Invalid action item ID' });
+      }
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'User ID not available' });
+      }
+
+      const { resolution_note } = req.body;
+      const item = await dismissActionItem(id, req.user.id, resolution_note);
+
+      if (!item) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+
+      res.json(item);
+    } catch (error) {
+      logger.error({ err: error }, 'Error dismissing action item');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/action-items/:id/snooze - Snooze an action item
+  apiRouter.post('/action-items/:id/snooze', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseIntId(req.params.id);
+      if (id === null) {
+        return res.status(400).json({ error: 'Invalid action item ID' });
+      }
+
+      const { until } = req.body;
+      if (!until) {
+        return res.status(400).json({ error: 'until date is required' });
+      }
+
+      const parsedDate = new Date(until);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid date format for until' });
+      }
+
+      const item = await snoozeActionItem(id, parsedDate);
+
+      if (!item) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+
+      res.json(item);
+    } catch (error) {
+      logger.error({ err: error }, 'Error snoozing action item');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/action-items/check-momentum - Run momentum check job
+  apiRouter.post('/action-items/check-momentum', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await runMomentumCheck();
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, 'Error running momentum check');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/action-items/check-momentum/dry-run - Preview what momentum check would do
+  apiRouter.get('/action-items/check-momentum/dry-run', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await dryRunMomentumCheck();
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, 'Error running momentum check dry-run');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/action-items/preview/:slackUserId - Preview momentum analysis for a specific user
+  apiRouter.get('/action-items/preview/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { slackUserId } = req.params;
+      const result = await previewMomentumForUser(slackUserId);
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error, slackUserId: req.params.slackUserId }, 'Error previewing momentum for user');
+      if (error instanceof Error && error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =========================================================================
+  // ACCOUNT MANAGEMENT API ROUTES
+  // =========================================================================
+
+  // GET /api/admin/my-accounts - Get accounts assigned to current user
+  apiRouter.get('/my-accounts', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const accounts = await getMyAccounts(req.user?.id || '');
+      res.json({ accounts });
+    } catch (error) {
+      logger.error({ err: error }, 'Error fetching my accounts');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/users/:userId/stakeholders - Get stakeholders for a user
+  apiRouter.get('/users/:userId/stakeholders', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { type } = req.query;
+
+      const stakeholders = await getUserStakeholders(
+        type === 'slack' ? userId : undefined,
+        type === 'workos' ? userId : undefined
+      );
+
+      res.json({ stakeholders });
+    } catch (error) {
+      logger.error({ err: error }, 'Error fetching user stakeholders');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/users/:userId/assign - Assign user to admin
+  apiRouter.post('/users/:userId/assign', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { type, role, notes } = req.body;
+
+      if (!req.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const stakeholder = await assignUserStakeholder({
+        slackUserId: type === 'slack' ? userId : undefined,
+        workosUserId: type === 'workos' ? userId : undefined,
+        stakeholderId: req.user.id,
+        stakeholderName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email,
+        stakeholderEmail: req.user.email,
+        role: role || 'owner',
+        reason: 'manual',
+        notes,
+      });
+
+      if (!stakeholder) {
+        return res.status(409).json({ error: 'User already assigned' });
+      }
+
+      res.json(stakeholder);
+    } catch (error) {
+      logger.error({ err: error }, 'Error assigning user');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/admin/users/:userId/unassign - Remove assignment
+  apiRouter.delete('/users/:userId/unassign', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { type } = req.query;
+
+      if (!req.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const removed = await removeUserStakeholder(
+        type === 'slack' ? userId : undefined,
+        type === 'workos' ? userId : undefined,
+        req.user.id
+      );
+
+      res.json({ removed });
+    } catch (error) {
+      logger.error({ err: error }, 'Error unassigning user');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

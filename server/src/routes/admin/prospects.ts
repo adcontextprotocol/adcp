@@ -248,6 +248,12 @@ export function setupProspectRoutes(
 
       // Get stakeholders for all orgs
       const orgIds = result.rows.map((r) => r.workos_organization_id);
+
+      // Early return if no organizations to avoid unnecessary database queries
+      if (orgIds.length === 0) {
+        return res.json([]);
+      }
+
       const stakeholdersResult = await pool.query(
         `
         SELECT organization_id, user_id, user_name, user_email, role
@@ -273,13 +279,15 @@ export function setupProspectRoutes(
       }
 
       // Get Slack user counts per organization
+      // Join through organization_memberships to get the org for each mapped Slack user
       const slackUserCounts = await pool.query(
         `
-        SELECT workos_organization_id, COUNT(*) as slack_user_count
-        FROM slack_user_mappings
-        WHERE workos_organization_id = ANY($1)
-          AND mapping_status = 'mapped'
-        GROUP BY workos_organization_id
+        SELECT om.workos_organization_id, COUNT(DISTINCT sm.slack_user_id) as slack_user_count
+        FROM slack_user_mappings sm
+        JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+        WHERE om.workos_organization_id = ANY($1)
+          AND sm.mapping_status = 'mapped'
+        GROUP BY om.workos_organization_id
       `,
         [orgIds]
       );
@@ -290,19 +298,19 @@ export function setupProspectRoutes(
       // Get linked domains per organization
       const domainsResult = await pool.query(
         `
-        SELECT organization_id, domain, is_primary, verified
+        SELECT workos_organization_id, domain, is_primary, verified
         FROM organization_domains
-        WHERE organization_id = ANY($1)
-        ORDER BY organization_id, is_primary DESC, domain ASC
+        WHERE workos_organization_id = ANY($1)
+        ORDER BY workos_organization_id, is_primary DESC, domain ASC
       `,
         [orgIds]
       );
       const domainsMap = new Map<string, Array<{ domain: string; is_primary: boolean; verified: boolean }>>();
       for (const row of domainsResult.rows) {
-        if (!domainsMap.has(row.organization_id)) {
-          domainsMap.set(row.organization_id, []);
+        if (!domainsMap.has(row.workos_organization_id)) {
+          domainsMap.set(row.workos_organization_id, []);
         }
-        domainsMap.get(row.organization_id)!.push({
+        domainsMap.get(row.workos_organization_id)!.push({
           domain: row.domain,
           is_primary: row.is_primary,
           verified: row.verified,

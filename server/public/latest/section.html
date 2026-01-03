@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Latest | AgenticAdvertising.org</title>
+  <meta name="description" content="Curated content about agentic AI in advertising.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <style>
+    body { padding-top: 60px; background: var(--color-bg-page); }
+
+    .section-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .breadcrumb {
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .breadcrumb a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    .breadcrumb span {
+      color: var(--color-text-secondary);
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .page-header p {
+      font-size: 1rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .articles-list {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .article-card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.15s;
+    }
+
+    .article-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .article-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    .article-source {
+      font-weight: 500;
+    }
+
+    .article-quality {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .article-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .article-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .article-title a:hover {
+      color: var(--color-brand);
+    }
+
+    .article-summary {
+      font-size: 0.9rem;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-bottom: 0.75rem;
+    }
+
+    .article-notes {
+      font-size: 0.85rem;
+      color: var(--color-info-700);
+      background: var(--color-info-50);
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .article-notes strong {
+      font-weight: 600;
+    }
+
+    .article-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .article-tag {
+      font-size: 0.7rem;
+      padding: 0.125rem 0.5rem;
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+      border-radius: 4px;
+    }
+
+    .load-more {
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .load-more button {
+      padding: 0.75rem 2rem;
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .load-more button:hover {
+      background: var(--color-primary-700);
+    }
+
+    .load-more button:disabled {
+      background: var(--color-gray-400);
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-card);
+      border-radius: 8px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--color-text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .section-container { padding: 1rem; }
+      .page-header h1 { font-size: 1.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="section-container">
+    <div class="breadcrumb">
+      <a href="/latest">The Latest</a> <span>/</span> <span id="sectionName">Loading...</span>
+    </div>
+
+    <div class="page-header">
+      <h1 id="pageTitle">Loading...</h1>
+      <p id="pageDescription"></p>
+    </div>
+
+    <div id="loading" class="loading">Loading articles...</div>
+
+    <div id="articles" class="articles-list" style="display: none;"></div>
+
+    <div id="loadMore" class="load-more" style="display: none;">
+      <button onclick="loadMoreArticles()">Load More</button>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    const slug = window.location.pathname.split('/').pop();
+    let offset = 0;
+    const limit = 20;
+    let hasMore = true;
+
+    async function loadSection() {
+      try {
+        const response = await fetch(`/api/latest/sections/${slug}`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            document.getElementById('loading').innerHTML =
+              '<div class="empty-state">Section not found. <a href="/latest">View all sections</a></div>';
+            return;
+          }
+          throw new Error('Failed to load section');
+        }
+
+        const data = await response.json();
+        const section = data.section;
+
+        document.title = `${section.name} | The Latest | AgenticAdvertising.org`;
+        document.getElementById('sectionName').textContent = section.name;
+        document.getElementById('pageTitle').textContent = section.name;
+        document.getElementById('pageDescription').textContent = section.description;
+
+        // Update meta tags
+        document.querySelector('meta[name="description"]')?.setAttribute('content', section.description);
+
+        // Load articles
+        loadArticles();
+      } catch (error) {
+        console.error('Error loading section:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load section.</p>';
+      }
+    }
+
+    async function loadArticles() {
+      try {
+        const response = await fetch(`/api/latest/sections/${slug}/articles?limit=${limit}&offset=${offset}`);
+        if (!response.ok) throw new Error('Failed to load articles');
+
+        const data = await response.json();
+        const articlesDiv = document.getElementById('articles');
+
+        if (data.articles.length === 0 && offset === 0) {
+          articlesDiv.innerHTML = '<div class="empty-state">No articles in this section yet.</div>';
+          articlesDiv.style.display = 'block';
+          document.getElementById('loading').style.display = 'none';
+          return;
+        }
+
+        let html = articlesDiv.innerHTML;
+        for (const article of data.articles) {
+          const tags = (article.relevance_tags || []).slice(0, 5);
+          const tagsHtml = tags.map(t => `<span class="article-tag">${escapeHtml(t)}</span>`).join('');
+          const qualityHtml = article.quality_score ? `<span class="article-quality">${article.quality_score}/5</span>` : '';
+
+          html += `
+            <div class="article-card">
+              <div class="article-meta">
+                ${article.feed_name ? `<span class="article-source">${escapeHtml(article.feed_name)}</span>` : ''}
+                ${qualityHtml}
+              </div>
+              <h2 class="article-title">
+                <a href="${escapeHtml(article.source_url)}" target="_blank" rel="noopener">${escapeHtml(article.title)}</a>
+              </h2>
+              ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
+              ${article.addie_notes ? `<div class="article-notes"><strong>Why it matters:</strong> ${escapeHtml(article.addie_notes)}</div>` : ''}
+              ${tags.length > 0 ? `<div class="article-tags">${tagsHtml}</div>` : ''}
+            </div>
+          `;
+        }
+
+        articlesDiv.innerHTML = html;
+        articlesDiv.style.display = 'block';
+        document.getElementById('loading').style.display = 'none';
+
+        hasMore = data.pagination.has_more;
+        if (hasMore) {
+          document.getElementById('loadMore').style.display = 'block';
+        } else {
+          document.getElementById('loadMore').style.display = 'none';
+        }
+
+        offset += data.articles.length;
+      } catch (error) {
+        console.error('Error loading articles:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load articles.</p>';
+      }
+    }
+
+    async function loadMoreArticles() {
+      const btn = document.querySelector('#loadMore button');
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+
+      await loadArticles();
+
+      btn.disabled = false;
+      btn.textContent = 'Load More';
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadSection();
+  </script>
+</body>
+</html>

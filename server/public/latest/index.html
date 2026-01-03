@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Latest | AgenticAdvertising.org</title>
+  <meta name="description" content="Curated content about agentic AI in advertising. Industry news, research, tutorials, and announcements from the Agentic Advertising Organization.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://agenticadvertising.org/latest">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/latest">
+  <meta property="og:title" content="The Latest | AgenticAdvertising.org">
+  <meta property="og:description" content="Curated content about agentic AI in advertising.">
+  <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://agenticadvertising.org/latest">
+  <meta name="twitter:title" content="The Latest | AgenticAdvertising.org">
+  <meta name="twitter:description" content="Curated content about agentic AI in advertising.">
+  <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <style>
+    body { padding-top: 60px; background: var(--color-bg-page); }
+
+    .latest-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .page-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 0.75rem;
+    }
+
+    .page-header p {
+      font-size: 1.1rem;
+      color: var(--color-text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .sections-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .section-card {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.15s, box-shadow 0.15s;
+      text-decoration: none;
+      display: block;
+    }
+
+    .section-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .section-card h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .section-card p {
+      font-size: 0.9rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: 1rem;
+    }
+
+    .section-card .count {
+      font-size: 0.8rem;
+      color: var(--color-brand);
+      font-weight: 600;
+    }
+
+    .featured-section {
+      margin-top: 3rem;
+    }
+
+    .featured-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .featured-header h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .articles-grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .article-card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 1.25rem;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      transition: background 0.15s;
+    }
+
+    .article-card:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .article-content {
+      flex: 1;
+    }
+
+    .article-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    .article-section {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .article-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .article-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .article-title a:hover {
+      color: var(--color-brand);
+    }
+
+    .article-summary {
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .article-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .article-tag {
+      font-size: 0.7rem;
+      padding: 0.125rem 0.5rem;
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+      border-radius: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--color-text-secondary);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--color-text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .latest-container { padding: 1rem; }
+      .page-header h1 { font-size: 2rem; }
+      .sections-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="latest-container">
+    <div class="page-header">
+      <h1>The Latest</h1>
+      <p>Curated content about agentic AI in advertising, from industry news to tutorials and research.</p>
+    </div>
+
+    <div id="loading" class="loading">Loading sections...</div>
+
+    <div id="sections" class="sections-grid" style="display: none;"></div>
+
+    <div id="featured" class="featured-section" style="display: none;">
+      <div class="featured-header">
+        <h2>Recent Articles</h2>
+      </div>
+      <div id="articles" class="articles-grid"></div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    async function loadSections() {
+      try {
+        const response = await fetch('/api/latest/sections');
+        if (!response.ok) throw new Error('Failed to load sections');
+        const data = await response.json();
+
+        const sectionsDiv = document.getElementById('sections');
+        if (data.sections.length === 0) {
+          sectionsDiv.innerHTML = '<div class="empty-state">No sections available yet.</div>';
+          sectionsDiv.style.display = 'block';
+          document.getElementById('loading').style.display = 'none';
+          return;
+        }
+
+        let html = '';
+        for (const section of data.sections) {
+          html += `
+            <a href="/latest/${escapeHtml(section.slug)}" class="section-card">
+              <h2>${escapeHtml(section.name)}</h2>
+              <p>${escapeHtml(section.description)}</p>
+              <div class="count">${section.article_count} article${section.article_count !== 1 ? 's' : ''}</div>
+            </a>
+          `;
+        }
+
+        sectionsDiv.innerHTML = html;
+        sectionsDiv.style.display = 'grid';
+        document.getElementById('loading').style.display = 'none';
+
+        // Load featured articles
+        loadFeatured();
+      } catch (error) {
+        console.error('Error loading sections:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load sections.</p>';
+      }
+    }
+
+    async function loadFeatured() {
+      try {
+        const response = await fetch('/api/latest/featured?limit=5');
+        if (!response.ok) throw new Error('Failed to load featured');
+        const data = await response.json();
+
+        if (data.articles.length === 0) return;
+
+        const articlesDiv = document.getElementById('articles');
+        let html = '';
+
+        for (const article of data.articles) {
+          const tags = (article.relevance_tags || []).slice(0, 3);
+          const tagsHtml = tags.map(t => `<span class="article-tag">${escapeHtml(t)}</span>`).join('');
+
+          html += `
+            <div class="article-card">
+              <div class="article-content">
+                <div class="article-meta">
+                  <span class="article-section">${escapeHtml(article.section_name)}</span>
+                  ${article.feed_name ? `<span>${escapeHtml(article.feed_name)}</span>` : ''}
+                </div>
+                <h3 class="article-title">
+                  <a href="${escapeHtml(article.source_url)}" target="_blank" rel="noopener">${escapeHtml(article.title)}</a>
+                </h3>
+                ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
+                ${tags.length > 0 ? `<div class="article-tags">${tagsHtml}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        articlesDiv.innerHTML = html;
+        document.getElementById('featured').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading featured:', error);
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadSections();
+  </script>
+</body>
+</html>

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <title>Admin - Working Groups - AdCP Registry</title>
+  <title>Admin - Committees - AdCP Registry</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
@@ -75,6 +75,12 @@
     .badge-archived { background: var(--color-gray-200); color: var(--color-gray-700); }
     .badge-private { background: var(--color-error-100); color: var(--color-error-700); }
     .badge-public { background: var(--color-info-100); color: var(--color-info-700); }
+    /* Committee type badges */
+    .badge-working_group { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-council { background: var(--color-purple-100, #f3e8ff); color: var(--color-purple-700, #7c3aed); }
+    .badge-chapter { background: var(--color-teal-100, #ccfbf1); color: var(--color-teal-700, #0f766e); }
+    .badge-governance { background: var(--color-gray-300); color: var(--color-gray-700); }
+    .badge-event { background: var(--color-warning-100); color: var(--color-warning-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -312,8 +318,8 @@
       <div class="card">
         <div class="header-bar">
           <div>
-            <h1>Working Groups</h1>
-            <p class="subtitle">Manage AAO working groups and memberships</p>
+            <h1>Committees</h1>
+            <p class="subtitle">Manage working groups, councils, chapters, and governance committees</p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
             <a href="/api/admin/users/memberships?format=csv" class="btn btn-secondary" download style="text-decoration: none;">
@@ -324,19 +330,27 @@
               </svg>
               Export All
             </a>
-            <button class="btn btn-primary" onclick="showCreateModal()">+ Add Working Group</button>
+            <button class="btn btn-primary" onclick="showCreateModal()">+ Add Committee</button>
           </div>
         </div>
 
         <!-- Page-level tabs for Groups vs All Members -->
         <div class="tabs" style="margin-bottom: var(--space-5);">
-          <div class="tab active" id="pageTabGroups" onclick="showPageTab('groups')">Working Groups</div>
+          <div class="tab active" id="pageTabGroups" onclick="showPageTab('groups')">Committees</div>
           <div class="tab" id="pageTabMembers" onclick="showPageTab('allMembers')">All Members</div>
         </div>
 
         <!-- Groups Tab Content -->
         <div id="groupsTabContent">
           <div class="filter-bar">
+            <select id="typeFilter" onchange="renderGroupsList()">
+              <option value="">All Types</option>
+              <option value="working_group">Working Groups</option>
+              <option value="council">Industry Councils</option>
+              <option value="chapter">Regional Chapters</option>
+              <option value="governance">Governance</option>
+              <option value="event">Event Groups</option>
+            </select>
             <select id="statusFilter" onchange="renderGroupsList()">
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -351,7 +365,7 @@
           </div>
 
           <div id="groupsList" class="groups-list">
-            Loading working groups...
+            Loading committees...
           </div>
         </div>
 
@@ -389,7 +403,7 @@
   <!-- Create/Edit Modal -->
   <div id="groupModal" class="modal-overlay">
     <div class="modal">
-      <h2 id="modalTitle">Add Working Group</h2>
+      <h2 id="modalTitle">Add Committee</h2>
 
       <div id="detailsTab">
         <form id="groupForm" onsubmit="saveGroup(event)" autocomplete="off">
@@ -407,12 +421,30 @@
               <small>URL path: /working-groups/{slug}</small>
             </div>
             <div class="form-group">
+              <label>Committee Type</label>
+              <select id="committeeType" onchange="updateRegionVisibility()">
+                <option value="working_group">Working Group</option>
+                <option value="council">Industry Council</option>
+                <option value="chapter">Regional Chapter</option>
+                <option value="governance">Governance</option>
+                <option value="event">Event Group</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
               <label>Status</label>
               <select id="status">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="archived">Archived</option>
               </select>
+            </div>
+            <div class="form-group" id="regionGroup" style="display: none;">
+              <label>Region</label>
+              <input type="text" id="region" placeholder="e.g., New York, London, San Francisco">
+              <small>Location for regional chapters</small>
             </div>
           </div>
 
@@ -494,7 +526,7 @@
   <!-- Delete Confirmation Modal -->
   <div id="deleteModal" class="modal-overlay">
     <div class="modal" style="max-width: 450px;">
-      <h2>Delete Working Group</h2>
+      <h2>Delete Committee</h2>
       <p style="margin: var(--space-5) 0; color: var(--color-text-secondary);">
         Are you sure you want to delete "<span id="deleteTitle"></span>"? This will also remove all memberships.
       </p>
@@ -534,7 +566,7 @@
       } catch (error) {
         console.error('Error loading groups:', error);
         document.getElementById('loading').innerHTML =
-          '<p style="color: var(--color-error-600);">Failed to load working groups. <a href="/auth/login">Try logging in again</a></p>';
+          '<p style="color: var(--color-error-600);">Failed to load committees. <a href="/auth/login">Try logging in again</a></p>';
       }
     }
 
@@ -648,13 +680,26 @@
       memberSearchTimeout = setTimeout(renderAllMembers, 300);
     }
 
+    // Committee type labels for display
+    const COMMITTEE_TYPE_LABELS = {
+      working_group: 'Working Group',
+      council: 'Industry Council',
+      chapter: 'Regional Chapter',
+      governance: 'Governance',
+      event: 'Event Group'
+    };
+
     // Render groups list
     function renderGroupsList() {
       const listDiv = document.getElementById('groupsList');
+      const typeFilter = document.getElementById('typeFilter').value;
       const statusFilter = document.getElementById('statusFilter').value;
       const accessFilter = document.getElementById('accessFilter').value;
 
       let filtered = groups;
+      if (typeFilter) {
+        filtered = filtered.filter(g => g.committee_type === typeFilter);
+      }
       if (statusFilter) {
         filtered = filtered.filter(g => g.status === statusFilter);
       }
@@ -665,24 +710,35 @@
       }
 
       if (filtered.length === 0) {
-        listDiv.innerHTML = '<div class="empty-state">No working groups found.</div>';
+        listDiv.innerHTML = '<div class="empty-state">No committees found.</div>';
         return;
       }
 
       let html = '';
       filtered.forEach(group => {
+        const committeeType = group.committee_type || 'working_group';
+        const typeBadge = `<span class="badge badge-${committeeType}">${COMMITTEE_TYPE_LABELS[committeeType] || committeeType}</span>`;
         const statusBadge = `<span class="badge badge-${group.status}">${group.status}</span>`;
         const accessBadge = group.is_private
           ? '<span class="badge badge-private">Private</span>'
           : '<span class="badge badge-public">Public</span>';
+        const regionDisplay = committeeType === 'chapter' && group.region
+          ? `<span>📍 ${escapeHtml(group.region)}</span>`
+          : '';
+        const eventDateDisplay = committeeType === 'event' && group.event_start_date
+          ? `<span>📅 ${new Date(group.event_start_date).toLocaleDateString()}</span>`
+          : '';
 
         html += `
           <div class="group-item">
             <div class="group-info">
               <h3>${escapeHtml(group.name)}</h3>
               <div class="group-meta">
+                ${typeBadge}
                 ${statusBadge}
                 ${accessBadge}
+                ${regionDisplay}
+                ${eventDateDisplay}
                 <span>${group.member_count || 0} members</span>
                 ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || 'Unknown')).join(', ')}</span>` : ''}
               </div>
@@ -943,14 +999,24 @@
       }
     }
 
+    // Show/hide region field based on committee type
+    function updateRegionVisibility() {
+      const committeeType = document.getElementById('committeeType').value;
+      const regionGroup = document.getElementById('regionGroup');
+      regionGroup.style.display = committeeType === 'chapter' ? 'block' : 'none';
+    }
+
     // Show create modal
     function showCreateModal() {
       editingGroup = null;
-      document.getElementById('modalTitle').textContent = 'Add Working Group';
+      document.getElementById('modalTitle').textContent = 'Add Committee';
       document.getElementById('groupForm').reset();
       document.getElementById('groupId').value = '';
+      document.getElementById('committeeType').value = 'working_group';
+      document.getElementById('region').value = '';
       clearLeaders();
       validateSlackUrl(); // Reset status message
+      updateRegionVisibility(); // Hide region for non-chapters
       updateMembersSectionVisibility(); // Hide members section for new groups
       document.getElementById('groupModal').style.display = 'flex';
     }
@@ -963,7 +1029,7 @@
 
         editingGroup = await response.json();
 
-        document.getElementById('modalTitle').textContent = 'Manage Working Group';
+        document.getElementById('modalTitle').textContent = 'Manage Committee';
         document.getElementById('groupId').value = editingGroup.id;
         document.getElementById('name').value = editingGroup.name || '';
         document.getElementById('slug').value = editingGroup.slug || '';
@@ -971,6 +1037,9 @@
         document.getElementById('slackUrl').value = editingGroup.slack_channel_url || '';
         validateSlackUrl();
         document.getElementById('status').value = editingGroup.status || 'active';
+        document.getElementById('committeeType').value = editingGroup.committee_type || 'working_group';
+        document.getElementById('region').value = editingGroup.region || '';
+        updateRegionVisibility();
         document.getElementById('isPrivate').checked = editingGroup.is_private || false;
         document.getElementById('displayOrder').value = editingGroup.display_order || 0;
 
@@ -1007,6 +1076,11 @@
       // Clear sync result
       document.getElementById('syncResult').style.display = 'none';
       document.getElementById('syncResult').innerHTML = '';
+
+      // Reset committee type fields
+      document.getElementById('committeeType').value = 'working_group';
+      document.getElementById('region').value = '';
+      updateRegionVisibility();
     }
 
     // Save group
@@ -1014,12 +1088,15 @@
       event.preventDefault();
 
       const id = document.getElementById('groupId').value;
+      const committeeType = document.getElementById('committeeType').value;
       const data = {
         name: document.getElementById('name').value.trim(),
         slug: document.getElementById('slug').value.trim(),
         description: document.getElementById('description').value.trim() || null,
         slack_channel_url: document.getElementById('slackUrl').value.trim() || null,
         status: document.getElementById('status').value,
+        committee_type: committeeType,
+        region: committeeType === 'chapter' ? (document.getElementById('region').value.trim() || null) : null,
         is_private: document.getElementById('isPrivate').checked,
         display_order: parseInt(document.getElementById('displayOrder').value) || 0,
         leader_user_ids: currentLeaders.map(l => l.user_id),

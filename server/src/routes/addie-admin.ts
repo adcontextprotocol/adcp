@@ -387,12 +387,21 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const stats = await threadService.getStats();
-      const channelStats = await threadService.getChannelStats();
+      const { timeframe } = req.query;
+
+      // Validate timeframe parameter
+      const validTimeframes = ['24h', '7d', '30d', 'all'] as const;
+      const tf = validTimeframes.includes(timeframe as typeof validTimeframes[number])
+        ? (timeframe as '24h' | '7d' | '30d' | 'all')
+        : 'all';
+
+      const stats = await threadService.getStats(tf);
+      const channelStats = await threadService.getChannelStats(tf);
 
       res.json({
         ...stats,
         by_channel: channelStats,
+        timeframe: tf,
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching thread stats");
@@ -525,9 +534,28 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         feedback_tags,
         improvement_suggestion,
         rated_by: req.user?.id || "admin",
+        rating_source: 'admin',
       });
 
-      logger.info({ messageId, rating }, "Added feedback to message");
+      // Also mark the thread as reviewed when admin provides feedback
+      const threadResult = await query<{ thread_id: string }>(
+        `SELECT thread_id FROM addie_thread_messages WHERE message_id = $1`,
+        [messageId]
+      );
+      if (threadResult.rows[0]) {
+        try {
+          await threadService.reviewThread(
+            threadResult.rows[0].thread_id,
+            req.user?.id || "admin",
+            rating_notes || undefined
+          );
+        } catch (reviewError) {
+          // Log but don't fail - feedback was saved successfully
+          logger.warn({ err: reviewError, threadId: threadResult.rows[0].thread_id }, "Failed to mark thread as reviewed after feedback");
+        }
+      }
+
+      logger.info({ messageId, rating, ratingSource: 'admin' }, "Added feedback to message");
       res.json({ success: true, message_id: messageId });
     } catch (error) {
       logger.error({ err: error }, "Error adding message feedback");
@@ -1709,6 +1737,325 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unable to preview rule changes",
+      });
+    }
+  });
+
+  // =========================================================================
+  // EVAL FRAMEWORK API (mounted at /api/admin/addie/eval)
+  // Test rule changes against historical interactions
+  // =========================================================================
+
+  // Lazy-load eval service to avoid circular dependencies
+  const getEvalServiceLazy = async () => {
+    const { getEvalService } = await import("../addie/eval-service.js");
+    return getEvalService();
+  };
+
+  // POST /api/admin/addie/eval/runs - Create and start an eval run
+  apiRouter.post("/eval/runs", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { proposed_rule_ids, criteria } = req.body;
+
+      if (!proposed_rule_ids || !Array.isArray(proposed_rule_ids) || proposed_rule_ids.length === 0) {
+        return res.status(400).json({ error: "proposed_rule_ids array is required" });
+      }
+
+      // Validate rule IDs are numbers
+      if (!proposed_rule_ids.every((id: unknown) => typeof id === "number")) {
+        return res.status(400).json({ error: "proposed_rule_ids must be an array of numbers" });
+      }
+
+      // Validate criteria if provided
+      const validatedCriteria: {
+        minRating?: number;
+        maxRating?: number;
+        startDate?: Date;
+        endDate?: Date;
+        channel?: 'slack' | 'web' | 'a2a' | 'email';
+        toolsUsed?: string[];
+        flaggedOnly?: boolean;
+        sampleSize?: number;
+        randomSeed?: number;
+      } = { sampleSize: 10 };
+
+      if (criteria && typeof criteria === "object") {
+        if (criteria.minRating !== undefined) {
+          if (typeof criteria.minRating !== "number" || criteria.minRating < 1 || criteria.minRating > 5) {
+            return res.status(400).json({ error: "minRating must be a number between 1 and 5" });
+          }
+          validatedCriteria.minRating = criteria.minRating;
+        }
+        if (criteria.maxRating !== undefined) {
+          if (typeof criteria.maxRating !== "number" || criteria.maxRating < 1 || criteria.maxRating > 5) {
+            return res.status(400).json({ error: "maxRating must be a number between 1 and 5" });
+          }
+          validatedCriteria.maxRating = criteria.maxRating;
+        }
+        if (criteria.sampleSize !== undefined) {
+          if (typeof criteria.sampleSize !== "number" || criteria.sampleSize < 1 || criteria.sampleSize > 100) {
+            return res.status(400).json({ error: "sampleSize must be a number between 1 and 100" });
+          }
+          validatedCriteria.sampleSize = criteria.sampleSize;
+        }
+        if (criteria.randomSeed !== undefined) {
+          if (typeof criteria.randomSeed !== "number") {
+            return res.status(400).json({ error: "randomSeed must be a number" });
+          }
+          validatedCriteria.randomSeed = criteria.randomSeed;
+        }
+        if (criteria.channel !== undefined) {
+          const validChannels = ["slack", "web", "a2a", "email"] as const;
+          if (typeof criteria.channel !== "string" || !validChannels.includes(criteria.channel as typeof validChannels[number])) {
+            return res.status(400).json({ error: `channel must be one of: ${validChannels.join(", ")}` });
+          }
+          validatedCriteria.channel = criteria.channel as typeof validChannels[number];
+        }
+        if (criteria.flaggedOnly !== undefined) {
+          validatedCriteria.flaggedOnly = Boolean(criteria.flaggedOnly);
+        }
+        if (criteria.toolsUsed !== undefined) {
+          if (!Array.isArray(criteria.toolsUsed) || !criteria.toolsUsed.every((t: unknown) => typeof t === "string")) {
+            return res.status(400).json({ error: "toolsUsed must be an array of strings" });
+          }
+          validatedCriteria.toolsUsed = criteria.toolsUsed;
+        }
+        if (criteria.startDate !== undefined) {
+          const parsed = new Date(criteria.startDate);
+          if (isNaN(parsed.getTime())) {
+            return res.status(400).json({ error: "startDate must be a valid date" });
+          }
+          validatedCriteria.startDate = parsed;
+        }
+        if (criteria.endDate !== undefined) {
+          const parsed = new Date(criteria.endDate);
+          if (isNaN(parsed.getTime())) {
+            return res.status(400).json({ error: "endDate must be a valid date" });
+          }
+          validatedCriteria.endDate = parsed;
+        }
+      }
+
+      const evalService = await getEvalServiceLazy();
+
+      const run = await evalService.createAndStartRun({
+        proposedRuleIds: proposed_rule_ids,
+        criteria: validatedCriteria,
+        createdBy: req.user?.id || "admin",
+      });
+
+      logger.info({ runId: run.id, proposedRuleIds: proposed_rule_ids }, "Created eval run");
+      res.status(201).json(run);
+    } catch (error) {
+      logger.error({ err: error }, "Error creating eval run");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unable to create eval run",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/eval/runs - List eval runs
+  apiRouter.get("/eval/runs", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { limit, offset } = req.query;
+
+      const evalService = await getEvalServiceLazy();
+
+      const runs = await evalService.listRuns(
+        limit ? parseInt(limit as string, 10) : 20,
+        offset ? parseInt(offset as string, 10) : 0
+      );
+
+      res.json({
+        runs,
+        total: runs.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching eval runs");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch eval runs",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/eval/runs/:id - Get a specific eval run
+  apiRouter.get("/eval/runs/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid run ID" });
+      }
+
+      const evalService = await getEvalServiceLazy();
+
+      const run = await evalService.getRun(numericId);
+
+      if (!run) {
+        return res.status(404).json({ error: "Eval run not found" });
+      }
+
+      res.json(run);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching eval run");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch eval run",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/eval/runs/:id/results - Get results for an eval run
+  apiRouter.get("/eval/runs/:id/results", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid run ID" });
+      }
+
+      const { limit, offset } = req.query;
+
+      const evalService = await getEvalServiceLazy();
+
+      const results = await evalService.getResults(
+        numericId,
+        limit ? parseInt(limit as string, 10) : 100,
+        offset ? parseInt(offset as string, 10) : 0
+      );
+
+      res.json({
+        results,
+        total: results.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching eval results");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch eval results",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/eval/results/:id/review - Submit a review verdict for an eval result
+  apiRouter.put("/eval/results/:id/review", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid result ID" });
+      }
+
+      const { verdict, notes } = req.body;
+
+      const validVerdicts = ["improved", "same", "worse", "uncertain"];
+      if (!verdict || !validVerdicts.includes(verdict)) {
+        return res.status(400).json({
+          error: `verdict must be one of: ${validVerdicts.join(", ")}`,
+        });
+      }
+
+      const evalService = await getEvalServiceLazy();
+
+      await evalService.submitReview(numericId, verdict, req.user?.id || "admin", notes);
+
+      logger.info({ resultId: numericId, verdict }, "Submitted eval result review");
+      res.json({ success: true, result_id: numericId, verdict });
+    } catch (error) {
+      logger.error({ err: error }, "Error submitting eval result review");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to submit eval result review",
+      });
+    }
+  });
+
+  // =========================================================================
+  // HOME PREVIEW API (for debugging/testing Addie Home for any user)
+  // =========================================================================
+
+  // GET /api/admin/addie/home/preview - Preview Addie Home for any user
+  apiRouter.get("/home/preview", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { user_id, email, slack_user_id, format } = req.query;
+
+      if (!user_id && !email && !slack_user_id) {
+        return res.status(400).json({
+          error: "One of user_id (WorkOS), email, or slack_user_id is required",
+        });
+      }
+
+      // Validate input parameters
+      if (slack_user_id && (typeof slack_user_id !== "string" || !/^U[A-Z0-9]+$/i.test(slack_user_id))) {
+        return res.status(400).json({ error: "Invalid slack_user_id format" });
+      }
+      if (user_id && (typeof user_id !== "string" || user_id.length > 100)) {
+        return res.status(400).json({ error: "Invalid user_id format" });
+      }
+      if (email && (typeof email !== "string" || !email.includes("@") || email.length > 254)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      // Dynamic import to avoid circular dependencies
+      const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import("../addie/home/index.js");
+      const { getHomeContent } = await import("../addie/home/index.js");
+
+      let content;
+      let targetUserId: string | undefined;
+
+      if (slack_user_id) {
+        // Use Slack-based home content
+        content = await getHomeContent(slack_user_id as string, { forceRefresh: true });
+        targetUserId = slack_user_id as string;
+      } else {
+        // Look up WorkOS user by ID or email
+        const { workos } = await import("../auth/workos-client.js");
+
+        let workosUserId: string;
+
+        if (user_id) {
+          workosUserId = user_id as string;
+        } else if (email) {
+          // Look up user by email
+          const users = await workos!.userManagement.listUsers({
+            email: email as string,
+          });
+
+          if (users.data.length === 0) {
+            return res.status(404).json({
+              error: "User not found",
+              email: email,
+            });
+          }
+
+          workosUserId = users.data[0].id;
+        } else {
+          return res.status(400).json({ error: "Invalid request" });
+        }
+
+        targetUserId = workosUserId;
+        content = await getWebHomeContent(workosUserId);
+      }
+
+      // Return based on format
+      if (format === "html") {
+        const html = renderHomeHTML(content);
+        res.json({
+          user_id: targetUserId,
+          html,
+          css: ADDIE_HOME_CSS,
+          content, // Also include raw content for debugging
+        });
+      } else {
+        res.json({
+          user_id: targetUserId,
+          content,
+        });
+      }
+    } catch (error) {
+      logger.error({ err: error }, "Error previewing Addie Home");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unable to preview Addie Home",
       });
     }
   });

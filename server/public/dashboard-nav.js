@@ -4,6 +4,58 @@
 (function() {
   'use strict';
 
+  // Check if legacy org needs profile info - runs on all dashboard pages
+  // If profile info is missing, redirect to main dashboard which shows the modal
+  async function checkProfileInfoRequired() {
+    // Skip if already on main dashboard (it handles its own modal)
+    const currentPath = window.location.pathname;
+    if (currentPath === '/dashboard' || currentPath === '/dashboard/') return;
+
+    // Skip if we already checked this session
+    if (sessionStorage.getItem('profileInfoChecked')) return;
+
+    try {
+      // Get current user and org
+      const meResponse = await fetch('/api/me', { credentials: 'include' });
+      if (!meResponse.ok) return; // Not logged in or error - let page handle it
+
+      const meData = await meResponse.json();
+      const orgs = meData.organizations || [];
+      if (orgs.length === 0) return; // No orgs - let page handle redirect to onboarding
+
+      // Get selected org from URL or localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      const selectedOrgId = urlParams.get('org') || localStorage.getItem('selectedOrgId') || orgs[0].id;
+      const selectedOrg = orgs.find(o => o.id === selectedOrgId) || orgs[0];
+
+      // Fetch billing info for this org
+      const billingResponse = await fetch(`/api/organizations/${selectedOrg.id}/billing`, { credentials: 'include' });
+      if (!billingResponse.ok) return; // Error - let page handle it
+
+      const billingData = await billingResponse.json();
+
+      // Check if org needs profile info (non-personal, no subscription, missing company_type or revenue_tier)
+      const isPersonal = billingData.is_personal;
+      const hasSubscription = billingData.subscription?.status === 'active';
+      const hasProfileInfo = billingData.company_type && billingData.revenue_tier;
+
+      if (!isPersonal && !hasSubscription && !hasProfileInfo) {
+        // Redirect to main dashboard which will show the profile modal
+        window.location.href = '/dashboard?org=' + selectedOrg.id;
+        return;
+      }
+
+      // Mark as checked for this session
+      sessionStorage.setItem('profileInfoChecked', 'true');
+    } catch (error) {
+      console.error('Error checking profile info:', error);
+      // Don't block on errors - let the page load
+    }
+  }
+
+  // Run check immediately (before page fully loads)
+  checkProfileInfoRequired();
+
   // Navigation configuration
   // When on dashboard page, use anchor links; otherwise use full page links
   const isDashboardPage = window.location.pathname === '/dashboard' || window.location.pathname === '/dashboard/';

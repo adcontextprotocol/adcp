@@ -242,6 +242,61 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
 }
 
 /**
+ * Upsert user to local users table
+ * Called on user.created and user.updated events
+ */
+async function upsertUser(user: UserData): Promise<void> {
+  const pool = getPool();
+
+  await pool.query(
+    `INSERT INTO users (
+      workos_user_id,
+      email,
+      first_name,
+      last_name,
+      email_verified,
+      workos_created_at,
+      workos_updated_at,
+      created_at,
+      updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+    ON CONFLICT (workos_user_id) DO UPDATE SET
+      email = EXCLUDED.email,
+      first_name = EXCLUDED.first_name,
+      last_name = EXCLUDED.last_name,
+      email_verified = EXCLUDED.email_verified,
+      workos_updated_at = EXCLUDED.workos_updated_at,
+      updated_at = NOW()`,
+    [
+      user.id,
+      user.email,
+      user.first_name,
+      user.last_name,
+      user.email_verified,
+      user.created_at,
+      user.updated_at,
+    ]
+  );
+
+  logger.info({ userId: user.id, email: user.email }, 'Upserted user');
+}
+
+/**
+ * Delete user from local users table
+ * Called on user.deleted events
+ */
+async function deleteUser(userId: string): Promise<void> {
+  const pool = getPool();
+
+  await pool.query(
+    `DELETE FROM users WHERE workos_user_id = $1`,
+    [userId]
+  );
+
+  logger.info({ userId }, 'Deleted user');
+}
+
+/**
  * Update user details across all their memberships
  */
 async function updateUserAcrossMemberships(user: UserData): Promise<void> {
@@ -604,8 +659,16 @@ export function createWorkOSWebhooksRouter(): Router {
             break;
           }
 
+          case 'user.created': {
+            const user = event.data as unknown as UserData;
+            await upsertUser(user);
+            invalidateUnifiedUsersCache();
+            break;
+          }
+
           case 'user.updated': {
             const user = event.data as unknown as UserData;
+            await upsertUser(user);
             await updateUserAcrossMemberships(user);
             invalidateUnifiedUsersCache();
             break;
@@ -613,15 +676,9 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.deleted': {
             const user = event.data as unknown as UserData;
+            await deleteUser(user.id);
             await deleteUserMemberships(user.id);
             invalidateUnifiedUsersCache();
-            break;
-          }
-
-          case 'user.created': {
-            // User created doesn't necessarily mean they have a membership yet
-            // We'll get organization_membership.created when they join an org
-            logger.debug({ userId: (event.data as unknown as UserData).id }, 'User created event (no action needed)');
             break;
           }
 
@@ -781,6 +838,119 @@ export async function backfillOrganizationMemberships(): Promise<{
     return result;
   } catch (error) {
     logger.error({ error }, 'Organization memberships backfill failed');
+    result.errors.push(`Backfill failed: ${error}`);
+    return result;
+  }
+}
+
+/**
+ * Backfill users table from WorkOS
+ * Fetches all users from all organizations and upserts them into the users table
+ */
+export async function backfillUsers(): Promise<{
+  usersProcessed: number;
+  usersCreated: number;
+  errors: string[];
+}> {
+  const pool = getPool();
+  const result = {
+    usersProcessed: 0,
+    usersCreated: 0,
+    errors: [] as string[],
+  };
+
+  logger.info('Starting users backfill from WorkOS');
+
+  try {
+    // Get all organizations from our database
+    const orgsResult = await pool.query(
+      `SELECT workos_organization_id FROM organizations`
+    );
+
+    const processedUserIds = new Set<string>();
+    const BATCH_SIZE = 10;
+    const orgs = orgsResult.rows;
+
+    for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
+      const batch = orgs.slice(i, i + BATCH_SIZE);
+
+      await Promise.all(batch.map(async (org) => {
+        try {
+          // Fetch users for this org from WorkOS
+          let after: string | undefined;
+          do {
+            const usersResponse = await workos.userManagement.listUsers({
+              organizationId: org.workos_organization_id,
+              limit: 100,
+              after,
+            });
+
+            for (const user of usersResponse.data) {
+              // Skip if we've already processed this user (they may be in multiple orgs)
+              if (processedUserIds.has(user.id)) {
+                continue;
+              }
+              processedUserIds.add(user.id);
+
+              try {
+                await pool.query(
+                  `INSERT INTO users (
+                    workos_user_id,
+                    email,
+                    first_name,
+                    last_name,
+                    email_verified,
+                    workos_created_at,
+                    workos_updated_at,
+                    created_at,
+                    updated_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+                  ON CONFLICT (workos_user_id) DO UPDATE SET
+                    email = EXCLUDED.email,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    email_verified = EXCLUDED.email_verified,
+                    workos_updated_at = EXCLUDED.workos_updated_at,
+                    updated_at = NOW()`,
+                  [
+                    user.id,
+                    user.email,
+                    user.firstName,
+                    user.lastName,
+                    user.emailVerified,
+                    user.createdAt,
+                    user.updatedAt,
+                  ]
+                );
+                result.usersCreated++;
+              } catch (userError) {
+                const msg = `Failed to upsert user ${user.id}: ${userError}`;
+                result.errors.push(msg);
+                logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
+              }
+
+              result.usersProcessed++;
+            }
+
+            after = usersResponse.data.length === 100
+              ? usersResponse.data[usersResponse.data.length - 1].id
+              : undefined;
+          } while (after);
+        } catch (orgError) {
+          const msg = `Failed to fetch users for org ${org.workos_organization_id}: ${orgError}`;
+          result.errors.push(msg);
+          logger.warn({ error: orgError, orgId: org.workos_organization_id }, 'Backfill: failed to fetch org users');
+        }
+      }));
+    }
+
+    // Invalidate cache after backfill
+    invalidateUnifiedUsersCache();
+
+    logger.info(result, 'Completed users backfill');
+    return result;
+  } catch (error) {
+    logger.error({ error }, 'Users backfill failed');
     result.errors.push(`Backfill failed: ${error}`);
     return result;
   }

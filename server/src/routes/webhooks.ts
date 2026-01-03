@@ -15,6 +15,20 @@ import {
   getFeedByEmailSlug,
   createEmailPerspective,
 } from '../db/industry-feeds-db.js';
+import {
+  parseWebhookPayload as parseLumaWebhook,
+  type LumaWebhookPayload,
+} from '../luma/client.js';
+import { eventsDb } from '../db/events-db.js';
+import {
+  upsertEmailContact,
+  parseEmailAddress,
+  type EmailContactResult,
+} from '../db/contacts-db.js';
+import {
+  handleEmailInvocation,
+  type InboundEmailContext,
+} from '../addie/email-handler.js';
 
 const logger = createLogger('webhooks');
 
@@ -170,136 +184,49 @@ function getExternalParticipants(
 }
 
 /**
- * Parse email address to extract name and email parts
- * Handles formats like "John Doe <john@example.com>" or just "john@example.com"
+ * Parse a comma-separated email header into individual addresses
+ * Handles formats like: "John Doe" <john@example.com>, jane@example.com
+ * Splits on commas that aren't inside quoted strings (display names)
  */
-function parseEmailAddress(emailStr: string): { email: string; displayName: string | null; domain: string } {
-  // Match: "Display Name" <email@domain> or Display Name <email@domain>
-  const withBracketsMatch = emailStr.match(/^(?:"?([^"<]+)"?\s*)?<([^>]+@([^>]+))>$/);
-  if (withBracketsMatch) {
-    return {
-      displayName: withBracketsMatch[1]?.trim() || null,
-      email: withBracketsMatch[2].toLowerCase(),
-      domain: withBracketsMatch[3].toLowerCase(),
-    };
-  }
-
-  // Simple email without brackets: email@domain
-  const simpleMatch = emailStr.match(/^([^@\s]+)@([^@\s]+)$/);
-  if (simpleMatch) {
-    return {
-      displayName: null,
-      email: emailStr.toLowerCase(),
-      domain: simpleMatch[2].toLowerCase(),
-    };
-  }
-
-  // Fallback: treat whole string as email
-  const atIndex = emailStr.indexOf('@');
-  return {
-    displayName: null,
-    email: emailStr.toLowerCase(),
-    domain: atIndex > 0 ? emailStr.substring(atIndex + 1).toLowerCase() : '',
-  };
+function parseEmailHeaderList(headerValue: string | undefined): string[] {
+  if (!headerValue) return [];
+  // Split on comma followed by optional space, but not commas inside quoted strings
+  // This regex splits on commas that are followed by text that doesn't have unbalanced quotes
+  return headerValue
+    .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+    .map(addr => addr.trim())
+    .filter(Boolean);
 }
+
+// parseEmailAddress is now imported from contacts-db.js
 
 /**
  * Get or create an email contact from pre-parsed participant info
+ * Wrapper around shared upsertEmailContact for backwards compatibility
  */
 async function getOrCreateEmailContact(
   participant: { email: string; displayName: string | null; domain: string }
 ): Promise<{
   contactId: string;
   organizationId: string | null;
+  workosUserId: string | null;
   isNew: boolean;
   email: string;
   domain: string;
 }> {
-  const pool = getPool();
-  const { email, displayName, domain } = participant;
-
-  // Check if contact exists
-  const existingResult = await pool.query(
-    `SELECT id, organization_id, mapping_status FROM email_contacts WHERE email = $1`,
-    [email]
-  );
-
-  if (existingResult.rows.length > 0) {
-    const contact = existingResult.rows[0];
-
-    // Update last_seen and increment count
-    await pool.query(
-      `UPDATE email_contacts SET last_seen_at = NOW(), email_count = email_count + 1 WHERE id = $1`,
-      [contact.id]
-    );
-
-    logger.debug({ email, contactId: contact.id, isNew: false }, 'Found existing email contact');
-    return {
-      contactId: contact.id,
-      organizationId: contact.organization_id,
-      isNew: false,
-      email,
-      domain,
-    };
-  }
-
-  // New contact - check if they match an existing org member
-  // organization_memberships is synced from WorkOS and contains user-org mappings
-  let organizationId: string | null = null;
-  let workosUserId: string | null = null;
-  try {
-    const memberResult = await pool.query(
-      `SELECT om.workos_organization_id, om.workos_user_id
-       FROM organization_memberships om
-       WHERE om.email = $1
-       LIMIT 1`,
-      [email]
-    );
-    organizationId = memberResult.rows[0]?.workos_organization_id || null;
-    workosUserId = memberResult.rows[0]?.workos_user_id || null;
-  } catch (memberLookupError) {
-    // Table may not exist in all environments - proceed with unmapped contact
-    logger.debug({ error: memberLookupError, email }, 'Org member lookup failed, proceeding with unmapped contact');
-  }
-  const mappingStatus = organizationId ? 'mapped' : 'unmapped';
-  const mappingSource = organizationId ? 'email_auto' : null;
-
-  // Create new contact
-  const insertResult = await pool.query(
-    `INSERT INTO email_contacts (
-      email, display_name, domain,
-      workos_user_id, organization_id,
-      mapping_status, mapping_source,
-      mapped_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING id`,
-    [
-      email,
-      displayName,
-      domain,
-      workosUserId,
-      organizationId,
-      mappingStatus,
-      mappingSource,
-      organizationId ? new Date() : null,
-    ]
-  );
-
-  logger.info({
-    email,
-    domain,
-    contactId: insertResult.rows[0].id,
-    organizationId,
-    mappingStatus,
-    isNew: true,
-  }, 'Created new email contact');
+  const result = await upsertEmailContact({
+    email: participant.email,
+    displayName: participant.displayName,
+    domain: participant.domain,
+  });
 
   return {
-    contactId: insertResult.rows[0].id,
-    organizationId,
-    isNew: true,
-    email,
-    domain,
+    contactId: result.contactId,
+    organizationId: result.organizationId,
+    workosUserId: result.workosUserId,
+    isNew: result.isNew,
+    email: result.email,
+    domain: result.domain,
   };
 }
 
@@ -312,6 +239,7 @@ async function ensureContactsForParticipants(
 ): Promise<Array<{
   contactId: string;
   organizationId: string | null;
+  workosUserId: string | null;
   email: string;
   domain: string;
   role: 'sender' | 'recipient' | 'cc';
@@ -320,6 +248,7 @@ async function ensureContactsForParticipants(
   const contacts: Array<{
     contactId: string;
     organizationId: string | null;
+    workosUserId: string | null;
     email: string;
     domain: string;
     role: 'sender' | 'recipient' | 'cc';
@@ -338,10 +267,30 @@ async function ensureContactsForParticipants(
   return contacts;
 }
 
+interface ResendEmailResponse {
+  text?: string;
+  html?: string;
+  headers?: {
+    to?: string;
+    cc?: string;
+    from?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+interface FetchEmailResult {
+  text?: string;
+  html?: string;
+  textLength?: number;
+  originalTo?: string[];
+  originalCc?: string[];
+}
+
 /**
- * Fetch email body from Resend API
+ * Fetch email body and headers from Resend API
+ * The headers contain original TO/CC recipients that aren't in the webhook payload
  */
-async function fetchEmailBody(emailId: string): Promise<{ text?: string; html?: string; textLength?: number } | null> {
+async function fetchEmailBody(emailId: string): Promise<FetchEmailResult | null> {
   if (!RESEND_API_KEY) {
     logger.warn('RESEND_API_KEY not configured, cannot fetch email body');
     return null;
@@ -370,9 +319,14 @@ async function fetchEmailBody(emailId: string): Promise<{ text?: string; html?: 
       return null;
     }
 
-    const data = (await response.json()) as { text?: string; html?: string };
+    const data = (await response.json()) as ResendEmailResponse;
     const textLength = data.text?.length || 0;
     const htmlLength = data.html?.length || 0;
+
+    // Parse original recipients from headers (these contain the real TO/CC, not just Resend addresses)
+    // Headers can contain multiple comma-separated addresses like: "John Doe" <john@example.com>, jane@example.com
+    const originalTo = parseEmailHeaderList(data.headers?.to);
+    const originalCc = parseEmailHeaderList(data.headers?.cc);
 
     logger.info({
       emailId,
@@ -381,12 +335,18 @@ async function fetchEmailBody(emailId: string): Promise<{ text?: string; html?: 
       hasHtml: !!data.html,
       textLength,
       htmlLength,
+      hasOriginalTo: originalTo.length > 0,
+      hasOriginalCc: originalCc.length > 0,
+      originalTo,
+      originalCc,
     }, 'Fetched email body from Resend');
 
     return {
       text: data.text,
       html: data.html,
       textLength,
+      originalTo,
+      originalCc,
     };
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -569,15 +529,39 @@ function verifyResendWebhook(req: Request, rawBody: string): boolean {
  */
 async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<{
   activityId: string;
-  contacts: Array<{ contactId: string; email: string; role: string; isNew: boolean }>;
+  contacts: Array<{ contactId: string; workosUserId: string | null; email: string; role: string; isNew: boolean }>;
   insights: string;
   method: string;
   tokensUsed?: number;
+  // Email content for potential Addie invocation
+  emailContent?: {
+    text?: string;
+    html?: string;
+    messageId: string;
+    to: string[];
+    cc?: string[];
+  };
 }> {
   const pool = getPool();
 
-  // Get all external participants
-  const participants = getExternalParticipants(data.from, data.to, data.cc);
+  // Fetch email body and original headers first
+  // The Resend API returns original TO/CC in headers, which aren't in the webhook payload
+  const emailBody = await fetchEmailBody(data.email_id);
+
+  // Use original recipients from headers if available, otherwise fall back to webhook data
+  const toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
+  const ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+
+  logger.info({
+    webhookTo: data.to,
+    webhookCc: data.cc,
+    originalTo: emailBody?.originalTo,
+    originalCc: emailBody?.originalCc,
+    usingOriginalRecipients: !!(emailBody?.originalTo?.length || emailBody?.originalCc?.length),
+  }, 'Resolving email recipients');
+
+  // Get all external participants using original recipients
+  const participants = getExternalParticipants(data.from, toAddresses, ccAddresses);
 
   if (participants.length === 0) {
     throw new Error('No external participants found in email');
@@ -595,24 +579,23 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     throw new Error('Failed to create any contacts');
   }
 
-  // Fetch email body
-  const emailBody = await fetchEmailBody(data.email_id);
-
   // Extract insights
   const { insights, method, tokensUsed } = await extractInsightsWithClaude({
     from: data.from,
     subject: data.subject,
     text: emailBody?.text,
-    to: data.to,
-    cc: data.cc,
+    to: toAddresses,
+    cc: ccAddresses,
   });
 
-  // Build metadata with all participants
+  // Build metadata with all participants (include both original and webhook recipients for debugging)
   const metadata = {
     email_id: data.email_id,
     from: data.from,
-    to: data.to,
-    cc: data.cc,
+    to: toAddresses,
+    cc: ccAddresses,
+    webhook_to: data.to,
+    webhook_cc: data.cc,
     has_attachments: (data.attachments?.length || 0) > 0,
     received_at: data.created_at,
     context: 'prospect',
@@ -700,6 +683,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     activityId: activityResult.rows[0].id,
     contacts: contacts.map(c => ({
       contactId: c.contactId,
+      workosUserId: c.workosUserId,
       email: c.email,
       role: c.role,
       isNew: c.isNew,
@@ -707,6 +691,14 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     insights,
     method,
     tokensUsed,
+    // Include email content for potential Addie invocation
+    emailContent: {
+      text: emailBody?.text,
+      html: emailBody?.html,
+      messageId: data.message_id,
+      to: toAddresses,
+      cc: ccAddresses,
+    },
   };
 }
 
@@ -802,11 +794,215 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
   }, 'Received unrouted email (no context) - logging only');
 }
 
+// ============================================================================
+// Luma Webhook Handlers
+// ============================================================================
+
+/**
+ * Handle Luma guest.created webhook
+ * Syncs new registrations from Luma to our database
+ */
+async function handleLumaGuestCreated(payload: LumaWebhookPayload): Promise<void> {
+  const guest = payload.data.guest;
+  if (!guest) {
+    logger.warn({ payload }, 'Luma guest.created webhook missing guest data');
+    return;
+  }
+
+  // Find our event by Luma event ID
+  const pool = getPool();
+  const eventResult = await pool.query(
+    `SELECT id, title FROM events WHERE luma_event_id = $1`,
+    [guest.event_api_id]
+  );
+
+  if (eventResult.rows.length === 0) {
+    logger.debug({ lumaEventId: guest.event_api_id }, 'Luma webhook for unknown event, ignoring');
+    return;
+  }
+
+  const event = eventResult.rows[0];
+
+  // Check if registration already exists
+  const existingResult = await pool.query(
+    `SELECT id FROM event_registrations WHERE luma_guest_id = $1`,
+    [guest.api_id]
+  );
+
+  if (existingResult.rows.length > 0) {
+    logger.debug({ lumaGuestId: guest.api_id }, 'Luma guest already synced');
+    return;
+  }
+
+  // Create registration
+  await eventsDb.createRegistration({
+    event_id: event.id,
+    email: guest.user_email,
+    name: guest.user_name || undefined,
+    registration_source: 'luma',
+    luma_guest_id: guest.api_id,
+  });
+
+  logger.info({
+    eventId: event.id,
+    eventTitle: event.title,
+    lumaGuestId: guest.api_id,
+    email: guest.user_email,
+  }, 'Synced Luma registration to database');
+}
+
+/**
+ * Handle Luma guest.updated webhook
+ * Updates registration status (approved, declined, checked-in)
+ */
+async function handleLumaGuestUpdated(payload: LumaWebhookPayload): Promise<void> {
+  const guest = payload.data.guest;
+  if (!guest) {
+    logger.warn({ payload }, 'Luma guest.updated webhook missing guest data');
+    return;
+  }
+
+  const pool = getPool();
+
+  // Find our registration by Luma guest ID
+  const regResult = await pool.query(
+    `SELECT id, event_id FROM event_registrations WHERE luma_guest_id = $1`,
+    [guest.api_id]
+  );
+
+  if (regResult.rows.length === 0) {
+    // Registration doesn't exist, create it
+    logger.debug({ lumaGuestId: guest.api_id }, 'Luma guest.updated for unknown registration, creating');
+    await handleLumaGuestCreated(payload);
+    return;
+  }
+
+  const registration = regResult.rows[0];
+
+  // Update based on approval status
+  if (guest.approval_status === 'declined') {
+    await pool.query(
+      `UPDATE event_registrations SET registration_status = 'cancelled' WHERE id = $1`,
+      [registration.id]
+    );
+    logger.info({ registrationId: registration.id, lumaGuestId: guest.api_id }, 'Registration cancelled via Luma');
+  }
+
+  // Update check-in status
+  if (guest.checked_in_at) {
+    await eventsDb.checkInAttendee(registration.id);
+    logger.info({ registrationId: registration.id, lumaGuestId: guest.api_id }, 'Attendee checked in via Luma');
+  }
+}
+
+/**
+ * Handle Luma event.updated webhook
+ * Syncs event changes from Luma to our database
+ */
+async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void> {
+  const lumaEvent = payload.data.event;
+  if (!lumaEvent) {
+    logger.warn({ payload }, 'Luma event.updated webhook missing event data');
+    return;
+  }
+
+  const pool = getPool();
+
+  // Find our event by Luma event ID
+  const eventResult = await pool.query(
+    `SELECT id FROM events WHERE luma_event_id = $1`,
+    [lumaEvent.api_id]
+  );
+
+  if (eventResult.rows.length === 0) {
+    logger.debug({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, ignoring');
+    return;
+  }
+
+  const eventId = eventResult.rows[0].id;
+
+  // Update our event with Luma changes
+  await eventsDb.updateEvent(eventId, {
+    title: lumaEvent.name,
+    description: lumaEvent.description || undefined,
+    start_time: new Date(lumaEvent.start_at),
+    end_time: new Date(lumaEvent.end_at),
+    timezone: lumaEvent.timezone,
+    venue_name: lumaEvent.geo_address_json?.description || undefined,
+    venue_address: lumaEvent.geo_address_json?.full_address || undefined,
+    venue_city: lumaEvent.geo_address_json?.city || undefined,
+    venue_country: lumaEvent.geo_address_json?.country || undefined,
+    virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
+    featured_image_url: lumaEvent.cover_url || undefined,
+  });
+
+  logger.info({ eventId, lumaEventId: lumaEvent.api_id }, 'Updated event from Luma webhook');
+}
+
 /**
  * Create webhook routes router
  */
 export function createWebhooksRouter(): Router {
   const router = Router();
+
+  // =========================================================================
+  // Luma Webhooks
+  // =========================================================================
+
+  router.post('/luma', async (req: Request, res: Response) => {
+    const requestStartTime = Date.now();
+
+    try {
+      logger.info({ body: req.body }, 'Received Luma webhook');
+
+      const payload = parseLumaWebhook(req.body);
+      if (!payload) {
+        logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
+        return res.status(400).json({ error: 'Invalid payload' });
+      }
+
+      logger.info({
+        action: payload.action,
+        apiId: payload.data.api_id,
+      }, 'Processing Luma webhook');
+
+      switch (payload.action) {
+        case 'guest.created':
+          await handleLumaGuestCreated(payload);
+          break;
+        case 'guest.updated':
+          await handleLumaGuestUpdated(payload);
+          break;
+        case 'event.updated':
+          await handleLumaEventUpdated(payload);
+          break;
+        case 'event.created':
+          // Events created via Luma directly are logged but not auto-synced
+          // (we create events from AAO, not vice versa)
+          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.created webhook (not synced)');
+          break;
+        case 'event.deleted':
+          // Log but don't auto-delete our events
+          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.deleted webhook (not synced)');
+          break;
+        default:
+          logger.warn({ action: payload.action }, 'Unknown Luma webhook action');
+      }
+
+      const totalDurationMs = Date.now() - requestStartTime;
+      logger.info({ action: payload.action, totalDurationMs }, 'Processed Luma webhook');
+
+      return res.status(200).json({ ok: true });
+    } catch (error) {
+      const totalDurationMs = Date.now() - requestStartTime;
+      logger.error({ error, totalDurationMs }, 'Error processing Luma webhook');
+      return res.status(500).json({ error: 'Internal error' });
+    }
+  });
+
+  // =========================================================================
+  // Resend Webhooks
+  // =========================================================================
 
   router.post(
     '/resend-inbound',
@@ -895,6 +1091,43 @@ export function createWebhooksRouter(): Router {
               totalDurationMs,
               insightPreview: result.insights.substring(0, 100) + (result.insights.length > 100 ? '...' : ''),
             }, 'Processed prospect email');
+
+            // Check for Addie invocation and respond if needed
+            // This runs async - don't block the webhook response
+            if (result.emailContent?.text) {
+              // Find which addie address was used
+              const allAddresses = [...data.to, ...(data.cc || [])];
+              const addieAddress = allAddresses.find(addr =>
+                addr.toLowerCase().includes('addie') &&
+                (addr.includes('@agenticadvertising.org') || addr.includes('@updates.agenticadvertising.org'))
+              ) || 'addie+prospect@agenticadvertising.org';
+
+              const emailContext: InboundEmailContext = {
+                emailId: data.email_id,
+                messageId: data.message_id,
+                from: data.from,
+                to: result.emailContent.to,
+                cc: result.emailContent.cc,
+                subject: data.subject,
+                textContent: result.emailContent.text,
+                htmlContent: result.emailContent.html,
+                addieAddress,
+              };
+
+              // Find the sender's WorkOS user ID if they're a known member
+              const senderContact = result.contacts.find(c => c.email.toLowerCase() === parseEmailAddress(data.from).email.toLowerCase());
+
+              // Fire and forget - don't await (pass workosUserId for authorization, not contactId)
+              handleEmailInvocation(emailContext, senderContact?.workosUserId ?? undefined)
+                .then(invocationResult => {
+                  if (invocationResult.responded) {
+                    logger.info({ emailId: data.email_id }, 'Addie responded to email invocation');
+                  }
+                })
+                .catch(err => {
+                  logger.error({ err, emailId: data.email_id }, 'Error checking email invocation');
+                });
+            }
 
             return res.status(200).json({ ok: true, context: 'prospect' });
           }

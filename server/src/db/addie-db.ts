@@ -2315,4 +2315,386 @@ export class AddieDatabase {
       last_seen: r.last_seen,
     }));
   }
+
+  // =========================================================================
+  // EVAL FRAMEWORK METHODS
+  // =========================================================================
+
+  /**
+   * Get rules by specific IDs (for eval with proposed rules)
+   */
+  async getRulesByIds(ruleIds: number[]): Promise<AddieRule[]> {
+    if (ruleIds.length === 0) return [];
+    const result = await query<AddieRule>(
+      `SELECT * FROM addie_rules WHERE id = ANY($1) ORDER BY priority DESC, rule_type, name`,
+      [ruleIds]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Build system prompt from specific rule IDs (for eval)
+   */
+  async buildSystemPromptFromRuleIds(ruleIds: number[]): Promise<string> {
+    const rules = await this.getRulesByIds(ruleIds);
+
+    const sections: Record<RuleType, string[]> = {
+      system_prompt: [],
+      behavior: [],
+      knowledge: [],
+      constraint: [],
+      response_style: [],
+    };
+
+    for (const rule of rules) {
+      sections[rule.rule_type].push(`## ${rule.name}\n${rule.content}`);
+    }
+
+    const parts: string[] = [];
+
+    if (sections.system_prompt.length > 0) {
+      parts.push('# Core Identity\n\n' + sections.system_prompt.join('\n\n'));
+    }
+    if (sections.behavior.length > 0) {
+      parts.push('# Behaviors\n\n' + sections.behavior.join('\n\n'));
+    }
+    if (sections.knowledge.length > 0) {
+      parts.push('# Knowledge\n\n' + sections.knowledge.join('\n\n'));
+    }
+    if (sections.constraint.length > 0) {
+      parts.push('# Constraints\n\n' + sections.constraint.join('\n\n'));
+    }
+    if (sections.response_style.length > 0) {
+      parts.push('# Response Style\n\n' + sections.response_style.join('\n\n'));
+    }
+
+    return parts.join('\n\n---\n\n');
+  }
+
+  /**
+   * Create a new eval run
+   */
+  async createEvalRun(params: {
+    proposedRuleIds: number[];
+    proposedRulesSnapshot: object;
+    baselineConfigVersionId?: number;
+    selectionCriteria: object;
+    createdBy: string;
+  }): Promise<number> {
+    const result = await query<{ id: number }>(
+      `INSERT INTO addie_eval_runs
+       (proposed_rule_ids, proposed_rules_snapshot, baseline_config_version_id, selection_criteria, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        params.proposedRuleIds,
+        JSON.stringify(params.proposedRulesSnapshot),
+        params.baselineConfigVersionId || null,
+        JSON.stringify(params.selectionCriteria),
+        params.createdBy,
+      ]
+    );
+    return result.rows[0].id;
+  }
+
+  /**
+   * Update eval run status
+   */
+  async updateEvalRunStatus(
+    runId: number,
+    status: 'pending' | 'running' | 'completed' | 'failed',
+    updates?: {
+      errorMessage?: string;
+      totalInteractions?: number;
+      interactionsEvaluated?: number;
+      interactionsAffected?: number;
+      metrics?: object;
+    }
+  ): Promise<void> {
+    const setClauses = ['status = $2'];
+    const params: unknown[] = [runId, status];
+    let paramIndex = 3;
+
+    if (status === 'running') {
+      setClauses.push('started_at = NOW()');
+    } else if (status === 'completed' || status === 'failed') {
+      setClauses.push('completed_at = NOW()');
+    }
+
+    if (updates?.errorMessage !== undefined) {
+      setClauses.push(`error_message = $${paramIndex++}`);
+      params.push(updates.errorMessage);
+    }
+    if (updates?.totalInteractions !== undefined) {
+      setClauses.push(`total_interactions = $${paramIndex++}`);
+      params.push(updates.totalInteractions);
+    }
+    if (updates?.interactionsEvaluated !== undefined) {
+      setClauses.push(`interactions_evaluated = $${paramIndex++}`);
+      params.push(updates.interactionsEvaluated);
+    }
+    if (updates?.interactionsAffected !== undefined) {
+      setClauses.push(`interactions_affected = $${paramIndex++}`);
+      params.push(updates.interactionsAffected);
+    }
+    if (updates?.metrics !== undefined) {
+      setClauses.push(`metrics = $${paramIndex++}`);
+      params.push(JSON.stringify(updates.metrics));
+    }
+
+    await query(
+      `UPDATE addie_eval_runs SET ${setClauses.join(', ')} WHERE id = $1`,
+      params
+    );
+  }
+
+  /**
+   * Get eval run by ID
+   */
+  async getEvalRun(runId: number): Promise<EvalRun | null> {
+    const result = await query<EvalRunRow>(
+      `SELECT * FROM addie_eval_runs WHERE id = $1`,
+      [runId]
+    );
+    if (result.rows.length === 0) return null;
+    return this.mapEvalRunRow(result.rows[0]);
+  }
+
+  /**
+   * List eval runs
+   */
+  async listEvalRuns(limit: number = 20, offset: number = 0): Promise<EvalRun[]> {
+    const result = await query<EvalRunRow>(
+      `SELECT * FROM addie_eval_runs ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return result.rows.map(row => this.mapEvalRunRow(row));
+  }
+
+  /**
+   * Insert eval result
+   */
+  async insertEvalResult(result: EvalResultInsert): Promise<number> {
+    const res = await query<{ id: number }>(
+      `INSERT INTO addie_eval_results (
+        eval_run_id, message_id, thread_id,
+        original_input, original_response, original_rating,
+        original_tools_used, original_router_decision, original_latency_ms,
+        new_response, new_tools_used, new_router_decision,
+        new_latency_ms, new_tokens_input, new_tokens_output,
+        routing_changed, tools_changed, response_changed
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING id`,
+      [
+        result.evalRunId,
+        result.messageId,
+        result.threadId,
+        result.originalInput,
+        result.originalResponse,
+        result.originalRating,
+        result.originalToolsUsed,
+        result.originalRouterDecision ? JSON.stringify(result.originalRouterDecision) : null,
+        result.originalLatencyMs,
+        result.newResponse,
+        result.newToolsUsed,
+        result.newRouterDecision ? JSON.stringify(result.newRouterDecision) : null,
+        result.newLatencyMs,
+        result.newTokensInput,
+        result.newTokensOutput,
+        result.routingChanged,
+        result.toolsChanged,
+        result.responseChanged,
+      ]
+    );
+    return res.rows[0].id;
+  }
+
+  /**
+   * Get eval results for a run
+   */
+  async getEvalResults(runId: number, limit: number = 100, offset: number = 0): Promise<EvalResult[]> {
+    const result = await query<EvalResultRow>(
+      `SELECT * FROM addie_eval_results WHERE eval_run_id = $1 ORDER BY id LIMIT $2 OFFSET $3`,
+      [runId, limit, offset]
+    );
+    return result.rows.map(row => this.mapEvalResultRow(row));
+  }
+
+  /**
+   * Update eval result with review verdict
+   */
+  async updateEvalResultReview(
+    resultId: number,
+    verdict: 'improved' | 'same' | 'worse' | 'uncertain',
+    reviewedBy: string,
+    notes?: string
+  ): Promise<void> {
+    await query(
+      `UPDATE addie_eval_results
+       SET review_verdict = $2, reviewed_by = $3, review_notes = $4, reviewed_at = NOW()
+       WHERE id = $1`,
+      [resultId, verdict, reviewedBy, notes || null]
+    );
+  }
+
+  private mapEvalRunRow(row: EvalRunRow): EvalRun {
+    return {
+      id: row.id,
+      proposedRuleIds: row.proposed_rule_ids,
+      proposedRulesSnapshot: row.proposed_rules_snapshot,
+      baselineConfigVersionId: row.baseline_config_version_id,
+      selectionCriteria: row.selection_criteria,
+      status: row.status,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      errorMessage: row.error_message,
+      totalInteractions: row.total_interactions,
+      interactionsEvaluated: row.interactions_evaluated,
+      interactionsAffected: row.interactions_affected,
+      metrics: row.metrics,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+    };
+  }
+
+  private mapEvalResultRow(row: EvalResultRow): EvalResult {
+    return {
+      id: row.id,
+      evalRunId: row.eval_run_id,
+      messageId: row.message_id,
+      threadId: row.thread_id,
+      originalInput: row.original_input,
+      originalResponse: row.original_response,
+      originalRating: row.original_rating,
+      originalToolsUsed: row.original_tools_used,
+      originalRouterDecision: row.original_router_decision,
+      originalLatencyMs: row.original_latency_ms,
+      newResponse: row.new_response,
+      newToolsUsed: row.new_tools_used,
+      newRouterDecision: row.new_router_decision,
+      newLatencyMs: row.new_latency_ms,
+      newTokensInput: row.new_tokens_input,
+      newTokensOutput: row.new_tokens_output,
+      routingChanged: row.routing_changed,
+      toolsChanged: row.tools_changed,
+      responseChanged: row.response_changed,
+      reviewVerdict: row.review_verdict,
+      reviewNotes: row.review_notes,
+      reviewedBy: row.reviewed_by,
+      reviewedAt: row.reviewed_at,
+      createdAt: row.created_at,
+    };
+  }
+}
+
+// Types for eval framework
+interface EvalRunRow {
+  id: number;
+  proposed_rule_ids: number[];
+  proposed_rules_snapshot: object;
+  baseline_config_version_id: number | null;
+  selection_criteria: object;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  started_at: Date | null;
+  completed_at: Date | null;
+  error_message: string | null;
+  total_interactions: number;
+  interactions_evaluated: number;
+  interactions_affected: number;
+  metrics: object | null;
+  created_by: string;
+  created_at: Date;
+}
+
+export interface EvalRun {
+  id: number;
+  proposedRuleIds: number[];
+  proposedRulesSnapshot: object;
+  baselineConfigVersionId: number | null;
+  selectionCriteria: object;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startedAt: Date | null;
+  completedAt: Date | null;
+  errorMessage: string | null;
+  totalInteractions: number;
+  interactionsEvaluated: number;
+  interactionsAffected: number;
+  metrics: object | null;
+  createdBy: string;
+  createdAt: Date;
+}
+
+interface EvalResultRow {
+  id: number;
+  eval_run_id: number;
+  message_id: string;
+  thread_id: string;
+  original_input: string;
+  original_response: string;
+  original_rating: number | null;
+  original_tools_used: string[] | null;
+  original_router_decision: object | null;
+  original_latency_ms: number | null;
+  new_response: string | null;
+  new_tools_used: string[] | null;
+  new_router_decision: object | null;
+  new_latency_ms: number | null;
+  new_tokens_input: number | null;
+  new_tokens_output: number | null;
+  routing_changed: boolean;
+  tools_changed: boolean;
+  response_changed: boolean;
+  review_verdict: 'improved' | 'same' | 'worse' | 'uncertain' | null;
+  review_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
+  created_at: Date;
+}
+
+export interface EvalResult {
+  id: number;
+  evalRunId: number;
+  messageId: string;
+  threadId: string;
+  originalInput: string;
+  originalResponse: string;
+  originalRating: number | null;
+  originalToolsUsed: string[] | null;
+  originalRouterDecision: object | null;
+  originalLatencyMs: number | null;
+  newResponse: string | null;
+  newToolsUsed: string[] | null;
+  newRouterDecision: object | null;
+  newLatencyMs: number | null;
+  newTokensInput: number | null;
+  newTokensOutput: number | null;
+  routingChanged: boolean;
+  toolsChanged: boolean;
+  responseChanged: boolean;
+  reviewVerdict: 'improved' | 'same' | 'worse' | 'uncertain' | null;
+  reviewNotes: string | null;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface EvalResultInsert {
+  evalRunId: number;
+  messageId: string;
+  threadId: string;
+  originalInput: string;
+  originalResponse: string;
+  originalRating: number | null;
+  originalToolsUsed: string[] | null;
+  originalRouterDecision: object | null;
+  originalLatencyMs: number | null;
+  newResponse: string | null;
+  newToolsUsed: string[] | null;
+  newRouterDecision: object | null;
+  newLatencyMs: number | null;
+  newTokensInput: number | null;
+  newTokensOutput: number | null;
+  routingChanged: boolean;
+  toolsChanged: boolean;
+  responseChanged: boolean;
 }

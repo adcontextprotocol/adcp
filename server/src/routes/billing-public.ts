@@ -25,7 +25,12 @@ import {
   OrganizationDatabase,
   type CompanyType,
   type RevenueTier,
+  type Organization,
 } from "../db/organization-db.js";
+import {
+  mapIndustryToCompanyType,
+  mapRevenueToTier,
+} from "../services/lusha.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
@@ -45,8 +50,10 @@ const workos = AUTH_ENABLED
     })
   : null;
 
-// Dev mode configuration
-const DEV_MODE_ENABLED = process.env.DEV_MODE === "true";
+// Dev mode configuration - must match http.ts pattern
+const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
+const DEV_USER_ID = process.env.DEV_USER_ID;
+const DEV_MODE_ENABLED = !!(DEV_USER_EMAIL && DEV_USER_ID);
 
 interface DevUser {
   id: string;
@@ -59,36 +66,37 @@ interface DevUser {
   organizationName: string;
 }
 
+// Match user IDs from auth.ts DEV_USERS
 const DEV_USERS: Record<string, DevUser> = {
   member: {
-    id: "user_dev_member",
-    email: "member@example.com",
-    firstName: "Test",
-    lastName: "Member",
+    id: "user_dev_member_001",
+    email: "member@test.local",
+    firstName: "Member",
+    lastName: "User",
     isMember: true,
     isAdmin: false,
-    organizationId: "org_dev_member",
-    organizationName: "Test Member Org",
+    organizationId: "org_dev_company_001",
+    organizationName: "Dev Company (Member)",
   },
   nonmember: {
-    id: "user_dev_nonmember",
-    email: "nonmember@example.com",
-    firstName: "Test",
-    lastName: "NonMember",
+    id: "user_dev_nonmember_001",
+    email: "visitor@test.local",
+    firstName: "Visitor",
+    lastName: "User",
     isMember: false,
     isAdmin: false,
-    organizationId: "org_dev_nonmember",
-    organizationName: "Test NonMember Org",
+    organizationId: "org_dev_personal_001",
+    organizationName: "Dev Personal Workspace",
   },
   admin: {
-    id: "user_dev_admin",
-    email: "admin@example.com",
-    firstName: "Test",
-    lastName: "Admin",
+    id: "user_dev_admin_001",
+    email: "admin@test.local",
+    firstName: "Admin",
+    lastName: "Tester",
     isMember: true,
     isAdmin: true,
-    organizationId: "org_dev_admin",
-    organizationName: "Test Admin Org",
+    organizationId: "org_dev_company_001",
+    organizationName: "Dev Company (Member)",
   },
 };
 
@@ -98,7 +106,10 @@ function isDevModeEnabled(): boolean {
 
 function getDevUser(req: Request): DevUser | null {
   if (!DEV_MODE_ENABLED) return null;
-  const devUserType = req.headers["x-dev-user"] as string;
+  // Check header first (for API testing), then cookie (for browser)
+  const devUserType =
+    (req.headers["x-dev-user"] as string) ||
+    (req.cookies?.["dev-session"] as string);
   return DEV_USERS[devUserType] || null;
 }
 
@@ -153,7 +164,7 @@ export function createPublicBillingRouter(): Router {
       logger.error({ err: error }, "Error fetching billing products");
       res.status(500).json({
         error: "Failed to fetch products",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: "An unexpected error occurred. Please try again.",
       });
     }
   });
@@ -289,7 +300,7 @@ export function createPublicBillingRouter(): Router {
       logger.error({ err: error }, "Invoice request error");
       res.status(500).json({
         error: "Failed to process invoice request",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: "An unexpected error occurred. Please try again or contact support.",
       });
     }
   });
@@ -386,7 +397,7 @@ export function createPublicBillingRouter(): Router {
         logger.error({ err: error }, "Checkout session creation error");
         res.status(500).json({
           error: "Failed to create checkout session",
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: "An unexpected error occurred. Please try again.",
         });
       }
     }
@@ -404,26 +415,24 @@ export function createPublicBillingRouter(): Router {
         // Dev mode: return mock billing data based on dev user type
         const devUser = isDevModeEnabled() ? getDevUser(req) : null;
         if (devUser) {
-          // For 'member' and 'admin' dev users, simulate active subscription
-          // For 'nonmember' dev user, simulate no subscription
+          // For 'member' and 'admin' dev users, simulate organization needing profile info
+          // with enrichment-based suggestions for prefilling the modal
+          // For 'nonmember' dev user, simulate personal workspace (no modal needed)
           if (devUser.isMember) {
             return res.json({
-              subscription: {
-                status: "active",
-                product_name: "Founding Member",
-                current_period_end:
-                  Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days from now
-                cancel_at_period_end: false,
-              },
+              subscription: null, // No subscription yet - needs to sign up
               stripe_customer_id: "cus_dev_mock",
               customer_session_secret: null,
-              company_type: "agency",
-              revenue_tier: "startup",
+              company_type: null, // Not set - triggers modal
+              revenue_tier: null, // Not set - triggers modal
               is_personal: false,
               pending_invoices: [],
+              // Enrichment-based suggestions for prefilling the profile modal
+              suggested_company_type: "adtech", // Simulates Lusha enrichment data
+              suggested_revenue_tier: "5m_50m", // Simulates Lusha enrichment data
             });
           } else {
-            // Non-member dev user - no subscription
+            // Non-member dev user - personal workspace (no profile modal needed)
             return res.json({
               subscription: null,
               stripe_customer_id: "cus_dev_mock",
@@ -432,6 +441,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: null,
               is_personal: true,
               pending_invoices: [],
+              suggested_company_type: null,
+              suggested_revenue_tier: null,
             });
           }
         }
@@ -556,6 +567,22 @@ export function createPublicBillingRouter(): Router {
           }
         }
 
+        // Calculate suggested values from enrichment data for prefilling the profile modal
+        // These are only used as suggestions when company_type or revenue_tier are not yet set
+        const orgWithEnrichment = org as Organization & {
+          enrichment_industry?: string;
+          enrichment_sub_industry?: string;
+          enrichment_revenue?: number;
+        };
+
+        const suggestedCompanyType = mapIndustryToCompanyType(
+          orgWithEnrichment.enrichment_industry || undefined,
+          orgWithEnrichment.enrichment_sub_industry || undefined
+        );
+        const suggestedRevenueTier = mapRevenueToTier(
+          orgWithEnrichment.enrichment_revenue
+        );
+
         res.json({
           subscription: subscriptionInfo,
           stripe_customer_id: stripeCustomerId || null,
@@ -564,12 +591,15 @@ export function createPublicBillingRouter(): Router {
           revenue_tier: org.revenue_tier || null,
           is_personal: org.is_personal || false,
           pending_invoices: pendingInvoices,
+          // Enrichment-based suggestions for prefilling the profile modal
+          suggested_company_type: suggestedCompanyType,
+          suggested_revenue_tier: suggestedRevenueTier,
         });
       } catch (error) {
         logger.error({ err: error }, "Get billing info error:");
         res.status(500).json({
           error: "Failed to get billing info",
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: "An unexpected error occurred. Please try again.",
         });
       }
     }
@@ -585,13 +615,12 @@ export function createPublicBillingRouter(): Router {
         const { orgId } = req.params;
         const { company_type, revenue_tier } = req.body;
 
-        // Validate inputs
+        // Validate inputs - must match CompanyType in organization-db.ts
         const validCompanyTypes = [
           "brand",
-          "agency",
           "publisher",
-          "tech_vendor",
-          "consultant",
+          "agency",
+          "adtech",
           "other",
         ];
         const validRevenueTiers = [
@@ -669,7 +698,7 @@ export function createPublicBillingRouter(): Router {
         logger.error({ err: error }, "Update billing info error:");
         res.status(500).json({
           error: "Failed to update billing info",
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: "An unexpected error occurred. Please try again.",
         });
       }
     }

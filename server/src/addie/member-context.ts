@@ -11,6 +11,7 @@ import { OrganizationDatabase } from '../db/organization-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
 
@@ -122,6 +123,13 @@ export interface MemberContext {
     total_messages_30d: number;
     total_reactions_30d: number;
     total_thread_replies_30d: number;
+    active_days_30d: number;
+    last_activity_at: Date | null;
+  };
+
+  /** Combined conversation activity (Slack + web chat) from addie_threads */
+  conversation_activity?: {
+    total_messages_30d: number;
     active_days_30d: number;
     last_activity_at: Date | null;
   };
@@ -602,7 +610,22 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get email preferences');
     }
 
-    // Step 11: Get Addie interaction history
+    // Step 11: Get combined conversation activity (Slack + web chat) from addie_threads
+    try {
+      const threadService = getThreadService();
+      const conversationActivity = await threadService.getUserActivityStats(workosUserId, 'workos', 30);
+      if (conversationActivity.total_messages > 0 || conversationActivity.active_days > 0) {
+        context.conversation_activity = {
+          total_messages_30d: conversationActivity.total_messages,
+          active_days_30d: conversationActivity.active_days,
+          last_activity_at: conversationActivity.last_activity_at,
+        };
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get conversation activity');
+    }
+
+    // Step 12: Get Addie interaction history
     // For web users, we'd need to query addie_conversations table by user_id (WorkOS ID)
     // For now, if they have a Slack mapping, we can get their Slack interactions
     if (context.slack_user?.slack_user_id) {

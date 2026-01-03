@@ -14,6 +14,56 @@ import { enrichOrganization } from "../../services/enrichment.js";
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
 
+/**
+ * SQL query to fetch combined activity history for a contact.
+ * Combines email activities with event registrations via UNION ALL.
+ * Parameter $1 is the contact UUID.
+ */
+const CONTACT_ACTIVITIES_QUERY = `
+  SELECT * FROM (
+    -- Email activities
+    SELECT
+      eca.id as activity_id,
+      'email' as activity_type,
+      eca.subject as title,
+      eca.direction as description,
+      eca.insights,
+      eca.metadata,
+      eca.email_date as activity_date,
+      eca.created_at,
+      eac.role,
+      eac.is_primary
+    FROM email_contact_activities eca
+    INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+    WHERE eac.contact_id = $1
+
+    UNION ALL
+
+    -- Event registrations
+    SELECT
+      er.id as activity_id,
+      'event_registration' as activity_type,
+      e.title as title,
+      er.registration_status as description,
+      NULL::TEXT as insights,
+      jsonb_build_object(
+        'event_id', er.event_id,
+        'event_slug', e.slug,
+        'ticket_type', er.ticket_type,
+        'attended', er.attended,
+        'registration_source', er.registration_source
+      ) as metadata,
+      er.registered_at as activity_date,
+      er.created_at,
+      'registrant' as role,
+      true as is_primary
+    FROM event_registrations er
+    INNER JOIN events e ON e.id = er.event_id
+    WHERE er.email_contact_id = $1
+  ) combined
+  ORDER BY activity_date DESC NULLS LAST
+`;
+
 interface DomainRoutesConfig {
   workos: WorkOS | null;
 }
@@ -571,26 +621,8 @@ export function setupDomainRoutes(
 
         const contact = contactResult.rows[0];
 
-        // Get activity history for this contact
-        const activitiesResult = await pool.query(
-          `SELECT
-            eca.id as activity_id,
-            eca.email_id,
-            eca.message_id,
-            eca.subject,
-            eca.direction,
-            eca.insights,
-            eca.metadata,
-            eca.email_date,
-            eca.created_at,
-            eac.role,
-            eac.is_primary
-          FROM email_contact_activities eca
-          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
-          WHERE eac.contact_id = $1
-          ORDER BY eca.email_date DESC`,
-          [id]
-        );
+        // Get activity history for this contact (emails + event registrations)
+        const activitiesResult = await pool.query(CONTACT_ACTIVITIES_QUERY, [id]);
 
         res.json({
           ...contact,
@@ -649,26 +681,8 @@ export function setupDomainRoutes(
 
         const contact = contactResult.rows[0];
 
-        // Get activity history for this contact
-        const activitiesResult = await pool.query(
-          `SELECT
-            eca.id as activity_id,
-            eca.email_id,
-            eca.message_id,
-            eca.subject,
-            eca.direction,
-            eca.insights,
-            eca.metadata,
-            eca.email_date,
-            eca.created_at,
-            eac.role,
-            eac.is_primary
-          FROM email_contact_activities eca
-          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
-          WHERE eac.contact_id = $1
-          ORDER BY eca.email_date DESC`,
-          [contact.id]
-        );
+        // Get activity history for this contact (emails + event registrations)
+        const activitiesResult = await pool.query(CONTACT_ACTIVITIES_QUERY, [contact.id]);
 
         res.json({
           ...contact,
@@ -1095,6 +1109,189 @@ export function setupDomainRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to set primary domain",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // DOMAIN HEALTH API
+  // =========================================================================
+
+  // Common free email providers to exclude from corporate domain checks
+  const freeEmailDomains = [
+    'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+    'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+    'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+  ];
+
+  // GET /api/admin/domain-health - Get domain health summary and issues
+  apiRouter.get(
+    "/domain-health",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+
+        // Build parameterized query for free email exclusion
+        const freeEmailPlaceholders = freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ');
+
+        // 1. Orphan corporate domains
+        const orphanResult = await pool.query(`
+          WITH user_domains AS (
+            SELECT
+              LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
+              COUNT(DISTINCT om.workos_user_id) as user_count,
+              array_agg(DISTINCT jsonb_build_object(
+                'email', om.email,
+                'first_name', om.first_name,
+                'last_name', om.last_name,
+                'user_id', om.workos_user_id
+              )) as users
+            FROM organization_memberships om
+            WHERE om.email IS NOT NULL
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
+            GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
+          ),
+          claimed_domains AS (
+            SELECT LOWER(domain) as domain FROM organization_domains
+            UNION
+            SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+          )
+          SELECT ud.domain, ud.user_count, ud.users
+          FROM user_domains ud
+          LEFT JOIN claimed_domains cd ON cd.domain = ud.domain
+          WHERE cd.domain IS NULL
+          ORDER BY ud.user_count DESC
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        // 2. Misaligned users (corporate emails in personal workspaces)
+        const misalignedResult = await pool.query(`
+          SELECT
+            om.email,
+            om.first_name,
+            om.last_name,
+            om.workos_user_id,
+            LOWER(SPLIT_PART(om.email, '@', 2)) as email_domain,
+            o.name as workspace_name,
+            om.workos_organization_id
+          FROM organization_memberships om
+          JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+          WHERE o.is_personal = true
+            AND om.email IS NOT NULL
+            AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
+          ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        // 3. Orgs without verified domains
+        const unverifiedResult = await pool.query(`
+          SELECT
+            o.workos_organization_id,
+            o.name,
+            o.email_domain,
+            o.subscription_status,
+            COUNT(DISTINCT om.workos_user_id) as user_count,
+            array_agg(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2))) FILTER (WHERE om.email IS NOT NULL) as user_domains
+          FROM organizations o
+          JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+          LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id AND od.verified = true
+          WHERE o.is_personal = false
+            AND od.id IS NULL
+          GROUP BY o.workos_organization_id, o.name, o.email_domain, o.subscription_status
+          HAVING COUNT(DISTINCT om.workos_user_id) > 0
+          ORDER BY COUNT(DISTINCT om.workos_user_id) DESC
+          LIMIT $1
+        `, [limit]);
+
+        // 4. Domain conflicts
+        const conflictResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as org_count,
+            json_agg(json_build_object(
+              'id', workos_organization_id,
+              'name', name,
+              'subscription_status', subscription_status
+            ) ORDER BY name) as organizations
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY COUNT(*) DESC
+          LIMIT $1
+        `, [limit]);
+
+        // 5. Summary stats
+        const statsResult = await pool.query(`
+          SELECT
+            (SELECT COUNT(*) FROM organizations WHERE is_personal = false) as total_orgs,
+            (SELECT COUNT(DISTINCT domain) FROM organization_domains WHERE verified = true) as verified_domains,
+            (SELECT COUNT(DISTINCT domain) FROM organization_domains WHERE verified = false OR verified IS NULL) as unverified_domains,
+            (SELECT COUNT(DISTINCT LOWER(SPLIT_PART(email, '@', 2))) FROM organization_memberships WHERE email IS NOT NULL) as total_email_domains
+        `);
+
+        // Group misaligned users by domain
+        const misalignedByDomain: Record<string, typeof misalignedResult.rows> = {};
+        for (const row of misalignedResult.rows) {
+          if (!misalignedByDomain[row.email_domain]) {
+            misalignedByDomain[row.email_domain] = [];
+          }
+          misalignedByDomain[row.email_domain].push(row);
+        }
+
+        res.json({
+          summary: {
+            total_organizations: parseInt(statsResult.rows[0].total_orgs, 10),
+            verified_domains: parseInt(statsResult.rows[0].verified_domains, 10),
+            unverified_domains: parseInt(statsResult.rows[0].unverified_domains, 10),
+            total_email_domains: parseInt(statsResult.rows[0].total_email_domains, 10),
+            issues: {
+              orphan_domains: orphanResult.rows.length,
+              misaligned_users: misalignedResult.rows.length,
+              unverified_orgs: unverifiedResult.rows.length,
+              domain_conflicts: conflictResult.rows.length,
+            },
+          },
+          orphan_domains: orphanResult.rows.map(row => ({
+            domain: row.domain,
+            user_count: parseInt(row.user_count, 10),
+            users: row.users.slice(0, 10), // Limit to 10 users per domain
+          })),
+          misaligned_users: Object.entries(misalignedByDomain).map(([domain, users]) => ({
+            domain,
+            user_count: users.length,
+            users: users.map(u => ({
+              email: u.email,
+              first_name: u.first_name,
+              last_name: u.last_name,
+              user_id: u.workos_user_id,
+              workspace_name: u.workspace_name,
+              org_id: u.workos_organization_id,
+            })),
+          })),
+          unverified_orgs: unverifiedResult.rows.map(row => ({
+            org_id: row.workos_organization_id,
+            name: row.name,
+            email_domain: row.email_domain,
+            subscription_status: row.subscription_status,
+            user_count: parseInt(row.user_count, 10),
+            user_domains: row.user_domains?.filter(Boolean) || [],
+          })),
+          domain_conflicts: conflictResult.rows.map(row => ({
+            domain: row.email_domain,
+            org_count: parseInt(row.org_count, 10),
+            organizations: row.organizations,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching domain health");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch domain health data",
         });
       }
     }
