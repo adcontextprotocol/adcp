@@ -1,8 +1,8 @@
 /**
- * Slack Web API client for AAO integration
+ * Slack Web API client
  *
  * Provides methods for user lookup, DM sending, and channel management.
- * Uses bot token authentication.
+ * Uses Addie's bot token for all operations.
  */
 
 import { logger } from '../logger.js';
@@ -13,8 +13,8 @@ import type {
   SlackBlockMessage,
 } from './types.js';
 
-const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-const ADDIE_BOT_TOKEN = process.env.ADDIE_BOT_TOKEN;
+// Use ADDIE_BOT_TOKEN as the primary token (fall back to SLACK_BOT_TOKEN for migration)
+const SLACK_BOT_TOKEN = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
 const SLACK_API_BASE = 'https://slack.com/api';
 
 // Rate limiting: Slack's tier 2 methods allow ~20 requests per minute
@@ -43,7 +43,7 @@ async function slackRequest<T>(
   retries = 3
 ): Promise<T> {
   if (!SLACK_BOT_TOKEN) {
-    throw new Error('SLACK_BOT_TOKEN is not configured');
+    throw new Error('ADDIE_BOT_TOKEN is not configured');
   }
 
   const url = new URL(`${SLACK_API_BASE}/${method}`);
@@ -99,17 +99,14 @@ async function slackRequest<T>(
 
 /**
  * Make a POST request to the Slack API (for chat.postMessage, etc.)
- * @param useAddieToken - If true, uses ADDIE_BOT_TOKEN instead of SLACK_BOT_TOKEN
  */
 async function slackPostRequest<T>(
   method: string,
   body: Record<string, unknown>,
-  retries = 3,
-  useAddieToken = false
+  retries = 3
 ): Promise<T> {
-  const token = useAddieToken ? (ADDIE_BOT_TOKEN || SLACK_BOT_TOKEN) : SLACK_BOT_TOKEN;
-  if (!token) {
-    throw new Error(useAddieToken ? 'ADDIE_BOT_TOKEN is not configured' : 'SLACK_BOT_TOKEN is not configured');
+  if (!SLACK_BOT_TOKEN) {
+    throw new Error('ADDIE_BOT_TOKEN is not configured');
   }
 
   const url = `${SLACK_API_BASE}/${method}`;
@@ -119,7 +116,7 @@ async function slackPostRequest<T>(
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
           'Content-Type': 'application/json; charset=utf-8',
         },
         body: JSON.stringify(body),
@@ -160,10 +157,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Check if Slack integration is configured
+ * Check if Slack integration is configured (Addie bot token)
  */
 export function isSlackConfigured(): boolean {
-  return Boolean(SLACK_BOT_TOKEN);
+  return Boolean(process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN);
 }
 
 /**
@@ -207,42 +204,6 @@ export async function getSlackUser(userId: string): Promise<SlackUser | null> {
     return response.user;
   } catch (error) {
     logger.error({ error, userId }, 'Failed to get Slack user');
-    return null;
-  }
-}
-
-/**
- * Get a single user by ID using Addie's bot token
- * Use this when Addie needs to look up users in channels it has access to
- */
-export async function getSlackUserWithAddieToken(userId: string): Promise<SlackUser | null> {
-  if (!ADDIE_BOT_TOKEN) {
-    logger.warn('ADDIE_BOT_TOKEN not configured, cannot look up user');
-    return null;
-  }
-
-  try {
-    const url = new URL(`${SLACK_API_BASE}/users.info`);
-    url.searchParams.set('user', userId);
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${ADDIE_BOT_TOKEN}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-
-    const data = await response.json() as { ok: boolean; user?: SlackUser; error?: string };
-
-    if (!data.ok) {
-      logger.warn({ error: data.error, userId }, 'Failed to get Slack user with Addie token');
-      return null;
-    }
-
-    return data.user || null;
-  } catch (error) {
-    logger.error({ error, userId }, 'Error fetching Slack user with Addie token');
     return null;
   }
 }
@@ -299,12 +260,10 @@ export async function sendDirectMessage(
 
 /**
  * Send a message to a channel
- * @param useAddieToken - If true, uses ADDIE_BOT_TOKEN for Addie's DM channels
  */
 export async function sendChannelMessage(
   channelId: string,
-  message: SlackBlockMessage,
-  useAddieToken = false
+  message: SlackBlockMessage
 ): Promise<{ ok: boolean; ts?: string; error?: string }> {
   try {
     const response = await slackPostRequest<{ ts: string }>('chat.postMessage', {
@@ -313,9 +272,9 @@ export async function sendChannelMessage(
       blocks: message.blocks,
       thread_ts: message.thread_ts,
       reply_broadcast: message.reply_broadcast,
-    }, 3, useAddieToken);
+    });
 
-    logger.info({ channelId, ts: response.ts, useAddieToken }, 'Sent Slack channel message');
+    logger.info({ channelId, ts: response.ts }, 'Sent Slack channel message');
     return { ok: true, ts: response.ts };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -491,24 +450,13 @@ export interface SlackThreadMessage {
 /**
  * Get thread replies (conversations.replies)
  * Returns all messages in a thread, including the parent message
- * @param useAddieToken - If true, uses ADDIE_BOT_TOKEN
  */
 export async function getThreadReplies(
   channelId: string,
-  threadTs: string,
-  useAddieToken = false
+  threadTs: string
 ): Promise<SlackThreadMessage[]> {
-  let token: string | undefined;
-  if (useAddieToken) {
-    if (!ADDIE_BOT_TOKEN) {
-      throw new Error('ADDIE_BOT_TOKEN is not configured');
-    }
-    token = ADDIE_BOT_TOKEN;
-  } else {
-    if (!SLACK_BOT_TOKEN) {
-      throw new Error('SLACK_BOT_TOKEN is not configured');
-    }
-    token = SLACK_BOT_TOKEN;
+  if (!SLACK_BOT_TOKEN) {
+    throw new Error('ADDIE_BOT_TOKEN is not configured');
   }
 
   try {
@@ -520,7 +468,7 @@ export async function getThreadReplies(
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });

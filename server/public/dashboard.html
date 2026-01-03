@@ -150,6 +150,112 @@
     .toast.show {
       opacity: 1;
     }
+
+    /* Profile collection modal */
+    .profile-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .profile-modal-overlay.show {
+      display: flex;
+    }
+    .profile-modal {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-xl);
+    }
+    .profile-modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .profile-modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--color-text-heading);
+    }
+    .profile-modal-header p {
+      margin: 8px 0 0 0;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+    .profile-modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .profile-form-group {
+      margin-bottom: 20px;
+    }
+    .profile-form-group:last-child {
+      margin-bottom: 0;
+    }
+    .profile-form-group > label {
+      display: block;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .profile-modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: flex-end;
+    }
+    .profile-radio-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .profile-radio-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .profile-radio-option:hover {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+    .profile-radio-option.selected {
+      border-color: var(--color-brand);
+      background: var(--color-primary-100);
+    }
+    .profile-radio-option input[type="radio"] {
+      margin-top: 2px;
+      cursor: pointer;
+    }
+    .profile-radio-option-content {
+      flex: 1;
+    }
+    .profile-radio-option-title {
+      font-weight: 500;
+      color: var(--color-text-heading);
+      font-size: 14px;
+    }
+    .profile-radio-option-desc {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -201,6 +307,104 @@
       <div class="modal-buttons">
         <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
         <button class="btn btn-primary" id="confirmRenameBtn" onclick="confirmRenameOrg()">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Organization Profile Collection Modal -->
+  <div id="profileModal" class="profile-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle" aria-describedby="profileModalDesc">
+    <div class="profile-modal">
+      <div class="profile-modal-header">
+        <h2 id="profileModalTitle">Tell Us About Your Organization</h2>
+        <p id="profileModalDesc">We need a few details to show you the right membership options.</p>
+      </div>
+      <div class="profile-modal-body">
+        <div class="profile-form-group">
+          <label id="companyTypeLabel">What type of organization are you?</label>
+          <div class="profile-radio-options" id="profileCompanyTypeOptions" role="radiogroup" aria-labelledby="companyTypeLabel">
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'brand')">
+              <input type="radio" name="profileCompanyType" value="brand">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Brand / Advertiser</div>
+                <div class="profile-radio-option-desc">Companies that advertise products or services</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'publisher')">
+              <input type="radio" name="profileCompanyType" value="publisher">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Publisher / Media Network</div>
+                <div class="profile-radio-option-desc">Media owners and networks that sell advertising inventory</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'agency')">
+              <input type="radio" name="profileCompanyType" value="agency">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Agency</div>
+                <div class="profile-radio-option-desc">Advertising, media, or creative agencies</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'adtech')">
+              <input type="radio" name="profileCompanyType" value="adtech">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Technology Provider</div>
+                <div class="profile-radio-option-desc">AdTech platforms, data providers, and service providers</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'other')">
+              <input type="radio" name="profileCompanyType" value="other">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Other</div>
+                <div class="profile-radio-option-desc">Other industry participants</div>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div class="profile-form-group">
+          <label id="revenueTierLabel">Annual Revenue</label>
+          <div class="profile-radio-options" id="profileRevenueTierOptions" role="radiogroup" aria-labelledby="revenueTierLabel">
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', 'under_1m')">
+              <input type="radio" name="profileRevenueTier" value="under_1m">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Under $1M</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '1m_5m')">
+              <input type="radio" name="profileRevenueTier" value="1m_5m">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">$1M - $5M</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '5m_50m')">
+              <input type="radio" name="profileRevenueTier" value="5m_50m">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">$5M - $50M</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '50m_250m')">
+              <input type="radio" name="profileRevenueTier" value="50m_250m">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">$50M - $250M</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '250m_1b')">
+              <input type="radio" name="profileRevenueTier" value="250m_1b">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">$250M - $1B</div>
+              </div>
+            </label>
+            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '1b_plus')">
+              <input type="radio" name="profileRevenueTier" value="1b_plus">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">$1B+</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="profile-modal-footer">
+        <button id="saveProfileBtn" class="btn btn-primary" onclick="saveOrgProfileFromModal()" disabled>
+          Continue
+        </button>
       </div>
     </div>
   </div>
@@ -563,6 +767,149 @@
     // Helper to check if the CURRENT org (not any org) has active subscription
     function currentOrgHasActiveSubscription() {
       return currentOrg?.billing?.status === 'active';
+    }
+
+    // Profile modal state
+    let profileSelectedCompanyType = null;
+    let profileSelectedRevenueTier = null;
+    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'other'];
+    const VALID_REVENUE_TIERS = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+
+    // Check if org needs profile info (legacy accounts without company_type or revenue_tier)
+    function orgNeedsProfileInfo(org) {
+      // Skip for personal workspaces
+      if (org.is_personal || org.billing?.is_personal) return false;
+      // Skip for orgs with active subscriptions (they already have this info)
+      if (org.billing?.status === 'active') return false;
+      // Show modal if missing company_type or revenue_tier
+      return !org.billing?.company_type || !org.billing?.revenue_tier;
+    }
+
+    // Show the profile collection modal
+    function showProfileModal(org) {
+      profileSelectedCompanyType = null;
+      profileSelectedRevenueTier = null;
+
+      // Reset UI
+      document.querySelectorAll('#profileModal .profile-radio-option').forEach(opt => {
+        opt.classList.remove('selected');
+        const input = opt.querySelector('input[type="radio"]');
+        if (input) input.checked = false;
+      });
+      document.getElementById('saveProfileBtn').disabled = true;
+
+      // Prefill with enrichment-suggested values if available
+      const suggestedCompanyType = org?.billing?.suggested_company_type;
+      const suggestedRevenueTier = org?.billing?.suggested_revenue_tier;
+
+      // Use safer DOM traversal instead of string interpolation in querySelector
+      if (suggestedCompanyType && VALID_COMPANY_TYPES.includes(suggestedCompanyType)) {
+        const companyOptions = document.querySelectorAll('#profileCompanyTypeOptions .profile-radio-option input[type="radio"]');
+        const option = Array.from(companyOptions).find(input => input.value === suggestedCompanyType);
+        if (option) {
+          const label = option.closest('.profile-radio-option');
+          if (label) {
+            selectProfileOption(label, 'companyType', suggestedCompanyType);
+            option.checked = true;
+          }
+        }
+      }
+
+      if (suggestedRevenueTier && VALID_REVENUE_TIERS.includes(suggestedRevenueTier)) {
+        const revenueOptions = document.querySelectorAll('#profileRevenueTierOptions .profile-radio-option input[type="radio"]');
+        const option = Array.from(revenueOptions).find(input => input.value === suggestedRevenueTier);
+        if (option) {
+          const label = option.closest('.profile-radio-option');
+          if (label) {
+            selectProfileOption(label, 'revenueTier', suggestedRevenueTier);
+            option.checked = true;
+          }
+        }
+      }
+
+      document.getElementById('profileModal').classList.add('show');
+    }
+
+    // Handle profile option selection
+    function selectProfileOption(element, group, value) {
+      const container = element.closest('.profile-radio-options');
+      container.querySelectorAll('.profile-radio-option').forEach(opt => opt.classList.remove('selected'));
+      element.classList.add('selected');
+
+      if (group === 'companyType') {
+        profileSelectedCompanyType = value;
+      } else if (group === 'revenueTier') {
+        profileSelectedRevenueTier = value;
+      }
+
+      // Enable save button if both are selected
+      const btn = document.getElementById('saveProfileBtn');
+      btn.disabled = !(profileSelectedCompanyType && profileSelectedRevenueTier);
+    }
+
+    // Save org profile from modal
+    async function saveOrgProfileFromModal() {
+      if (!profileSelectedCompanyType || !profileSelectedRevenueTier || !currentOrg) return;
+
+      const btn = document.getElementById('saveProfileBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch(apiUrl(`/api/organizations/${currentOrg.id}/billing-info`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            company_type: profileSelectedCompanyType,
+            revenue_tier: profileSelectedRevenueTier
+          })
+        });
+
+        if (!response.ok) {
+          let message = 'Failed to save organization info';
+          try {
+            const errorData = await response.json();
+            message = errorData.message || message;
+          } catch {
+            // Response wasn't JSON, use default message
+          }
+          throw new Error(message);
+        }
+
+        // Update local org data
+        if (currentOrg.billing) {
+          currentOrg.billing.company_type = profileSelectedCompanyType;
+          currentOrg.billing.revenue_tier = profileSelectedRevenueTier;
+        } else {
+          currentOrg.billing = {
+            company_type: profileSelectedCompanyType,
+            revenue_tier: profileSelectedRevenueTier
+          };
+        }
+
+        // Also update in allOrganizations
+        const orgIndex = allOrganizations.findIndex(o => o.id === currentOrg.id);
+        if (orgIndex >= 0) {
+          allOrganizations[orgIndex] = currentOrg;
+        }
+
+        // Hide modal and continue
+        document.getElementById('profileModal').classList.remove('show');
+        showToast('Organization info saved');
+
+        // Mark profile as checked so other dashboard pages don't redirect back
+        sessionStorage.setItem('profileInfoChecked', 'true');
+
+        // Re-render the dashboard now that we have pricing info
+        renderSelectedOrg();
+
+      } catch (error) {
+        console.error('Error saving org profile:', error);
+        showToast(error.message || 'Failed to save organization info', true);
+        btn.disabled = false;
+        btn.textContent = 'Continue';
+      }
     }
 
     // Get org ID from URL param or localStorage
@@ -1725,6 +2072,8 @@
                       company_type: billingData.company_type,
                       revenue_tier: billingData.revenue_tier,
                       is_personal: billingData.is_personal,
+                      suggested_company_type: billingData.suggested_company_type,
+                      suggested_revenue_tier: billingData.suggested_revenue_tier,
                     },
                     stripeCustomerId: billingData.stripe_customer_id,
                     customerSessionSecret: billingData.customer_session_secret,
@@ -1792,6 +2141,12 @@
 
           // Render the selected organization
           renderSelectedOrg();
+
+          // Check if org needs profile info (legacy accounts) before showing dashboard
+          const selectedOrg = orgsWithBilling.find(o => o.id === selectedOrgId) || orgsWithBilling[0];
+          if (orgNeedsProfileInfo(selectedOrg)) {
+            showProfileModal(selectedOrg);
+          }
 
           // Load membership agreement if needed for any org
           await loadMembershipAgreement();

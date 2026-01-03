@@ -20,6 +20,11 @@ import {
   type LumaWebhookPayload,
 } from '../luma/client.js';
 import { eventsDb } from '../db/events-db.js';
+import {
+  upsertEmailContact,
+  parseEmailAddress,
+  type EmailContactResult,
+} from '../db/contacts-db.js';
 
 const logger = createLogger('webhooks');
 
@@ -189,42 +194,11 @@ function parseEmailHeaderList(headerValue: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/**
- * Parse email address to extract name and email parts
- * Handles formats like "John Doe <john@example.com>" or just "john@example.com"
- */
-function parseEmailAddress(emailStr: string): { email: string; displayName: string | null; domain: string } {
-  // Match: "Display Name" <email@domain> or Display Name <email@domain>
-  const withBracketsMatch = emailStr.match(/^(?:"?([^"<]+)"?\s*)?<([^>]+@([^>]+))>$/);
-  if (withBracketsMatch) {
-    return {
-      displayName: withBracketsMatch[1]?.trim() || null,
-      email: withBracketsMatch[2].toLowerCase(),
-      domain: withBracketsMatch[3].toLowerCase(),
-    };
-  }
-
-  // Simple email without brackets: email@domain
-  const simpleMatch = emailStr.match(/^([^@\s]+)@([^@\s]+)$/);
-  if (simpleMatch) {
-    return {
-      displayName: null,
-      email: emailStr.toLowerCase(),
-      domain: simpleMatch[2].toLowerCase(),
-    };
-  }
-
-  // Fallback: treat whole string as email
-  const atIndex = emailStr.indexOf('@');
-  return {
-    displayName: null,
-    email: emailStr.toLowerCase(),
-    domain: atIndex > 0 ? emailStr.substring(atIndex + 1).toLowerCase() : '',
-  };
-}
+// parseEmailAddress is now imported from contacts-db.js
 
 /**
  * Get or create an email contact from pre-parsed participant info
+ * Wrapper around shared upsertEmailContact for backwards compatibility
  */
 async function getOrCreateEmailContact(
   participant: { email: string; displayName: string | null; domain: string }
@@ -235,110 +209,18 @@ async function getOrCreateEmailContact(
   email: string;
   domain: string;
 }> {
-  const pool = getPool();
-  const { email, displayName, domain } = participant;
-
-  // Check if contact exists
-  const existingResult = await pool.query(
-    `SELECT id, organization_id, mapping_status FROM email_contacts WHERE email = $1`,
-    [email]
-  );
-
-  if (existingResult.rows.length > 0) {
-    const contact = existingResult.rows[0];
-
-    // Update last_seen and increment count
-    await pool.query(
-      `UPDATE email_contacts SET last_seen_at = NOW(), email_count = email_count + 1 WHERE id = $1`,
-      [contact.id]
-    );
-
-    logger.debug({ email, contactId: contact.id, isNew: false }, 'Found existing email contact');
-    return {
-      contactId: contact.id,
-      organizationId: contact.organization_id,
-      isNew: false,
-      email,
-      domain,
-    };
-  }
-
-  // New contact - check if they match an existing org member
-  // organization_memberships is synced from WorkOS and contains user-org mappings
-  let organizationId: string | null = null;
-  let workosUserId: string | null = null;
-  try {
-    const memberResult = await pool.query(
-      `SELECT om.workos_organization_id, om.workos_user_id
-       FROM organization_memberships om
-       WHERE om.email = $1
-       LIMIT 1`,
-      [email]
-    );
-    organizationId = memberResult.rows[0]?.workos_organization_id || null;
-    workosUserId = memberResult.rows[0]?.workos_user_id || null;
-  } catch (memberLookupError) {
-    // Table may not exist in all environments - proceed with unmapped contact
-    logger.debug({ error: memberLookupError, email }, 'Org member lookup failed, proceeding with unmapped contact');
-  }
-
-  // If not found via membership, try to match by domain
-  if (!organizationId && domain) {
-    try {
-      const domainResult = await pool.query(
-        `SELECT workos_organization_id
-         FROM organization_domains
-         WHERE LOWER(domain) = LOWER($1) AND verified = true
-         LIMIT 1`,
-        [domain]
-      );
-      if (domainResult.rows[0]?.workos_organization_id) {
-        organizationId = domainResult.rows[0].workos_organization_id;
-        logger.debug({ email, domain, organizationId }, 'Matched contact to org by domain');
-      }
-    } catch (domainLookupError) {
-      logger.debug({ error: domainLookupError, domain }, 'Domain lookup failed, proceeding with unmapped contact');
-    }
-  }
-  const mappingStatus = organizationId ? 'mapped' : 'unmapped';
-  const mappingSource = organizationId ? 'email_auto' : null;
-
-  // Create new contact
-  const insertResult = await pool.query(
-    `INSERT INTO email_contacts (
-      email, display_name, domain,
-      workos_user_id, organization_id,
-      mapping_status, mapping_source,
-      mapped_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING id`,
-    [
-      email,
-      displayName,
-      domain,
-      workosUserId,
-      organizationId,
-      mappingStatus,
-      mappingSource,
-      organizationId ? new Date() : null,
-    ]
-  );
-
-  logger.info({
-    email,
-    domain,
-    contactId: insertResult.rows[0].id,
-    organizationId,
-    mappingStatus,
-    isNew: true,
-  }, 'Created new email contact');
+  const result = await upsertEmailContact({
+    email: participant.email,
+    displayName: participant.displayName,
+    domain: participant.domain,
+  });
 
   return {
-    contactId: insertResult.rows[0].id,
-    organizationId,
-    isNew: true,
-    email,
-    domain,
+    contactId: result.contactId,
+    organizationId: result.organizationId,
+    isNew: result.isNew,
+    email: result.email,
+    domain: result.domain,
   };
 }
 
