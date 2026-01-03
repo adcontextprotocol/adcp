@@ -20,6 +20,7 @@
           { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
           { href: '/admin/prospects', label: 'Prospects', icon: '🎯' },
           { href: '/admin/members', label: 'Organizations', icon: '🏢' },
+          { href: '/admin/domain-health', label: 'Domain Health', icon: '🔗' },
         ]
       },
       {
