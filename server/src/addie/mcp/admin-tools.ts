@@ -41,6 +41,7 @@ import {
   type FeedWithStats,
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
+import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -636,6 +637,88 @@ The code will be usable at checkout for any customer.`,
         },
       },
       required: ['code'],
+    },
+  },
+
+  // ============================================
+  // ORGANIZATION MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'merge_organizations',
+    description: `Merge two duplicate organization records into one.
+Use this when you discover duplicate organizations (same company with multiple records).
+All data from the secondary organization will be moved to the primary, then the secondary will be deleted.
+
+IMPORTANT: This is a destructive operation that cannot be undone. Always use preview mode first.
+
+Steps:
+1. Use find_prospect or get_organization_details to identify both org IDs
+2. Call merge_organizations with preview=true to see what will be merged
+3. If the preview looks correct, call again with preview=false to execute the merge`,
+    usage_hints: 'Always preview first! Use find_prospect to get the org IDs before merging.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        primary_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the organization to KEEP (all data will be merged into this one)',
+        },
+        secondary_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the organization to REMOVE (data will be moved from here)',
+        },
+        preview: {
+          type: 'boolean',
+          description: 'If true, show what would be merged without actually doing it (default: true for safety)',
+        },
+      },
+      required: ['primary_org_id', 'secondary_org_id'],
+    },
+  },
+  {
+    name: 'find_duplicate_orgs',
+    description: `Search for potential duplicate organizations by name or domain.
+Use this to discover organizations that might need to be merged.
+
+Returns organizations that share the same name (case-insensitive) or email domain.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        search_type: {
+          type: 'string',
+          enum: ['name', 'domain', 'all'],
+          description: 'What to search for duplicates: name (same org name), domain (same email domain), or all (both)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'check_domain_health',
+    description: `Check domain health across the system to find data quality issues.
+
+This tool identifies:
+1. **Orphan corporate domains** - Users with corporate email domains (not gmail, etc.) that have no matching organization
+2. **Unverified org domains** - Organizations with users but no verified domain mapping
+3. **Domain conflicts** - Multiple orgs claiming the same domain
+4. **Personal workspace corporate users** - Users with company emails in personal workspaces instead of company orgs
+
+The goal: Every corporate email domain should map to a known organization (member or prospect).`,
+    usage_hints: 'Use this for data quality audits. The results can guide follow-up actions like creating prospects or merging orgs.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        check_type: {
+          type: 'string',
+          enum: ['orphan_domains', 'unverified_domains', 'domain_conflicts', 'misaligned_users', 'all'],
+          description: 'What to check: orphan_domains (corporate emails without orgs), unverified_domains (orgs missing domain verification), domain_conflicts (multiple orgs per domain), misaligned_users (corporate users in personal workspaces), or all',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results per category (default: 20)',
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -2106,6 +2189,378 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error, code }, 'Error creating promotion code');
       return '❌ Failed to create promotion code. Please try again.';
+    }
+  });
+
+  // ============================================
+  // ORGANIZATION MANAGEMENT HANDLERS
+  // ============================================
+
+  // Merge organizations
+  handlers.set('merge_organizations', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const primaryOrgId = input.primary_org_id as string;
+    const secondaryOrgId = input.secondary_org_id as string;
+    const preview = input.preview !== false; // Default to preview mode for safety
+
+    if (!primaryOrgId || !secondaryOrgId) {
+      return '❌ Both primary_org_id and secondary_org_id are required.';
+    }
+
+    if (primaryOrgId === secondaryOrgId) {
+      return '❌ Primary and secondary organization IDs must be different.';
+    }
+
+    try {
+      if (preview) {
+        // Preview mode - show what would be merged
+        const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
+
+        let response = `## Merge Preview\n\n`;
+        response += `**Keep:** ${previewResult.primary_org.name} (${previewResult.primary_org.id})\n`;
+        response += `**Remove:** ${previewResult.secondary_org.name} (${previewResult.secondary_org.id})\n\n`;
+
+        if (previewResult.estimated_changes.length === 0) {
+          response += `_No data to merge from the secondary organization._\n`;
+        } else {
+          response += `### Data to Move\n`;
+          for (const change of previewResult.estimated_changes) {
+            response += `- **${change.table_name}**: ${change.rows_to_move} row(s)\n`;
+          }
+        }
+
+        if (previewResult.warnings.length > 0) {
+          response += `\n### Warnings\n`;
+          for (const warning of previewResult.warnings) {
+            response += `⚠️ ${warning}\n`;
+          }
+        }
+
+        response += `\n---\n`;
+        response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
+
+        return response;
+      } else {
+        // Execute the merge
+        logger.info({ primaryOrgId, secondaryOrgId, mergedBy: memberContext?.workos_user?.workos_user_id }, 'Admin executing org merge via Addie');
+
+        const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
+        const result = await mergeOrganizations(primaryOrgId, secondaryOrgId, mergedBy);
+
+        let response = `## Merge Complete ✅\n\n`;
+        response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
+
+        response += `### Data Moved\n`;
+        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + t.rows_skipped_duplicate, 0);
+
+        for (const table of result.tables_merged) {
+          if (table.rows_moved > 0 || table.rows_skipped_duplicate > 0) {
+            response += `- **${table.table_name}**: ${table.rows_moved} moved`;
+            if (table.rows_skipped_duplicate > 0) {
+              response += ` (${table.rows_skipped_duplicate} skipped as duplicates)`;
+            }
+            response += `\n`;
+          }
+        }
+
+        response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
+
+        if (result.prospect_notes_merged) {
+          response += `\n📝 Prospect notes were merged.\n`;
+        }
+
+        if (result.enrichment_data_preserved) {
+          response += `📊 Enrichment data was preserved from the secondary organization.\n`;
+        }
+
+        if (result.warnings.length > 0) {
+          response += `\n### Warnings\n`;
+          for (const warning of result.warnings) {
+            response += `⚠️ ${warning}\n`;
+          }
+        }
+
+        response += `\nThe secondary organization has been deleted.`;
+
+        return response;
+      }
+    } catch (error) {
+      logger.error({ error, primaryOrgId, secondaryOrgId }, 'Error merging organizations');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to merge organizations: ${errorMessage}`;
+    }
+  });
+
+  // Find duplicate organizations
+  handlers.set('find_duplicate_orgs', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const searchType = (input.search_type as string) || 'all';
+    const pool = getPool();
+
+    let response = `## Duplicate Organization Search\n\n`;
+
+    try {
+      // Find duplicates by name
+      if (searchType === 'name' || searchType === 'all') {
+        const nameResult = await pool.query(`
+          SELECT
+            LOWER(name) as normalized_name,
+            COUNT(*) as count,
+            STRING_AGG(name, ', ' ORDER BY name) as actual_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false
+          GROUP BY LOWER(name)
+          HAVING COUNT(*) > 1
+          ORDER BY count DESC, normalized_name
+        `);
+
+        response += `### Duplicate Names\n`;
+        if (nameResult.rows.length === 0) {
+          response += `✅ No organizations share the same name.\n`;
+        } else {
+          response += `⚠️ Found ${nameResult.rows.length} duplicate name(s):\n\n`;
+          for (const row of nameResult.rows) {
+            response += `**${row.normalized_name}** (${row.count} orgs)\n`;
+            response += `  Names: ${row.actual_names}\n`;
+            response += `  IDs: ${row.org_ids}\n\n`;
+          }
+        }
+      }
+
+      // Find duplicates by domain
+      if (searchType === 'domain' || searchType === 'all') {
+        const domainResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as count,
+            STRING_AGG(name, ', ' ORDER BY name) as org_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY count DESC, email_domain
+        `);
+
+        response += `### Duplicate Email Domains\n`;
+        if (domainResult.rows.length === 0) {
+          response += `✅ No organizations share the same email domain.\n`;
+        } else {
+          response += `⚠️ Found ${domainResult.rows.length} shared domain(s):\n\n`;
+          for (const row of domainResult.rows) {
+            response += `**${row.email_domain}** (${row.count} orgs)\n`;
+            response += `  Orgs: ${row.org_names}\n`;
+            response += `  IDs: ${row.org_ids}\n\n`;
+          }
+        }
+      }
+
+      response += `\n_Use merge_organizations to consolidate duplicates._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error finding duplicate organizations');
+      return '❌ Failed to search for duplicates. Please try again.';
+    }
+  });
+
+  // Check domain health
+  handlers.set('check_domain_health', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const checkType = (input.check_type as string) || 'all';
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
+    const pool = getPool();
+
+    // Common free email providers to exclude
+    const freeEmailDomains = [
+      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+    ];
+
+    let response = `## Domain Health Check\n\n`;
+    let issueCount = 0;
+
+    try {
+      // 1. Orphan corporate domains - users with corporate emails but no org with that domain
+      if (checkType === 'orphan_domains' || checkType === 'all') {
+        const orphanResult = await pool.query(`
+          WITH user_domains AS (
+            SELECT
+              LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
+              COUNT(DISTINCT om.workos_user_id) as user_count,
+              STRING_AGG(DISTINCT om.email, ', ' ORDER BY om.email) as sample_emails
+            FROM organization_memberships om
+            WHERE om.email IS NOT NULL
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+            GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
+          ),
+          claimed_domains AS (
+            SELECT LOWER(domain) as domain FROM organization_domains
+            UNION
+            SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+          )
+          SELECT ud.domain, ud.user_count, ud.sample_emails
+          FROM user_domains ud
+          LEFT JOIN claimed_domains cd ON cd.domain = ud.domain
+          WHERE cd.domain IS NULL
+          ORDER BY ud.user_count DESC
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        response += `### Orphan Corporate Domains\n`;
+        response += `_Corporate email domains with users but no matching organization_\n\n`;
+
+        if (orphanResult.rows.length === 0) {
+          response += `✅ No orphan domains found.\n\n`;
+        } else {
+          issueCount += orphanResult.rows.length;
+          for (const row of orphanResult.rows) {
+            response += `**${row.domain}** - ${row.user_count} user(s)\n`;
+            const emails = row.sample_emails.split(', ').slice(0, 3).join(', ');
+            response += `  Users: ${emails}${row.user_count > 3 ? '...' : ''}\n`;
+          }
+          response += `\n_Action: Create prospects for these domains or map users to existing orgs._\n\n`;
+        }
+      }
+
+      // 2. Users in personal workspaces with corporate emails
+      if (checkType === 'misaligned_users' || checkType === 'all') {
+        const misalignedResult = await pool.query(`
+          SELECT
+            om.email,
+            om.first_name,
+            om.last_name,
+            LOWER(SPLIT_PART(om.email, '@', 2)) as email_domain,
+            o.name as workspace_name,
+            om.workos_organization_id
+          FROM organization_memberships om
+          JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+          WHERE o.is_personal = true
+            AND om.email IS NOT NULL
+            AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+          ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        response += `### Corporate Users in Personal Workspaces\n`;
+        response += `_Users with company emails who are in personal workspaces instead of company orgs_\n\n`;
+
+        if (misalignedResult.rows.length === 0) {
+          response += `✅ No misaligned users found.\n\n`;
+        } else {
+          issueCount += misalignedResult.rows.length;
+          // Group by domain
+          const byDomain = new Map<string, typeof misalignedResult.rows>();
+          for (const row of misalignedResult.rows) {
+            const existing = byDomain.get(row.email_domain) || [];
+            existing.push(row);
+            byDomain.set(row.email_domain, existing);
+          }
+
+          for (const [domain, users] of byDomain) {
+            response += `**${domain}** (${users.length} user(s))\n`;
+            for (const user of users.slice(0, 3)) {
+              response += `  - ${user.email} (${user.first_name || ''} ${user.last_name || ''})\n`;
+            }
+            if (users.length > 3) {
+              response += `  - ... and ${users.length - 3} more\n`;
+            }
+          }
+          response += `\n_Action: Create company org and move these users, or verify they should be individuals._\n\n`;
+        }
+      }
+
+      // 3. Orgs with users but no verified domain
+      if (checkType === 'unverified_domains' || checkType === 'all') {
+        const unverifiedResult = await pool.query(`
+          SELECT
+            o.workos_organization_id,
+            o.name,
+            o.email_domain,
+            COUNT(DISTINCT om.workos_user_id) as user_count,
+            STRING_AGG(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2)), ', ') as user_domains
+          FROM organizations o
+          JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+          LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id AND od.verified = true
+          WHERE o.is_personal = false
+            AND od.id IS NULL
+          GROUP BY o.workos_organization_id, o.name, o.email_domain
+          HAVING COUNT(DISTINCT om.workos_user_id) > 0
+          ORDER BY COUNT(DISTINCT om.workos_user_id) DESC
+          LIMIT $1
+        `, [limit]);
+
+        response += `### Organizations Without Verified Domains\n`;
+        response += `_Organizations with members but no verified domain mapping_\n\n`;
+
+        if (unverifiedResult.rows.length === 0) {
+          response += `✅ All organizations with users have verified domains.\n\n`;
+        } else {
+          issueCount += unverifiedResult.rows.length;
+          for (const row of unverifiedResult.rows) {
+            response += `**${row.name}** - ${row.user_count} user(s)\n`;
+            response += `  User domains: ${row.user_domains}\n`;
+            if (row.email_domain) {
+              response += `  Claimed domain: ${row.email_domain} (not verified)\n`;
+            }
+          }
+          response += `\n_Action: Verify domain ownership for these organizations._\n\n`;
+        }
+      }
+
+      // 4. Domain conflicts (multiple orgs claiming same domain)
+      if (checkType === 'domain_conflicts' || checkType === 'all') {
+        const conflictResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as org_count,
+            STRING_AGG(name, ', ' ORDER BY name) as org_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY COUNT(*) DESC
+          LIMIT $1
+        `, [limit]);
+
+        response += `### Domain Conflicts\n`;
+        response += `_Multiple organizations claiming the same email domain_\n\n`;
+
+        if (conflictResult.rows.length === 0) {
+          response += `✅ No domain conflicts found.\n\n`;
+        } else {
+          issueCount += conflictResult.rows.length;
+          for (const row of conflictResult.rows) {
+            response += `**${row.email_domain}** - ${row.org_count} orgs\n`;
+            response += `  Orgs: ${row.org_names}\n`;
+          }
+          response += `\n_Action: Merge duplicate organizations._\n\n`;
+        }
+      }
+
+      // Summary
+      response += `---\n`;
+      if (issueCount === 0) {
+        response += `✅ **Domain health is good!** No issues found.`;
+      } else {
+        response += `⚠️ **Found ${issueCount} issue(s)** that need attention.\n`;
+        response += `\nUse the suggested actions or visit the admin Domain Health page for more details.`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error checking domain health');
+      return '❌ Failed to check domain health. Please try again.';
     }
   });
 
