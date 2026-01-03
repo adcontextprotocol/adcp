@@ -29,110 +29,180 @@
     body { padding-top: 60px; background: var(--color-bg-page); }
 
     .latest-container {
-      max-width: 1100px;
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 2rem;
+      padding: 1.5rem;
     }
 
+    /* Page Header */
     .page-header {
       text-align: center;
-      margin-bottom: 3rem;
+      margin-bottom: 1.5rem;
     }
 
     .page-header h1 {
-      font-size: 2.5rem;
+      font-size: 2rem;
       font-weight: 700;
       color: var(--color-text-heading);
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.5rem;
     }
 
     .page-header p {
-      font-size: 1.1rem;
+      font-size: 1rem;
       color: var(--color-text-secondary);
       max-width: 600px;
       margin: 0 auto;
     }
 
-    .sections-grid {
+    /* Tab Navigation */
+    .tabs-nav {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tabs-nav::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      padding: 0.75rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: var(--color-text);
+    }
+
+    .tab-btn.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+
+    .tab-btn.requires-auth {
+      opacity: 0.6;
+    }
+
+    /* Main Layout */
+    .main-layout {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 3rem;
+      grid-template-columns: 1fr 280px;
+      gap: 2rem;
     }
 
-    .section-card {
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filter-bar input[type="search"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 0.9rem;
       background: var(--color-bg-card);
-      border-radius: 12px;
-      padding: 1.5rem;
-      box-shadow: var(--shadow-sm);
-      transition: transform 0.15s, box-shadow 0.15s;
-      text-decoration: none;
+    }
+
+    .filter-bar input[type="search"]:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .filter-bar select {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      background: var(--color-bg-card);
+      cursor: pointer;
+    }
+
+    .filter-btn {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg-card);
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .filter-btn:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .filter-btn.active {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+      color: var(--color-brand);
+    }
+
+    /* Expanded Filters Panel */
+    .filters-panel {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .filter-group label {
       display: block;
-    }
-
-    .section-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
-    }
-
-    .section-card h2 {
-      font-size: 1.25rem;
+      font-size: 0.75rem;
       font-weight: 600;
-      color: var(--color-text-heading);
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: 0.5rem;
     }
 
-    .section-card p {
-      font-size: 0.9rem;
-      color: var(--color-text-secondary);
-      line-height: 1.5;
-      margin-bottom: 1rem;
+    .filter-group input,
+    .filter-group select {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 0.85rem;
     }
 
-    .section-card .count {
-      font-size: 0.8rem;
-      color: var(--color-brand);
-      font-weight: 600;
-    }
-
-    .featured-section {
-      margin-top: 3rem;
-    }
-
-    .featured-header {
+    /* Articles List */
+    .articles-list {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
-    }
-
-    .featured-header h2 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--color-text-heading);
-    }
-
-    .articles-grid {
-      display: grid;
-      gap: 1rem;
+      flex-direction: column;
+      gap: 0.75rem;
     }
 
     .article-card {
       background: var(--color-bg-card);
       border-radius: 8px;
-      padding: 1.25rem;
-      display: flex;
-      gap: 1rem;
-      align-items: flex-start;
-      transition: background 0.15s;
+      padding: 1rem 1.25rem;
+      transition: box-shadow 0.15s;
+      border: 1px solid var(--color-border);
     }
 
     .article-card:hover {
-      background: var(--color-bg-subtle);
-    }
-
-    .article-content {
-      flex: 1;
+      box-shadow: var(--shadow-sm);
     }
 
     .article-meta {
@@ -144,12 +214,28 @@
       margin-bottom: 0.5rem;
     }
 
-    .article-section {
-      background: var(--color-info-100);
-      color: var(--color-info-700);
+    .article-source {
+      font-weight: 500;
+    }
+
+    .article-date {
+      color: var(--color-text-muted);
+    }
+
+    .quality-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.7rem;
       padding: 0.125rem 0.5rem;
       border-radius: 4px;
-      font-weight: 500;
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
+    .quality-badge.high {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
     }
 
     .article-title {
@@ -177,13 +263,19 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      margin-bottom: 0.75rem;
+    }
+
+    .article-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
     .article-tags {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 0.75rem;
+      gap: 0.375rem;
     }
 
     .article-tag {
@@ -194,6 +286,199 @@
       border-radius: 4px;
     }
 
+    .article-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .comment-count {
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .save-btn {
+      background: none;
+      border: none;
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    .save-btn:hover {
+      background: var(--color-gray-100);
+    }
+
+    .save-btn.saved {
+      color: var(--color-brand);
+    }
+
+    .article-entities {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      margin-top: 0.5rem;
+    }
+
+    .article-entities a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .article-entities a:hover {
+      text-decoration: underline;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .sidebar-section {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .sidebar-section h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .trending-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .trending-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-gray-100);
+    }
+
+    .trending-item:last-child {
+      border-bottom: none;
+    }
+
+    .trending-item a {
+      color: var(--color-text);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .trending-item a:hover {
+      color: var(--color-brand);
+    }
+
+    .trending-count {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      background: var(--color-gray-100);
+      padding: 0.125rem 0.5rem;
+      border-radius: 10px;
+    }
+
+    /* Section Cards (Categories tab) */
+    .sections-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+
+    .section-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-decoration: none;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+
+    .section-card:hover {
+      box-shadow: var(--shadow-sm);
+      border-color: var(--color-brand);
+    }
+
+    .section-card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .section-card p {
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: 0.75rem;
+    }
+
+    .section-card .count {
+      font-size: 0.8rem;
+      color: var(--color-brand);
+      font-weight: 600;
+    }
+
+    /* Calendar View */
+    .calendar-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .calendar-nav h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .calendar-nav button {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg-card);
+      cursor: pointer;
+    }
+
+    .calendar-nav button:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .calendar-dates {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .calendar-date-group h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    /* States */
     .empty-state {
       text-align: center;
       padding: 3rem;
@@ -206,10 +491,73 @@
       color: var(--color-text-secondary);
     }
 
-    @media (max-width: 768px) {
+    .auth-required {
+      background: var(--color-warning-50);
+      border: 1px solid var(--color-warning-100);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .auth-required h3 {
+      color: var(--color-warning-700);
+      margin-bottom: 0.5rem;
+    }
+
+    .auth-required p {
+      color: var(--color-text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    .auth-required a {
+      color: var(--color-brand);
+      font-weight: 500;
+    }
+
+    /* Load More */
+    .load-more {
+      text-align: center;
+      padding: 1rem;
+    }
+
+    .load-more button {
+      padding: 0.75rem 2rem;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .load-more button:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        order: -1;
+        flex-direction: row;
+        overflow-x: auto;
+      }
+
+      .sidebar-section {
+        min-width: 250px;
+      }
+    }
+
+    @media (max-width: 600px) {
       .latest-container { padding: 1rem; }
-      .page-header h1 { font-size: 2rem; }
-      .sections-grid { grid-template-columns: 1fr; }
+      .page-header h1 { font-size: 1.5rem; }
+      .filter-bar { flex-direction: column; }
+      .filter-bar input[type="search"] { min-width: 100%; }
+      .tabs-nav { gap: 0; }
+      .tab-btn { padding: 0.75rem 1rem; font-size: 0.85rem; }
     }
   </style>
 </head>
@@ -219,101 +567,550 @@
   <div class="latest-container">
     <div class="page-header">
       <h1>The Latest</h1>
-      <p>Curated content about agentic AI in advertising, from industry news to tutorials and research.</p>
+      <p>Curated content about agentic AI in advertising</p>
     </div>
 
-    <div id="loading" class="loading">Loading sections...</div>
+    <!-- Tab Navigation -->
+    <nav class="tabs-nav" role="tablist">
+      <button class="tab-btn requires-auth" data-tab="for-you" role="tab">For You</button>
+      <button class="tab-btn" data-tab="trending" role="tab">Trending</button>
+      <button class="tab-btn active" data-tab="latest" role="tab">Latest</button>
+      <button class="tab-btn requires-auth" data-tab="watch" role="tab">Watch</button>
+      <button class="tab-btn" data-tab="categories" role="tab">Categories</button>
+      <button class="tab-btn" data-tab="calendar" role="tab">Calendar</button>
+    </nav>
 
-    <div id="sections" class="sections-grid" style="display: none;"></div>
+    <!-- Main Content -->
+    <div class="main-layout">
+      <main class="main-content">
+        <!-- Filter Bar -->
+        <div class="filter-bar" id="filterBar">
+          <input type="search" id="searchInput" placeholder="Search articles...">
+          <select id="sortSelect">
+            <option value="published_at">Newest</option>
+            <option value="quality_score">Quality</option>
+            <option value="trending_score">Most Popular</option>
+          </select>
+          <button class="filter-btn" id="filterToggle">
+            <span>Filters</span>
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M3 4h18M7 9h10M10 14h4"/>
+            </svg>
+          </button>
+        </div>
 
-    <div id="featured" class="featured-section" style="display: none;">
-      <div class="featured-header">
-        <h2>Recent Articles</h2>
-      </div>
-      <div id="articles" class="articles-grid"></div>
+        <!-- Expanded Filters -->
+        <div class="filters-panel" id="filtersPanel" hidden>
+          <div class="filter-group">
+            <label>Date Range</label>
+            <select id="dateRange">
+              <option value="">All time</option>
+              <option value="1">Past 24 hours</option>
+              <option value="7" selected>Past week</option>
+              <option value="30">Past month</option>
+              <option value="90">Past 3 months</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Min Quality</label>
+            <select id="minQuality">
+              <option value="">Any</option>
+              <option value="3">3+ stars</option>
+              <option value="4">4+ stars</option>
+              <option value="5">5 stars only</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Section</label>
+            <select id="sectionFilter">
+              <option value="">All sections</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Organization</label>
+            <select id="orgFilter">
+              <option value="">All organizations</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Articles Container -->
+        <div id="content">
+          <div class="loading">Loading articles...</div>
+        </div>
+      </main>
+
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-section">
+          <h3>Trending Companies</h3>
+          <ul class="trending-list" id="trendingCompanies">
+            <li class="loading" style="padding: 0.5rem 0; font-size: 0.85rem;">Loading...</li>
+          </ul>
+        </div>
+      </aside>
     </div>
   </div>
 
   <div id="adcp-footer"></div>
 
   <script>
+    // State
+    let currentTab = 'latest';
+    let currentPage = 0;
+    let isLoading = false;
+    let hasMore = true;
+    let isAuthenticated = false;
+    let savedArticles = new Set();
+
+    // Elements
+    const contentEl = document.getElementById('content');
+    const filterBar = document.getElementById('filterBar');
+    const filtersPanel = document.getElementById('filtersPanel');
+    const sidebar = document.getElementById('sidebar');
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      await checkAuth();
+      setupTabs();
+      setupFilters();
+      loadTrendingCompanies();
+      loadSections(); // For filter dropdown
+      loadContent();
+    });
+
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/me');
+        if (response.ok) {
+          const data = await response.json();
+          isAuthenticated = !!data.user;
+          if (isAuthenticated) {
+            // Update auth-required tabs
+            document.querySelectorAll('.tab-btn.requires-auth').forEach(btn => {
+              btn.classList.remove('requires-auth');
+            });
+            // Load saved articles
+            await loadSavedArticles();
+          }
+        }
+      } catch (e) {
+        console.error('Auth check failed:', e);
+      }
+    }
+
+    async function loadSavedArticles() {
+      try {
+        const response = await fetch('/api/latest/watch');
+        if (response.ok) {
+          const data = await response.json();
+          savedArticles = new Set(data.articles.map(a => a.id));
+        }
+      } catch (e) {
+        console.error('Failed to load saved articles:', e);
+      }
+    }
+
+    function setupTabs() {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+
+          // Check auth for protected tabs
+          if ((tab === 'for-you' || tab === 'watch') && !isAuthenticated) {
+            showAuthRequired(tab);
+            return;
+          }
+
+          // Update active state
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          currentTab = tab;
+          currentPage = 0;
+          hasMore = true;
+
+          // Show/hide filter bar based on tab
+          filterBar.style.display = (tab === 'categories' || tab === 'calendar') ? 'none' : 'flex';
+          filtersPanel.hidden = true;
+
+          // Show/hide sidebar based on tab
+          sidebar.style.display = tab === 'categories' ? 'none' : 'flex';
+
+          loadContent();
+        });
+      });
+    }
+
+    function setupFilters() {
+      const filterToggle = document.getElementById('filterToggle');
+      filterToggle.addEventListener('click', () => {
+        filtersPanel.hidden = !filtersPanel.hidden;
+        filterToggle.classList.toggle('active', !filtersPanel.hidden);
+      });
+
+      // Search with debounce
+      let searchTimeout;
+      document.getElementById('searchInput').addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+          currentPage = 0;
+          hasMore = true;
+          loadContent();
+        }, 300);
+      });
+
+      // Other filters
+      ['sortSelect', 'dateRange', 'minQuality', 'sectionFilter', 'orgFilter'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => {
+          currentPage = 0;
+          hasMore = true;
+          loadContent();
+        });
+      });
+    }
+
     async function loadSections() {
       try {
         const response = await fetch('/api/latest/sections');
-        if (!response.ok) throw new Error('Failed to load sections');
+        if (!response.ok) return;
         const data = await response.json();
 
-        const sectionsDiv = document.getElementById('sections');
-        if (data.sections.length === 0) {
-          sectionsDiv.innerHTML = '<div class="empty-state">No sections available yet.</div>';
-          sectionsDiv.style.display = 'block';
-          document.getElementById('loading').style.display = 'none';
+        const select = document.getElementById('sectionFilter');
+        data.sections.forEach(section => {
+          const option = document.createElement('option');
+          option.value = section.slug;
+          option.textContent = section.name;
+          select.appendChild(option);
+        });
+      } catch (e) {
+        console.error('Failed to load sections:', e);
+      }
+    }
+
+    async function loadTrendingCompanies() {
+      try {
+        const response = await fetch('/api/latest/trending-companies?limit=10');
+        if (!response.ok) throw new Error('Failed to load');
+        const data = await response.json();
+
+        const list = document.getElementById('trendingCompanies');
+        if (data.companies.length === 0) {
+          list.innerHTML = '<li style="padding: 0.5rem 0; font-size: 0.85rem; color: var(--color-text-muted);">No data yet</li>';
           return;
         }
 
-        let html = '';
-        for (const section of data.sections) {
-          html += `
+        list.innerHTML = data.companies.map(company => `
+          <li class="trending-item">
+            <a href="/latest?entity=${encodeURIComponent(company.entity_name)}">${escapeHtml(company.entity_name)}</a>
+            <span class="trending-count">${company.article_count}</span>
+          </li>
+        `).join('');
+      } catch (e) {
+        console.error('Failed to load trending:', e);
+        document.getElementById('trendingCompanies').innerHTML =
+          '<li style="padding: 0.5rem 0; font-size: 0.85rem; color: var(--color-text-muted);">Failed to load</li>';
+      }
+    }
+
+    async function loadContent() {
+      if (isLoading) return;
+      isLoading = true;
+
+      if (currentPage === 0) {
+        contentEl.innerHTML = '<div class="loading">Loading...</div>';
+      }
+
+      try {
+        switch (currentTab) {
+          case 'for-you':
+            await loadForYou();
+            break;
+          case 'trending':
+            await loadTrending();
+            break;
+          case 'latest':
+            await loadArticles();
+            break;
+          case 'watch':
+            await loadWatch();
+            break;
+          case 'categories':
+            await loadCategories();
+            break;
+          case 'calendar':
+            await loadCalendar();
+            break;
+        }
+      } catch (e) {
+        console.error('Failed to load content:', e);
+        contentEl.innerHTML = '<div class="empty-state">Failed to load content. Please try again.</div>';
+      }
+
+      isLoading = false;
+    }
+
+    async function loadArticles() {
+      const params = new URLSearchParams({
+        limit: '20',
+        offset: String(currentPage * 20),
+      });
+
+      const search = document.getElementById('searchInput').value;
+      if (search) params.set('q', search);
+
+      const sort = document.getElementById('sortSelect').value;
+      if (sort) params.set('sort', sort);
+
+      const dateRange = document.getElementById('dateRange').value;
+      if (dateRange) {
+        const from = new Date();
+        from.setDate(from.getDate() - parseInt(dateRange));
+        params.set('date_from', from.toISOString().split('T')[0]);
+      }
+
+      const minQuality = document.getElementById('minQuality').value;
+      if (minQuality) params.set('min_quality', minQuality);
+
+      const section = document.getElementById('sectionFilter').value;
+      if (section) params.set('section', section);
+
+      const org = document.getElementById('orgFilter').value;
+      if (org) params.set('organizations', org);
+
+      const response = await fetch(`/api/latest/articles?${params}`);
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
+
+      renderArticles(data.articles, currentPage === 0);
+      hasMore = data.articles.length === 20;
+    }
+
+    async function loadTrending() {
+      const params = new URLSearchParams({ limit: '20', offset: String(currentPage * 20) });
+
+      const response = await fetch(`/api/latest/trending?${params}`);
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
+
+      renderArticles(data.articles, currentPage === 0);
+      hasMore = data.articles.length === 20;
+    }
+
+    async function loadForYou() {
+      const params = new URLSearchParams({ limit: '20', offset: String(currentPage * 20) });
+
+      const response = await fetch(`/api/latest/for-you?${params}`);
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
+
+      renderArticles(data.articles, currentPage === 0);
+      hasMore = data.articles.length === 20;
+    }
+
+    async function loadWatch() {
+      const response = await fetch('/api/latest/watch');
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
+
+      if (data.articles.length === 0) {
+        contentEl.innerHTML = `
+          <div class="empty-state">
+            <h3>No saved articles yet</h3>
+            <p>Save articles to read later by clicking the bookmark icon.</p>
+          </div>
+        `;
+        return;
+      }
+
+      renderArticles(data.articles, true);
+      hasMore = false;
+    }
+
+    async function loadCategories() {
+      const response = await fetch('/api/latest/sections');
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
+
+      if (data.sections.length === 0) {
+        contentEl.innerHTML = '<div class="empty-state">No sections available yet.</div>';
+        return;
+      }
+
+      contentEl.innerHTML = `
+        <div class="sections-grid">
+          ${data.sections.map(section => `
             <a href="/latest/${escapeHtml(section.slug)}" class="section-card">
               <h2>${escapeHtml(section.name)}</h2>
               <p>${escapeHtml(section.description)}</p>
               <div class="count">${section.article_count} article${section.article_count !== 1 ? 's' : ''}</div>
             </a>
-          `;
-        }
-
-        sectionsDiv.innerHTML = html;
-        sectionsDiv.style.display = 'grid';
-        document.getElementById('loading').style.display = 'none';
-
-        // Load featured articles
-        loadFeatured();
-      } catch (error) {
-        console.error('Error loading sections:', error);
-        document.getElementById('loading').innerHTML =
-          '<p style="color: var(--color-error-600);">Failed to load sections.</p>';
-      }
+          `).join('')}
+        </div>
+      `;
     }
 
-    async function loadFeatured() {
-      try {
-        const response = await fetch('/api/latest/featured?limit=5');
-        if (!response.ok) throw new Error('Failed to load featured');
-        const data = await response.json();
+    async function loadCalendar() {
+      const response = await fetch('/api/latest/calendar?days=14');
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
 
-        if (data.articles.length === 0) return;
+      if (data.dates.length === 0) {
+        contentEl.innerHTML = '<div class="empty-state">No articles in the calendar view.</div>';
+        return;
+      }
 
-        const articlesDiv = document.getElementById('articles');
-        let html = '';
-
-        for (const article of data.articles) {
-          const tags = (article.relevance_tags || []).slice(0, 3);
-          const tagsHtml = tags.map(t => `<span class="article-tag">${escapeHtml(t)}</span>`).join('');
-
-          html += `
-            <div class="article-card">
-              <div class="article-content">
-                <div class="article-meta">
-                  <span class="article-section">${escapeHtml(article.section_name)}</span>
-                  ${article.feed_name ? `<span>${escapeHtml(article.feed_name)}</span>` : ''}
-                </div>
-                <h3 class="article-title">
-                  <a href="${escapeHtml(article.source_url)}" target="_blank" rel="noopener">${escapeHtml(article.title)}</a>
-                </h3>
-                ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
-                ${tags.length > 0 ? `<div class="article-tags">${tagsHtml}</div>` : ''}
+      contentEl.innerHTML = `
+        <div class="calendar-dates">
+          ${data.dates.map(dateGroup => `
+            <div class="calendar-date-group">
+              <h3>${formatDate(dateGroup.date)}</h3>
+              <div class="articles-list">
+                ${dateGroup.articles.map(article => renderArticleCard(article)).join('')}
               </div>
             </div>
-          `;
-        }
+          `).join('')}
+        </div>
+      `;
 
-        articlesDiv.innerHTML = html;
-        document.getElementById('featured').style.display = 'block';
-      } catch (error) {
-        console.error('Error loading featured:', error);
-      }
+      attachArticleHandlers();
     }
 
+    function renderArticles(articles, replace = true) {
+      if (articles.length === 0 && replace) {
+        contentEl.innerHTML = '<div class="empty-state">No articles found.</div>';
+        return;
+      }
+
+      const html = `
+        <div class="articles-list">
+          ${articles.map(article => renderArticleCard(article)).join('')}
+        </div>
+        ${hasMore ? `
+          <div class="load-more">
+            <button onclick="loadMore()">Load More</button>
+          </div>
+        ` : ''}
+      `;
+
+      if (replace) {
+        contentEl.innerHTML = html;
+      } else {
+        const existing = contentEl.querySelector('.articles-list');
+        if (existing) {
+          existing.insertAdjacentHTML('beforeend', articles.map(article => renderArticleCard(article)).join(''));
+          const loadMoreBtn = contentEl.querySelector('.load-more');
+          if (loadMoreBtn && !hasMore) {
+            loadMoreBtn.remove();
+          }
+        }
+      }
+
+      attachArticleHandlers();
+    }
+
+    function renderArticleCard(article) {
+      const tags = (article.relevance_tags || []).slice(0, 3);
+      const isSaved = savedArticles.has(article.id);
+      const qualityClass = (article.quality_score || 0) >= 4 ? 'high' : '';
+
+      return `
+        <div class="article-card" data-id="${article.id}">
+          <div class="article-meta">
+            <span class="article-source">${escapeHtml(article.feed_name || article.section_name || 'Source')}</span>
+            <span class="article-date">${relativeTime(article.published_at || article.created_at)}</span>
+            ${article.quality_score ? `<span class="quality-badge ${qualityClass}">${article.quality_score}/5</span>` : ''}
+          </div>
+          <h3 class="article-title">
+            <a href="/latest/article/${article.id}">${escapeHtml(article.title)}</a>
+          </h3>
+          ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
+          <div class="article-footer">
+            <div class="article-tags">
+              ${tags.map(t => `<span class="article-tag">${escapeHtml(t)}</span>`).join('')}
+            </div>
+            <div class="article-actions">
+              ${article.comment_count > 0 ? `<span class="comment-count">💬 ${article.comment_count}</span>` : ''}
+              <button class="save-btn ${isSaved ? 'saved' : ''}" data-id="${article.id}" title="${isSaved ? 'Remove from saved' : 'Save for later'}">
+                ${isSaved ? '★' : '☆'} ${isSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </div>
+          ${article.entities && article.entities.length > 0 ? `
+            <div class="article-entities">
+              Mentions: ${article.entities.slice(0, 3).map(e =>
+                `<a href="/latest?entity=${encodeURIComponent(e.name)}">${escapeHtml(e.name)}</a>`
+              ).join(', ')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function attachArticleHandlers() {
+      // Track views when clicking article titles
+      document.querySelectorAll('.article-title a').forEach(link => {
+        link.addEventListener('click', (e) => {
+          const card = link.closest('.article-card');
+          if (card && card.dataset.id) {
+            // Fire and forget - don't block navigation
+            fetch(`/api/latest/articles/${card.dataset.id}/view`, { method: 'POST' }).catch(() => {});
+          }
+        });
+      });
+
+      document.querySelectorAll('.save-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (!isAuthenticated) {
+            alert('Please sign in to save articles.');
+            return;
+          }
+
+          const id = btn.dataset.id;
+          const isSaved = savedArticles.has(parseInt(id));
+
+          try {
+            const response = await fetch(`/api/latest/watch/${id}`, {
+              method: isSaved ? 'DELETE' : 'POST',
+            });
+
+            if (response.ok) {
+              if (isSaved) {
+                savedArticles.delete(parseInt(id));
+                btn.classList.remove('saved');
+                btn.innerHTML = '☆ Save';
+              } else {
+                savedArticles.add(parseInt(id));
+                btn.classList.add('saved');
+                btn.innerHTML = '★ Saved';
+              }
+            }
+          } catch (e) {
+            console.error('Failed to save:', e);
+          }
+        });
+      });
+    }
+
+    function loadMore() {
+      if (!hasMore || isLoading) return;
+      currentPage++;
+      loadContent();
+    }
+
+    function showAuthRequired(tab) {
+      const tabName = tab === 'for-you' ? 'For You' : 'Watch';
+      contentEl.innerHTML = `
+        <div class="auth-required">
+          <h3>Sign in required</h3>
+          <p>The ${tabName} tab requires you to be signed in.</p>
+          <a href="/join">Join AgenticAdvertising.org</a>
+        </div>
+      `;
+    }
+
+    // Utility functions
     function escapeHtml(text) {
       if (!text) return '';
       const div = document.createElement('div');
@@ -321,7 +1118,42 @@
       return div.innerHTML;
     }
 
-    loadSections();
+    function relativeTime(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diff = now - date;
+
+      const minutes = Math.floor(diff / 60000);
+      if (minutes < 60) return `${minutes}m ago`;
+
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      if (date.toDateString() === today.toDateString()) return 'Today';
+      if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+      return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+
+    // Handle URL params (for entity filtering)
+    const urlParams = new URLSearchParams(window.location.search);
+    const entityParam = urlParams.get('entity');
+    if (entityParam) {
+      document.getElementById('searchInput').value = entityParam;
+    }
   </script>
 </body>
 </html>

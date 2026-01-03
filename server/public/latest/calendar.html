@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar | The Latest | AgenticAdvertising.org</title>
+  <meta name="description" content="Browse articles by date from AgenticAdvertising.org.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <style>
+    body { padding-top: 60px; background: var(--color-bg-page); }
+
+    .calendar-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .breadcrumb {
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .breadcrumb a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .page-header p {
+      font-size: 1rem;
+      color: var(--color-text-secondary);
+    }
+
+    /* Month Navigation */
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .month-nav button {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: var(--color-text);
+    }
+
+    .month-nav button:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .month-nav .current-month {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    /* Calendar Grid */
+    .calendar-grid {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .calendar-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      margin-bottom: 0.5rem;
+    }
+
+    .weekday {
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      padding: 0.5rem;
+    }
+
+    .calendar-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-bg-subtle);
+      border-radius: 6px;
+      cursor: default;
+      position: relative;
+    }
+
+    .calendar-day.empty {
+      background: transparent;
+    }
+
+    .calendar-day.has-articles {
+      cursor: pointer;
+      background: var(--color-primary-50);
+    }
+
+    .calendar-day.has-articles:hover {
+      background: var(--color-primary-100);
+    }
+
+    .calendar-day.selected {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .calendar-day.selected .day-count {
+      color: white;
+      opacity: 0.9;
+    }
+
+    .calendar-day .day-number {
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+
+    .calendar-day .day-count {
+      font-size: 0.7rem;
+      color: var(--color-brand);
+      font-weight: 600;
+    }
+
+    .calendar-day.today {
+      border: 2px solid var(--color-brand);
+    }
+
+    /* Articles for Selected Date */
+    .date-articles {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .date-articles h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 1rem;
+    }
+
+    .articles-list {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .article-card {
+      background: var(--color-bg-subtle);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+
+    .article-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    .article-source {
+      font-weight: 500;
+    }
+
+    .article-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .article-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .article-title a:hover {
+      color: var(--color-brand);
+    }
+
+    .article-summary {
+      font-size: 0.9rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: var(--color-text-secondary);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--color-text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .calendar-container { padding: 1rem; }
+      .calendar-day { font-size: 0.85rem; }
+      .month-nav { flex-wrap: wrap; gap: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="calendar-container">
+    <div class="breadcrumb">
+      <a href="/latest">The Latest</a> / Calendar
+    </div>
+
+    <div class="page-header">
+      <h1>Calendar</h1>
+      <p>Browse articles by publication date</p>
+    </div>
+
+    <div class="month-nav">
+      <button onclick="prevMonth()">Previous</button>
+      <span class="current-month" id="currentMonth"></span>
+      <button onclick="nextMonth()">Next</button>
+    </div>
+
+    <div class="calendar-grid">
+      <div class="calendar-weekdays">
+        <div class="weekday">Sun</div>
+        <div class="weekday">Mon</div>
+        <div class="weekday">Tue</div>
+        <div class="weekday">Wed</div>
+        <div class="weekday">Thu</div>
+        <div class="weekday">Fri</div>
+        <div class="weekday">Sat</div>
+      </div>
+      <div class="calendar-days" id="calendarDays"></div>
+    </div>
+
+    <div class="date-articles" id="dateArticles" style="display: none;">
+      <h2 id="selectedDateTitle"></h2>
+      <div id="dateArticlesList" class="articles-list"></div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let currentYear = new Date().getFullYear();
+    let currentMonth = new Date().getMonth() + 1;
+    let selectedDate = null;
+    let articleCounts = {};
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    async function loadCalendarData() {
+      try {
+        const response = await fetch(`/api/latest/calendar?year=${currentYear}&month=${currentMonth}`);
+        if (!response.ok) throw new Error('Failed to load calendar data');
+
+        const data = await response.json();
+        articleCounts = {};
+        for (const day of data.days) {
+          const dateStr = day.date.split('T')[0];
+          articleCounts[dateStr] = day.article_count;
+        }
+
+        renderCalendar();
+      } catch (error) {
+        console.error('Error loading calendar:', error);
+      }
+    }
+
+    function renderCalendar() {
+      document.getElementById('currentMonth').textContent = `${monthNames[currentMonth - 1]} ${currentYear}`;
+
+      const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      let html = '';
+
+      // Empty cells for days before the 1st
+      for (let i = 0; i < firstDay; i++) {
+        html += '<div class="calendar-day empty"></div>';
+      }
+
+      // Days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const count = articleCounts[dateStr] || 0;
+        const hasArticles = count > 0;
+        const isToday = dateStr === todayStr;
+        const isSelected = dateStr === selectedDate;
+
+        let classes = 'calendar-day';
+        if (hasArticles) classes += ' has-articles';
+        if (isToday) classes += ' today';
+        if (isSelected) classes += ' selected';
+
+        const onclick = hasArticles ? `onclick="selectDate('${dateStr}')"` : '';
+
+        html += `
+          <div class="${classes}" ${onclick}>
+            <span class="day-number">${day}</span>
+            ${hasArticles ? `<span class="day-count">${count}</span>` : ''}
+          </div>
+        `;
+      }
+
+      document.getElementById('calendarDays').innerHTML = html;
+    }
+
+    function prevMonth() {
+      currentMonth--;
+      if (currentMonth < 1) {
+        currentMonth = 12;
+        currentYear--;
+      }
+      selectedDate = null;
+      document.getElementById('dateArticles').style.display = 'none';
+      loadCalendarData();
+    }
+
+    function nextMonth() {
+      currentMonth++;
+      if (currentMonth > 12) {
+        currentMonth = 1;
+        currentYear++;
+      }
+      selectedDate = null;
+      document.getElementById('dateArticles').style.display = 'none';
+      loadCalendarData();
+    }
+
+    async function selectDate(dateStr) {
+      selectedDate = dateStr;
+      renderCalendar();
+
+      const date = new Date(dateStr + 'T00:00:00');
+      const formattedDate = date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+
+      document.getElementById('selectedDateTitle').textContent = formattedDate;
+      document.getElementById('dateArticlesList').innerHTML = '<div class="loading">Loading articles...</div>';
+      document.getElementById('dateArticles').style.display = 'block';
+
+      try {
+        const response = await fetch(`/api/latest/calendar/${dateStr}`);
+        if (!response.ok) throw new Error('Failed to load articles');
+
+        const data = await response.json();
+        const articles = data.articles || [];
+
+        if (articles.length === 0) {
+          document.getElementById('dateArticlesList').innerHTML = '<div class="empty-state">No articles for this date.</div>';
+          return;
+        }
+
+        document.getElementById('dateArticlesList').innerHTML = articles.map(article => `
+          <div class="article-card">
+            <div class="article-meta">
+              ${article.feed_name ? `<span class="article-source">${escapeHtml(article.feed_name)}</span>` : ''}
+            </div>
+            <h3 class="article-title">
+              <a href="/latest/article/${article.id}">${escapeHtml(article.title)}</a>
+            </h3>
+            ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading articles:', error);
+        document.getElementById('dateArticlesList').innerHTML = '<div class="empty-state">Failed to load articles.</div>';
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadCalendarData();
+  </script>
+</body>
+</html>

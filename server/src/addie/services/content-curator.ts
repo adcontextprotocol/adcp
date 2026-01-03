@@ -89,6 +89,17 @@ interface ChannelForRouting {
 }
 
 /**
+ * Extracted entity from article content
+ */
+export interface ExtractedEntity {
+  type: 'company' | 'person' | 'technology' | 'product';
+  name: string;
+  is_primary: boolean;
+  mention_count: number;
+  context: string;
+}
+
+/**
  * Generate summary and insights using Claude
  * Optionally includes notification channel routing if channels are provided
  */
@@ -104,6 +115,7 @@ async function generateAnalysis(
   relevance_tags: string[];
   quality_score: number | null;
   notification_channels: string[];
+  entities: ExtractedEntity[];
 }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -149,8 +161,22 @@ Provide your analysis as JSON with this structure:
   ],
   "addie_notes": "1-2 sentences explaining how this connects to agentic AI, advertising technology, or topics our community cares about. If the content isn't directly about ad tech, explain what broader lessons or context it provides.",
   "relevance_tags": ["tag1", "tag2"],
-  "quality_score": 1-5${channels && channels.length > 0 ? ',\n  "notification_channels": []' : ''}
+  "quality_score": 1-5,
+  "entities": [
+    {"type": "company", "name": "Company Name", "is_primary": true, "mention_count": 5, "context": "Brief quote showing how mentioned"}
+  ]${channels && channels.length > 0 ? ',\n  "notification_channels": []' : ''}
 }
+
+**Entity Extraction:**
+Identify all companies, people, technologies, and products mentioned in this article.
+For each entity:
+- type: "company", "person", "technology", or "product"
+- name: The entity name as commonly known (e.g., "Google" not "Alphabet Inc." unless the article specifically refers to the parent company)
+- is_primary: true if this entity is a main subject of the article (usually 1-2 entities max)
+- mention_count: Approximate number of times mentioned (1, 2-3, or 5+ estimates are fine)
+- context: A brief snippet (10-20 words) showing how the entity is mentioned
+
+Focus on entities relevant to advertising, ad tech, and AI. Include major tech companies, ad tech platforms (DSPs, SSPs, ad networks), agencies, and notable people in the industry.
 
 **Relevance tags - choose tags that accurately describe the content:**
 
@@ -191,6 +217,21 @@ Return ONLY the JSON, no markdown formatting.`,
   try {
     // Try to parse as JSON directly
     const parsed = JSON.parse(responseText);
+
+    // Validate and normalize entities
+    const entities: ExtractedEntity[] = Array.isArray(parsed.entities)
+      ? parsed.entities
+          .filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object) && 'type' in (e as object))
+          .map((e: { type?: string; name?: string; is_primary?: boolean; mention_count?: number; context?: string }) => ({
+            type: (['company', 'person', 'technology', 'product'].includes(e.type || '') ? e.type : 'company') as ExtractedEntity['type'],
+            name: String(e.name || '').trim(),
+            is_primary: Boolean(e.is_primary),
+            mention_count: typeof e.mention_count === 'number' ? e.mention_count : 1,
+            context: String(e.context || '').substring(0, 200),
+          }))
+          .filter((e: ExtractedEntity) => e.name.length > 0)
+      : [];
+
     return {
       summary: parsed.summary || '',
       key_insights: parsed.key_insights || [],
@@ -203,6 +244,7 @@ Return ONLY the JSON, no markdown formatting.`,
       notification_channels: Array.isArray(parsed.notification_channels)
         ? parsed.notification_channels
         : [],
+      entities,
     };
   } catch {
     // If JSON parsing fails, extract what we can
@@ -215,6 +257,7 @@ Return ONLY the JSON, no markdown formatting.`,
       relevance_tags: [],
       quality_score: null,
       notification_channels: [],
+      entities: [],
     };
   }
 }
@@ -408,6 +451,7 @@ async function processRssPerspective(
       relevance_tags: analysis.relevance_tags,
       quality_score: analysis.quality_score,
       notification_channel_ids: analysis.notification_channels,
+      entities: analysis.entities,
       fetch_status: 'success',
     });
 
@@ -417,6 +461,7 @@ async function processRssPerspective(
         quality: analysis.quality_score,
         tags: analysis.relevance_tags,
         channels: analysis.notification_channels,
+        entities: analysis.entities.length,
       },
       'Successfully processed RSS perspective'
     );
@@ -445,6 +490,7 @@ async function createOrUpdateRssKnowledge(
     relevance_tags?: string[];
     quality_score?: number | null;
     notification_channel_ids?: string[];
+    entities?: ExtractedEntity[];
     fetch_status: 'success' | 'failed';
     error_message?: string;
   }
@@ -471,15 +517,15 @@ async function createOrUpdateRssKnowledge(
   }
 
   // Upsert a successful entry with all the analysis data
-  await query(
+  const result = await query<{ id: number }>(
     `INSERT INTO addie_knowledge (
       title, category, content, source_url, fetch_url, source_type,
       fetch_status, last_fetched_at, summary, key_insights, addie_notes,
       relevance_tags, quality_score, mentions_agentic, mentions_adcp,
-      notification_channel_ids, discovery_source, discovery_context, created_by
+      notification_channel_ids, extracted_entities, discovery_source, discovery_context, created_by
     ) VALUES (
       $1, $2, $3, $4, $4, 'rss', 'success', NOW(), $5, $6, $7,
-      $8, $9, $10, $11, $12, 'rss_feed', $13, 'system'
+      $8, $9, $10, $11, $12, $13, 'rss_feed', $14, 'system'
     )
     ON CONFLICT (source_url) DO UPDATE SET
       content = EXCLUDED.content,
@@ -491,9 +537,11 @@ async function createOrUpdateRssKnowledge(
       mentions_agentic = EXCLUDED.mentions_agentic,
       mentions_adcp = EXCLUDED.mentions_adcp,
       notification_channel_ids = EXCLUDED.notification_channel_ids,
+      extracted_entities = EXCLUDED.extracted_entities,
       fetch_status = 'success',
       last_fetched_at = NOW(),
-      updated_at = NOW()`,
+      updated_at = NOW()
+    RETURNING id`,
     [
       perspective.title,
       perspective.category || 'Industry News',
@@ -507,9 +555,16 @@ async function createOrUpdateRssKnowledge(
       checkMentionsAgentic(data.content, data.summary || '', data.relevance_tags || []),
       checkMentionsAdcp(data.content, data.summary || ''),
       data.notification_channel_ids || [],
+      data.entities ? JSON.stringify(data.entities) : null,
       JSON.stringify({ perspective_id: perspective.id, feed_id: perspective.feed_id }),
     ]
   );
+
+  // Save entities to article_entities table via entity linker
+  if (result.rows[0]?.id && data.entities && data.entities.length > 0) {
+    const { saveArticleEntities } = await import('./entity-linker.js');
+    await saveArticleEntities(result.rows[0].id, data.entities);
+  }
 }
 
 /**
