@@ -164,9 +164,12 @@ function renderStats(stats: UserStats): string | null {
     statItems.push(`<div class="addie-home-stat"><span class="stat-value">${stats.workingGroupCount}</span><span class="stat-label">Working Groups</span></div>`);
   }
 
-  if (stats.slackActivity) {
-    statItems.push(`<div class="addie-home-stat"><span class="stat-value">${stats.slackActivity.messages30d}</span><span class="stat-label">Messages (30d)</span></div>`);
-    statItems.push(`<div class="addie-home-stat"><span class="stat-value">${stats.slackActivity.activeDays30d}</span><span class="stat-label">Active Days</span></div>`);
+  // Prefer conversationActivity (Slack + web chat) over slackActivity (Slack only)
+  // Only show if there's actual activity
+  const activity = stats.conversationActivity || stats.slackActivity;
+  if (activity && (activity.messages30d > 0 || activity.activeDays30d > 0)) {
+    statItems.push(`<div class="addie-home-stat"><span class="stat-value">${activity.messages30d}</span><span class="stat-label">Messages (30d)</span></div>`);
+    statItems.push(`<div class="addie-home-stat"><span class="stat-value">${activity.activeDays30d}</span><span class="stat-label">Active Days</span></div>`);
   }
 
   if (stats.subscriptionStatus) {

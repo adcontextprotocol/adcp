@@ -210,8 +210,12 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
 /**
  * Get user info from request for HTML config injection.
  * Checks dev mode first, then WorkOS session.
+ * If session is refreshed, updates the cookie in the response.
  */
-async function getUserFromRequest(req: express.Request): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
+async function getUserFromRequest(
+  req: express.Request,
+  res?: express.Response
+): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
   // Check dev mode first
   if (isDevModeEnabled()) {
     const devUser = getDevUser(req);
@@ -224,15 +228,47 @@ async function getUserFromRequest(req: express.Request): Promise<{ id?: string; 
   const sessionCookie = req.cookies?.['wos-session'];
   if (sessionCookie && AUTH_ENABLED && workos) {
     try {
-      const session = await workos.userManagement.loadSealedSession({
+      const session = workos.userManagement.loadSealedSession({
         sessionData: sessionCookie,
         cookiePassword: WORKOS_COOKIE_PASSWORD,
       });
-      if (session) {
-        const authResult = await session.authenticate();
-        if (authResult.authenticated && authResult.user) {
-          return authResult.user;
+
+      // Try to authenticate with the current session
+      let authResult = await session.authenticate();
+
+      // If authentication failed (e.g., expired token), try to refresh
+      if (!authResult.authenticated || !authResult.user) {
+        try {
+          const refreshResult = await session.refresh({
+            cookiePassword: WORKOS_COOKIE_PASSWORD,
+          });
+
+          if (refreshResult.authenticated && refreshResult.sealedSession) {
+            // Update the cookie with the refreshed session
+            if (res) {
+              res.cookie('wos-session', refreshResult.sealedSession, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+              });
+            }
+
+            // Re-authenticate with the new session
+            const newSession = workos.userManagement.loadSealedSession({
+              sessionData: refreshResult.sealedSession,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            authResult = await newSession.authenticate();
+          }
+        } catch {
+          // Refresh failed - continue without user
         }
+      }
+
+      if (authResult.authenticated && authResult.user) {
+        return authResult.user;
       }
     } catch {
       // Session invalid or expired - continue without user
@@ -365,8 +401,8 @@ export class HTTPServer {
         // Check if file exists
         await fs.access(filePath);
 
-        // Get user from session (if authenticated)
-        const user = await getUserFromRequest(req);
+        // Get user from session (if authenticated), passing res to update cookie if session is refreshed
+        const user = await getUserFromRequest(req, res);
 
         // Read and inject config
         let html = await fs.readFile(filePath, 'utf-8');
@@ -414,8 +450,8 @@ export class HTTPServer {
     const filePath = path.join(publicPath, htmlFile);
 
     try {
-      // Get user from session (if authenticated)
-      const user = await getUserFromRequest(req);
+      // Get user from session (if authenticated), passing res to update cookie if session is refreshed
+      const user = await getUserFromRequest(req, res);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -929,8 +965,8 @@ export class HTTPServer {
           .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
-        // Inject user config for nav.js
-        const user = await getUserFromRequest(req);
+        // Inject user config for nav.js, passing res to update cookie if session is refreshed
+        const user = await getUserFromRequest(req, res);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -966,8 +1002,8 @@ export class HTTPServer {
           .replace(/\{\{STRIPE_PRICING_TABLE_ID\}\}/g, process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace(/\{\{STRIPE_PRICING_TABLE_ID_INDIVIDUAL\}\}/g, process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
-        // Inject user config for nav.js
-        const user = await getUserFromRequest(req);
+        // Inject user config for nav.js, passing res to update cookie if session is refreshed
+        const user = await getUserFromRequest(req, res);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);

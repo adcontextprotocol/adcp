@@ -86,6 +86,12 @@ export interface ActivityItem {
 export interface UserStats {
   memberSince: Date | null;
   workingGroupCount: number;
+  /** Combined activity from Slack and web chat (preferred over slackActivity) */
+  conversationActivity: {
+    messages30d: number;
+    activeDays30d: number;
+  } | null;
+  /** Slack-only activity (fallback when conversationActivity is not available) */
   slackActivity: {
     messages30d: number;
     activeDays30d: number;

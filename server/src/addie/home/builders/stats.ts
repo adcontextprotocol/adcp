@@ -16,15 +16,27 @@ export function buildStats(memberContext: MemberContext): UserStats | null {
     return null;
   }
 
+  // Prefer conversation_activity (from addie_threads) as it includes both Slack and web chat
+  // Fall back to slack_activity for backwards compatibility
+  const conversationActivity = memberContext.conversation_activity
+    ? {
+        messages30d: memberContext.conversation_activity.total_messages_30d,
+        activeDays30d: memberContext.conversation_activity.active_days_30d,
+      }
+    : null;
+
+  const slackActivity = memberContext.slack_activity
+    ? {
+        messages30d: memberContext.slack_activity.total_messages_30d,
+        activeDays30d: memberContext.slack_activity.active_days_30d,
+      }
+    : null;
+
   return {
     memberSince: memberContext.org_membership?.joined_at ?? null,
     workingGroupCount: memberContext.engagement?.working_group_count ?? 0,
-    slackActivity: memberContext.slack_activity
-      ? {
-          messages30d: memberContext.slack_activity.total_messages_30d,
-          activeDays30d: memberContext.slack_activity.active_days_30d,
-        }
-      : null,
+    conversationActivity,
+    slackActivity,
     subscriptionStatus: memberContext.subscription?.status ?? null,
     renewalDate: memberContext.subscription?.current_period_end ?? null,
   };
