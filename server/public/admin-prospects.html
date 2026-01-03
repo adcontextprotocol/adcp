@@ -1176,7 +1176,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       needs_followup: 'Organizations with pending follow-up actions due within 7 days',
       new_signups: 'Organizations that signed up in the last 14 days with no logged activities',
       open_invoices: 'Organizations with open or draft invoices waiting for payment - follow up to close deals',
-      hot_prospects: 'Non-members with high engagement (3+ fires) - good candidates for conversion',
+      hot_prospects: 'Non-members with engagement score 30+ (Slack users, team members, activities, events, interest)',
       going_cold: 'Organizations with no activity in the last 30 days - may need re-engagement',
       renewals: 'Active members with subscriptions ending in the next 60 days',
       low_engagement: 'Active members with low engagement (2 fires or less) - retention risk',
@@ -2520,9 +2520,11 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           companyHtml += ` <span class="status-badge status-member">Member</span>`;
         }
 
-        // Engagement fires
+        // Engagement fires with score
         const fires = '\u{1F525}'.repeat(prospect.engagement_level || 1);
-        const engagementTooltip = prospect.engagement_reasons?.join(', ') || 'Cold';
+        const score = prospect.engagement_score || 0;
+        const reasons = prospect.engagement_reasons?.join(', ') || 'New prospect';
+        const engagementTooltip = `Score: ${score}/100\n${reasons}`;
         const engagementHtml = `<span class="engagement-fires" title="${engagementTooltip}">${fires}</span>`;
 
         // Domain - show primary domain and count of others
