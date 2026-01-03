@@ -415,55 +415,6 @@
       font-size: var(--text-sm);
     }
 
-    /* Stakeholders */
-    .stakeholders-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .stakeholder-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-2) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
-      font-size: var(--text-sm);
-    }
-    .stakeholder-item:last-child {
-      border-bottom: none;
-    }
-    .stakeholder-role {
-      display: inline-block;
-      padding: var(--space-0.5) var(--space-1.5);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      font-weight: var(--font-medium);
-      margin-left: var(--space-2);
-    }
-    .stakeholder-role.owner {
-      background: var(--color-warning-100);
-      color: var(--color-warning-700);
-    }
-    .stakeholder-role.interested {
-      background: var(--color-primary-100);
-      color: var(--color-primary-700);
-    }
-    .stakeholder-role.connected {
-      background: var(--color-gray-200);
-      color: var(--color-text-heading);
-    }
-    #myRoleSelect {
-      cursor: pointer;
-      border: var(--border-1) solid var(--color-gray-300);
-    }
-    .btn-connected {
-      background: var(--color-success-100);
-      color: var(--color-success-700);
-      border: var(--border-1) solid var(--color-success-200);
-    }
-    .btn-connected:hover {
-      background: var(--color-success-200);
-    }
 
     /* Pending Invoices */
     .invoice-item {
@@ -524,6 +475,55 @@
     }
     .btn-danger:hover {
       background: var(--color-error-200);
+    }
+
+    /* Owner selector */
+    .owner-selector {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .owner-name {
+      cursor: pointer;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      transition: var(--transition-all);
+    }
+    .owner-name:hover {
+      background: var(--color-gray-100);
+    }
+    .owner-dropdown {
+      display: none;
+      position: relative;
+    }
+    .owner-dropdown.active {
+      display: block;
+    }
+    .owner-dropdown select {
+      padding: var(--space-1) var(--space-2);
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .watch-btn {
+      padding: var(--space-1);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: var(--text-base);
+      opacity: 0.4;
+      transition: var(--transition-all);
+    }
+    .watch-btn:hover {
+      opacity: 0.7;
+    }
+    .watch-btn.watching {
+      opacity: 1;
+      color: var(--color-warning-500);
+    }
+    .watch-btn.watching:hover {
+      opacity: 0.8;
     }
 
     /* Domain list */
@@ -641,7 +641,17 @@
             </div>
             <div class="info-row">
               <span class="info-label">Owner</span>
-              <span class="info-value" id="orgOwner">-</span>
+              <span class="info-value" id="orgOwner">
+                <span class="owner-selector">
+                  <span id="ownerDisplay" class="owner-name" onclick="showOwnerDropdown()" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showOwnerDropdown()">-</span>
+                  <div id="ownerDropdown" class="owner-dropdown">
+                    <select id="ownerSelect" onchange="assignOwner(this.value)">
+                      <option value="">Unassigned</option>
+                    </select>
+                  </div>
+                  <button id="watchBtn" class="watch-btn" onclick="toggleWatch()" title="Watch this organization">☆</button>
+                </span>
+              </span>
             </div>
           </div>
           <div>
@@ -673,24 +683,6 @@
       <div class="grid-2">
         <!-- Left Column -->
         <div>
-          <!-- Account Stakeholders (moved to top) -->
-          <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-              <h2 style="margin-bottom: 0;">Account Team</h2>
-              <div id="connectBtnGroup" style="display: flex; gap: var(--space-2);">
-                <select id="myRoleSelect" class="btn btn-secondary btn-sm" style="padding: var(--space-1) var(--space-2);" onchange="updateMyRole()">
-                  <option value="">+ Join team</option>
-                  <option value="owner">Owner</option>
-                  <option value="interested">Interested</option>
-                  <option value="connected">Connected</option>
-                </select>
-              </div>
-            </div>
-            <div id="stakeholdersList" class="empty-state">
-              No team members assigned
-            </div>
-          </div>
-
           <!-- Engagement Signals -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
@@ -1035,15 +1027,17 @@
     let stakeholders = [];
     let domainsData = null;
     let currentUserId = null;
+    let teamMembers = [];
     const orgId = window.location.pathname.split('/').pop();
 
     async function loadOrganization() {
       try {
-        // Load org data, stakeholders, and domains in parallel
-        const [orgResponse, stakeholdersResponse, domainsResponse] = await Promise.all([
+        // Load org data, stakeholders, domains, and team members in parallel
+        const [orgResponse, stakeholdersResponse, domainsResponse, teamResponse] = await Promise.all([
           fetch(`/api/admin/organizations/${orgId}`),
           fetch(`/api/admin/organizations/${orgId}/stakeholders`),
-          fetch(`/api/admin/organizations/${orgId}/domains`)
+          fetch(`/api/admin/organizations/${orgId}/domains`),
+          fetch('/api/admin/team')
         ]);
 
         if (!orgResponse.ok) {
@@ -1062,6 +1056,7 @@
         orgData = await orgResponse.json();
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
         domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
+        teamMembers = teamResponse.ok ? await teamResponse.json() : [];
 
         // Get current user ID from AdminNav if available
         if (window.AdminNav && window.AdminNav.user) {
@@ -1069,7 +1064,7 @@
         }
 
         renderOrganization();
-        renderStakeholders();
+        renderOwnerSelector();
         renderDomains();
 
         document.getElementById('loading').style.display = 'none';
@@ -1122,8 +1117,7 @@
       document.getElementById('orgType').textContent =
         typeLabels[orgData.company_type] || orgData.company_type || '-';
 
-      // Owner
-      document.getElementById('orgOwner').textContent = orgData.prospect_owner || '-';
+      // Owner is now handled by renderOwnerSelector()
 
       // Contact
       let contactHtml = '-';
@@ -1538,108 +1532,166 @@
       }
     }
 
-    // Stakeholder functions
-    function renderStakeholders() {
-      const container = document.getElementById('stakeholdersList');
-      const roleSelect = document.getElementById('myRoleSelect');
+    // Owner selector and watch functions
+    function renderOwnerSelector() {
+      const ownerDisplay = document.getElementById('ownerDisplay');
+      const ownerSelect = document.getElementById('ownerSelect');
+      const watchBtn = document.getElementById('watchBtn');
 
-      // Check if current user is already a stakeholder
-      const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
+      // Find owner stakeholder
+      const ownerStakeholder = stakeholders.find(s => s.role === 'owner');
+      const isCurrentUserOwner = ownerStakeholder && currentUserId && ownerStakeholder.user_id === currentUserId;
 
-      // Update the dropdown to reflect current role
-      if (myStakeholder) {
-        roleSelect.value = myStakeholder.role;
+      // Update owner display
+      if (ownerStakeholder) {
+        ownerDisplay.textContent = isCurrentUserOwner ? 'Me' : ownerStakeholder.user_name;
       } else {
-        roleSelect.value = '';
+        ownerDisplay.textContent = 'Unassigned';
       }
 
-      if (!stakeholders || stakeholders.length === 0) {
-        container.innerHTML = '<div class="empty-state">No team members assigned</div>';
-        return;
-      }
+      // Populate owner dropdown using DOM APIs to prevent XSS
+      ownerSelect.innerHTML = '';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Unassigned';
+      ownerSelect.appendChild(defaultOption);
 
-      const roleLabels = {
-        'owner': 'Owner',
-        'interested': 'Interested',
-        'connected': 'Connected'
+      teamMembers.forEach(member => {
+        const option = document.createElement('option');
+        option.value = member.user_id;
+        option.textContent = member.user_id === currentUserId ? 'Me' : member.user_name;
+        if (ownerStakeholder && ownerStakeholder.user_id === member.user_id) {
+          option.selected = true;
+        }
+        ownerSelect.appendChild(option);
+      });
+
+      // Update watch button
+      // Check if current user is watching (interested role) - but not if they're the owner
+      const isWatching = stakeholders.some(s =>
+        currentUserId && s.user_id === currentUserId && s.role === 'interested'
+      );
+
+      if (isCurrentUserOwner) {
+        // Hide watch button if user is owner
+        watchBtn.style.display = 'none';
+      } else {
+        watchBtn.style.display = 'inline-block';
+        watchBtn.className = isWatching ? 'watch-btn watching' : 'watch-btn';
+        watchBtn.textContent = isWatching ? '⭐' : '☆';
+        watchBtn.title = isWatching ? 'Stop watching' : 'Watch this organization';
+      }
+    }
+
+    function showOwnerDropdown() {
+      const dropdown = document.getElementById('ownerDropdown');
+      const display = document.getElementById('ownerDisplay');
+
+      dropdown.classList.add('active');
+      display.style.display = 'none';
+
+      // Focus the select
+      const select = document.getElementById('ownerSelect');
+      select.focus();
+
+      // Close dropdown when clicking outside
+      const closeDropdown = (e) => {
+        if (!dropdown.contains(e.target) && e.target !== display) {
+          dropdown.classList.remove('active');
+          display.style.display = 'inline';
+          document.removeEventListener('click', closeDropdown);
+        }
       };
-
-      container.innerHTML = `<ul class="stakeholders-list">
-        ${stakeholders.map(s => `
-          <li class="stakeholder-item">
-            <div>
-              ${s.user_name}
-              <span class="stakeholder-role ${s.role}">${roleLabels[s.role] || s.role}</span>
-              ${s.user_email ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${s.user_email}</span>` : ''}
-            </div>
-            ${s.user_id === currentUserId ? `<button class="btn btn-sm btn-secondary" onclick="removeMyConnection()">Remove</button>` : ''}
-          </li>
-        `).join('')}
-      </ul>`;
+      setTimeout(() => document.addEventListener('click', closeDropdown), 0);
     }
 
-    async function updateMyRole() {
-      const roleSelect = document.getElementById('myRoleSelect');
-      const newRole = roleSelect.value;
+    async function assignOwner(userId) {
+      const dropdown = document.getElementById('ownerDropdown');
+      const display = document.getElementById('ownerDisplay');
 
-      if (!newRole) {
-        // If selecting the placeholder option, remove from team
-        const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
-        if (myStakeholder) {
-          await removeMyConnection();
-        }
-        return;
-      }
+      // Hide dropdown, show display
+      dropdown.classList.remove('active');
+      display.style.display = 'inline';
 
       try {
-        const response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: newRole })
-        });
+        let response;
+        if (!userId) {
+          // Remove owner - find and delete owner stakeholder
+          const ownerStakeholder = stakeholders.find(s => s.role === 'owner');
+          if (ownerStakeholder) {
+            response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/${ownerStakeholder.id}`, {
+              method: 'DELETE'
+            });
+          }
+        } else {
+          // Assign new owner
+          const teamMember = teamMembers.find(m => m.user_id === userId);
+          response = await fetch(`/api/admin/organizations/${orgId}/stakeholders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: userId,
+              user_name: teamMember?.user_name || userId,
+              user_email: teamMember?.user_email,
+              role: 'owner'
+            })
+          });
+        }
+
+        if (response && !response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to update owner');
+        }
+
+        // Refresh stakeholders
+        const stakeholdersResponse = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
+        stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
+        renderOwnerSelector();
+      } catch (error) {
+        console.error('Error assigning owner:', error);
+        alert('Failed to assign owner. Please try again.');
+      }
+    }
+
+    async function toggleWatch() {
+      const isWatching = stakeholders.some(s =>
+        currentUserId && s.user_id === currentUserId && s.role === 'interested'
+      );
+
+      try {
+        let response;
+        if (isWatching) {
+          // Stop watching - remove self as stakeholder
+          response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
+            method: 'DELETE'
+          });
+        } else {
+          // Start watching - add self as interested
+          response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'interested' })
+          });
+        }
 
         if (!response.ok) {
           if (response.status === 401) {
             window.AdminNav.redirectToLogin();
             return;
           }
-          throw new Error('Failed to update role');
+          throw new Error('Failed to update watch status');
         }
 
-        // Refresh stakeholders list
+        // Refresh stakeholders
         const stakeholdersResponse = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
-        renderStakeholders();
+        renderOwnerSelector();
       } catch (error) {
-        alert('Error: ' + error.message);
-        // Revert dropdown to previous value
-        const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
-        roleSelect.value = myStakeholder ? myStakeholder.role : '';
-      }
-    }
-
-    async function removeMyConnection() {
-      if (!confirm('Remove yourself from this account team?')) return;
-
-      try {
-        const response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
-          method: 'DELETE'
-        });
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
-            return;
-          }
-          throw new Error('Failed to remove connection');
-        }
-
-        // Refresh stakeholders list
-        const stakeholdersResponse = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
-        stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
-        renderStakeholders();
-      } catch (error) {
-        alert('Error: ' + error.message);
+        console.error('Error toggling watch:', error);
+        alert('Failed to update watch status. Please try again.');
       }
     }
 
