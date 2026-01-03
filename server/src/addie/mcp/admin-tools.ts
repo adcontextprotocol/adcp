@@ -38,6 +38,12 @@ import {
   type FeedWithStats,
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
+import {
+  getProductsForCustomer,
+  createCheckoutSession,
+  createAndSendInvoice,
+  type BillingProduct,
+} from '../../billing/stripe-client.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -338,6 +344,73 @@ Returns: Slack user count and activity, working groups, engagement level and sig
         },
       },
       required: [],
+    },
+  },
+  {
+    name: 'send_payment_request',
+    description: `Send a payment link or invoice to a prospect. This is the ONE tool to use when you want to get someone to pay.
+
+USE THIS when an admin says things like:
+- "Send Joe Root at Permutive a membership link"
+- "Get a payment link for Boltive"
+- "Invoice The Trade Desk"
+- "Help [company] pay for membership"
+
+This tool will:
+1. Find the company (or create it if it doesn't exist)
+2. Show you the users/contacts on file
+3. Generate a direct Stripe payment link OR send an invoice
+
+For payment links: Returns a direct Stripe checkout URL you can share with the prospect.
+For invoices: Sends an email from Stripe with a payment link - good for companies that need NET30/PO.`,
+    usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        company_name: {
+          type: 'string',
+          description: 'Company name to search for or create',
+        },
+        domain: {
+          type: 'string',
+          description: 'Company domain (helps with lookup and creation)',
+        },
+        contact_name: {
+          type: 'string',
+          description: 'Contact person name (e.g., "Joe Root")',
+        },
+        contact_email: {
+          type: 'string',
+          description: 'Contact email address (required for invoice, optional for payment link)',
+        },
+        contact_title: {
+          type: 'string',
+          description: 'Contact job title',
+        },
+        action: {
+          type: 'string',
+          enum: ['payment_link', 'invoice', 'lookup_only'],
+          description: 'What to do: payment_link (default), invoice (sends email), or lookup_only (just show info)',
+        },
+        product: {
+          type: 'string',
+          enum: ['bronze', 'silver', 'gold', 'platinum'],
+          description: 'Membership tier (will suggest based on company size if not specified)',
+        },
+        billing_address: {
+          type: 'object',
+          description: 'Required for invoices - company billing address',
+          properties: {
+            line1: { type: 'string' },
+            line2: { type: 'string' },
+            city: { type: 'string' },
+            state: { type: 'string' },
+            postal_code: { type: 'string' },
+            country: { type: 'string', description: 'Two-letter country code (e.g., "US")' },
+          },
+        },
+      },
+      required: ['company_name'],
     },
   },
   {
@@ -1316,6 +1389,342 @@ export function createAdminToolHandlers(
     response += `\n_Showing ${result.rows.length} of ${limit} max. Use find_prospect for details._`;
 
     return response;
+  });
+
+  // Send payment request - the unified tool for getting prospects to pay
+  handlers.set('send_payment_request', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const companyName = input.company_name as string;
+    const domain = input.domain as string | undefined;
+    const contactName = input.contact_name as string | undefined;
+    const contactEmail = input.contact_email as string | undefined;
+    const contactTitle = input.contact_title as string | undefined;
+    const action = (input.action as string) || 'payment_link';
+    const productTier = input.product as string | undefined;
+    const billingAddress = input.billing_address as {
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+    } | undefined;
+
+    const pool = getPool();
+    let org: {
+      workos_organization_id: string;
+      name: string;
+      is_personal: boolean;
+      company_type?: string;
+      revenue_tier?: string;
+      prospect_contact_email?: string;
+      prospect_contact_name?: string;
+      enrichment_employee_count?: number;
+      enrichment_revenue?: number;
+    } | null = null;
+    let created = false;
+
+    // Step 1: Find the organization
+    const searchPattern = `%${companyName}%`;
+    const searchResult = await pool.query(
+      `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+              prospect_contact_email, prospect_contact_name,
+              enrichment_employee_count, enrichment_revenue
+       FROM organizations
+       WHERE is_personal = false
+         AND (LOWER(name) LIKE LOWER($1) ${domain ? 'OR LOWER(email_domain) LIKE LOWER($2)' : ''})
+       ORDER BY
+         CASE WHEN LOWER(name) = LOWER($3) THEN 0
+              WHEN LOWER(name) LIKE LOWER($4) THEN 1
+              ELSE 2 END
+       LIMIT 5`,
+      domain
+        ? [searchPattern, `%${domain}%`, companyName, `${companyName}%`]
+        : [searchPattern, companyName, `${companyName}%`]
+    );
+
+    if (searchResult.rows.length === 0) {
+      // Create the prospect
+      const createResult = await createProspect({
+        name: companyName,
+        domain,
+        prospect_source: 'addie_payment_request',
+        prospect_contact_name: contactName,
+        prospect_contact_email: contactEmail,
+        prospect_contact_title: contactTitle,
+      });
+
+      if (!createResult.success || !createResult.organization) {
+        return `❌ Failed to create prospect: ${createResult.error}`;
+      }
+
+      // Re-fetch with full fields
+      const newOrgResult = await pool.query(
+        `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+                prospect_contact_email, prospect_contact_name,
+                enrichment_employee_count, enrichment_revenue
+         FROM organizations WHERE workos_organization_id = $1`,
+        [createResult.organization.workos_organization_id]
+      );
+      org = newOrgResult.rows[0];
+      created = true;
+    } else if (searchResult.rows.length === 1) {
+      org = searchResult.rows[0];
+    } else {
+      // Multiple matches - ask user to clarify
+      let response = `## Found ${searchResult.rows.length} companies matching "${companyName}"\n\n`;
+      response += `Which one do you mean?\n\n`;
+
+      for (let i = 0; i < searchResult.rows.length; i++) {
+        const o = searchResult.rows[i];
+        response += `**${i + 1}. ${o.name}**\n`;
+        if (o.prospect_contact_name) response += `   Contact: ${o.prospect_contact_name}\n`;
+        if (o.company_type) response += `   Type: ${o.company_type}\n`;
+        response += `\n`;
+      }
+
+      response += `_Reply with the company name to proceed._`;
+      return response;
+    }
+
+    if (!org) {
+      return `❌ Could not find or create organization "${companyName}"`;
+    }
+
+    // Update contact info if provided
+    if (contactName || contactEmail || contactTitle) {
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      if (contactName) {
+        updates.push(`prospect_contact_name = $${paramIndex++}`);
+        values.push(contactName);
+      }
+      if (contactEmail) {
+        updates.push(`prospect_contact_email = $${paramIndex++}`);
+        values.push(contactEmail);
+      }
+      if (contactTitle) {
+        updates.push(`prospect_contact_title = $${paramIndex++}`);
+        values.push(contactTitle);
+      }
+
+      if (updates.length > 0) {
+        updates.push(`updated_at = NOW()`);
+        values.push(org.workos_organization_id);
+        await pool.query(
+          `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
+          values
+        );
+        // Update local object
+        if (contactName) org.prospect_contact_name = contactName;
+        if (contactEmail) org.prospect_contact_email = contactEmail;
+      }
+    }
+
+    // Get users in this org (WorkOS memberships)
+    const membersResult = await pool.query(
+      `SELECT om.workos_user_id, u.email, u.first_name, u.last_name
+       FROM organization_memberships om
+       LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+       WHERE om.workos_organization_id = $1
+       LIMIT 10`,
+      [org.workos_organization_id]
+    );
+    const members = membersResult.rows;
+
+    // Determine the email to use
+    const emailToUse = contactEmail || org.prospect_contact_email || members[0]?.email;
+
+    // Get available products
+    const customerType = org.is_personal ? 'individual' : 'company';
+    let products: BillingProduct[] = [];
+    try {
+      products = await getProductsForCustomer({
+        customerType,
+        category: 'membership',
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch products');
+    }
+
+    // Suggest a product based on company size/revenue if not specified
+    let suggestedProduct: BillingProduct | undefined;
+    let selectedProduct: BillingProduct | undefined;
+
+    if (productTier) {
+      selectedProduct = products.find(p =>
+        p.lookup_key?.toLowerCase().includes(productTier.toLowerCase())
+      );
+    }
+
+    if (!selectedProduct && products.length > 0) {
+      // Suggest based on enrichment data
+      const employeeCount = org.enrichment_employee_count || 0;
+      const revenue = org.enrichment_revenue || 0;
+
+      // Simple heuristic for suggestion
+      if (revenue > 250000000 || employeeCount > 500) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('platinum'));
+      } else if (revenue > 50000000 || employeeCount > 100) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('gold'));
+      } else if (revenue > 5000000 || employeeCount > 20) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('silver'));
+      }
+      suggestedProduct = suggestedProduct || products.find(p => p.lookup_key?.includes('bronze')) || products[0];
+    }
+
+    const finalProduct = selectedProduct || suggestedProduct;
+
+    // Build response
+    let response = `## ${created ? '✅ Created' : '📋'} ${org.name}\n\n`;
+
+    // Show contacts/users
+    response += `### Contacts\n`;
+    if (org.prospect_contact_name || org.prospect_contact_email) {
+      response += `**Primary Contact:** ${org.prospect_contact_name || 'Unknown'}`;
+      if (org.prospect_contact_email) response += ` (${org.prospect_contact_email})`;
+      response += `\n`;
+    }
+    if (members.length > 0) {
+      response += `**Registered Users:** ${members.length}\n`;
+      for (const m of members.slice(0, 3)) {
+        const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown';
+        response += `  • ${name} (${m.email})\n`;
+      }
+      if (members.length > 3) {
+        response += `  _...and ${members.length - 3} more_\n`;
+      }
+    } else if (!org.prospect_contact_email) {
+      response += `_No contacts on file - add a contact_email to proceed._\n`;
+    }
+    response += `\n`;
+
+    // If lookup only, stop here
+    if (action === 'lookup_only') {
+      response += `### Available Products\n`;
+      for (const p of products.slice(0, 5)) {
+        const amount = p.amount_cents ? `$${(p.amount_cents / 100).toLocaleString()}/yr` : 'Custom';
+        const suggested = p === suggestedProduct ? ' ⭐ Suggested' : '';
+        response += `• ${p.display_name} - ${amount}${suggested}\n`;
+      }
+      response += `\n_Use this tool again with action="payment_link" or action="invoice" to proceed._`;
+      return response;
+    }
+
+    // Generate payment link
+    if (action === 'payment_link') {
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+      try {
+        const session = await createCheckoutSession({
+          priceId: finalProduct.price_id,
+          customerEmail: emailToUse || undefined,
+          successUrl: `${baseUrl}/dashboard?payment=success`,
+          cancelUrl: `${baseUrl}/membership?payment=cancelled`,
+          workosOrganizationId: org.workos_organization_id,
+          isPersonalWorkspace: org.is_personal,
+        });
+
+        if (!session?.url) {
+          return response + `\n❌ Failed to generate payment link. Stripe may not be configured.`;
+        }
+
+        response += `### 💳 Payment Link Generated\n\n`;
+        response += `**Product:** ${finalProduct.display_name}\n`;
+        if (finalProduct.amount_cents) {
+          response += `**Amount:** $${(finalProduct.amount_cents / 100).toLocaleString()}/year\n`;
+        }
+        response += `\n**Payment Link:**\n${session.url}\n`;
+        response += `\n_Share this link with ${org.prospect_contact_name || emailToUse || 'the prospect'}. It expires in 24 hours._`;
+
+        logger.info(
+          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key },
+          'Addie generated payment link'
+        );
+
+        return response;
+      } catch (err) {
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to create checkout session');
+        return response + `\n❌ Failed to create payment link: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+    }
+
+    // Send invoice
+    if (action === 'invoice') {
+      if (!emailToUse) {
+        return response + `\n❌ Cannot send invoice without an email address. Please provide contact_email.`;
+      }
+
+      if (!billingAddress?.line1 || !billingAddress?.city || !billingAddress?.postal_code || !billingAddress?.country) {
+        response += `### 📄 Invoice - Need Billing Address\n\n`;
+        response += `To send an invoice, I need the full billing address:\n`;
+        response += `• line1 (street address)\n`;
+        response += `• city\n`;
+        response += `• state (if applicable)\n`;
+        response += `• postal_code\n`;
+        response += `• country (two-letter code, e.g., "US")\n`;
+        response += `\n_Call this tool again with the billing_address to send the invoice._`;
+        return response;
+      }
+
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      try {
+        const invoiceResult = await createAndSendInvoice({
+          companyName: org.name,
+          contactName: org.prospect_contact_name || contactName || 'Billing',
+          contactEmail: emailToUse,
+          billingAddress: {
+            line1: billingAddress.line1,
+            line2: billingAddress.line2,
+            city: billingAddress.city || '',
+            state: billingAddress.state || '',
+            postal_code: billingAddress.postal_code || '',
+            country: billingAddress.country || 'US',
+          },
+          lookupKey: finalProduct.lookup_key || '',
+          workosOrganizationId: org.workos_organization_id,
+        });
+
+        if (!invoiceResult) {
+          return response + `\n❌ Failed to create invoice. Stripe may not be configured.`;
+        }
+
+        response += `### 📧 Invoice Sent!\n\n`;
+        response += `**Product:** ${finalProduct.display_name}\n`;
+        if (finalProduct.amount_cents) {
+          response += `**Amount:** $${(finalProduct.amount_cents / 100).toLocaleString()}\n`;
+        }
+        response += `**Sent to:** ${emailToUse}\n`;
+        response += `**Invoice ID:** ${invoiceResult.invoiceId}\n`;
+        if (invoiceResult.invoiceUrl) {
+          response += `\n**Invoice URL:**\n${invoiceResult.invoiceUrl}\n`;
+        }
+        response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
+
+        logger.info(
+          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId },
+          'Addie sent invoice'
+        );
+
+        return response;
+      } catch (err) {
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send invoice');
+        return response + `\n❌ Failed to send invoice: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+    }
+
+    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "invoice", or "lookup_only".`;
   });
 
   // Search Lusha for prospects
