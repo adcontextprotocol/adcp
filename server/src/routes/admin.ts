@@ -26,6 +26,7 @@ import { setupDomainRoutes } from "./admin/domains.js";
 import { setupCleanupRoutes } from "./admin/cleanup.js";
 import { setupStatsRoutes } from "./admin/stats.js";
 import { setupDiscountRoutes } from "./admin/discounts.js";
+import { setupMembersRoutes } from "./admin/members.js";
 
 const logger = createLogger("admin-routes");
 
@@ -69,6 +70,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/domain-health", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-domain-health.html").catch((err) => {
+      logger.error({ err }, "Error serving domain health page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
@@ -93,6 +101,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Discount management routes
   setupDiscountRoutes(apiRouter);
+
+  // Members management routes (list, sync, payments, delete)
+  setupMembersRoutes(apiRouter, { workos });
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)

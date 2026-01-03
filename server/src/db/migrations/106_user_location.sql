@@ -1,4 +1,4 @@
--- Migration: 105_user_location.sql
+-- Migration: 106_user_location.sql
 -- Add location fields to users table for regional chapter matching
 -- Also seeds outreach goals for location and chapter interest
 

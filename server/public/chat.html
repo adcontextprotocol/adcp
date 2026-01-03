@@ -1077,6 +1077,26 @@
         return { messageDiv, contentDiv };
       }
 
+      // Check if text has balanced markdown markers
+      // Uses arithmetic instead of lookbehind regex for Safari compatibility
+      function hasBalancedMarkdown(text) {
+        // Count bold markers (**)
+        const boldCount = (text.match(/\*\*/g) || []).length;
+        // Calculate italic: total asterisks minus those used in bold
+        const allAsterisks = (text.match(/\*/g) || []).length;
+        const italicCount = allAsterisks - (boldCount * 2);
+
+        // Count code block markers (```) first, then calculate inline code
+        const codeBlockCount = (text.match(/```/g) || []).length;
+        const allBackticks = (text.match(/`/g) || []).length;
+        const inlineCodeCount = allBackticks - (codeBlockCount * 3);
+
+        return boldCount % 2 === 0 &&
+               italicCount % 2 === 0 &&
+               inlineCodeCount % 2 === 0 &&
+               codeBlockCount % 2 === 0;
+      }
+
       // Append text to streaming message
       // Render complete paragraphs as markdown, show incomplete paragraph as plain text
       function appendToStreamingMessage(contentDiv, text, fullContent) {
@@ -1092,18 +1112,32 @@
             .replace(/\n/g, '<br>');
           contentDiv.innerHTML = escaped + '<span class="streaming-cursor">|</span>';
         } else {
-          // Render complete paragraphs as markdown, show remainder as plain text
+          // Check if the "complete" paragraphs actually have balanced markdown
           const completeParagraphs = fullContent.substring(0, lastParagraphBreak);
           const remainder = fullContent.substring(lastParagraphBreak + 2);
 
-          const renderedMarkdown = renderMessage(completeParagraphs);
+          // Only render as markdown if markers are balanced, otherwise show as plain text
+          let renderedComplete;
+          if (hasBalancedMarkdown(completeParagraphs)) {
+            renderedComplete = renderMessage(completeParagraphs);
+          } else {
+            // Fall back to plain text if markdown is unbalanced
+            renderedComplete = completeParagraphs
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/\n\n/g, '</p><p>')
+              .replace(/\n/g, '<br>');
+            renderedComplete = '<p>' + renderedComplete + '</p>';
+          }
+
           const escapedRemainder = remainder
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
 
-          contentDiv.innerHTML = renderedMarkdown +
+          contentDiv.innerHTML = renderedComplete +
             (escapedRemainder ? '<p>' + escapedRemainder + '<span class="streaming-cursor">|</span></p>' : '<span class="streaming-cursor">|</span>');
         }
         messagesContainer.scrollTop = messagesContainer.scrollHeight;

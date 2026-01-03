@@ -19,10 +19,12 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import {
   getPendingInvoices,
+  getAllOpenInvoices,
   createOrgDiscount,
   createCoupon,
   createPromotionCode,
   type PendingInvoice,
+  type OpenInvoiceWithCustomer,
 } from '../../billing/stripe-client.js';
 import {
   enrichOrganization,
@@ -45,6 +47,13 @@ import {
   createChannel,
   setChannelPurpose,
 } from '../../slack/client.js';
+import {
+  getProductsForCustomer,
+  createCheckoutSession,
+  createAndSendInvoice,
+  type BillingProduct,
+} from '../../billing/stripe-client.js';
+import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -345,6 +354,93 @@ Returns: Slack user count and activity, working groups, engagement level and sig
         },
       },
       required: [],
+    },
+  },
+  {
+    name: 'send_payment_request',
+    description: `Send a payment link or invoice to a prospect. This is the ONE tool to use when you want to get someone to pay.
+
+USE THIS when an admin says things like:
+- "Send Joe Root at Permutive a membership link"
+- "Get a payment link for Boltive"
+- "Invoice The Trade Desk"
+- "Help [company] pay for membership"
+- "Give Acme a 20% discount and send them a payment link"
+- "Send a discounted link to the startup"
+
+This tool will:
+1. Find the company (or create it if it doesn't exist)
+2. Show you the users/contacts on file
+3. Apply a discount if requested (or use their existing discount)
+4. Generate a direct Stripe payment link OR send an invoice
+
+For payment links: Returns a direct Stripe checkout URL you can share with the prospect.
+For invoices: Sends an email from Stripe with a payment link - good for companies that need NET30/PO.
+For discounts: Can create a new discount or auto-apply an existing org discount.`,
+    usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        company_name: {
+          type: 'string',
+          description: 'Company name to search for or create',
+        },
+        domain: {
+          type: 'string',
+          description: 'Company domain (helps with lookup and creation)',
+        },
+        contact_name: {
+          type: 'string',
+          description: 'Contact person name (e.g., "Joe Root")',
+        },
+        contact_email: {
+          type: 'string',
+          description: 'Contact email address (required for invoice, optional for payment link)',
+        },
+        contact_title: {
+          type: 'string',
+          description: 'Contact job title',
+        },
+        action: {
+          type: 'string',
+          enum: ['payment_link', 'invoice', 'lookup_only'],
+          description: 'What to do: payment_link (default), invoice (sends email), or lookup_only (just show info)',
+        },
+        product: {
+          type: 'string',
+          enum: ['bronze', 'silver', 'gold', 'platinum'],
+          description: 'Membership tier (will suggest based on company size if not specified)',
+        },
+        billing_address: {
+          type: 'object',
+          description: 'Required for invoices - company billing address',
+          properties: {
+            line1: { type: 'string' },
+            line2: { type: 'string' },
+            city: { type: 'string' },
+            state: { type: 'string' },
+            postal_code: { type: 'string' },
+            country: { type: 'string', description: 'Two-letter country code (e.g., "US")' },
+          },
+        },
+        discount_percent: {
+          type: 'number',
+          description: 'Apply a percentage discount (e.g., 20 = 20% off). Creates a Stripe coupon.',
+        },
+        discount_amount_dollars: {
+          type: 'number',
+          description: 'Apply a fixed dollar discount (e.g., 500 = $500 off). Creates a Stripe coupon.',
+        },
+        discount_reason: {
+          type: 'string',
+          description: 'Reason for the discount (e.g., "Startup discount", "Early adopter")',
+        },
+        use_existing_discount: {
+          type: 'boolean',
+          description: 'If the org already has a discount, use it (default: true)',
+        },
+      },
+      required: ['company_name'],
     },
   },
   {
@@ -689,6 +785,88 @@ Example: If someone in Austin says "I want to start a chapter", use this to crea
       required: [],
     },
   },
+
+  // ============================================
+  // ORGANIZATION MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'merge_organizations',
+    description: `Merge two duplicate organization records into one.
+Use this when you discover duplicate organizations (same company with multiple records).
+All data from the secondary organization will be moved to the primary, then the secondary will be deleted.
+
+IMPORTANT: This is a destructive operation that cannot be undone. Always use preview mode first.
+
+Steps:
+1. Use find_prospect or get_organization_details to identify both org IDs
+2. Call merge_organizations with preview=true to see what will be merged
+3. If the preview looks correct, call again with preview=false to execute the merge`,
+    usage_hints: 'Always preview first! Use find_prospect to get the org IDs before merging.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        primary_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the organization to KEEP (all data will be merged into this one)',
+        },
+        secondary_org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID of the organization to REMOVE (data will be moved from here)',
+        },
+        preview: {
+          type: 'boolean',
+          description: 'If true, show what would be merged without actually doing it (default: true for safety)',
+        },
+      },
+      required: ['primary_org_id', 'secondary_org_id'],
+    },
+  },
+  {
+    name: 'find_duplicate_orgs',
+    description: `Search for potential duplicate organizations by name or domain.
+Use this to discover organizations that might need to be merged.
+
+Returns organizations that share the same name (case-insensitive) or email domain.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        search_type: {
+          type: 'string',
+          enum: ['name', 'domain', 'all'],
+          description: 'What to search for duplicates: name (same org name), domain (same email domain), or all (both)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'check_domain_health',
+    description: `Check domain health across the system to find data quality issues.
+
+This tool identifies:
+1. **Orphan corporate domains** - Users with corporate email domains (not gmail, etc.) that have no matching organization
+2. **Unverified org domains** - Organizations with users but no verified domain mapping
+3. **Domain conflicts** - Multiple orgs claiming the same domain
+4. **Personal workspace corporate users** - Users with company emails in personal workspaces instead of company orgs
+
+The goal: Every corporate email domain should map to a known organization (member or prospect).`,
+    usage_hints: 'Use this for data quality audits. The results can guide follow-up actions like creating prospects or merging orgs.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        check_type: {
+          type: 'string',
+          enum: ['orphan_domains', 'unverified_domains', 'domain_conflicts', 'misaligned_users', 'all'],
+          description: 'What to check: orphan_domains (corporate emails without orgs), unverified_domains (orgs missing domain verification), domain_conflicts (multiple orgs per domain), misaligned_users (corporate users in personal workspaces), or all',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results per category (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -722,6 +900,23 @@ function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> 
     amount: formatCurrency(invoice.amount_due, invoice.currency),
     product: invoice.product_name || 'Unknown product',
     sent_to: invoice.customer_email || 'Unknown',
+    created: formatDate(invoice.created),
+    due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
+    payment_url: invoice.hosted_invoice_url || null,
+  };
+}
+
+/**
+ * Format open invoice with customer info for response
+ */
+function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unknown> {
+  return {
+    id: invoice.id,
+    status: invoice.status,
+    amount: formatCurrency(invoice.amount_due, invoice.currency),
+    product: invoice.product_name || 'Unknown product',
+    customer_name: invoice.customer_name || 'Unknown',
+    customer_email: invoice.customer_email || 'Unknown',
     created: formatDate(invoice.created),
     due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
     payment_url: invoice.hosted_invoice_url || null,
@@ -828,61 +1023,60 @@ export function createAdminToolHandlers(
     }
   });
 
-  // List pending invoices across all orgs
+  // List pending invoices across all customers (queries Stripe directly)
   handlers.set('list_pending_invoices', async (input) => {
     const adminCheck = requireAdminFromContext();
     if (adminCheck) return adminCheck;
 
-    const limit = (input.limit as number) || 10;
+    const limit = (input.limit as number) || 20;
 
     logger.info({ limit }, 'Addie: Admin listing pending invoices');
 
     try {
-      // Get all organizations with Stripe customers
-      const allOrgs = await orgDb.listOrganizations();
-      const orgsWithStripe = allOrgs.filter(org => org.stripe_customer_id);
+      // Query Stripe directly for all open invoices
+      // This finds invoices even for customers not linked to organizations in our database
+      const openInvoices = await getAllOpenInvoices(limit);
 
-      const orgsWithPendingInvoices: Array<{
-        name: string;
-        invoices: ReturnType<typeof formatPendingInvoice>[];
-      }> = [];
-
-      // Check each org for pending invoices
-      for (const org of orgsWithStripe) {
-        if (!org.stripe_customer_id) continue;
-
-        const pendingInvoices = await getPendingInvoices(org.stripe_customer_id);
-
-        if (pendingInvoices.length > 0) {
-          orgsWithPendingInvoices.push({
-            name: org.name,
-            invoices: pendingInvoices.map(formatPendingInvoice),
-          });
-        }
-
-        // Stop if we've found enough
-        if (orgsWithPendingInvoices.length >= limit) {
-          break;
-        }
-      }
-
-      if (orgsWithPendingInvoices.length === 0) {
+      if (openInvoices.length === 0) {
         return JSON.stringify({
           success: true,
-          message: 'No pending invoices found across all organizations.',
-          organizations: [],
+          message: 'No pending invoices found.',
+          invoices: [],
         });
       }
 
-      const totalInvoices = orgsWithPendingInvoices.reduce(
-        (sum, org) => sum + org.invoices.length,
-        0
+      // Try to match invoices to organizations by workos_organization_id or stripe_customer_id
+      const allOrgs = await orgDb.listOrganizations();
+      const orgByWorkosId = new Map(allOrgs.map(org => [org.workos_organization_id, org]));
+      const orgByStripeId = new Map(
+        allOrgs.filter(org => org.stripe_customer_id).map(org => [org.stripe_customer_id, org])
       );
+
+      const invoicesWithOrgs = openInvoices.map(invoice => {
+        // Try to find matching org
+        let orgName: string | null = null;
+        if (invoice.workos_organization_id) {
+          const org = orgByWorkosId.get(invoice.workos_organization_id);
+          if (org) orgName = org.name;
+        }
+        if (!orgName) {
+          const org = orgByStripeId.get(invoice.customer_id);
+          if (org) orgName = org.name;
+        }
+
+        return {
+          ...formatOpenInvoice(invoice),
+          organization: orgName || invoice.customer_name || 'Unknown organization',
+        };
+      });
+
+      const totalAmount = openInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+      const formattedTotal = formatCurrency(totalAmount, openInvoices[0]?.currency || 'usd');
 
       return JSON.stringify({
         success: true,
-        message: `Found ${totalInvoices} pending invoice(s) across ${orgsWithPendingInvoices.length} organization(s)`,
-        organizations: orgsWithPendingInvoices,
+        message: `Found ${openInvoices.length} pending invoice(s) totaling ${formattedTotal}`,
+        invoices: invoicesWithOrgs,
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error listing pending invoices');
@@ -1478,6 +1672,404 @@ export function createAdminToolHandlers(
     response += `\n_Showing ${result.rows.length} of ${limit} max. Use find_prospect for details._`;
 
     return response;
+  });
+
+  // Send payment request - the unified tool for getting prospects to pay
+  handlers.set('send_payment_request', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const companyName = input.company_name as string;
+    const domain = input.domain as string | undefined;
+    const contactName = input.contact_name as string | undefined;
+    const contactEmail = input.contact_email as string | undefined;
+    const contactTitle = input.contact_title as string | undefined;
+    const action = (input.action as string) || 'payment_link';
+    const productTier = input.product as string | undefined;
+    const billingAddress = input.billing_address as {
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+    } | undefined;
+    // Discount parameters
+    const discountPercent = input.discount_percent as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const discountReason = input.discount_reason as string | undefined;
+    const useExistingDiscount = input.use_existing_discount !== false; // default true
+
+    const pool = getPool();
+    let org: {
+      workos_organization_id: string;
+      name: string;
+      is_personal: boolean;
+      company_type?: string;
+      revenue_tier?: string;
+      prospect_contact_email?: string;
+      prospect_contact_name?: string;
+      enrichment_employee_count?: number;
+      enrichment_revenue?: number;
+      // Discount fields
+      discount_percent?: number;
+      discount_amount_cents?: number;
+      stripe_coupon_id?: string;
+      stripe_promotion_code?: string;
+    } | null = null;
+    let created = false;
+
+    // Step 1: Find the organization
+    const searchPattern = `%${companyName}%`;
+    const searchResult = await pool.query(
+      `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+              prospect_contact_email, prospect_contact_name,
+              enrichment_employee_count, enrichment_revenue,
+              discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
+       FROM organizations
+       WHERE is_personal = false
+         AND (LOWER(name) LIKE LOWER($1) ${domain ? 'OR LOWER(email_domain) LIKE LOWER($2)' : ''})
+       ORDER BY
+         CASE WHEN LOWER(name) = LOWER($3) THEN 0
+              WHEN LOWER(name) LIKE LOWER($4) THEN 1
+              ELSE 2 END
+       LIMIT 5`,
+      domain
+        ? [searchPattern, `%${domain}%`, companyName, `${companyName}%`]
+        : [searchPattern, companyName, `${companyName}%`]
+    );
+
+    if (searchResult.rows.length === 0) {
+      // Create the prospect
+      const createResult = await createProspect({
+        name: companyName,
+        domain,
+        prospect_source: 'addie_payment_request',
+        prospect_contact_name: contactName,
+        prospect_contact_email: contactEmail,
+        prospect_contact_title: contactTitle,
+      });
+
+      if (!createResult.success || !createResult.organization) {
+        return `❌ Failed to create prospect: ${createResult.error}`;
+      }
+
+      // Re-fetch with full fields
+      const newOrgResult = await pool.query(
+        `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+                prospect_contact_email, prospect_contact_name,
+                enrichment_employee_count, enrichment_revenue,
+                discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
+         FROM organizations WHERE workos_organization_id = $1`,
+        [createResult.organization.workos_organization_id]
+      );
+      org = newOrgResult.rows[0];
+      created = true;
+    } else if (searchResult.rows.length === 1) {
+      org = searchResult.rows[0];
+    } else {
+      // Multiple matches - ask user to clarify
+      let response = `## Found ${searchResult.rows.length} companies matching "${companyName}"\n\n`;
+      response += `Which one do you mean?\n\n`;
+
+      for (let i = 0; i < searchResult.rows.length; i++) {
+        const o = searchResult.rows[i];
+        response += `**${i + 1}. ${o.name}**\n`;
+        if (o.prospect_contact_name) response += `   Contact: ${o.prospect_contact_name}\n`;
+        if (o.company_type) response += `   Type: ${o.company_type}\n`;
+        response += `\n`;
+      }
+
+      response += `_Reply with the company name to proceed._`;
+      return response;
+    }
+
+    if (!org) {
+      return `❌ Could not find or create organization "${companyName}"`;
+    }
+
+    // Update contact info if provided
+    if (contactName || contactEmail || contactTitle) {
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      if (contactName) {
+        updates.push(`prospect_contact_name = $${paramIndex++}`);
+        values.push(contactName);
+      }
+      if (contactEmail) {
+        updates.push(`prospect_contact_email = $${paramIndex++}`);
+        values.push(contactEmail);
+      }
+      if (contactTitle) {
+        updates.push(`prospect_contact_title = $${paramIndex++}`);
+        values.push(contactTitle);
+      }
+
+      if (updates.length > 0) {
+        updates.push(`updated_at = NOW()`);
+        values.push(org.workos_organization_id);
+        await pool.query(
+          `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
+          values
+        );
+        // Update local object
+        if (contactName) org.prospect_contact_name = contactName;
+        if (contactEmail) org.prospect_contact_email = contactEmail;
+      }
+    }
+
+    // Get users in this org (WorkOS memberships)
+    const membersResult = await pool.query(
+      `SELECT om.workos_user_id, u.email, u.first_name, u.last_name
+       FROM organization_memberships om
+       LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+       WHERE om.workos_organization_id = $1
+       LIMIT 10`,
+      [org.workos_organization_id]
+    );
+    const members = membersResult.rows;
+
+    // Determine the email to use
+    const emailToUse = contactEmail || org.prospect_contact_email || members[0]?.email;
+
+    // Get available products
+    const customerType = org.is_personal ? 'individual' : 'company';
+    let products: BillingProduct[] = [];
+    try {
+      products = await getProductsForCustomer({
+        customerType,
+        category: 'membership',
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch products');
+    }
+
+    // Suggest a product based on company size/revenue if not specified
+    let suggestedProduct: BillingProduct | undefined;
+    let selectedProduct: BillingProduct | undefined;
+
+    if (productTier) {
+      selectedProduct = products.find(p =>
+        p.lookup_key?.toLowerCase().includes(productTier.toLowerCase())
+      );
+    }
+
+    if (!selectedProduct && products.length > 0) {
+      // Suggest based on enrichment data
+      const employeeCount = org.enrichment_employee_count || 0;
+      const revenue = org.enrichment_revenue || 0;
+
+      // Simple heuristic for suggestion
+      if (revenue > 250000000 || employeeCount > 500) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('platinum'));
+      } else if (revenue > 50000000 || employeeCount > 100) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('gold'));
+      } else if (revenue > 5000000 || employeeCount > 20) {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('silver'));
+      }
+      suggestedProduct = suggestedProduct || products.find(p => p.lookup_key?.includes('bronze')) || products[0];
+    }
+
+    const finalProduct = selectedProduct || suggestedProduct;
+
+    // Build response
+    let response = `## ${created ? '✅ Created' : '📋'} ${org.name}\n\n`;
+
+    // Show contacts/users
+    response += `### Contacts\n`;
+    if (org.prospect_contact_name || org.prospect_contact_email) {
+      response += `**Primary Contact:** ${org.prospect_contact_name || 'Unknown'}`;
+      if (org.prospect_contact_email) response += ` (${org.prospect_contact_email})`;
+      response += `\n`;
+    }
+    if (members.length > 0) {
+      response += `**Registered Users:** ${members.length}\n`;
+      for (const m of members.slice(0, 3)) {
+        const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown';
+        response += `  • ${name} (${m.email})\n`;
+      }
+      if (members.length > 3) {
+        response += `  _...and ${members.length - 3} more_\n`;
+      }
+    } else if (!org.prospect_contact_email) {
+      response += `_No contacts on file - add a contact_email to proceed._\n`;
+    }
+    response += `\n`;
+
+    // If lookup only, stop here
+    if (action === 'lookup_only') {
+      response += `### Available Products\n`;
+      for (const p of products.slice(0, 5)) {
+        const amount = p.amount_cents ? `$${(p.amount_cents / 100).toLocaleString()}/yr` : 'Custom';
+        const suggested = p === suggestedProduct ? ' ⭐ Suggested' : '';
+        response += `• ${p.display_name} - ${amount}${suggested}\n`;
+      }
+      response += `\n_Use this tool again with action="payment_link" or action="invoice" to proceed._`;
+      return response;
+    }
+
+    // Generate payment link
+    if (action === 'payment_link') {
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+
+      try {
+        // Handle discounts
+        let couponId: string | undefined;
+        let appliedDiscount: string | undefined;
+
+        // Check if a new discount was requested
+        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+          if (!discountReason) {
+            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+          }
+
+          // Create a new discount/coupon for this org
+          const grantedBy = memberContext?.workos_user?.email || 'Addie';
+          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
+            percent_off: discountPercent,
+            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
+            duration: 'forever',
+            reason: discountReason,
+          });
+
+          if (stripeDiscount) {
+            couponId = stripeDiscount.coupon_id;
+            // Also save to the org record
+            await orgDb.setDiscount(org.workos_organization_id, {
+              discount_percent: discountPercent ?? null,
+              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+              reason: discountReason,
+              granted_by: grantedBy,
+              stripe_coupon_id: stripeDiscount.coupon_id,
+              stripe_promotion_code: stripeDiscount.promotion_code,
+            });
+            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
+            logger.info({
+              orgId: org.workos_organization_id,
+              discount: appliedDiscount,
+              reason: discountReason,
+            }, 'Created discount for payment link');
+          }
+        } else if (useExistingDiscount && org.stripe_coupon_id) {
+          // Use the org's existing discount
+          couponId = org.stripe_coupon_id;
+          appliedDiscount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : `$${(org.discount_amount_cents || 0) / 100} off`;
+        }
+
+        const session = await createCheckoutSession({
+          priceId: finalProduct.price_id,
+          customerEmail: emailToUse || undefined,
+          successUrl: `${baseUrl}/dashboard?payment=success`,
+          cancelUrl: `${baseUrl}/membership?payment=cancelled`,
+          workosOrganizationId: org.workos_organization_id,
+          isPersonalWorkspace: org.is_personal,
+          couponId, // Pre-apply the discount if available
+        });
+
+        if (!session?.url) {
+          return response + `\n❌ Failed to generate payment link. Stripe may not be configured.`;
+        }
+
+        response += `### 💳 Payment Link Generated\n\n`;
+        response += `**Product:** ${finalProduct.display_name}\n`;
+        if (finalProduct.amount_cents) {
+          const originalAmount = finalProduct.amount_cents / 100;
+          response += `**Amount:** $${originalAmount.toLocaleString()}/year\n`;
+        }
+        if (appliedDiscount) {
+          response += `**Discount:** ${appliedDiscount} (pre-applied)\n`;
+        }
+        response += `\n**Payment Link:**\n${session.url}\n`;
+        response += `\n_Share this link with ${org.prospect_contact_name || emailToUse || 'the prospect'}. It expires in 24 hours._`;
+
+        logger.info(
+          { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
+          'Addie generated payment link'
+        );
+
+        return response;
+      } catch (err) {
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to create checkout session');
+        return response + `\n❌ Failed to create payment link: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+    }
+
+    // Send invoice
+    if (action === 'invoice') {
+      if (!emailToUse) {
+        return response + `\n❌ Cannot send invoice without an email address. Please provide contact_email.`;
+      }
+
+      if (!billingAddress?.line1 || !billingAddress?.city || !billingAddress?.postal_code || !billingAddress?.country) {
+        response += `### 📄 Invoice - Need Billing Address\n\n`;
+        response += `To send an invoice, I need the full billing address:\n`;
+        response += `• line1 (street address)\n`;
+        response += `• city\n`;
+        response += `• state (if applicable)\n`;
+        response += `• postal_code\n`;
+        response += `• country (two-letter code, e.g., "US")\n`;
+        response += `\n_Call this tool again with the billing_address to send the invoice._`;
+        return response;
+      }
+
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      try {
+        const invoiceResult = await createAndSendInvoice({
+          companyName: org.name,
+          contactName: org.prospect_contact_name || contactName || 'Billing',
+          contactEmail: emailToUse,
+          billingAddress: {
+            line1: billingAddress.line1,
+            line2: billingAddress.line2,
+            city: billingAddress.city || '',
+            state: billingAddress.state || '',
+            postal_code: billingAddress.postal_code || '',
+            country: billingAddress.country || 'US',
+          },
+          lookupKey: finalProduct.lookup_key || '',
+          workosOrganizationId: org.workos_organization_id,
+        });
+
+        if (!invoiceResult) {
+          return response + `\n❌ Failed to create invoice. Stripe may not be configured.`;
+        }
+
+        response += `### 📧 Invoice Sent!\n\n`;
+        response += `**Product:** ${finalProduct.display_name}\n`;
+        if (finalProduct.amount_cents) {
+          response += `**Amount:** $${(finalProduct.amount_cents / 100).toLocaleString()}\n`;
+        }
+        response += `**Sent to:** ${emailToUse}\n`;
+        response += `**Invoice ID:** ${invoiceResult.invoiceId}\n`;
+        if (invoiceResult.invoiceUrl) {
+          response += `\n**Invoice URL:**\n${invoiceResult.invoiceUrl}\n`;
+        }
+        response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
+
+        logger.info(
+          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId },
+          'Addie sent invoice'
+        );
+
+        return response;
+      } catch (err) {
+        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send invoice');
+        return response + `\n❌ Failed to send invoice: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+    }
+
+    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "invoice", or "lookup_only".`;
   });
 
   // Search Lusha for prospects
@@ -2281,6 +2873,378 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error listing chapters');
       return '❌ Failed to list chapters. Please try again.';
+    }
+  });
+
+  // ============================================
+  // ORGANIZATION MANAGEMENT HANDLERS
+  // ============================================
+
+  // Merge organizations
+  handlers.set('merge_organizations', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const primaryOrgId = input.primary_org_id as string;
+    const secondaryOrgId = input.secondary_org_id as string;
+    const preview = input.preview !== false; // Default to preview mode for safety
+
+    if (!primaryOrgId || !secondaryOrgId) {
+      return '❌ Both primary_org_id and secondary_org_id are required.';
+    }
+
+    if (primaryOrgId === secondaryOrgId) {
+      return '❌ Primary and secondary organization IDs must be different.';
+    }
+
+    try {
+      if (preview) {
+        // Preview mode - show what would be merged
+        const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
+
+        let response = `## Merge Preview\n\n`;
+        response += `**Keep:** ${previewResult.primary_org.name} (${previewResult.primary_org.id})\n`;
+        response += `**Remove:** ${previewResult.secondary_org.name} (${previewResult.secondary_org.id})\n\n`;
+
+        if (previewResult.estimated_changes.length === 0) {
+          response += `_No data to merge from the secondary organization._\n`;
+        } else {
+          response += `### Data to Move\n`;
+          for (const change of previewResult.estimated_changes) {
+            response += `- **${change.table_name}**: ${change.rows_to_move} row(s)\n`;
+          }
+        }
+
+        if (previewResult.warnings.length > 0) {
+          response += `\n### Warnings\n`;
+          for (const warning of previewResult.warnings) {
+            response += `⚠️ ${warning}\n`;
+          }
+        }
+
+        response += `\n---\n`;
+        response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
+
+        return response;
+      } else {
+        // Execute the merge
+        logger.info({ primaryOrgId, secondaryOrgId, mergedBy: memberContext?.workos_user?.workos_user_id }, 'Admin executing org merge via Addie');
+
+        const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
+        const result = await mergeOrganizations(primaryOrgId, secondaryOrgId, mergedBy);
+
+        let response = `## Merge Complete ✅\n\n`;
+        response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
+
+        response += `### Data Moved\n`;
+        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + t.rows_skipped_duplicate, 0);
+
+        for (const table of result.tables_merged) {
+          if (table.rows_moved > 0 || table.rows_skipped_duplicate > 0) {
+            response += `- **${table.table_name}**: ${table.rows_moved} moved`;
+            if (table.rows_skipped_duplicate > 0) {
+              response += ` (${table.rows_skipped_duplicate} skipped as duplicates)`;
+            }
+            response += `\n`;
+          }
+        }
+
+        response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
+
+        if (result.prospect_notes_merged) {
+          response += `\n📝 Prospect notes were merged.\n`;
+        }
+
+        if (result.enrichment_data_preserved) {
+          response += `📊 Enrichment data was preserved from the secondary organization.\n`;
+        }
+
+        if (result.warnings.length > 0) {
+          response += `\n### Warnings\n`;
+          for (const warning of result.warnings) {
+            response += `⚠️ ${warning}\n`;
+          }
+        }
+
+        response += `\nThe secondary organization has been deleted.`;
+
+        return response;
+      }
+    } catch (error) {
+      logger.error({ error, primaryOrgId, secondaryOrgId }, 'Error merging organizations');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to merge organizations: ${errorMessage}`;
+    }
+  });
+
+  // Find duplicate organizations
+  handlers.set('find_duplicate_orgs', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const searchType = (input.search_type as string) || 'all';
+    const pool = getPool();
+
+    let response = `## Duplicate Organization Search\n\n`;
+
+    try {
+      // Find duplicates by name
+      if (searchType === 'name' || searchType === 'all') {
+        const nameResult = await pool.query(`
+          SELECT
+            LOWER(name) as normalized_name,
+            COUNT(*) as count,
+            STRING_AGG(name, ', ' ORDER BY name) as actual_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false
+          GROUP BY LOWER(name)
+          HAVING COUNT(*) > 1
+          ORDER BY count DESC, normalized_name
+        `);
+
+        response += `### Duplicate Names\n`;
+        if (nameResult.rows.length === 0) {
+          response += `✅ No organizations share the same name.\n`;
+        } else {
+          response += `⚠️ Found ${nameResult.rows.length} duplicate name(s):\n\n`;
+          for (const row of nameResult.rows) {
+            response += `**${row.normalized_name}** (${row.count} orgs)\n`;
+            response += `  Names: ${row.actual_names}\n`;
+            response += `  IDs: ${row.org_ids}\n\n`;
+          }
+        }
+      }
+
+      // Find duplicates by domain
+      if (searchType === 'domain' || searchType === 'all') {
+        const domainResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as count,
+            STRING_AGG(name, ', ' ORDER BY name) as org_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY count DESC, email_domain
+        `);
+
+        response += `### Duplicate Email Domains\n`;
+        if (domainResult.rows.length === 0) {
+          response += `✅ No organizations share the same email domain.\n`;
+        } else {
+          response += `⚠️ Found ${domainResult.rows.length} shared domain(s):\n\n`;
+          for (const row of domainResult.rows) {
+            response += `**${row.email_domain}** (${row.count} orgs)\n`;
+            response += `  Orgs: ${row.org_names}\n`;
+            response += `  IDs: ${row.org_ids}\n\n`;
+          }
+        }
+      }
+
+      response += `\n_Use merge_organizations to consolidate duplicates._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error finding duplicate organizations');
+      return '❌ Failed to search for duplicates. Please try again.';
+    }
+  });
+
+  // Check domain health
+  handlers.set('check_domain_health', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const checkType = (input.check_type as string) || 'all';
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
+    const pool = getPool();
+
+    // Common free email providers to exclude
+    const freeEmailDomains = [
+      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+    ];
+
+    let response = `## Domain Health Check\n\n`;
+    let issueCount = 0;
+
+    try {
+      // 1. Orphan corporate domains - users with corporate emails but no org with that domain
+      if (checkType === 'orphan_domains' || checkType === 'all') {
+        const orphanResult = await pool.query(`
+          WITH user_domains AS (
+            SELECT
+              LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
+              COUNT(DISTINCT om.workos_user_id) as user_count,
+              STRING_AGG(DISTINCT om.email, ', ' ORDER BY om.email) as sample_emails
+            FROM organization_memberships om
+            WHERE om.email IS NOT NULL
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+            GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
+          ),
+          claimed_domains AS (
+            SELECT LOWER(domain) as domain FROM organization_domains
+            UNION
+            SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+          )
+          SELECT ud.domain, ud.user_count, ud.sample_emails
+          FROM user_domains ud
+          LEFT JOIN claimed_domains cd ON cd.domain = ud.domain
+          WHERE cd.domain IS NULL
+          ORDER BY ud.user_count DESC
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        response += `### Orphan Corporate Domains\n`;
+        response += `_Corporate email domains with users but no matching organization_\n\n`;
+
+        if (orphanResult.rows.length === 0) {
+          response += `✅ No orphan domains found.\n\n`;
+        } else {
+          issueCount += orphanResult.rows.length;
+          for (const row of orphanResult.rows) {
+            response += `**${row.domain}** - ${row.user_count} user(s)\n`;
+            const emails = row.sample_emails.split(', ').slice(0, 3).join(', ');
+            response += `  Users: ${emails}${row.user_count > 3 ? '...' : ''}\n`;
+          }
+          response += `\n_Action: Create prospects for these domains or map users to existing orgs._\n\n`;
+        }
+      }
+
+      // 2. Users in personal workspaces with corporate emails
+      if (checkType === 'misaligned_users' || checkType === 'all') {
+        const misalignedResult = await pool.query(`
+          SELECT
+            om.email,
+            om.first_name,
+            om.last_name,
+            LOWER(SPLIT_PART(om.email, '@', 2)) as email_domain,
+            o.name as workspace_name,
+            om.workos_organization_id
+          FROM organization_memberships om
+          JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+          WHERE o.is_personal = true
+            AND om.email IS NOT NULL
+            AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+          ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
+          LIMIT $${freeEmailDomains.length + 1}
+        `, [...freeEmailDomains, limit]);
+
+        response += `### Corporate Users in Personal Workspaces\n`;
+        response += `_Users with company emails who are in personal workspaces instead of company orgs_\n\n`;
+
+        if (misalignedResult.rows.length === 0) {
+          response += `✅ No misaligned users found.\n\n`;
+        } else {
+          issueCount += misalignedResult.rows.length;
+          // Group by domain
+          const byDomain = new Map<string, typeof misalignedResult.rows>();
+          for (const row of misalignedResult.rows) {
+            const existing = byDomain.get(row.email_domain) || [];
+            existing.push(row);
+            byDomain.set(row.email_domain, existing);
+          }
+
+          for (const [domain, users] of byDomain) {
+            response += `**${domain}** (${users.length} user(s))\n`;
+            for (const user of users.slice(0, 3)) {
+              response += `  - ${user.email} (${user.first_name || ''} ${user.last_name || ''})\n`;
+            }
+            if (users.length > 3) {
+              response += `  - ... and ${users.length - 3} more\n`;
+            }
+          }
+          response += `\n_Action: Create company org and move these users, or verify they should be individuals._\n\n`;
+        }
+      }
+
+      // 3. Orgs with users but no verified domain
+      if (checkType === 'unverified_domains' || checkType === 'all') {
+        const unverifiedResult = await pool.query(`
+          SELECT
+            o.workos_organization_id,
+            o.name,
+            o.email_domain,
+            COUNT(DISTINCT om.workos_user_id) as user_count,
+            STRING_AGG(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2)), ', ') as user_domains
+          FROM organizations o
+          JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+          LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id AND od.verified = true
+          WHERE o.is_personal = false
+            AND od.id IS NULL
+          GROUP BY o.workos_organization_id, o.name, o.email_domain
+          HAVING COUNT(DISTINCT om.workos_user_id) > 0
+          ORDER BY COUNT(DISTINCT om.workos_user_id) DESC
+          LIMIT $1
+        `, [limit]);
+
+        response += `### Organizations Without Verified Domains\n`;
+        response += `_Organizations with members but no verified domain mapping_\n\n`;
+
+        if (unverifiedResult.rows.length === 0) {
+          response += `✅ All organizations with users have verified domains.\n\n`;
+        } else {
+          issueCount += unverifiedResult.rows.length;
+          for (const row of unverifiedResult.rows) {
+            response += `**${row.name}** - ${row.user_count} user(s)\n`;
+            response += `  User domains: ${row.user_domains}\n`;
+            if (row.email_domain) {
+              response += `  Claimed domain: ${row.email_domain} (not verified)\n`;
+            }
+          }
+          response += `\n_Action: Verify domain ownership for these organizations._\n\n`;
+        }
+      }
+
+      // 4. Domain conflicts (multiple orgs claiming same domain)
+      if (checkType === 'domain_conflicts' || checkType === 'all') {
+        const conflictResult = await pool.query(`
+          SELECT
+            email_domain,
+            COUNT(*) as org_count,
+            STRING_AGG(name, ', ' ORDER BY name) as org_names,
+            STRING_AGG(workos_organization_id, ', ' ORDER BY name) as org_ids
+          FROM organizations
+          WHERE is_personal = false AND email_domain IS NOT NULL
+          GROUP BY email_domain
+          HAVING COUNT(*) > 1
+          ORDER BY COUNT(*) DESC
+          LIMIT $1
+        `, [limit]);
+
+        response += `### Domain Conflicts\n`;
+        response += `_Multiple organizations claiming the same email domain_\n\n`;
+
+        if (conflictResult.rows.length === 0) {
+          response += `✅ No domain conflicts found.\n\n`;
+        } else {
+          issueCount += conflictResult.rows.length;
+          for (const row of conflictResult.rows) {
+            response += `**${row.email_domain}** - ${row.org_count} orgs\n`;
+            response += `  Orgs: ${row.org_names}\n`;
+          }
+          response += `\n_Action: Merge duplicate organizations._\n\n`;
+        }
+      }
+
+      // Summary
+      response += `---\n`;
+      if (issueCount === 0) {
+        response += `✅ **Domain health is good!** No issues found.`;
+      } else {
+        response += `⚠️ **Found ${issueCount} issue(s)** that need attention.\n`;
+        response += `\nUse the suggested actions or visit the admin Domain Health page for more details.`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error checking domain health');
+      return '❌ Failed to check domain health. Please try again.';
     }
   });
 

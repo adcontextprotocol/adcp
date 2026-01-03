@@ -210,8 +210,12 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
 /**
  * Get user info from request for HTML config injection.
  * Checks dev mode first, then WorkOS session.
+ * If session is refreshed, updates the cookie in the response.
  */
-async function getUserFromRequest(req: express.Request): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
+async function getUserFromRequest(
+  req: express.Request,
+  res?: express.Response
+): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
   // Check dev mode first
   if (isDevModeEnabled()) {
     const devUser = getDevUser(req);
@@ -224,15 +228,47 @@ async function getUserFromRequest(req: express.Request): Promise<{ id?: string; 
   const sessionCookie = req.cookies?.['wos-session'];
   if (sessionCookie && AUTH_ENABLED && workos) {
     try {
-      const session = await workos.userManagement.loadSealedSession({
+      const session = workos.userManagement.loadSealedSession({
         sessionData: sessionCookie,
         cookiePassword: WORKOS_COOKIE_PASSWORD,
       });
-      if (session) {
-        const authResult = await session.authenticate();
-        if (authResult.authenticated && authResult.user) {
-          return authResult.user;
+
+      // Try to authenticate with the current session
+      let authResult = await session.authenticate();
+
+      // If authentication failed (e.g., expired token), try to refresh
+      if (!authResult.authenticated || !authResult.user) {
+        try {
+          const refreshResult = await session.refresh({
+            cookiePassword: WORKOS_COOKIE_PASSWORD,
+          });
+
+          if (refreshResult.authenticated && refreshResult.sealedSession) {
+            // Update the cookie with the refreshed session
+            if (res) {
+              res.cookie('wos-session', refreshResult.sealedSession, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+              });
+            }
+
+            // Re-authenticate with the new session
+            const newSession = workos.userManagement.loadSealedSession({
+              sessionData: refreshResult.sealedSession,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            authResult = await newSession.authenticate();
+          }
+        } catch {
+          // Refresh failed - continue without user
         }
+      }
+
+      if (authResult.authenticated && authResult.user) {
+        return authResult.user;
       }
     } catch {
       // Session invalid or expired - continue without user
@@ -275,6 +311,10 @@ export class HTTPServer {
   }
 
   private setupMiddleware(): void {
+    // Trust the first proxy (Fly.io) for accurate client IP detection
+    // Required for express-rate-limit and other middleware that use req.ip
+    this.app.set('trust proxy', 1);
+
     // Request logging for /api/me/member-profile to help diagnose issues
     this.app.use('/api/me/member-profile', (req, res, next) => {
       const startTime = Date.now();
@@ -365,8 +405,8 @@ export class HTTPServer {
         // Check if file exists
         await fs.access(filePath);
 
-        // Get user from session (if authenticated)
-        const user = await getUserFromRequest(req);
+        // Get user from session (if authenticated), passing res to update cookie if session is refreshed
+        const user = await getUserFromRequest(req, res);
 
         // Read and inject config
         let html = await fs.readFile(filePath, 'utf-8');
@@ -414,8 +454,8 @@ export class HTTPServer {
     const filePath = path.join(publicPath, htmlFile);
 
     try {
-      // Get user from session (if authenticated)
-      const user = await getUserFromRequest(req);
+      // Get user from session (if authenticated), passing res to update cookie if session is refreshed
+      const user = await getUserFromRequest(req, res);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -929,8 +969,8 @@ export class HTTPServer {
           .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
-        // Inject user config for nav.js
-        const user = await getUserFromRequest(req);
+        // Inject user config for nav.js, passing res to update cookie if session is refreshed
+        const user = await getUserFromRequest(req, res);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -966,8 +1006,8 @@ export class HTTPServer {
           .replace(/\{\{STRIPE_PRICING_TABLE_ID\}\}/g, process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace(/\{\{STRIPE_PRICING_TABLE_ID_INDIVIDUAL\}\}/g, process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
-        // Inject user config for nav.js
-        const user = await getUserFromRequest(req);
+        // Inject user config for nav.js, passing res to update cookie if session is refreshed
+        const user = await getUserFromRequest(req, res);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -2529,326 +2569,6 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/admin/members - List all members with subscription info
-    this.app.get('/api/admin/members', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const pool = getPool();
-
-        // Get all organizations from database
-        const result = await pool.query(`
-          SELECT
-            workos_organization_id,
-            name,
-            company_type,
-            revenue_tier,
-            is_personal,
-            stripe_customer_id,
-            created_at,
-            subscription_status,
-            subscription_amount,
-            subscription_interval,
-            subscription_currency,
-            subscription_canceled_at,
-            subscription_current_period_end,
-            agreement_signed_at,
-            agreement_version
-          FROM organizations
-          ORDER BY created_at DESC
-        `);
-
-        // Enrich with WorkOS organization membership data
-        const members = await Promise.all(
-          result.rows.map(async row => {
-            let ownerEmail = 'No owner';
-
-            try {
-              if (workos) {
-                // Get organization memberships from WorkOS
-                const memberships = await workos.userManagement.listOrganizationMemberships({
-                  organizationId: row.workos_organization_id,
-                });
-
-                // Find the owner or first admin, or fallback to first member
-                if (memberships.data && memberships.data.length > 0) {
-                  // Sort by role preference: owner > admin > member
-                  const sortedMembers = [...memberships.data].sort((a, b) => {
-                    const roleOrder = { owner: 0, admin: 1, member: 2 };
-                    const aRole = (a.role?.slug || 'member') as keyof typeof roleOrder;
-                    const bRole = (b.role?.slug || 'member') as keyof typeof roleOrder;
-                    return (roleOrder[aRole] ?? 2) - (roleOrder[bRole] ?? 2);
-                  });
-
-                  const primaryMember = sortedMembers[0];
-                  // Fetch user details since membership.user is not populated
-                  try {
-                    const user = await workos.userManagement.getUser(primaryMember.userId);
-                    ownerEmail = user.email;
-                  } catch (userError) {
-                    logger.warn({ err: userError, userId: primaryMember.userId }, 'Failed to fetch user details');
-                    ownerEmail = 'Unknown';
-                  }
-                }
-              }
-            } catch (error) {
-              logger.warn({ err: error, orgId: row.workos_organization_id }, 'Failed to fetch organization memberships');
-              // Continue with 'No owner' - don't fail the entire request
-            }
-
-            // Convert timestamp to Unix timestamp (seconds) for JavaScript Date compatibility
-            const periodEndTimestamp = row.subscription_current_period_end
-              ? Math.floor(new Date(row.subscription_current_period_end).getTime() / 1000)
-              : null;
-
-            // Use subscription_status from database (populated by Stripe webhooks)
-            const subscriptionStatus = row.subscription_status || 'none';
-
-            return {
-              company_id: row.workos_organization_id, // Keep company_id name for backwards compatibility
-              company_name: row.name, // Keep company_name for backwards compatibility
-              company_type: row.company_type,
-              revenue_tier: row.revenue_tier,
-              is_personal: row.is_personal,
-              stripe_customer_id: row.stripe_customer_id,
-              created_at: row.created_at,
-              subscription_status: subscriptionStatus,
-              subscription_amount: row.subscription_amount,
-              subscription_interval: row.subscription_interval,
-              subscription_currency: row.subscription_currency || 'usd',
-              subscription_current_period_end: periodEndTimestamp,
-              subscription_canceled_at: row.subscription_canceled_at,
-              agreement_signed_at: row.agreement_signed_at,
-              agreement_version: row.agreement_version,
-              owner_email: ownerEmail,
-            };
-          })
-        );
-
-        res.json(members);
-      } catch (error) {
-        logger.error({ err: error }, 'Error fetching admin members');
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Unable to fetch members list',
-        });
-      }
-    });
-
-    // POST /api/admin/members/:orgId/sync - Sync organization data from WorkOS and Stripe
-    this.app.post('/api/admin/members/:orgId/sync', requireAuth, requireAdmin, async (req, res) => {
-      const { orgId } = req.params;
-
-      try {
-        const pool = getPool();
-        const syncResults: {
-          success: boolean;
-          workos?: { success: boolean; email?: string; error?: string };
-          stripe?: { success: boolean; subscription?: any; error?: string };
-          updated?: boolean;
-        } = { success: false };
-
-        // Get the organization from database
-        const orgResult = await pool.query(
-          'SELECT workos_organization_id, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
-          [orgId]
-        );
-
-        if (orgResult.rows.length === 0) {
-          return res.status(404).json({ error: 'Organization not found' });
-        }
-
-        const org = orgResult.rows[0];
-
-        // Sync from WorkOS
-        if (workos) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: orgId,
-            });
-
-            if (memberships.data && memberships.data.length > 0) {
-              // Sort by role preference: owner > admin > member
-              const sortedMembers = [...memberships.data].sort((a, b) => {
-                const roleOrder = { owner: 0, admin: 1, member: 2 };
-                const aRole = (a.role?.slug || 'member') as keyof typeof roleOrder;
-                const bRole = (b.role?.slug || 'member') as keyof typeof roleOrder;
-                return (roleOrder[aRole] ?? 2) - (roleOrder[bRole] ?? 2);
-              });
-
-              const primaryMember = sortedMembers[0];
-              // Fetch user details since membership.user is not populated
-              try {
-                const user = await workos.userManagement.getUser(primaryMember.userId);
-                syncResults.workos = {
-                  success: true,
-                  email: user.email,
-                };
-              } catch (userError) {
-                logger.warn({ err: userError, userId: primaryMember.userId }, 'Failed to fetch user details during sync');
-                syncResults.workos = {
-                  success: true,
-                  error: 'Could not fetch user email',
-                };
-              }
-            } else {
-              syncResults.workos = {
-                success: true,
-                error: 'No members found in organization',
-              };
-            }
-          } catch (error) {
-            syncResults.workos = {
-              success: false,
-              error: error instanceof Error ? error.message : 'Unknown error fetching from WorkOS',
-            };
-          }
-        } else {
-          syncResults.workos = {
-            success: false,
-            error: 'WorkOS not initialized',
-          };
-        }
-
-        // Sync from Stripe
-        if (org.stripe_customer_id) {
-          if (stripe) {
-            try {
-              // Get customer with subscriptions
-              const customer = await stripe.customers.retrieve(org.stripe_customer_id, {
-                expand: ['subscriptions'],
-              });
-
-              if (customer.deleted) {
-                syncResults.stripe = {
-                  success: true,
-                  error: 'Customer has been deleted',
-                };
-              } else {
-                const subscriptions = (customer as Stripe.Customer).subscriptions;
-
-                if (subscriptions && subscriptions.data.length > 0) {
-                  const subscription = subscriptions.data[0];
-                  const priceData = subscription.items.data[0]?.price;
-
-                  // Update organization with fresh subscription data
-                  await pool.query(
-                    `UPDATE organizations
-                     SET subscription_status = $1,
-                         subscription_amount = $2,
-                         subscription_interval = $3,
-                         subscription_currency = $4,
-                         subscription_current_period_end = $5,
-                         subscription_canceled_at = $6,
-                         updated_at = NOW()
-                     WHERE workos_organization_id = $7`,
-                    [
-                      subscription.status,
-                      priceData?.unit_amount || null,
-                      priceData?.recurring?.interval || null,
-                      priceData?.currency || 'usd',
-                      subscription.current_period_end
-                        ? new Date(subscription.current_period_end * 1000)
-                        : null,
-                      subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
-                      orgId,
-                    ]
-                  );
-
-                  syncResults.stripe = {
-                    success: true,
-                    subscription: {
-                      status: subscription.status,
-                      amount: priceData?.unit_amount,
-                      interval: priceData?.recurring?.interval,
-                      current_period_end: subscription.current_period_end,
-                      canceled_at: subscription.canceled_at,
-                    },
-                  };
-                  syncResults.updated = true;
-                } else {
-                  syncResults.stripe = {
-                    success: true,
-                    error: 'No active subscription found',
-                  };
-                }
-              }
-            } catch (error) {
-              syncResults.stripe = {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error fetching from Stripe',
-              };
-            }
-          } else {
-            syncResults.stripe = {
-              success: false,
-              error: 'Stripe not initialized',
-            };
-          }
-        } else {
-          syncResults.stripe = {
-            success: false,
-            error: 'No Stripe customer ID',
-          };
-        }
-
-        syncResults.success = (syncResults.workos?.success || false) && (syncResults.stripe?.success || false);
-
-        res.json(syncResults);
-      } catch (error) {
-        logger.error({ err: error, orgId }, 'Error syncing organization data');
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Unable to sync organization data',
-        });
-      }
-    });
-
-    // PATCH /api/admin/members/:orgId/memberships/:membershipId - Update membership role (admin bootstrap)
-    // Used to fix organizations that have no owner
-    this.app.patch('/api/admin/members/:orgId/memberships/:membershipId', requireAuth, requireAdmin, async (req, res) => {
-      const { orgId, membershipId } = req.params;
-      const { role } = req.body;
-
-      if (!role || !['owner', 'admin', 'member'].includes(role)) {
-        return res.status(400).json({
-          error: 'Invalid role',
-          message: 'Role must be owner, admin, or member',
-        });
-      }
-
-      try {
-        // Verify membership belongs to this org
-        const membership = await workos!.userManagement.getOrganizationMembership(membershipId);
-        if (membership.organizationId !== orgId) {
-          return res.status(400).json({
-            error: 'Invalid membership',
-            message: 'This membership does not belong to the specified organization',
-          });
-        }
-
-        // Update the membership role
-        const updatedMembership = await workos!.userManagement.updateOrganizationMembership(membershipId, {
-          roleSlug: role,
-        });
-
-        logger.info({ orgId, membershipId, role, adminEmail: req.user!.email }, 'Admin updated membership role');
-
-        res.json({
-          success: true,
-          membership: {
-            id: updatedMembership.id,
-            user_id: updatedMembership.userId,
-            role: updatedMembership.role?.slug || 'member',
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error, orgId, membershipId }, 'Admin update membership role error');
-        res.status(500).json({
-          error: 'Failed to update membership role',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
     // POST /api/admin/agreements/record - Admin endpoint to record missing agreement acceptances
     // Used to fix organizations where agreement wasn't properly recorded during subscription
     this.app.post('/api/admin/agreements/record', requireAuth, requireAdmin, async (req, res) => {
@@ -2918,142 +2638,6 @@ export class HTTPServer {
         res.status(500).json({
           error: 'Failed to record agreement',
           message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/members/:orgId/payments - Get payment history for organization
-    this.app.get('/api/admin/members/:orgId/payments', requireAuth, requireAdmin, async (req, res) => {
-      const { orgId } = req.params;
-
-      try {
-        const pool = getPool();
-
-        // Get payment history from revenue_events table
-        const result = await pool.query(
-          `SELECT
-            event_type,
-            amount_cents,
-            currency,
-            event_timestamp,
-            stripe_invoice_id,
-            product_name
-           FROM revenue_events
-           WHERE workos_organization_id = $1
-           ORDER BY event_timestamp DESC`,
-          [orgId]
-        );
-
-        res.json(result.rows);
-      } catch (error) {
-        logger.error({ err: error, orgId }, 'Error fetching payment history');
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Unable to fetch payment history',
-        });
-      }
-    });
-
-    // DELETE /api/admin/members/:orgId - Delete a workspace (organization)
-    // Cannot delete if organization has any payment history (revenue events)
-    this.app.delete('/api/admin/members/:orgId', requireAuth, requireAdmin, async (req, res) => {
-      const { orgId } = req.params;
-      const { confirmation } = req.body;
-
-      try {
-        const pool = getPool();
-
-        // Get the organization
-        const orgResult = await pool.query(
-          'SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
-          [orgId]
-        );
-
-        if (orgResult.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'The specified organization does not exist',
-          });
-        }
-
-        const org = orgResult.rows[0];
-
-        // Check if organization has any payment history
-        const revenueResult = await pool.query(
-          'SELECT COUNT(*) as count FROM revenue_events WHERE workos_organization_id = $1',
-          [orgId]
-        );
-
-        const hasPayments = parseInt(revenueResult.rows[0].count) > 0;
-
-        if (hasPayments) {
-          return res.status(400).json({
-            error: 'Cannot delete paid workspace',
-            message: 'This workspace has payment history and cannot be deleted. Contact support if you need to remove this workspace.',
-            has_payments: true,
-          });
-        }
-
-        // Check for active Stripe subscription
-        if (org.stripe_customer_id) {
-          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
-          if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
-            return res.status(400).json({
-              error: 'Cannot delete workspace with active subscription',
-              message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
-              has_active_subscription: true,
-              subscription_status: subscriptionInfo.status,
-            });
-          }
-        }
-
-        // Require confirmation by typing the organization name
-        if (!confirmation || confirmation !== org.name) {
-          return res.status(400).json({
-            error: 'Confirmation required',
-            message: `To delete this workspace, please provide the exact name "${org.name}" in the confirmation field.`,
-            requires_confirmation: true,
-            organization_name: org.name,
-          });
-        }
-
-        // Record audit log before deletion (while org still exists)
-        const orgDb = new OrganizationDatabase();
-        await orgDb.recordAuditLog({
-          workos_organization_id: orgId,
-          workos_user_id: req.user!.id,
-          action: 'organization_deleted',
-          resource_type: 'organization',
-          resource_id: orgId,
-          details: { name: org.name, deleted_by: 'admin', admin_email: req.user!.email },
-        });
-
-        // Delete from WorkOS if possible
-        if (workos) {
-          try {
-            await workos.organizations.deleteOrganization(orgId);
-            logger.info({ orgId, name: org.name, adminEmail: req.user!.email }, 'Deleted organization from WorkOS');
-          } catch (workosError) {
-            // Log but don't fail - the org might not exist in WorkOS or could be a test org
-            logger.warn({ err: workosError, orgId }, 'Failed to delete organization from WorkOS - continuing with local deletion');
-          }
-        }
-
-        // Delete from local database (cascades to related tables)
-        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
-
-        logger.info({ orgId, name: org.name, adminEmail: req.user!.email }, 'Admin deleted organization');
-
-        res.json({
-          success: true,
-          message: `Workspace "${org.name}" has been deleted`,
-          deleted_org_id: orgId,
-        });
-      } catch (error) {
-        logger.error({ err: error, orgId }, 'Error deleting organization');
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Unable to delete organization',
         });
       }
     });

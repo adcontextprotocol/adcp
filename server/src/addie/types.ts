@@ -70,7 +70,7 @@ export interface AssistantMessageEvent {
 export interface AddieInteractionLog {
   id: string;
   timestamp: Date;
-  event_type: 'assistant_thread' | 'mention' | 'dm';
+  event_type: 'assistant_thread' | 'mention' | 'dm' | 'email';
   channel_id: string;
   thread_ts?: string;
   user_id: string;

@@ -68,6 +68,7 @@ import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.j
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
+import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
   extractArticleUrls,
@@ -351,6 +352,9 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
 
+  // Initialize email handler (for responding to emails)
+  initializeEmailHandler();
+
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie Bolt: Ready');
 
@@ -418,7 +422,7 @@ async function buildMessageWithMemberContext(
     let channelContextText = '';
     if (threadContext?.viewing_channel_name) {
       const channelLines: string[] = [];
-      channelLines.push(`\n## Channel Context`);
+      channelLines.push('## Channel Context');
       channelLines.push(`User is viewing **#${threadContext.viewing_channel_name}**`);
       if (threadContext.viewing_channel_description) {
         channelLines.push(`Channel description: ${threadContext.viewing_channel_description}`);
@@ -430,8 +434,10 @@ async function buildMessageWithMemberContext(
     }
 
     if (memberContextText || channelContextText) {
+      // Use double newline between sections for proper markdown spacing
+      const sections = [memberContextText, channelContextText].filter(Boolean);
       return {
-        message: `${memberContextText || ''}${channelContextText}\n---\n\n${sanitizedMessage}`,
+        message: `${sections.join('\n\n')}\n\n---\n\n${sanitizedMessage}`,
         memberContext,
       };
     }

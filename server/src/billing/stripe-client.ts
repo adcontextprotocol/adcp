@@ -558,10 +558,12 @@ export async function fetchAllPaidInvoices(
 
   try {
     // Fetch all paid invoices
+    // Note: We can't expand data.lines.data.price.product (5 levels) due to Stripe's 4-level limit
+    // The code below handles fetching product info separately when needed
     for await (const invoice of stripe.invoices.list({
       status: 'paid',
       limit: 100,
-      expand: ['data.subscription', 'data.charge', 'data.lines.data.price.product'],
+      expand: ['data.subscription', 'data.charge'],
     })) {
       const customerId = typeof invoice.customer === 'string'
         ? invoice.customer
@@ -851,6 +853,9 @@ export interface CheckoutSessionData {
   eventId?: string;
   eventSponsorshipId?: string;
   sponsorshipTierId?: string;
+  // Discount - provide coupon ID or promotion code (not both)
+  couponId?: string; // Stripe coupon ID to pre-apply
+  promotionCode?: string; // Promotion code to pre-apply (mutually exclusive with couponId)
 }
 
 /**
@@ -897,8 +902,24 @@ export async function createCheckoutSession(
       sessionParams.customer_email = data.customerEmail;
     }
 
-    // Allow promotion codes for all checkout sessions (subscriptions and one-time payments)
-    sessionParams.allow_promotion_codes = true;
+    // Handle discounts - either pre-apply a specific coupon/promotion code, or allow user entry
+    if (data.couponId) {
+      // Pre-apply a specific coupon
+      sessionParams.discounts = [{ coupon: data.couponId }];
+      // Don't allow additional promotion codes when one is pre-applied
+    } else if (data.promotionCode) {
+      // Look up the promotion code to get its ID
+      const promoCodes = await stripe.promotionCodes.list({ code: data.promotionCode, limit: 1 });
+      if (promoCodes.data.length > 0) {
+        sessionParams.discounts = [{ promotion_code: promoCodes.data[0].id }];
+      } else {
+        logger.warn({ promotionCode: data.promotionCode }, 'Promotion code not found, proceeding without discount');
+        sessionParams.allow_promotion_codes = true;
+      }
+    } else {
+      // Allow manual entry of promotion codes
+      sessionParams.allow_promotion_codes = true;
+    }
     sessionParams.billing_address_collection = 'required';
 
     // For one-time payments, also create invoices and customers
@@ -1165,13 +1186,15 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
 
   try {
     const pendingInvoices: PendingInvoice[] = [];
+    // Cache product info to avoid N+1 API calls
+    const productCache = new Map<string, string>();
 
     // Fetch open invoices (sent to customer, waiting for payment)
+    // Note: We can't expand data.lines.data.price.product (5 levels) due to Stripe's 4-level limit
     const openInvoices = await stripe.invoices.list({
       customer: customerId,
       status: 'open',
       limit: 10,
-      expand: ['data.lines.data.price.product'],
     });
 
     // Fetch draft invoices (not yet sent)
@@ -1179,7 +1202,6 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       customer: customerId,
       status: 'draft',
       limit: 10,
-      expand: ['data.lines.data.price.product'],
     });
 
     const allInvoices = [...openInvoices.data, ...draftInvoices.data];
@@ -1192,6 +1214,21 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
         const product = firstLine.price.product;
         if (typeof product === 'object' && 'name' in product) {
           productName = product.name;
+        } else if (typeof product === 'string') {
+          // Product is a string ID, fetch it (with caching)
+          let cachedName = productCache.get(product);
+          if (cachedName === undefined) {
+            try {
+              const productObj = await stripe.products.retrieve(product);
+              cachedName = productObj.name;
+              productCache.set(product, cachedName);
+            } catch {
+              // Use line description as fallback
+              cachedName = firstLine.description || '';
+              productCache.set(product, cachedName);
+            }
+          }
+          productName = cachedName || null;
         }
       }
 
@@ -1240,6 +1277,128 @@ export async function getPendingInvoicesByEmail(email: string): Promise<PendingI
     return getPendingInvoices(customers.data[0].id);
   } catch (error) {
     logger.error({ err: error, email }, 'Error fetching pending invoices by email');
+    return [];
+  }
+}
+
+/**
+ * Open invoice with customer information
+ * Used for listing all unpaid invoices across all customers
+ */
+export interface OpenInvoiceWithCustomer {
+  id: string;
+  status: 'draft' | 'open';
+  amount_due: number;
+  currency: string;
+  created: Date;
+  due_date: Date | null;
+  hosted_invoice_url: string | null;
+  product_name: string | null;
+  customer_id: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  workos_organization_id: string | null;
+}
+
+/**
+ * Convert a Stripe invoice to OpenInvoiceWithCustomer format
+ */
+function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | null {
+  const customer = invoice.customer;
+  let customerId: string;
+  let customerName: string | null = null;
+  let customerEmail: string | null = null;
+  let workosOrgId: string | null = null;
+
+  if (typeof customer === 'string') {
+    customerId = customer;
+  } else if (customer && 'id' in customer && !('deleted' in customer)) {
+    // Customer is expanded and not deleted
+    customerId = customer.id;
+    customerName = customer.name || null;
+    customerEmail = customer.email || null;
+    if (customer.metadata?.workos_organization_id) {
+      workosOrgId = customer.metadata.workos_organization_id;
+    }
+  } else if (customer && 'id' in customer) {
+    // Deleted customer - just get the ID
+    customerId = customer.id;
+  } else {
+    return null; // Skip invoices without customer
+  }
+
+  // Get product name from first line item
+  let productName: string | null = null;
+  const firstLine = invoice.lines?.data[0];
+  if (firstLine?.price?.product) {
+    const product = firstLine.price.product;
+    if (typeof product === 'object' && 'name' in product) {
+      productName = product.name;
+    }
+  }
+
+  return {
+    id: invoice.id,
+    status: (invoice.status === 'draft' || invoice.status === 'open') ? invoice.status : 'open',
+    amount_due: invoice.amount_due,
+    currency: invoice.currency,
+    created: new Date(invoice.created * 1000),
+    due_date: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+    hosted_invoice_url: invoice.hosted_invoice_url || null,
+    product_name: productName,
+    customer_id: customerId,
+    customer_name: customerName,
+    customer_email: customerEmail || (typeof invoice.customer_email === 'string' ? invoice.customer_email : null),
+    workos_organization_id: workosOrgId,
+  };
+}
+
+/**
+ * Get ALL open invoices across all Stripe customers
+ * This queries Stripe directly, not our database, so it finds invoices
+ * even for customers not linked to organizations in our system.
+ */
+export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoiceWithCustomer[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch open invoices');
+    return [];
+  }
+
+  try {
+    const openInvoices: OpenInvoiceWithCustomer[] = [];
+
+    // Query Stripe directly for all open invoices (sent, waiting for payment)
+    for await (const invoice of stripe.invoices.list({
+      status: 'open',
+      limit: 100,
+      expand: ['data.customer', 'data.lines.data.price.product'],
+    })) {
+      const parsed = parseStripeInvoice(invoice);
+      if (parsed) {
+        openInvoices.push(parsed);
+        if (openInvoices.length >= limit) break;
+      }
+    }
+
+    // Also get draft invoices (not yet sent)
+    if (openInvoices.length < limit) {
+      for await (const invoice of stripe.invoices.list({
+        status: 'draft',
+        limit: 100,
+        expand: ['data.customer', 'data.lines.data.price.product'],
+      })) {
+        const parsed = parseStripeInvoice(invoice);
+        if (parsed) {
+          openInvoices.push(parsed);
+          if (openInvoices.length >= limit) break;
+        }
+      }
+    }
+
+    logger.info({ count: openInvoices.length }, 'Fetched all open invoices from Stripe');
+    return openInvoices;
+  } catch (error) {
+    logger.error({ err: error }, 'Error fetching all open invoices');
     return [];
   }
 }
