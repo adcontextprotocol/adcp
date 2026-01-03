@@ -147,36 +147,34 @@ Provide your analysis as JSON with this structure:
     {"insight": "First key takeaway", "importance": "high|medium|low"},
     {"insight": "Second key takeaway", "importance": "high|medium|low"}
   ],
-  "addie_notes": "1-2 sentences explaining how this connects to agentic AI, advertising technology, or topics our community cares about. If the content isn't directly about ad tech, explain what broader lessons or context it provides.",
+  "addie_take": "Your spicy, engagement-driving take (see instructions below)",
   "relevance_tags": ["tag1", "tag2"],
   "quality_score": 1-5${channels && channels.length > 0 ? ',\n  "notification_channels": []' : ''}
 }
 
-**Relevance tags - choose tags that accurately describe the content:**
+**addie_take - This is the most important field. Write a short, opinionated take that:**
+- Starts with a relevant emoji that fits the article topic
+- Is provocative/edgy - take a stance, be spicy
+- Connects to agentic advertising, AdCP, or what our community cares about
+- Ends with a question or "What's your take?" to invite discussion
+- Is 1-2 sentences max, punchy and clickbaity
+- Examples:
+  - "🤖 Big Tech is building AI agents that lock you into their walled gardens. Is open-source AdCP the antidote, or already too late? What's your take?"
+  - "💰 Another day, another ad tech acquisition. Consolidation keeps winners winning. How do independents compete?"
+  - "⚖️ This antitrust ruling could reshape how measurement monopolies operate. Good news for open standards?"
 
-Ad Tech & AdCP specific (only use if content is actually about these topics):
-- adcp, mcp, a2a, advertising, programmatic, creative, signals, media-buying
+**Relevance tags** (2-5 tags for filtering, won't be shown to users):
+- Ad Tech: adcp, mcp, a2a, advertising, programmatic, creative, signals, media-buying
+- AI: llms, ai-models, ai-agents, machine-learning, responsible-ai
+- Business: industry-news, market-trends, case-study, competitor, startup
+- Content: tutorial, documentation, opinion, research, announcement
 
-General AI & Technology:
-- llms, ai-models, ai-agents, machine-learning, responsible-ai, ai-safety, scaling, fine-tuning, prompting, embeddings, rag
-
-Industry & Business:
-- industry-news, market-trends, case-study, competitor, startup, enterprise, open-source
-
-Content Type:
-- tutorial, documentation, opinion, research, announcement, integration
-
-Other relevant topics:
-- privacy, data, apis, protocols, standards, developer-tools, infrastructure
-
-Use 2-5 tags that best describe what the content is actually about. Do NOT force ad-tech tags onto general AI content.
-
-**Quality score (for our knowledge base):**
-- 5: Authoritative source, directly relevant to AdCP or agentic advertising
-- 4: High quality, relevant to AI agents or advertising technology
-- 3: Good quality, useful context for understanding AI or tech landscape
-- 2: Decent content but limited relevance to our focus areas
-- 1: Low quality or not useful for our community
+**Quality score:**
+- 5: Directly about AdCP or agentic advertising
+- 4: About AI agents or advertising technology
+- 3: Useful context for AI or tech landscape
+- 2: Limited relevance to our focus
+- 1: Not useful for our community
 ${channelRoutingSection}
 
 Return ONLY the JSON, no markdown formatting.`,
@@ -194,7 +192,8 @@ Return ONLY the JSON, no markdown formatting.`,
     return {
       summary: parsed.summary || '',
       key_insights: parsed.key_insights || [],
-      addie_notes: parsed.addie_notes || '',
+      // addie_take is the new field name in the prompt, maps to addie_notes in DB
+      addie_notes: parsed.addie_take || parsed.addie_notes || '',
       relevance_tags: parsed.relevance_tags || [],
       // Only use AI-provided score if valid, otherwise null (indicates needs human review)
       quality_score: parsed.quality_score
@@ -514,9 +513,10 @@ async function createOrUpdateRssKnowledge(
 
 /**
  * Check if content mentions agentic AI concepts
+ * Only checks the original article content (not AI-generated summary) to avoid false positives
  */
-function checkMentionsAgentic(content: string, summary: string, tags: string[]): boolean {
-  const text = `${content} ${summary}`.toLowerCase();
+function checkMentionsAgentic(content: string, _summary: string, tags: string[]): boolean {
+  const text = content.toLowerCase();
   const agenticTerms = ['agentic', 'ai agent', 'ai-agent', 'autonomous agent', 'llm agent'];
   if (agenticTerms.some(term => text.includes(term))) {
     return true;
@@ -529,9 +529,10 @@ function checkMentionsAgentic(content: string, summary: string, tags: string[]):
 
 /**
  * Check if content mentions AdCP or AgenticAdvertising
+ * Only checks the original article content (not AI-generated summary) to avoid false positives
  */
-function checkMentionsAdcp(content: string, summary: string): boolean {
-  const text = `${content} ${summary}`.toLowerCase();
+function checkMentionsAdcp(content: string, _summary: string): boolean {
+  const text = content.toLowerCase();
   const adcpTerms = ['adcp', 'adcontextprotocol', 'agenticadvertising', 'agentic advertising'];
   return adcpTerms.some(term => text.includes(term));
 }
