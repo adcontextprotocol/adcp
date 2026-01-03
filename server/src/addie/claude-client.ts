@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
-import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
+import { ADDIE_SYSTEM_PROMPT, buildMessageTurns } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
@@ -258,11 +258,13 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (skip for eval mode)
     const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
-    const contextualMessage = buildContextWithThread(userMessage, threadContext);
-
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: contextualMessage },
-    ];
+    // Build proper message turns from thread context
+    // This sends conversation history as actual user/assistant turns, not flattened text
+    const messageTurns = buildMessageTurns(userMessage, threadContext);
+    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+      role: turn.role,
+      content: turn.content,
+    }));
 
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
@@ -667,11 +669,13 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
-    const contextualMessage = buildContextWithThread(userMessage, threadContext);
-
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: contextualMessage },
-    ];
+    // Build proper message turns from thread context
+    // This sends conversation history as actual user/assistant turns, not flattened text
+    const messageTurns = buildMessageTurns(userMessage, threadContext);
+    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+      role: turn.role,
+      content: turn.content,
+    }));
 
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
