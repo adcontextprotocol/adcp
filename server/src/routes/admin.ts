@@ -69,6 +69,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/domain-health", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-domain-health.html").catch((err) => {
+      logger.error({ err }, "Error serving domain health page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
