@@ -1687,6 +1687,57 @@
       document.getElementById('contextModal').classList.add('hidden');
     }
 
+    async function loadAddieHomePreview(workosUserId, slackUserId) {
+      const container = document.getElementById('addieHomePreviewContainer');
+      const loading = document.getElementById('addieHomePreviewLoading');
+      const error = document.getElementById('addieHomePreviewError');
+      const content = document.getElementById('addieHomePreviewContent');
+      const placeholder = document.getElementById('addieHomePreviewPlaceholder');
+
+      // Show container, hide placeholder
+      container.style.display = 'block';
+      placeholder.style.display = 'none';
+      loading.style.display = 'block';
+      error.style.display = 'none';
+      content.innerHTML = '';
+
+      try {
+        // Build query params - prefer Slack ID for Slack-based home, otherwise use WorkOS
+        const params = new URLSearchParams({ format: 'html' });
+        if (slackUserId) {
+          params.append('slack_user_id', slackUserId);
+        } else if (workosUserId) {
+          params.append('user_id', workosUserId);
+        }
+
+        const response = await fetch(`/api/admin/addie/home/preview?${params.toString()}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || data.message || 'Failed to load home preview');
+        }
+
+        loading.style.display = 'none';
+
+        // Inject CSS
+        const styleEl = document.createElement('style');
+        styleEl.textContent = data.css;
+        content.innerHTML = '';
+        content.appendChild(styleEl);
+
+        // Inject HTML
+        const contentDiv = document.createElement('div');
+        contentDiv.innerHTML = data.html;
+        content.appendChild(contentDiv);
+
+      } catch (err) {
+        console.error('Error loading Addie Home preview:', err);
+        loading.style.display = 'none';
+        error.style.display = 'block';
+        error.textContent = err.message || 'Failed to load Addie Home preview';
+      }
+    }
+
     function renderContext(context, userId) {
       let html = '';
 
@@ -1917,6 +1968,32 @@
             </svg>
             Impersonate via WorkOS Dashboard
           </a>
+        `;
+      }
+
+      // Addie Home Preview Section
+      const workosUserId = context.workos_user?.workos_user_id;
+      const slackUserId = context.slack_user?.slack_user_id;
+      if (workosUserId || slackUserId) {
+        html += `
+          <div class="context-section" style="margin-top: var(--space-4);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+              <h3 style="margin: 0;">Addie Home Preview</h3>
+              <button class="btn btn-secondary btn-small" onclick="loadAddieHomePreview('${workosUserId || ''}', '${slackUserId || ''}')">
+                Load Preview
+              </button>
+            </div>
+            <div id="addieHomePreviewContainer" style="display: none;">
+              <div id="addieHomePreviewLoading" style="text-align: center; padding: var(--space-4); color: var(--color-text-muted);">
+                Loading Addie Home...
+              </div>
+              <div id="addieHomePreviewError" style="display: none; padding: var(--space-3); background: var(--color-error-50); border-radius: var(--radius-md); color: var(--color-error-600);"></div>
+              <div id="addieHomePreviewContent" style="border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); background: var(--color-bg-page);"></div>
+            </div>
+            <p id="addieHomePreviewPlaceholder" style="color: var(--color-text-muted); font-size: var(--text-sm); margin: 0;">
+              Click "Load Preview" to see what this user's Addie Home looks like
+            </p>
+          </div>
         `;
       }
 
