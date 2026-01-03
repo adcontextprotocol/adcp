@@ -592,6 +592,42 @@ export class ThreadService {
     return result.rows[0] || null;
   }
 
+  /**
+   * Get activity stats for a specific user (messages and active days in last 30 days)
+   * Combines activity across all channels (Slack and web chat)
+   */
+  async getUserActivityStats(
+    userId: string,
+    userType: UserType,
+    days = 30
+  ): Promise<{
+    total_messages: number;
+    active_days: number;
+    last_activity_at: Date | null;
+  }> {
+    const result = await query<{
+      total_messages: string;
+      active_days: string;
+      last_activity_at: Date | null;
+    }>(
+      `SELECT
+        COALESCE(SUM(message_count), 0)::text as total_messages,
+        COUNT(DISTINCT DATE(last_message_at))::text as active_days,
+        MAX(last_message_at) as last_activity_at
+       FROM addie_threads
+       WHERE user_type = $1 AND user_id = $2
+         AND last_message_at >= NOW() - make_interval(days => $3)`,
+      [userType, userId, days]
+    );
+
+    const row = result.rows[0];
+    return {
+      total_messages: parseInt(row?.total_messages || '0', 10),
+      active_days: parseInt(row?.active_days || '0', 10),
+      last_activity_at: row?.last_activity_at || null,
+    };
+  }
+
   // =====================================================
   // STATISTICS
   // =====================================================
