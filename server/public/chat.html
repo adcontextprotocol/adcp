@@ -905,6 +905,13 @@
           gfm: true, // GitHub flavored markdown
         });
 
+        // Helper to escape HTML attribute values
+        const escapeAttr = (str) => str
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
         // Use marked's built-in renderer with custom link and image handling
         const renderer = new marked.Renderer();
         renderer.link = function(href, title, text) {
@@ -915,8 +922,10 @@
             title = link.title;
             text = link.text;
           }
-          const titleAttr = title ? ` title="${title}"` : '';
-          return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+          // Validate URL scheme - only allow safe protocols
+          const safeHref = /^(https?:\/\/|mailto:|#)/i.test(href) ? href : '#';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
         };
 
         // Custom image renderer
@@ -1177,53 +1186,82 @@
         const allBackticks = (text.match(/`/g) || []).length;
         const inlineCodeCount = allBackticks - (codeBlockCount * 3);
 
+        // Count link brackets - check for unmatched link syntax
+        const openBrackets = (text.match(/\[/g) || []).length;
+        const closeBrackets = (text.match(/\]/g) || []).length;
+        // Count ]( which indicates a complete link opening
+        const linkOpens = (text.match(/\]\(/g) || []).length;
+
         return boldCount % 2 === 0 &&
                italicCount % 2 === 0 &&
                inlineCodeCount % 2 === 0 &&
-               codeBlockCount % 2 === 0;
+               codeBlockCount % 2 === 0 &&
+               openBrackets === closeBrackets;
+      }
+
+      // Strip markdown markers for plain text display during streaming
+      function stripMarkdownMarkers(text) {
+        return text
+          .replace(/\*\*/g, '')      // Bold **
+          .replace(/\*/g, '')        // Italic *
+          .replace(/`{3}[^\n]*\n?/g, '') // Code blocks ```
+          .replace(/`/g, '')         // Inline code `
+          .replace(/^#{1,6}\s*/gm, '') // Headers #
+          .replace(/^\s*[-*+]\s+/gm, '• ') // List items
+          .replace(/^\s*\d+\.\s+/gm, '• ') // Numbered lists
+          .replace(/~~([^~]+)~~/g, '$1') // Strikethrough
+          .replace(/^\s*>\s*/gm, '')  // Blockquotes
+          .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // Links and images - keep text
+          .replace(/^[-*_]{3,}\s*$/gm, ''); // Horizontal rules
       }
 
       // Append text to streaming message
-      // Render complete paragraphs as markdown, show incomplete paragraph as plain text
+      // Strategy: Split into paragraphs, render complete ones with balanced markdown,
+      // show the incomplete trailing paragraph as plain text (with markers stripped)
       function appendToStreamingMessage(contentDiv, text, fullContent) {
         // Split on paragraph breaks (double newline)
-        const lastParagraphBreak = fullContent.lastIndexOf('\n\n');
+        const paragraphs = fullContent.split(/\n\n/);
 
-        if (lastParagraphBreak === -1) {
-          // No complete paragraphs yet - show as plain text
-          const escaped = fullContent
+        if (paragraphs.length === 1) {
+          // No complete paragraphs yet - show as plain text with markers stripped
+          const stripped = stripMarkdownMarkers(fullContent);
+          const escaped = stripped
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
           contentDiv.innerHTML = escaped + '<span class="streaming-cursor">|</span>';
         } else {
-          // Check if the "complete" paragraphs actually have balanced markdown
-          const completeParagraphs = fullContent.substring(0, lastParagraphBreak);
-          const remainder = fullContent.substring(lastParagraphBreak + 2);
+          // Process each paragraph individually
+          const completeParagraphs = paragraphs.slice(0, -1);
+          const remainder = paragraphs[paragraphs.length - 1];
 
-          // Only render as markdown if markers are balanced, otherwise show as plain text
-          let renderedComplete;
-          if (hasBalancedMarkdown(completeParagraphs)) {
-            renderedComplete = renderMessage(completeParagraphs);
-          } else {
-            // Fall back to plain text if markdown is unbalanced
-            renderedComplete = completeParagraphs
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/\n\n/g, '</p><p>')
-              .replace(/\n/g, '<br>');
-            renderedComplete = '<p>' + renderedComplete + '</p>';
-          }
+          // Render each complete paragraph - if it has balanced markdown, render it;
+          // otherwise show as plain text with markers stripped
+          const renderedParagraphs = completeParagraphs.map(para => {
+            if (hasBalancedMarkdown(para)) {
+              return renderMessage(para);
+            } else {
+              // Unbalanced - strip markers and escape
+              const stripped = stripMarkdownMarkers(para);
+              const escaped = stripped
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+              return '<p>' + escaped + '</p>';
+            }
+          });
 
-          const escapedRemainder = remainder
+          // Strip markers from remainder (incomplete paragraph)
+          const strippedRemainder = stripMarkdownMarkers(remainder);
+          const escapedRemainder = strippedRemainder
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
 
-          contentDiv.innerHTML = renderedComplete +
+          contentDiv.innerHTML = renderedParagraphs.join('') +
             (escapedRemainder ? '<p>' + escapedRemainder + '<span class="streaming-cursor">|</span></p>' : '<span class="streaming-cursor">|</span>');
         }
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -1296,10 +1334,50 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          let currentEventType = '';
+
+          // Helper to process SSE lines (uses closure for currentEventType)
+          const processLines = (lines) => {
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEventType = line.slice(7);
+              } else if (line.startsWith('data: ') && currentEventType) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+
+                  if (currentEventType === 'text') {
+                    fullContent += data.text;
+                    appendToStreamingMessage(contentDiv, data.text, fullContent);
+                  } else if (currentEventType === 'meta') {
+                    conversationId = data.conversation_id;
+                  } else if (currentEventType === 'done') {
+                    messageId = data.message_id;
+                    conversationId = data.conversation_id;
+                  } else if (currentEventType === 'error') {
+                    throw new Error(data.error || 'Unknown error');
+                  }
+                  // tool_start and tool_end events are informational, could show status
+                } catch (parseError) {
+                  console.warn('Failed to parse SSE data:', parseError);
+                }
+                currentEventType = '';
+              }
+            }
+          };
 
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+
+            if (done) {
+              // Flush the decoder to handle any remaining multi-byte characters
+              buffer += decoder.decode();
+              // Process any remaining complete events
+              if (buffer.trim()) {
+                const lines = buffer.split('\n');
+                processLines(lines);
+              }
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
 
@@ -1307,32 +1385,7 @@
             const lines = buffer.split('\n');
             buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-            let eventType = '';
-            for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                eventType = line.slice(7);
-              } else if (line.startsWith('data: ') && eventType) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-
-                  if (eventType === 'text') {
-                    fullContent += data.text;
-                    appendToStreamingMessage(contentDiv, data.text, fullContent);
-                  } else if (eventType === 'meta') {
-                    conversationId = data.conversation_id;
-                  } else if (eventType === 'done') {
-                    messageId = data.message_id;
-                    conversationId = data.conversation_id;
-                  } else if (eventType === 'error') {
-                    throw new Error(data.error || 'Unknown error');
-                  }
-                  // tool_start and tool_end events are informational, could show status
-                } catch (parseError) {
-                  console.warn('Failed to parse SSE data:', parseError);
-                }
-                eventType = '';
-              }
-            }
+            processLines(lines);
           }
 
           // Finalize the message with feedback UI
