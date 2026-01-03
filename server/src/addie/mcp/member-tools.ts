@@ -358,8 +358,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'test_adcp_agent',
     description:
-      'Run end-to-end tests against an AdCP agent to verify it works correctly. Tests the full workflow: discover products, create media buys, sync creatives, etc. By default runs in dry-run mode - set dry_run=false for real testing. Use this when users want to test their agent implementation, verify compliance, or debug issues. This replaces the testing.adcontextprotocol.org harness.',
-    usage_hints: 'use for "test my agent", "run the full flow", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models"',
+      'Run end-to-end tests against an AdCP agent to verify it works correctly. Tests the full workflow: discover products, create media buys, sync creatives, etc. By default runs in dry-run mode - set dry_run=false for real testing. IMPORTANT: For agents requiring authentication (including the public test agent), users must first set up the agent. Use setup_test_agent for the public test agent, or save_agent for custom agents.',
+    usage_hints: 'use for "test my agent", "run the full flow", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". If testing the public test agent and auth fails, suggest setup_test_agent first.',
     input_schema: {
       type: 'object',
       properties: {
@@ -411,47 +411,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Specific pricing models to test (e.g., ["cpm", "cpcv"]). If not specified, uses first available.',
         },
-        auth_token: {
-          type: 'string',
-          description: 'Bearer token for agents that require authentication. For test-agent.adcontextprotocol.org, use the published test credentials.',
-        },
       },
       required: ['agent_url'],
     },
   },
-  {
-    name: 'call_adcp_tool',
-    description:
-      'Call any AdCP task on an agent and return the raw response. Use this for custom testing, exploring agent capabilities, or when you need to call a specific task with specific parameters. This is lower-level than test_adcp_agent - use it when you need precise control over the request/response.',
-    usage_hints: 'use for "call get_products on my agent", "try create_media_buy with these parameters", "what does list_creative_formats return", exploring agent responses, debugging specific calls',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to call (e.g., "https://sales.example.com/mcp")',
-        },
-        task: {
-          type: 'string',
-          description: 'The AdCP task to call (e.g., "get_products", "create_media_buy", "list_creative_formats", "sync_creatives")',
-        },
-        params: {
-          type: 'object',
-          description: 'Parameters to pass to the task. Structure depends on the task being called.',
-        },
-        auth_token: {
-          type: 'string',
-          description: 'Bearer token for agents that require authentication. Will auto-lookup saved token if not provided.',
-        },
-        dry_run: {
-          type: 'boolean',
-          description: 'Whether to include X-Dry-Run header (default: true for safety)',
-        },
-      },
-      required: ['agent_url', 'task'],
-    },
-  },
-
   // ============================================
   // AGENT CONTEXT MANAGEMENT
   // ============================================
@@ -509,6 +472,17 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['agent_url'],
+    },
+  },
+  {
+    name: 'setup_test_agent',
+    description:
+      'Set up the public AdCP test agent for the user with one click. This saves the test agent URL and credentials so the user can immediately start testing. Use this when users want to try AdCP, explore the test agent, or say "set up the test agent". Requires the user to be logged in with an organization.',
+    usage_hints: 'use for "set up test agent", "I want to try AdCP", "help me get started testing", "configure the test agent"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
     },
   },
 
@@ -1254,9 +1228,11 @@ export function createMemberToolHandlers(
     const pricingModels = input.pricing_models as string[] | undefined;
     let authToken = input.auth_token as string | undefined;
 
-    // Auto-lookup saved token if user didn't provide one and has org context
+    // Look up saved token for organization
+    // Users must save agents with save_agent before testing agents that require auth
     let usingSavedToken = false;
     const organizationId = memberContext?.organization?.workos_organization_id;
+
     if (!authToken && organizationId) {
       try {
         const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
@@ -1350,79 +1326,6 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    }
-  });
-
-  handlers.set('call_adcp_tool', async (input) => {
-    const agentUrl = input.agent_url as string;
-    const task = input.task as string;
-    const params = (input.params as Record<string, unknown>) || {};
-    const dryRun = input.dry_run as boolean | undefined;
-    let authToken = input.auth_token as string | undefined;
-
-    // Auto-lookup saved token if user didn't provide one and has org context
-    let usingSavedToken = false;
-    const organizationId = memberContext?.organization?.workos_organization_id;
-    if (!authToken && organizationId) {
-      try {
-        const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(organizationId, agentUrl);
-        if (savedToken) {
-          authToken = savedToken;
-          usingSavedToken = true;
-          logger.info({ agentUrl, task }, 'Using saved auth token for call_adcp_tool');
-        }
-      } catch (error) {
-        logger.debug({ error, agentUrl }, 'Could not lookup saved token');
-      }
-    }
-
-    try {
-      // Create a test client for the agent
-      const testOptions: TestOptions = {
-        test_session_id: `addie-call-${Date.now()}`,
-        dry_run: dryRun, // undefined defaults to true in createTestClient
-      };
-      if (authToken) {
-        testOptions.auth = { type: 'bearer', token: authToken };
-      }
-
-      const client = createTestClient(agentUrl, 'mcp', testOptions);
-      const startTime = Date.now();
-
-      // Execute the task
-      const result = await client.executeTask(task, params);
-      const duration = Date.now() - startTime;
-
-      // Format response
-      let output = `## AdCP Task Result\n\n`;
-      output += `**Agent:** ${agentUrl}\n`;
-      output += `**Task:** \`${task}\`\n`;
-      output += `**Duration:** ${duration}ms\n`;
-      output += `**Mode:** ${dryRun !== false ? '🧪 Dry Run' : '🔴 Live'}\n`;
-      if (usingSavedToken) {
-        output += `**Auth:** Using saved credentials\n`;
-      }
-      output += `\n`;
-
-      if (result.success) {
-        output += `### ✅ Success\n\n`;
-        output += '```json\n';
-        output += JSON.stringify(result.data, null, 2);
-        output += '\n```\n';
-      } else {
-        output += `### ❌ Error\n\n`;
-        output += `**Error:** ${result.error || 'Unknown error'}\n`;
-        if (result.data) {
-          output += '\n**Response data:**\n```json\n';
-          output += JSON.stringify(result.data, null, 2);
-          output += '\n```\n';
-        }
-      }
-
-      return output;
-    } catch (error) {
-      logger.error({ error, agentUrl, task }, 'Addie: call_adcp_tool failed');
-      return `Failed to call ${task} on ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
@@ -1650,6 +1553,63 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl }, 'Addie: remove_saved_agent failed');
       return `Failed to remove agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // TEST AGENT SETUP (one-click)
+  // ============================================
+  handlers.set('setup_test_agent', async () => {
+    // Require authenticated user with organization
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to set up the test agent. Please log in at https://agenticadvertising.org/dashboard first, then come back and try again.';
+    }
+
+    const setupOrgId = memberContext.organization?.workos_organization_id;
+    if (!setupOrgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    // Test agent configuration
+    const testAgentUrl = 'https://test-agent.adcontextprotocol.org/mcp';
+    const testAgentToken = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
+    const testAgentName = 'AdCP Public Test Agent';
+
+    try {
+      // Check if already set up
+      let context = await agentContextDb.getByOrgAndUrl(setupOrgId, testAgentUrl);
+
+      if (context && context.has_auth_token) {
+        return `✅ The test agent is already set up for your organization!\n\n**Agent:** ${testAgentName}\n**URL:** ${testAgentUrl}\n\nYou can now use \`test_adcp_agent\` to run tests against it.`;
+      }
+
+      if (context) {
+        // Context exists but no token - add the token
+        await agentContextDb.saveAuthToken(context.id, testAgentToken);
+      } else {
+        // Create new context with token
+        context = await agentContextDb.create({
+          organization_id: setupOrgId,
+          agent_url: testAgentUrl,
+          agent_name: testAgentName,
+          protocol: 'mcp',
+          created_by: memberContext.workos_user.workos_user_id,
+        });
+        await agentContextDb.saveAuthToken(context.id, testAgentToken);
+      }
+
+      let response = `✅ **Test agent is ready!**\n\n`;
+      response += `**Agent:** ${testAgentName}\n`;
+      response += `**URL:** ${testAgentUrl}\n\n`;
+      response += `You can now:\n`;
+      response += `- Run \`test_adcp_agent\` to run the full test suite\n`;
+      response += `- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\`\n\n`;
+      response += `Would you like me to run a quick test now?`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Addie: setup_test_agent failed');
+      return `Failed to set up test agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
