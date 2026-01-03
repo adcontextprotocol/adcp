@@ -559,12 +559,16 @@ async function handleUserMessage({
       logger.debug('Addie Bolt: Using streaming response');
 
       // Initialize the stream
+      // Note: threadTs (line 416) falls back to event.ts for external ID tracking,
+      // but for the API call we only pass thread_ts when continuing an existing thread.
+      // This prevents creating unwanted sub-threads on new DM conversations.
+      const existingThreadTs = 'thread_ts' in event && event.thread_ts ? event.thread_ts : undefined;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamer = (client as any).chatStream({
         channel: channelId,
         recipient_team_id: teamId,
         recipient_user_id: userId,
-        thread_ts: threadTs,
+        ...(existingThreadTs && { thread_ts: existingThreadTs }),
       });
 
       // Process Claude response stream (pass conversation history for context)
