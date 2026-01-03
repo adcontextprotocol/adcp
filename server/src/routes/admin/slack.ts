@@ -14,7 +14,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { getPool } from '../../db/client.js';
 import { isSlackConfigured, testSlackConnection } from '../../slack/client.js';
-import { syncSlackUsers, getSyncStatus } from '../../slack/sync.js';
+import { syncSlackUsers, getSyncStatus, syncUserToChaptersFromSlackChannels } from '../../slack/sync.js';
 import { invalidateUnifiedUsersCache } from '../../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../../addie/index.js';
 
@@ -182,10 +182,22 @@ export function createAdminSlackRouter(): Router {
         'Slack user manually linked'
       );
 
+      // Sync user to chapters based on their Slack channel memberships
+      const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workos_user_id, slackUserId);
+      if (chapterSyncResult.chapters_joined > 0) {
+        logger.info(
+          { slackUserId, workos_user_id, chaptersJoined: chapterSyncResult.chapters_joined },
+          'User added to chapters based on Slack channel memberships'
+        );
+      }
+
       invalidateUnifiedUsersCache();
       invalidateMemberContextCache(slackUserId);
 
-      res.json({ mapping: updated });
+      res.json({
+        mapping: updated,
+        chapter_sync: chapterSyncResult,
+      });
     } catch (error) {
       logger.error({ err: error }, 'Link Slack user error');
       res.status(500).json({
@@ -317,6 +329,8 @@ export function createAdminSlackRouter(): Router {
       let linked = 0;
       const errors: string[] = [];
 
+      let chaptersJoined = 0;
+
       for (const slackUser of unmappedSlack) {
         if (!slackUser.slack_email) continue;
 
@@ -334,12 +348,16 @@ export function createAdminSlackRouter(): Router {
           });
           linked++;
           mappedWorkosUserIds.add(workosUserId);
+
+          // Sync user to chapters based on their Slack channel memberships
+          const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
+          chaptersJoined += chapterSyncResult.chapters_joined;
         } catch (err) {
           errors.push(`Failed to link ${slackUser.slack_email}: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       }
 
-      logger.info({ linked, errors: errors.length, adminUserId: adminUser?.id }, 'Auto-linked suggested matches');
+      logger.info({ linked, chaptersJoined, errors: errors.length, adminUserId: adminUser?.id }, 'Auto-linked suggested matches');
 
       if (linked > 0) {
         invalidateUnifiedUsersCache();
@@ -348,6 +366,7 @@ export function createAdminSlackRouter(): Router {
 
       res.json({
         linked,
+        chapters_joined: chaptersJoined,
         errors,
       });
     } catch (error) {
