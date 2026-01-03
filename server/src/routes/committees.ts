@@ -18,7 +18,7 @@ import { notifyWorkingGroupPost } from "../notifications/slack.js";
 const logger = createLogger("committee-routes");
 
 // Valid committee types
-const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance'] as const;
+const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'event'] as const;
 type CommitteeType = typeof VALID_COMMITTEE_TYPES[number];
 
 // Initialize WorkOS client only if authentication is enabled
@@ -266,7 +266,23 @@ export function createCommitteeRouters(): {
         leader_user_ids, committee_type, region: finalRegion
       });
 
-      res.status(201).json(group);
+      // Auto-sync members from Slack channel if a channel was linked to a chapter or event
+      let syncResult = null;
+      if (group.slack_channel_id && (group.committee_type === 'chapter' || group.committee_type === 'event')) {
+        syncResult = await syncWorkingGroupMembersFromSlack(group.id);
+        if (syncResult.members_added > 0) {
+          logger.info(
+            { workingGroupId: group.id, membersAdded: syncResult.members_added },
+            'Auto-synced members after chapter/event was created with Slack channel'
+          );
+          invalidateMemberContextCache();
+        }
+      }
+
+      res.status(201).json({
+        ...group,
+        sync_result: syncResult,
+      });
     } catch (error) {
       logger.error({ err: error }, 'Create working group error:');
       res.status(500).json({
@@ -293,6 +309,10 @@ export function createCommitteeRouters(): {
         updates.region = null;
       }
 
+      // Check if we're adding/changing a Slack channel
+      const existingGroup = await workingGroupDb.getWorkingGroupById(id);
+      const isAddingChannel = updates.slack_channel_url && (!existingGroup?.slack_channel_id || updates.slack_channel_url !== existingGroup.slack_channel_url);
+
       const group = await workingGroupDb.updateWorkingGroup(id, updates);
 
       if (!group) {
@@ -302,7 +322,23 @@ export function createCommitteeRouters(): {
         });
       }
 
-      res.json(group);
+      // Auto-sync members from Slack channel if a new channel was linked to a chapter or event
+      let syncResult = null;
+      if (isAddingChannel && group.slack_channel_id && (group.committee_type === 'chapter' || group.committee_type === 'event')) {
+        syncResult = await syncWorkingGroupMembersFromSlack(id);
+        if (syncResult.members_added > 0) {
+          logger.info(
+            { workingGroupId: id, membersAdded: syncResult.members_added },
+            'Auto-synced members after channel was linked'
+          );
+          invalidateMemberContextCache();
+        }
+      }
+
+      res.json({
+        ...group,
+        sync_result: syncResult,
+      });
     } catch (error) {
       logger.error({ err: error }, 'Update working group error:');
       res.status(500).json({

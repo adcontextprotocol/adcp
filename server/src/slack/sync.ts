@@ -7,12 +7,13 @@
  */
 
 import { logger } from '../logger.js';
-import { getSlackUsers, getChannelMembers, isSlackConfigured } from './client.js';
+import { getSlackUsers, getChannelMembers, getUserChannels, isSlackConfigured } from './client.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import type { SyncSlackUsersResult } from './types.js';
 
 const slackDb = new SlackDatabase();
+const workingGroupDb = new WorkingGroupDatabase();
 
 /**
  * Sync all Slack users to the database
@@ -158,8 +159,6 @@ export interface SyncWorkingGroupMembersResult {
 export async function syncWorkingGroupMembersFromSlack(
   workingGroupId: string
 ): Promise<SyncWorkingGroupMembersResult> {
-  const workingGroupDb = new WorkingGroupDatabase();
-
   // Get the working group
   const workingGroup = await workingGroupDb.getWorkingGroupById(workingGroupId);
   if (!workingGroup) {
@@ -276,7 +275,6 @@ export async function syncWorkingGroupMembersFromSlack(
  * Sync all working groups that have Slack channels configured
  */
 export async function syncAllWorkingGroupMembersFromSlack(): Promise<SyncWorkingGroupMembersResult[]> {
-  const workingGroupDb = new WorkingGroupDatabase();
   const results: SyncWorkingGroupMembersResult[] = [];
 
   const workingGroups = await workingGroupDb.listWorkingGroupsWithSlackChannel();
@@ -287,4 +285,137 @@ export async function syncAllWorkingGroupMembersFromSlack(): Promise<SyncWorking
   }
 
   return results;
+}
+
+// ============== User Account Link Sync ==============
+
+export interface SyncUserChaptersResult {
+  workos_user_id: string;
+  slack_user_id: string;
+  channels_checked: number;
+  chapters_joined: number;
+  chapters_already_member: number;
+  chapters: Array<{
+    id: string;
+    name: string;
+    action: 'joined' | 'already_member';
+  }>;
+  errors: string[];
+}
+
+/**
+ * Sync a user to chapters based on their Slack channel memberships
+ *
+ * Called when a user's Slack account is linked to their WorkOS account.
+ * Checks which channels they're in and adds them to corresponding chapters.
+ */
+export async function syncUserToChaptersFromSlackChannels(
+  workosUserId: string,
+  slackUserId: string
+): Promise<SyncUserChaptersResult> {
+  const result: SyncUserChaptersResult = {
+    workos_user_id: workosUserId,
+    slack_user_id: slackUserId,
+    channels_checked: 0,
+    chapters_joined: 0,
+    chapters_already_member: 0,
+    chapters: [],
+    errors: [],
+  };
+
+  if (!isSlackConfigured()) {
+    result.errors.push('Slack is not configured (ADDIE_BOT_TOKEN missing)');
+    return result;
+  }
+
+  try {
+    logger.info(
+      { workosUserId, slackUserId },
+      'Starting user chapter sync from Slack channels'
+    );
+
+    // Get all channels the user is a member of
+    let userChannelIds: string[];
+    try {
+      userChannelIds = await getUserChannels(slackUserId);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      result.errors.push(`Failed to fetch user channels: ${errorMessage}`);
+      logger.error({ error, slackUserId }, 'Failed to fetch user channels from Slack');
+      return result;
+    }
+    result.channels_checked = userChannelIds.length;
+
+    if (userChannelIds.length === 0) {
+      logger.info({ slackUserId }, 'User is not a member of any channels');
+      return result;
+    }
+
+    // Get all chapters/events that have Slack channels configured
+    const workingGroups = await workingGroupDb.listWorkingGroupsWithSlackChannel();
+
+    // Filter to only chapters and events (groups that auto-add members)
+    const autoAddGroups = workingGroups.filter(
+      wg => wg.committee_type === 'chapter' || wg.committee_type === 'event'
+    );
+
+    // Get user's Slack info for membership record
+    const slackMapping = await slackDb.getBySlackUserId(slackUserId);
+
+    // Check each auto-add group
+    for (const group of autoAddGroups) {
+      if (!group.slack_channel_id) continue;
+
+      // Check if user is in this channel
+      if (!userChannelIds.includes(group.slack_channel_id)) continue;
+
+      try {
+        // Check if already a member
+        const isMember = await workingGroupDb.isMember(group.id, workosUserId);
+        if (isMember) {
+          result.chapters_already_member++;
+          result.chapters.push({
+            id: group.id,
+            name: group.name,
+            action: 'already_member',
+          });
+          continue;
+        }
+
+        // Add to the group
+        await workingGroupDb.addMembershipWithInterest({
+          working_group_id: group.id,
+          workos_user_id: workosUserId,
+          user_email: slackMapping?.slack_email || undefined,
+          user_name: slackMapping?.slack_real_name || slackMapping?.slack_display_name || undefined,
+          interest_level: group.committee_type === 'event' ? 'interested' : undefined,
+          interest_source: 'slack_join',
+        });
+
+        result.chapters_joined++;
+        result.chapters.push({
+          id: group.id,
+          name: group.name,
+          action: 'joined',
+        });
+
+        logger.info(
+          { workosUserId, groupId: group.id, groupName: group.name },
+          'Added user to chapter based on Slack channel membership'
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        result.errors.push(`Failed to add to ${group.name}: ${errorMessage}`);
+        logger.error({ error, groupId: group.id }, 'Failed to add user to chapter');
+      }
+    }
+
+    logger.info(result, 'User chapter sync from Slack channels completed');
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    result.errors.push(`Sync failed: ${errorMessage}`);
+    logger.error({ error, workosUserId, slackUserId }, 'User chapter sync from Slack failed');
+    return result;
+  }
 }
