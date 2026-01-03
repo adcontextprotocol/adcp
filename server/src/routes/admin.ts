@@ -26,6 +26,7 @@ import { setupDomainRoutes } from "./admin/domains.js";
 import { setupCleanupRoutes } from "./admin/cleanup.js";
 import { setupStatsRoutes } from "./admin/stats.js";
 import { setupDiscountRoutes } from "./admin/discounts.js";
+import { setupMembersRoutes } from "./admin/members.js";
 
 const logger = createLogger("admin-routes");
 
@@ -100,6 +101,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Discount management routes
   setupDiscountRoutes(apiRouter);
+
+  // Members management routes (list, sync, payments, delete)
+  setupMembersRoutes(apiRouter, { workos });
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
