@@ -787,24 +787,52 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
 
       const user = userResult.rows[0];
 
-      // Determine outreach type
+      // Use the goal from unified_contacts_with_goals which considers all factors
+      // including whether the account is already linked
+      const goalKey = user.goal_key;
+
+      // Map goal_key to outreach_type for variant selection
       let outreachType: string;
-      if (!user.workos_user_id) {
+      if (goalKey === 'link_account') {
+        // User needs to link their Slack to AAO
         outreachType = 'account_link';
-      } else if (!user.last_outreach_at) {
+      } else if (!user.last_outreach_at && !user.workos_user_id) {
+        // Never contacted and no AAO account
         outreachType = 'introduction';
       } else {
-        outreachType = 'insight_goal';
+        // User is already linked or has been contacted before
+        // Use goal-based outreach
+        outreachType = goalKey || 'insight_goal';
       }
 
-      // Get active variant for message template
-      const variantResult = await pool.query(`
-        SELECT name, message_template, tone, approach
-        FROM outreach_variants
-        WHERE is_active = TRUE
-        ORDER BY weight DESC
-        LIMIT 1
-      `);
+      // Get active variant appropriate for the outreach type
+      // For linked users (not needing account_link), prefer engagement-focused variants
+      const needsLinking = goalKey === 'link_account';
+
+      // Use separate queries to avoid dynamic SQL construction
+      let variantQuery: string;
+      if (needsLinking) {
+        variantQuery = `
+          SELECT name, message_template, tone, approach
+          FROM outreach_variants
+          WHERE is_active = TRUE
+          ORDER BY weight DESC
+          LIMIT 1
+        `;
+      } else {
+        // Exclude account-linking focused variants for already-linked users
+        variantQuery = `
+          SELECT name, message_template, tone, approach
+          FROM outreach_variants
+          WHERE is_active = TRUE
+            AND message_template NOT LIKE '%connected to Slack%'
+            AND message_template NOT LIKE '%linked to Slack%'
+            AND message_template NOT LIKE '%link your Slack%'
+          ORDER BY weight DESC
+          LIMIT 1
+        `;
+      }
+      const variantResult = await pool.query(variantQuery);
 
       const variant = variantResult.rows[0];
 
@@ -824,14 +852,26 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
 
       // Build preview message
       const userName = user.slack_display_name || user.slack_real_name || 'there';
-      let previewMessage = variant?.message_template || '[No active outreach variant configured]';
-      previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
-      if (goalQuestion) {
-        previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
+      let previewMessage: string;
+
+      // If user doesn't need account linking, don't show linking-focused messages
+      if (!needsLinking && variant?.message_template) {
+        previewMessage = `[Account already linked - no outreach needed]\n\nThis user's Slack and AgenticAdvertising.org accounts are already connected. The current goal for Addie is: ${user.goal_name || 'Drive Engagement'}`;
+      } else {
+        previewMessage = variant?.message_template || '[No active outreach variant configured]';
+        previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
+        if (goalQuestion) {
+          previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
+        }
       }
 
       // Check eligibility
-      const eligibility = await canContactUser(slackUserId);
+      const baseEligibility = await canContactUser(slackUserId);
+
+      // For already-linked users, override eligibility to indicate no linking outreach needed
+      const eligibility = !needsLinking
+        ? { canContact: false, reason: 'Account already linked - Slack and AAO accounts are connected' }
+        : baseEligibility;
 
       res.json({
         user: {
