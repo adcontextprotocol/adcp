@@ -961,14 +961,21 @@
     }
 
     // Render product cards
+    // Deduplicates products by amount_cents to avoid showing multiple cards with the same price
     function renderProductCards() {
       const container = document.getElementById('productsContainer');
 
-      const cardsHtml = membershipProducts.map(product => {
-        const tierInfo = product.revenue_tiers?.length > 0
-          ? product.revenue_tiers.join(', ')
-          : '';
+      // Deduplicate products by price - keep only one product per unique price
+      const seenPrices = new Set();
+      const uniqueProducts = membershipProducts.filter(product => {
+        if (seenPrices.has(product.amount_cents)) {
+          return false;
+        }
+        seenPrices.add(product.amount_cents);
+        return true;
+      });
 
+      const cardsHtml = uniqueProducts.map(product => {
         return `
           <div class="product-card" data-lookup-key="${product.lookup_key}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
@@ -976,7 +983,6 @@
               ${formatCurrency(product.amount_cents)}
               <span class="period">/year</span>
             </div>
-            ${tierInfo ? `<div class="product-card-tier">${escapeHtml(tierInfo)}</div>` : ''}
             <div class="product-card-actions">
               <button class="btn btn-primary" onclick="selectProduct('${product.lookup_key}')">Pay Now</button>
               <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${product.lookup_key}')">Request Invoice</button>
