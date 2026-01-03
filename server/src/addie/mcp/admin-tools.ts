@@ -19,6 +19,9 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import {
   getPendingInvoices,
+  createOrgDiscount,
+  createCoupon,
+  createPromotionCode,
   type PendingInvoice,
 } from '../../billing/stripe-client.js';
 import {
@@ -598,6 +601,114 @@ For invoices: Sends an email from Stripe with a payment link - good for companie
         },
       },
       required: ['flagged_id'],
+    },
+  },
+
+  // ============================================
+  // DISCOUNT MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'grant_discount',
+    description: `Grant a discount to an organization. Use this when an admin wants to give a company a special rate.
+You can grant either a percentage discount (e.g., 20% off) or a fixed dollar amount discount (e.g., $500 off).
+Optionally creates a Stripe coupon/promotion code they can use at checkout.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'Organization ID (workos_organization_id)',
+        },
+        org_name: {
+          type: 'string',
+          description: 'Company name (alternative to org_id - will search for the org)',
+        },
+        discount_percent: {
+          type: 'number',
+          description: 'Percentage off (e.g., 20 = 20% off). Use this OR discount_amount_dollars, not both.',
+        },
+        discount_amount_dollars: {
+          type: 'number',
+          description: 'Fixed dollar amount off (e.g., 500 = $500 off). Use this OR discount_percent, not both.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Why this discount is being granted (e.g., "Startup discount", "Early adopter", "Nonprofit")',
+        },
+        create_promotion_code: {
+          type: 'boolean',
+          description: 'Create a Stripe promotion code the org can use at checkout (default: true)',
+        },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'remove_discount',
+    description: 'Remove a discount from an organization. Note: This does not delete any Stripe coupons that were created.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'Organization ID (workos_organization_id)',
+        },
+        org_name: {
+          type: 'string',
+          description: 'Company name (alternative to org_id - will search for the org)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_discounts',
+    description: 'List all organizations that currently have active discounts. Shows discount percentage/amount, reason, and who granted it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'create_promotion_code',
+    description: `Create a standalone Stripe promotion code that anyone can use. Useful for marketing campaigns or special offers.
+The code will be usable at checkout for any customer.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          description: 'The code customers will enter at checkout (e.g., "LAUNCH2025", "EARLYBIRD"). Will be converted to uppercase.',
+        },
+        name: {
+          type: 'string',
+          description: 'Internal name for the coupon (e.g., "Launch 2025 Campaign")',
+        },
+        percent_off: {
+          type: 'number',
+          description: 'Percentage off (e.g., 20 = 20% off). Use this OR amount_off_dollars, not both.',
+        },
+        amount_off_dollars: {
+          type: 'number',
+          description: 'Fixed dollar amount off (e.g., 100 = $100 off). Use this OR percent_off, not both.',
+        },
+        duration: {
+          type: 'string',
+          enum: ['once', 'repeating', 'forever'],
+          description: 'How long the discount applies: once (first payment only), repeating (multiple months), forever (all payments). Default: once.',
+        },
+        max_redemptions: {
+          type: 'number',
+          description: 'Maximum number of times the code can be used (optional)',
+        },
+      },
+      required: ['code'],
     },
   },
 ];
@@ -2084,6 +2195,326 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error, flaggedId }, 'Error reviewing flagged conversation');
       return '❌ Failed to mark conversation as reviewed. Please check the ID and try again.';
+    }
+  });
+
+  // ============================================
+  // DISCOUNT MANAGEMENT HANDLERS
+  // ============================================
+
+  // Grant discount to an organization
+  handlers.set('grant_discount', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const orgId = input.org_id as string | undefined;
+    const orgName = input.org_name as string | undefined;
+    const discountPercent = input.discount_percent as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const reason = input.reason as string;
+    const createPromoCode = input.create_promotion_code !== false; // default true
+
+    // Validate inputs
+    if (!reason) {
+      return '❌ Please provide a reason for the discount.';
+    }
+
+    if (discountPercent === undefined && discountAmountDollars === undefined) {
+      return '❌ Please provide either discount_percent or discount_amount_dollars.';
+    }
+
+    if (discountPercent !== undefined && discountAmountDollars !== undefined) {
+      return '❌ Please provide either discount_percent OR discount_amount_dollars, not both.';
+    }
+
+    if (discountPercent !== undefined && (discountPercent < 1 || discountPercent > 100)) {
+      return '❌ Discount percent must be between 1 and 100.';
+    }
+
+    if (discountAmountDollars !== undefined && discountAmountDollars < 1) {
+      return '❌ Discount amount must be a positive number.';
+    }
+
+    try {
+      // Find the organization
+      let org;
+      if (orgId) {
+        org = await orgDb.getOrganization(orgId);
+      } else if (orgName) {
+        const orgs = await orgDb.searchOrganizations({ query: orgName, limit: 1 });
+        if (orgs.length > 0) {
+          org = await orgDb.getOrganization(orgs[0].workos_organization_id);
+        }
+      } else {
+        return '❌ Please provide either org_id or org_name to identify the organization.';
+      }
+
+      if (!org) {
+        return `❌ Organization not found${orgName ? ` matching "${orgName}"` : ''}.`;
+      }
+
+      // Get the admin's name for attribution
+      const grantedBy = memberContext?.workos_user?.email || 'Unknown admin';
+
+      let stripeCouponId: string | null = null;
+      let stripePromoCode: string | null = null;
+
+      // Create Stripe coupon if requested
+      if (createPromoCode) {
+        const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
+          percent_off: discountPercent,
+          amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
+          duration: 'forever',
+          reason,
+        });
+
+        if (stripeDiscount) {
+          stripeCouponId = stripeDiscount.coupon_id;
+          stripePromoCode = stripeDiscount.promotion_code;
+        }
+      }
+
+      // Update the organization
+      await orgDb.setDiscount(org.workos_organization_id, {
+        discount_percent: discountPercent ?? null,
+        discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+        reason,
+        granted_by: grantedBy,
+        stripe_coupon_id: stripeCouponId,
+        stripe_promotion_code: stripePromoCode,
+      });
+
+      logger.info({
+        orgId: org.workos_organization_id,
+        orgName: org.name,
+        discountPercent,
+        discountAmountDollars,
+        grantedBy,
+        stripePromoCode,
+      }, 'Addie: Granted discount to organization');
+
+      // Build response
+      const discountDescription = discountPercent
+        ? `${discountPercent}% off`
+        : `$${discountAmountDollars} off`;
+
+      let response = `✅ Granted **${discountDescription}** discount to **${org.name}**\n\n`;
+      response += `**Reason:** ${reason}\n`;
+      response += `**Granted by:** ${grantedBy}\n`;
+
+      if (stripePromoCode) {
+        response += `\n**Promotion Code:** \`${stripePromoCode}\`\n`;
+        response += `_The customer can enter this code at checkout to receive their discount._`;
+      } else {
+        response += `\n_No Stripe promotion code was created. The discount is recorded but the customer will need a manual adjustment._`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, orgName }, 'Error granting discount');
+      return '❌ Failed to grant discount. Please try again.';
+    }
+  });
+
+  // Remove discount from an organization
+  handlers.set('remove_discount', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const orgId = input.org_id as string | undefined;
+    const orgName = input.org_name as string | undefined;
+
+    try {
+      // Find the organization
+      let org;
+      if (orgId) {
+        org = await orgDb.getOrganization(orgId);
+      } else if (orgName) {
+        const orgs = await orgDb.searchOrganizations({ query: orgName, limit: 1 });
+        if (orgs.length > 0) {
+          org = await orgDb.getOrganization(orgs[0].workos_organization_id);
+        }
+      } else {
+        return '❌ Please provide either org_id or org_name to identify the organization.';
+      }
+
+      if (!org) {
+        return `❌ Organization not found${orgName ? ` matching "${orgName}"` : ''}.`;
+      }
+
+      if (!org.discount_percent && !org.discount_amount_cents) {
+        return `ℹ️ **${org.name}** doesn't have an active discount.`;
+      }
+
+      const previousDiscount = org.discount_percent
+        ? `${org.discount_percent}% off`
+        : `$${(org.discount_amount_cents || 0) / 100} off`;
+
+      await orgDb.removeDiscount(org.workos_organization_id);
+
+      logger.info({
+        orgId: org.workos_organization_id,
+        orgName: org.name,
+        previousDiscount,
+        removedBy: memberContext?.workos_user?.email,
+      }, 'Addie: Removed discount from organization');
+
+      let response = `✅ Removed discount from **${org.name}**\n\n`;
+      response += `**Previous discount:** ${previousDiscount}\n`;
+
+      if (org.stripe_coupon_id) {
+        response += `\n_Note: The Stripe coupon (${org.stripe_coupon_id}) still exists. If needed, delete it from the Stripe dashboard._`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, orgName }, 'Error removing discount');
+      return '❌ Failed to remove discount. Please try again.';
+    }
+  });
+
+  // List organizations with active discounts
+  handlers.set('list_discounts', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const limit = (input.limit as number) || 20;
+
+    try {
+      const orgsWithDiscounts = await orgDb.listOrganizationsWithDiscounts();
+
+      if (orgsWithDiscounts.length === 0) {
+        return 'ℹ️ No organizations currently have active discounts.';
+      }
+
+      const limited = orgsWithDiscounts.slice(0, limit);
+
+      let response = `## Organizations with Active Discounts\n\n`;
+      response += `Found **${orgsWithDiscounts.length}** organization(s) with discounts:\n\n`;
+
+      for (const org of limited) {
+        const discountDescription = org.discount_percent
+          ? `${org.discount_percent}% off`
+          : `$${(org.discount_amount_cents || 0) / 100} off`;
+
+        response += `### ${org.name}\n`;
+        response += `**Discount:** ${discountDescription}\n`;
+        response += `**Reason:** ${org.discount_reason || 'Not specified'}\n`;
+        response += `**Granted by:** ${org.discount_granted_by || 'Unknown'}\n`;
+
+        if (org.discount_granted_at) {
+          response += `**When:** ${formatDate(new Date(org.discount_granted_at))}\n`;
+        }
+
+        if (org.stripe_promotion_code) {
+          response += `**Promo Code:** \`${org.stripe_promotion_code}\`\n`;
+        }
+
+        response += '\n';
+      }
+
+      if (orgsWithDiscounts.length > limit) {
+        response += `_Showing ${limit} of ${orgsWithDiscounts.length} organizations._`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing discounts');
+      return '❌ Failed to list discounts. Please try again.';
+    }
+  });
+
+  // Create standalone promotion code
+  handlers.set('create_promotion_code', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const code = input.code as string;
+    const name = input.name as string | undefined;
+    const percentOff = input.percent_off as number | undefined;
+    const amountOffDollars = input.amount_off_dollars as number | undefined;
+    const duration = (input.duration as 'once' | 'repeating' | 'forever') || 'once';
+    const maxRedemptions = input.max_redemptions as number | undefined;
+
+    // Validate inputs
+    if (!code) {
+      return '❌ Please provide a promotion code.';
+    }
+
+    if (percentOff === undefined && amountOffDollars === undefined) {
+      return '❌ Please provide either percent_off or amount_off_dollars.';
+    }
+
+    if (percentOff !== undefined && amountOffDollars !== undefined) {
+      return '❌ Please provide either percent_off OR amount_off_dollars, not both.';
+    }
+
+    if (percentOff !== undefined && (percentOff < 1 || percentOff > 100)) {
+      return '❌ Percent off must be between 1 and 100.';
+    }
+
+    if (amountOffDollars !== undefined && amountOffDollars < 1) {
+      return '❌ Amount off must be a positive number.';
+    }
+
+    try {
+      const createdBy = memberContext?.workos_user?.email || 'Unknown admin';
+
+      // Create the coupon
+      const coupon = await createCoupon({
+        name: name || `Promotion: ${code}`,
+        percent_off: percentOff,
+        amount_off_cents: amountOffDollars ? amountOffDollars * 100 : undefined,
+        duration,
+        max_redemptions: maxRedemptions,
+        metadata: {
+          created_by: createdBy,
+        },
+      });
+
+      if (!coupon) {
+        return '❌ Failed to create coupon in Stripe. Please try again.';
+      }
+
+      // Create the promotion code
+      const promoCode = await createPromotionCode({
+        coupon_id: coupon.coupon_id,
+        code,
+        max_redemptions: maxRedemptions,
+        metadata: {
+          created_by: createdBy,
+        },
+      });
+
+      if (!promoCode) {
+        return `⚠️ Coupon created but failed to create promotion code. Coupon ID: ${coupon.coupon_id}`;
+      }
+
+      logger.info({
+        couponId: coupon.coupon_id,
+        code: promoCode.code,
+        createdBy,
+      }, 'Addie: Created standalone promotion code');
+
+      const discountDescription = percentOff
+        ? `${percentOff}% off`
+        : `$${amountOffDollars} off`;
+
+      let response = `✅ Created promotion code **${promoCode.code}**\n\n`;
+      response += `**Discount:** ${discountDescription}\n`;
+      response += `**Duration:** ${duration}\n`;
+
+      if (maxRedemptions) {
+        response += `**Max uses:** ${maxRedemptions}\n`;
+      }
+
+      response += `**Created by:** ${createdBy}\n`;
+      response += `\n_Customers can enter this code at checkout to receive their discount._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, code }, 'Error creating promotion code');
+      return '❌ Failed to create promotion code. Please try again.';
     }
   });
 

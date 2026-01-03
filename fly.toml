@@ -7,9 +7,16 @@ primary_region = 'iad'
 [build]
   dockerfile = "Dockerfile"
 
+# Run migrations ONCE before deployment, not on every machine startup
+# If this fails, the deployment is rolled back automatically
+[deploy]
+  release_command = "node dist/db/migrate.js"
+  strategy = "rolling"
+
 [env]
   PORT = "8080"
-  RUN_MIGRATIONS = "true"
+  # Disabled - migrations now run via release_command
+  RUN_MIGRATIONS = "false"
 
 [http_service]
   internal_port = 8080
