@@ -4,7 +4,6 @@
  */
 
 import { Router } from "express";
-import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
@@ -13,15 +12,7 @@ import { createProspect } from "../../services/prospect.js";
 
 const logger = createLogger("admin-prospects");
 
-interface ProspectRoutesConfig {
-  workos: WorkOS | null;
-}
-
-export function setupProspectRoutes(
-  apiRouter: Router,
-  config: ProspectRoutesConfig
-): void {
-  const { workos } = config;
+export function setupProspectRoutes(apiRouter: Router): void {
 
   // GET /api/admin/prospects - List all prospects with action-based views
   apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
@@ -359,6 +350,20 @@ export function setupProspectRoutes(
         }])
       );
 
+      // Get member counts from local organization_memberships table (avoids N+1 WorkOS API calls)
+      const memberCountsResult = await pool.query(
+        `
+        SELECT workos_organization_id, COUNT(*) as member_count
+        FROM organization_memberships
+        WHERE workos_organization_id = ANY($1)
+        GROUP BY workos_organization_id
+      `,
+        [orgIds]
+      );
+      const memberCountMap = new Map(
+        memberCountsResult.rows.map((r) => [r.workos_organization_id, parseInt(r.member_count)])
+      );
+
       // Batch fetch pending invoices for orgs with Stripe customers
       const orgsWithStripe = result.rows.filter((r) => r.stripe_customer_id);
       const pendingInvoicesMap = new Map<string, Awaited<ReturnType<typeof getPendingInvoices>>>();
@@ -384,63 +389,50 @@ export function setupProspectRoutes(
         }
       }
 
-      // Enrich with WorkOS membership count and engagement level
-      const prospects = await Promise.all(
-        result.rows.map(async (row) => {
-          let memberCount = 0;
-          try {
-            if (workos) {
-              const memberships =
-                await workos.userManagement.listOrganizationMemberships({
-                  organizationId: row.workos_organization_id,
-                });
-              memberCount = memberships.data?.length || 0;
-            }
-          } catch {
-            // Org might not exist in WorkOS yet or other error
-          }
+      // Enrich with membership count and engagement level (using local data instead of N+1 WorkOS API calls)
+      const prospects = result.rows.map((row) => {
+        const memberCount = memberCountMap.get(row.workos_organization_id) || 0;
 
-          // Calculate engagement level
-          const wgCount = wgCountMap.get(row.workos_organization_id) || 0;
-          const recentActivityCount =
-            activityCountMap.get(row.workos_organization_id) || 0;
-          const pendingInvoices = pendingInvoicesMap.get(row.workos_organization_id) || [];
+        // Calculate engagement level
+        const wgCount = wgCountMap.get(row.workos_organization_id) || 0;
+        const recentActivityCount =
+          activityCountMap.get(row.workos_organization_id) || 0;
+        const pendingInvoices = pendingInvoicesMap.get(row.workos_organization_id) || [];
 
-          let engagementLevel = 1; // Base level - exists
-          const engagementReasons: string[] = [];
+        let engagementLevel = 1; // Base level - exists
+        const engagementReasons: string[] = [];
 
-          if (pendingInvoices.length > 0) {
-            engagementLevel = 5;
-            const totalAmount = pendingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
-            engagementReasons.push(`Open invoice: $${(totalAmount / 100).toLocaleString()}`);
-          } else if (wgCount > 0) {
-            engagementLevel = 4;
-            engagementReasons.push(`In ${wgCount} working group(s)`);
-          } else if (memberCount > 0) {
-            engagementLevel = 3;
-            engagementReasons.push(`${memberCount} team member(s)`);
-          } else if (recentActivityCount > 0) {
-            engagementLevel = 2;
-            engagementReasons.push("Recent contact");
-          }
+        if (pendingInvoices.length > 0) {
+          engagementLevel = 5;
+          const totalAmount = pendingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+          engagementReasons.push(`Open invoice: $${(totalAmount / 100).toLocaleString()}`);
+        } else if (wgCount > 0) {
+          engagementLevel = 4;
+          engagementReasons.push(`In ${wgCount} working group(s)`);
+        } else if (memberCount > 0) {
+          engagementLevel = 3;
+          engagementReasons.push(`${memberCount} team member(s)`);
+        } else if (recentActivityCount > 0) {
+          engagementLevel = 2;
+          engagementReasons.push("Recent contact");
+        }
 
-          return {
-            ...row,
-            member_count: memberCount,
-            has_members: memberCount > 0,
-            working_group_count: wgCount,
-            engagement_level: engagementLevel,
-            engagement_reasons: engagementReasons,
-            stakeholders: stakeholdersMap.get(row.workos_organization_id) || [],
-            slack_user_count: slackUserCountMap.get(row.workos_organization_id) || 0,
-            domains: domainsMap.get(row.workos_organization_id) || [],
-            last_activity: lastActivityMap.get(row.workos_organization_id) || null,
-            pending_steps: pendingStepsMap.get(row.workos_organization_id) || { pending: 0, overdue: 0 },
-            recent_activity_count: recentActivityCount,
-            pending_invoices: pendingInvoices,
-          };
-        })
-      );
+        return {
+          ...row,
+          member_count: memberCount,
+          has_members: memberCount > 0,
+          working_group_count: wgCount,
+          engagement_level: engagementLevel,
+          engagement_reasons: engagementReasons,
+          stakeholders: stakeholdersMap.get(row.workos_organization_id) || [],
+          slack_user_count: slackUserCountMap.get(row.workos_organization_id) || 0,
+          domains: domainsMap.get(row.workos_organization_id) || [],
+          last_activity: lastActivityMap.get(row.workos_organization_id) || null,
+          pending_steps: pendingStepsMap.get(row.workos_organization_id) || { pending: 0, overdue: 0 },
+          recent_activity_count: recentActivityCount,
+          pending_invoices: pendingInvoices,
+        };
+      });
 
       // Filter by engagement level for specific views
       let filteredProspects = prospects;
