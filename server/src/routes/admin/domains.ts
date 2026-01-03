@@ -14,6 +14,56 @@ import { enrichOrganization } from "../../services/enrichment.js";
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
 
+/**
+ * SQL query to fetch combined activity history for a contact.
+ * Combines email activities with event registrations via UNION ALL.
+ * Parameter $1 is the contact UUID.
+ */
+const CONTACT_ACTIVITIES_QUERY = `
+  SELECT * FROM (
+    -- Email activities
+    SELECT
+      eca.id as activity_id,
+      'email' as activity_type,
+      eca.subject as title,
+      eca.direction as description,
+      eca.insights,
+      eca.metadata,
+      eca.email_date as activity_date,
+      eca.created_at,
+      eac.role,
+      eac.is_primary
+    FROM email_contact_activities eca
+    INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+    WHERE eac.contact_id = $1
+
+    UNION ALL
+
+    -- Event registrations
+    SELECT
+      er.id as activity_id,
+      'event_registration' as activity_type,
+      e.title as title,
+      er.registration_status as description,
+      NULL::TEXT as insights,
+      jsonb_build_object(
+        'event_id', er.event_id,
+        'event_slug', e.slug,
+        'ticket_type', er.ticket_type,
+        'attended', er.attended,
+        'registration_source', er.registration_source
+      ) as metadata,
+      er.registered_at as activity_date,
+      er.created_at,
+      'registrant' as role,
+      true as is_primary
+    FROM event_registrations er
+    INNER JOIN events e ON e.id = er.event_id
+    WHERE er.email_contact_id = $1
+  ) combined
+  ORDER BY activity_date DESC NULLS LAST
+`;
+
 interface DomainRoutesConfig {
   workos: WorkOS | null;
 }
@@ -572,51 +622,7 @@ export function setupDomainRoutes(
         const contact = contactResult.rows[0];
 
         // Get activity history for this contact (emails + event registrations)
-        const activitiesResult = await pool.query(
-          `SELECT * FROM (
-            -- Email activities
-            SELECT
-              eca.id as activity_id,
-              'email' as activity_type,
-              eca.subject as title,
-              eca.direction as description,
-              eca.insights,
-              eca.metadata,
-              eca.email_date as activity_date,
-              eca.created_at,
-              eac.role,
-              eac.is_primary
-            FROM email_contact_activities eca
-            INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
-            WHERE eac.contact_id = $1
-
-            UNION ALL
-
-            -- Event registrations
-            SELECT
-              er.id as activity_id,
-              'event_registration' as activity_type,
-              e.title as title,
-              er.registration_status as description,
-              NULL as insights,
-              jsonb_build_object(
-                'event_id', er.event_id,
-                'event_slug', e.slug,
-                'ticket_type', er.ticket_type,
-                'attended', er.attended,
-                'registration_source', er.registration_source
-              ) as metadata,
-              er.registered_at as activity_date,
-              er.created_at,
-              'registrant' as role,
-              true as is_primary
-            FROM event_registrations er
-            INNER JOIN events e ON e.id = er.event_id
-            WHERE er.email_contact_id = $1
-          ) combined
-          ORDER BY activity_date DESC`,
-          [id]
-        );
+        const activitiesResult = await pool.query(CONTACT_ACTIVITIES_QUERY, [id]);
 
         res.json({
           ...contact,
@@ -676,51 +682,7 @@ export function setupDomainRoutes(
         const contact = contactResult.rows[0];
 
         // Get activity history for this contact (emails + event registrations)
-        const activitiesResult = await pool.query(
-          `SELECT * FROM (
-            -- Email activities
-            SELECT
-              eca.id as activity_id,
-              'email' as activity_type,
-              eca.subject as title,
-              eca.direction as description,
-              eca.insights,
-              eca.metadata,
-              eca.email_date as activity_date,
-              eca.created_at,
-              eac.role,
-              eac.is_primary
-            FROM email_contact_activities eca
-            INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
-            WHERE eac.contact_id = $1
-
-            UNION ALL
-
-            -- Event registrations
-            SELECT
-              er.id as activity_id,
-              'event_registration' as activity_type,
-              e.title as title,
-              er.registration_status as description,
-              NULL as insights,
-              jsonb_build_object(
-                'event_id', er.event_id,
-                'event_slug', e.slug,
-                'ticket_type', er.ticket_type,
-                'attended', er.attended,
-                'registration_source', er.registration_source
-              ) as metadata,
-              er.registered_at as activity_date,
-              er.created_at,
-              'registrant' as role,
-              true as is_primary
-            FROM event_registrations er
-            INNER JOIN events e ON e.id = er.event_id
-            WHERE er.email_contact_id = $1
-          ) combined
-          ORDER BY activity_date DESC`,
-          [contact.id]
-        );
+        const activitiesResult = await pool.query(CONTACT_ACTIVITIES_QUERY, [contact.id]);
 
         res.json({
           ...contact,
