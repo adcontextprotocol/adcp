@@ -28,7 +28,7 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { logger } from '../logger.js';
-import { AddieClaudeClient } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import {
   initializeKnowledgeSearch,
@@ -456,13 +456,15 @@ async function buildMessageWithMemberContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string
-): Promise<RequestTools> {
+): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  const userIsAdmin = isAdmin(memberContext);
+
   // Add admin tools if user is admin
-  if (isAdmin(memberContext)) {
+  if (userIsAdmin) {
     const adminHandlers = createAdminToolHandlers(memberContext);
     allTools.push(...ADMIN_TOOLS);
     for (const [name, handler] of adminHandlers) {
@@ -472,7 +474,7 @@ async function createUserScopedTools(
   }
 
   // Add event tools if user can create events (admin or committee lead)
-  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : isAdmin(memberContext);
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : userIsAdmin;
   if (canCreate) {
     const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
     allTools.push(...EVENT_TOOLS);
@@ -483,8 +485,11 @@ async function createUserScopedTools(
   }
 
   return {
-    tools: allTools,
-    handlers: allHandlers,
+    tools: {
+      tools: allTools,
+      handlers: allHandlers,
+    },
+    isAdmin: userIsAdmin,
   };
 }
 
@@ -702,7 +707,10 @@ async function handleUserMessage({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin)
-  const userTools = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+
+  // Admin users get higher iteration limit for bulk operations
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
 
   // Process with Claude using streaming
   let response;
@@ -735,7 +743,7 @@ async function handleUserMessage({
       });
 
       // Process Claude response stream (pass conversation history for context)
-      for await (const event of claudeClient.processMessageStream(messageWithContext, conversationHistory, userTools)) {
+      for await (const event of claudeClient.processMessageStream(messageWithContext, conversationHistory, userTools, processOptions)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
@@ -776,7 +784,7 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools);
+      response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
       fullText = response.text;
 
       // Send response via say() with feedback buttons
@@ -1078,12 +1086,15 @@ async function handleAppMention({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin)
-  const userTools = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+
+  // Admin users get higher iteration limit for bulk operations
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -1483,12 +1494,15 @@ async function handleDirectMessage(
   });
 
   // Create user-scoped tools
-  const userTools = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+
+  // Admin users get higher iteration limit for bulk operations
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools);
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing DM');
     response = {
@@ -1814,8 +1828,9 @@ async function handleChannelMessage({
     );
 
     // Generate a response with the specified tools (includes admin tools if user is admin)
-    const userTools = await createUserScopedTools(memberContext, userId);
-    const response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+    const response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
 
     if (!response.text || response.text.trim().length === 0) {
       logger.debug({ channelId }, 'Addie Bolt: No response generated');
@@ -2272,12 +2287,15 @@ async function handleReactionAdded({
   );
 
   // Create user-scoped tools
-  const userTools = await createUserScopedTools(memberContext, reactingUserId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId);
+
+  // Admin users get higher iteration limit for bulk operations
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing reaction response');
     response = {
