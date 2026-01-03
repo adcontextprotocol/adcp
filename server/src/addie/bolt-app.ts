@@ -66,6 +66,7 @@ import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
+import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 
 /**
  * Slack attachment type for forwarded messages
@@ -273,6 +274,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   const knowledgeHandlers = createKnowledgeToolHandlers();
   for (const tool of KNOWLEDGE_TOOLS) {
     const handler = knowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register URL fetching tools (for reading links and files shared in Slack)
+  const urlHandlers = createUrlToolHandlers(botToken);
+  for (const tool of URL_TOOLS) {
+    const handler = urlHandlers[tool.name];
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
