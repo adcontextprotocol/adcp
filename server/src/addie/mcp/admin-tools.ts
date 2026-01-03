@@ -44,12 +44,17 @@ import {
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
 import {
+  createChannel,
+  setChannelPurpose,
+} from '../../slack/client.js';
+import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
+import { workos } from '../../auth/workos-client.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -736,6 +741,53 @@ The code will be usable at checkout for any customer.`,
   },
 
   // ============================================
+  // CHAPTER MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'create_chapter',
+    description: `Create a new regional chapter with a Slack channel. Use this when a member wants to start a chapter in their city/region.
+
+This tool:
+1. Creates a working group with committee_type 'chapter'
+2. Creates a public Slack channel for the chapter
+3. Sets the founding member as the chapter leader
+
+Example: If someone in Austin says "I want to start a chapter", use this to create an Austin Chapter with a #austin-chapter Slack channel.`,
+    usage_hints: 'Use this when a member wants to start a chapter. Ask them what they want to call it first (e.g., "Austin Chapter" vs "Texas Chapter").',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Chapter name (e.g., "Austin Chapter", "Bay Area Chapter")',
+        },
+        region: {
+          type: 'string',
+          description: 'Geographic region this chapter covers (e.g., "Austin", "Bay Area", "Southern California")',
+        },
+        founding_member_id: {
+          type: 'string',
+          description: 'WorkOS user ID of the founding member who will become chapter leader',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description for the chapter',
+        },
+      },
+      required: ['name', 'region'],
+    },
+  },
+  {
+    name: 'list_chapters',
+    description: 'List all regional chapters with their member counts and Slack channels.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
   // ORGANIZATION MANAGEMENT TOOLS
   // ============================================
   {
@@ -744,13 +796,16 @@ The code will be usable at checkout for any customer.`,
 Use this when you discover duplicate organizations (same company with multiple records).
 All data from the secondary organization will be moved to the primary, then the secondary will be deleted.
 
-IMPORTANT: This is a destructive operation that cannot be undone. Always use preview mode first.
+IMPORTANT: This is a destructive operation that cannot be undone.
 
-Steps:
+Workflow:
 1. Use find_prospect or get_organization_details to identify both org IDs
-2. Call merge_organizations with preview=true to see what will be merged
-3. If the preview looks correct, call again with preview=false to execute the merge`,
-    usage_hints: 'Always preview first! Use find_prospect to get the org IDs before merging.',
+2. Call merge_organizations (defaults to preview=true) to see what will be merged
+3. Show the preview to the user and ask if they want to proceed
+4. If yes, call merge_organizations again with preview=false to execute
+
+CRITICAL: A preview does NOT execute the merge. You MUST call again with preview=false to actually merge.`,
+    usage_hints: 'Preview first, then execute with preview=false. The preview response will remind you to call again.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -2702,6 +2757,130 @@ export function createAdminToolHandlers(
   });
 
   // ============================================
+  // CHAPTER MANAGEMENT HANDLERS
+  // ============================================
+
+  // Create chapter
+  handlers.set('create_chapter', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = (input.name as string)?.trim();
+    const region = (input.region as string)?.trim();
+    const foundingMemberId = input.founding_member_id as string | undefined;
+    const description = input.description as string | undefined;
+
+    if (!name) {
+      return '❌ Please provide a chapter name (e.g., "Austin Chapter").';
+    }
+
+    if (!region) {
+      return '❌ Please provide a region (e.g., "Austin", "Bay Area").';
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 50);
+
+    try {
+      // Check if chapter with this slug already exists
+      const existingChapter = await wgDb.getWorkingGroupBySlug(slug);
+      if (existingChapter) {
+        return `⚠️ A chapter with slug "${slug}" already exists: **${existingChapter.name}**\n\nJoin their Slack channel: ${existingChapter.slack_channel_url || 'Not set'}`;
+      }
+
+      // Create Slack channel first
+      const channelResult = await createChannel(slug);
+      if (!channelResult) {
+        return `❌ Failed to create Slack channel #${slug}. The channel name might already be taken. Try a different chapter name.`;
+      }
+
+      // Set channel purpose
+      const purpose = description || `Connect with AgenticAdvertising.org members in the ${region} area.`;
+      await setChannelPurpose(channelResult.channel.id, purpose);
+
+      // Create the chapter working group
+      const chapter = await wgDb.createChapter({
+        name,
+        slug,
+        region,
+        description: purpose,
+        slack_channel_url: channelResult.url,
+        slack_channel_id: channelResult.channel.id,
+        founding_member_id: foundingMemberId,
+      });
+
+      logger.info({
+        chapterId: chapter.id,
+        name: chapter.name,
+        region,
+        slackChannelId: channelResult.channel.id,
+        foundingMemberId,
+      }, 'Addie: Created new regional chapter');
+
+      let response = `✅ Created **${name}**!\n\n`;
+      response += `**Region:** ${region}\n`;
+      response += `**Slack Channel:** <#${channelResult.channel.id}>\n`;
+      response += `**Channel URL:** ${channelResult.url}\n`;
+
+      if (foundingMemberId) {
+        response += `\n🎉 The founding member has been set as chapter leader.\n`;
+      }
+
+      response += `\n_Anyone who joins the Slack channel will automatically be added to the chapter._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, region }, 'Error creating chapter');
+      return '❌ Failed to create chapter. Please try again.';
+    }
+  });
+
+  // List chapters
+  handlers.set('list_chapters', async () => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    try {
+      const chapters = await wgDb.getChapters();
+
+      if (chapters.length === 0) {
+        return 'ℹ️ No regional chapters exist yet. Use create_chapter to start one!';
+      }
+
+      let response = `## Regional Chapters\n\n`;
+      response += `Found **${chapters.length}** chapter(s):\n\n`;
+
+      for (const chapter of chapters) {
+        response += `### ${chapter.name}\n`;
+        response += `**Region:** ${chapter.region || 'Not set'}\n`;
+        response += `**Members:** ${chapter.member_count}\n`;
+
+        if (chapter.slack_channel_id) {
+          response += `**Slack:** <#${chapter.slack_channel_id}>\n`;
+        } else {
+          response += `**Slack:** _No channel linked_\n`;
+        }
+
+        if (chapter.leaders && chapter.leaders.length > 0) {
+          const leaderNames = chapter.leaders.map(l => l.name || 'Unknown').join(', ');
+          response += `**Leaders:** ${leaderNames}\n`;
+        }
+
+        response += '\n';
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing chapters');
+      return '❌ Failed to list chapters. Please try again.';
+    }
+  });
+
+  // ============================================
   // ORGANIZATION MANAGEMENT HANDLERS
   // ============================================
 
@@ -2727,6 +2906,27 @@ export function createAdminToolHandlers(
         // Preview mode - show what would be merged
         const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
 
+        // Also check WorkOS memberships
+        let workosUserCount = 0;
+        let workosCheckFailed = false;
+        try {
+          const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: secondaryOrgId,
+            limit: 100,
+          });
+          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: primaryOrgId,
+            limit: 100,
+          });
+          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+
+          workosUserCount = secondaryMemberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
+            .length;
+        } catch {
+          workosCheckFailed = true;
+        }
+
         let response = `## Merge Preview\n\n`;
         response += `**Keep:** ${previewResult.primary_org.name} (${previewResult.primary_org.id})\n`;
         response += `**Remove:** ${previewResult.secondary_org.name} (${previewResult.secondary_org.id})\n\n`;
@@ -2738,6 +2938,18 @@ export function createAdminToolHandlers(
           for (const change of previewResult.estimated_changes) {
             response += `- **${change.table_name}**: ${change.rows_to_move} row(s)\n`;
           }
+        }
+
+        // WorkOS section
+        response += `\n### WorkOS Sync\n`;
+        if (workosCheckFailed) {
+          response += `⚠️ Could not check WorkOS memberships\n`;
+        } else if (workosUserCount > 0) {
+          response += `- ${workosUserCount} user(s) will be added to the primary org in WorkOS\n`;
+          response += `- Secondary org will be deleted from WorkOS\n`;
+        } else {
+          response += `- No new users to migrate in WorkOS\n`;
+          response += `- Secondary org will be deleted from WorkOS\n`;
         }
 
         if (previewResult.warnings.length > 0) {
@@ -2755,8 +2967,77 @@ export function createAdminToolHandlers(
         // Execute the merge
         logger.info({ primaryOrgId, secondaryOrgId, mergedBy: memberContext?.workos_user?.workos_user_id }, 'Admin executing org merge via Addie');
 
+        // Step 1: Get users from secondary org in WorkOS before merge
+        let workosUsersToMigrate: string[] = [];
+        let workosErrors: string[] = [];
+
+        try {
+          // Get all memberships from the secondary org in WorkOS
+          const memberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: secondaryOrgId,
+            limit: 100,
+          });
+
+          // Warn if there are more than 100 members (pagination not implemented)
+          if (memberships.listMetadata?.after) {
+            workosErrors.push('Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.');
+          }
+
+          // Check which users are NOT already in the primary org
+          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: primaryOrgId,
+            limit: 100,
+          });
+          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+
+          workosUsersToMigrate = memberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
+            .map(m => m.userId);
+
+          logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
+        } catch (err) {
+          logger.warn({ error: err, secondaryOrgId }, 'Failed to fetch WorkOS memberships (will continue with DB merge)');
+          workosErrors.push('Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed');
+        }
+
+        // Step 2: Execute the database merge
         const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
         const result = await mergeOrganizations(primaryOrgId, secondaryOrgId, mergedBy);
+
+        // Step 3: Add users to primary org in WorkOS
+        let workosAdded = 0;
+        let workosSkipped = 0;
+
+        for (const userId of workosUsersToMigrate) {
+          try {
+            await workos.userManagement.createOrganizationMembership({
+              userId,
+              organizationId: primaryOrgId,
+              roleSlug: 'member', // Default to member role
+            });
+            workosAdded++;
+            logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');
+          } catch (err: any) {
+            // User might already be in org (race condition) or other error
+            if (err?.code === 'organization_membership_already_exists') {
+              workosSkipped++;
+            } else {
+              logger.warn({ error: err, userId }, 'Failed to add user to primary org in WorkOS');
+              workosErrors.push(`Failed to add user ${userId} to WorkOS org`);
+            }
+          }
+        }
+
+        // Step 4: Delete the secondary org from WorkOS
+        let workosOrgDeleted = false;
+        try {
+          await workos.organizations.deleteOrganization(secondaryOrgId);
+          workosOrgDeleted = true;
+          logger.info({ secondaryOrgId }, 'Deleted secondary org from WorkOS');
+        } catch (err) {
+          logger.warn({ error: err, secondaryOrgId }, 'Failed to delete secondary org from WorkOS');
+          workosErrors.push(`Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`);
+        }
 
         let response = `## Merge Complete ✅\n\n`;
         response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
@@ -2777,6 +3058,20 @@ export function createAdminToolHandlers(
 
         response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
 
+        // WorkOS sync results
+        if (workosUsersToMigrate.length > 0 || workosOrgDeleted || workosErrors.length > 0) {
+          response += `\n### WorkOS Sync\n`;
+          if (workosAdded > 0) {
+            response += `- ✅ Added ${workosAdded} user(s) to primary org in WorkOS\n`;
+          }
+          if (workosSkipped > 0) {
+            response += `- ⏭️ Skipped ${workosSkipped} user(s) (already in primary org)\n`;
+          }
+          if (workosOrgDeleted) {
+            response += `- 🗑️ Deleted secondary org from WorkOS\n`;
+          }
+        }
+
         if (result.prospect_notes_merged) {
           response += `\n📝 Prospect notes were merged.\n`;
         }
@@ -2785,9 +3080,11 @@ export function createAdminToolHandlers(
           response += `📊 Enrichment data was preserved from the secondary organization.\n`;
         }
 
-        if (result.warnings.length > 0) {
+        // Combine all warnings
+        const allWarnings = [...result.warnings, ...workosErrors];
+        if (allWarnings.length > 0) {
           response += `\n### Warnings\n`;
-          for (const warning of result.warnings) {
+          for (const warning of allWarnings) {
             response += `⚠️ ${warning}\n`;
           }
         }

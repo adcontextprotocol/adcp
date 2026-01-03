@@ -8,6 +8,7 @@
 import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import type { SlackUser } from './types.js';
 import { getSlackUser, getChannelInfo } from './client.js';
 import {
@@ -22,6 +23,7 @@ import {
 
 const slackDb = new SlackDatabase();
 const addieDb = new AddieDatabase();
+const workingGroupDb = new WorkingGroupDatabase();
 
 // Slack event types
 export interface SlackTeamJoinEvent {
@@ -150,6 +152,7 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
 /**
  * Handle member_joined_channel event
  * Records channel join activity for engagement tracking
+ * Also auto-adds users to working groups (chapters/events) when they join linked Slack channels
  */
 export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelEvent): Promise<void> {
   logger.debug(
@@ -178,8 +181,81 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
         inviter: event.inviter,
       },
     });
+
+    // Check if this channel is linked to a working group (chapter or event)
+    // and auto-add the user if they have a WorkOS mapping
+    if (mapping?.workos_user_id) {
+      await autoAddToWorkingGroup(event.channel, mapping.workos_user_id, mapping);
+    }
   } catch (error) {
     logger.error({ error, userId: event.user }, 'Failed to record channel join activity');
+  }
+}
+
+/**
+ * Auto-add user to a working group when they join its Slack channel
+ * This enables "join channel = join group" for chapters and events
+ */
+async function autoAddToWorkingGroup(
+  channelId: string,
+  workosUserId: string,
+  slackMapping: { slack_email?: string | null; slack_real_name?: string | null; slack_display_name?: string | null }
+): Promise<void> {
+  try {
+    // Check if this channel is linked to a working group
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlackChannelId(channelId);
+
+    if (!workingGroup) {
+      // Channel not linked to any working group
+      return;
+    }
+
+    // Only auto-add for chapters and event groups
+    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'event') {
+      logger.debug(
+        { workingGroupId: workingGroup.id, type: workingGroup.committee_type },
+        'Skipping auto-add: not a chapter or event group'
+      );
+      return;
+    }
+
+    // Check if already a member
+    const isMember = await workingGroupDb.isMember(workingGroup.id, workosUserId);
+    if (isMember) {
+      logger.debug(
+        { workingGroupId: workingGroup.id, userId: workosUserId },
+        'User already a member of working group'
+      );
+      return;
+    }
+
+    // Add to working group with interest tracking for event groups
+    const interestLevel = workingGroup.committee_type === 'event' ? 'interested' : undefined;
+    const interestSource = 'slack_join';
+
+    await workingGroupDb.addMembershipWithInterest({
+      working_group_id: workingGroup.id,
+      workos_user_id: workosUserId,
+      user_email: slackMapping.slack_email || undefined,
+      user_name: slackMapping.slack_real_name || slackMapping.slack_display_name || undefined,
+      interest_level: interestLevel,
+      interest_source: interestSource,
+    });
+
+    logger.info(
+      {
+        workingGroupId: workingGroup.id,
+        workingGroupName: workingGroup.name,
+        userId: workosUserId,
+        type: workingGroup.committee_type,
+      },
+      'Auto-added user to working group via Slack channel join'
+    );
+  } catch (error) {
+    logger.error(
+      { error, channelId, userId: workosUserId },
+      'Failed to auto-add user to working group'
+    );
   }
 }
 

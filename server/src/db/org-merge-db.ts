@@ -409,7 +409,111 @@ export async function mergeOrganizations(
     });
 
     // =====================================================
-    // 14. Merge registry_audit_log entries
+    // 14. Merge revenue_events (payment history)
+    // =====================================================
+    const revenueEventsResult = await client.query(
+      `UPDATE revenue_events
+       SET workos_organization_id = $1
+       WHERE workos_organization_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'revenue_events',
+      rows_moved: revenueEventsResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
+    // 15. Merge subscription_line_items
+    // =====================================================
+    const lineItemsResult = await client.query(
+      `UPDATE subscription_line_items
+       SET workos_organization_id = $1, updated_at = NOW()
+       WHERE workos_organization_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'subscription_line_items',
+      rows_moved: lineItemsResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
+    // 16. Merge event_registrations
+    // =====================================================
+    const eventRegsResult = await client.query(
+      `UPDATE event_registrations
+       SET organization_id = $1, updated_at = NOW()
+       WHERE organization_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'event_registrations',
+      rows_moved: eventRegsResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
+    // 17. Merge event_sponsorships
+    // =====================================================
+    const sponsorshipsResult = await client.query(
+      `UPDATE event_sponsorships
+       SET organization_id = $1, updated_at = NOW()
+       WHERE organization_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'event_sponsorships',
+      rows_moved: sponsorshipsResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
+    // 18. Merge user_agreement_acceptances
+    // =====================================================
+    const agreementsResult = await client.query(
+      `UPDATE user_agreement_acceptances
+       SET workos_organization_id = $1
+       WHERE workos_organization_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'user_agreement_acceptances',
+      rows_moved: agreementsResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
+    // 19. Merge org_admin_group_dms (Slack admin channels)
+    // Note: ON DELETE CASCADE handles this, but we track it explicitly
+    // =====================================================
+    const adminDmsResult = await client.query(
+      `DELETE FROM org_admin_group_dms WHERE workos_organization_id = $1 RETURNING id`,
+      [secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'org_admin_group_dms',
+      rows_moved: 0,
+      rows_skipped_duplicate: adminDmsResult.rows.length, // Deleted, not moved
+    });
+
+    if (adminDmsResult.rows.length > 0) {
+      summary.warnings.push('Secondary org had a Slack admin DM channel which was removed (primary channel kept if exists)');
+    }
+
+    // =====================================================
+    // 20. Merge registry_audit_log entries
     // =====================================================
     const auditLogResult = await client.query(
       `UPDATE registry_audit_log
@@ -426,7 +530,7 @@ export async function mergeOrganizations(
     });
 
     // =====================================================
-    // 15. Merge prospect notes
+    // 21. Merge prospect notes
     // =====================================================
     if (secondaryOrg.prospect_notes && secondaryOrg.prospect_notes.trim()) {
       const timestamp = new Date().toISOString().split('T')[0];
@@ -447,7 +551,7 @@ export async function mergeOrganizations(
     }
 
     // =====================================================
-    // 16. Preserve enrichment data if primary doesn't have it
+    // 22. Preserve enrichment data if primary doesn't have it
     // =====================================================
     if (secondaryOrg.enrichment_at && !primaryOrg.enrichment_at) {
       await client.query(
@@ -482,7 +586,7 @@ export async function mergeOrganizations(
     }
 
     // =====================================================
-    // 17. Log the merge action in audit log
+    // 23. Log the merge action in audit log
     // =====================================================
     await client.query(
       `INSERT INTO registry_audit_log (
@@ -502,7 +606,7 @@ export async function mergeOrganizations(
     );
 
     // =====================================================
-    // 18. Delete the secondary organization
+    // 24. Delete the secondary organization
     // =====================================================
     await client.query(
       `DELETE FROM organizations WHERE workos_organization_id = $1`,
@@ -593,6 +697,12 @@ export async function previewMerge(
     { table: 'email_contacts', column: 'organization_id' },
     { table: 'action_items', column: 'org_id' },
     { table: 'registry_audit_log', column: 'workos_organization_id' },
+    { table: 'revenue_events', column: 'workos_organization_id' },
+    { table: 'subscription_line_items', column: 'workos_organization_id' },
+    { table: 'event_registrations', column: 'organization_id' },
+    { table: 'event_sponsorships', column: 'organization_id' },
+    { table: 'user_agreement_acceptances', column: 'workos_organization_id' },
+    { table: 'org_admin_group_dms', column: 'workos_organization_id' },
   ];
 
   for (const { table, column } of tables) {
@@ -620,6 +730,36 @@ export async function previewMerge(
 
   if (profileCheck.rows[0].primary_count > 0 && profileCheck.rows[0].secondary_count > 0) {
     warnings.push('Both organizations have member profiles - secondary profile will be deleted');
+  }
+
+  // Check for Stripe conflicts
+  const stripeCheck = await pool.query(
+    `SELECT
+       workos_organization_id, stripe_customer_id, stripe_subscription_id, subscription_status
+     FROM organizations
+     WHERE workos_organization_id = ANY($1)`,
+    [[primaryOrgId, secondaryOrgId]]
+  );
+
+  const secondaryStripe = stripeCheck.rows.find(r => r.workos_organization_id === secondaryOrgId);
+
+  if (secondaryStripe?.stripe_customer_id) {
+    warnings.push(`⚠️ STRIPE: Secondary org has Stripe customer ${secondaryStripe.stripe_customer_id} - this will NOT be merged automatically. Manual Stripe cleanup required.`);
+  }
+
+  if (secondaryStripe?.stripe_subscription_id) {
+    const status = secondaryStripe.subscription_status || 'unknown';
+    warnings.push(`⚠️ STRIPE: Secondary org has subscription ${secondaryStripe.stripe_subscription_id} (status: ${status}) - cancel in Stripe before merging`);
+  }
+
+  // Check for admin DM channel conflict
+  const adminDmCheck = await pool.query(
+    `SELECT workos_organization_id FROM org_admin_group_dms WHERE workos_organization_id = ANY($1)`,
+    [[primaryOrgId, secondaryOrgId]]
+  );
+
+  if (adminDmCheck.rows.length === 2) {
+    warnings.push('Both organizations have Slack admin DM channels - secondary channel will be removed');
   }
 
   return {

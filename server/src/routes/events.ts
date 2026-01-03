@@ -30,6 +30,8 @@ import type {
   EventFormat,
   RegistrationStatus,
 } from "../types.js";
+import { WorkingGroupDatabase } from "../db/working-group-db.js";
+import { createChannel, setChannelPurpose } from "../slack/client.js";
 
 /**
  * Luma CSV row structure
@@ -107,6 +109,7 @@ function mapLumaStatus(lumaStatus: string): RegistrationStatus {
 }
 
 const orgDb = new OrganizationDatabase();
+const workingGroupDb = new WorkingGroupDatabase();
 
 const logger = createLogger("events-routes");
 
@@ -749,6 +752,156 @@ export function createEventsRouter(): {
         logger.error({ err: error }, "Error importing Luma CSV");
         res.status(500).json({
           error: "Failed to import",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // EVENT GROUP ROUTES (mounted at /api/admin/events)
+  // =========================================================================
+
+  // GET /api/admin/events/:id/event-group - Get event group for an event
+  adminApiRouter.get(
+    "/:id/event-group",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(id)) {
+          return res.status(400).json({
+            error: "Invalid event ID",
+            message: "Event ID must be a valid UUID",
+          });
+        }
+
+        const eventGroup = await workingGroupDb.getEventGroupByEventId(id);
+
+        // Get member count if event group exists
+        let memberCount = 0;
+        if (eventGroup) {
+          const memberships = await workingGroupDb.getMembershipsByWorkingGroup(eventGroup.id);
+          memberCount = memberships.length;
+        }
+
+        res.json({ event_group: eventGroup, member_count: memberCount });
+      } catch (error) {
+        logger.error({ err: error }, "Error getting event group");
+        res.status(500).json({
+          error: "Failed to get event group",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/events/:id/event-group - Create event group for an event
+  adminApiRouter.post(
+    "/:id/event-group",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const { name, create_slack_channel } = req.body;
+
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(id)) {
+          return res.status(400).json({
+            error: "Invalid event ID",
+            message: "Event ID must be a valid UUID",
+          });
+        }
+
+        // Get event details
+        const event = await eventsDb.getEventById(id);
+        if (!event) {
+          return res.status(404).json({
+            error: "Event not found",
+            message: "No event found with that ID",
+          });
+        }
+
+        // Check if event group already exists
+        const existingGroup = await workingGroupDb.getEventGroupByEventId(id);
+        if (existingGroup) {
+          return res.status(400).json({
+            error: "Event group already exists",
+            message: "This event already has an attendee group",
+            event_group: existingGroup,
+          });
+        }
+
+        // Generate slug from event slug or name
+        const groupName = name || `${event.title} Attendees`;
+        const slug = (event.slug + "-attendees")
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, "")
+          .slice(0, 50);
+
+        // Create Slack channel if requested
+        let slackChannelUrl: string | undefined;
+        let slackChannelId: string | undefined;
+
+        if (create_slack_channel !== false) {
+          const channelName = event.slug
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .slice(0, 80);
+
+          const channelResult = await createChannel(channelName);
+          if (channelResult) {
+            slackChannelUrl = channelResult.url;
+            slackChannelId = channelResult.channel.id;
+
+            // Set channel purpose
+            const purpose = `Connect with AgenticAdvertising.org members attending ${event.title}`;
+            await setChannelPurpose(channelResult.channel.id, purpose);
+
+            logger.info(
+              { channelId: channelResult.channel.id, eventId: id },
+              "Created Slack channel for event group"
+            );
+          } else {
+            logger.warn(
+              { eventSlug: event.slug },
+              "Failed to create Slack channel for event group"
+            );
+          }
+        }
+
+        // Create the event group
+        const eventGroup = await workingGroupDb.createEventGroup({
+          name: groupName,
+          slug,
+          description: `Connect with AgenticAdvertising.org members attending ${event.title}`,
+          linked_event_id: id,
+          event_start_date: event.start_time ? new Date(event.start_time) : undefined,
+          event_end_date: event.end_time ? new Date(event.end_time) : undefined,
+          slack_channel_url: slackChannelUrl,
+          slack_channel_id: slackChannelId,
+        });
+
+        logger.info(
+          { eventGroupId: eventGroup.id, eventId: id, slackChannelId },
+          "Created event group"
+        );
+
+        res.status(201).json({
+          event_group: eventGroup,
+          slack_channel_created: !!slackChannelId,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error creating event group");
+        res.status(500).json({
+          error: "Failed to create event group",
           message: "An unexpected error occurred",
         });
       }

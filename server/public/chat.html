@@ -177,6 +177,55 @@
       color: white;
     }
 
+    /* Image support */
+    .message-content img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 8px 0;
+      display: block;
+    }
+
+    .message-content img:hover {
+      cursor: pointer;
+    }
+
+    /* iframe support for creative previews */
+    .message-content .creative-preview-container {
+      position: relative;
+      width: 100%;
+      margin: 12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .message-content .creative-preview-container iframe {
+      width: 100%;
+      min-height: 200px;
+      border: none;
+      display: block;
+    }
+
+    .message-content .creative-preview-label {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      padding: 4px 8px;
+      background: var(--color-bg-card);
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* Inline HTML creative container */
+    .message-content .creative-html-container {
+      margin: 12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: white;
+      padding: 16px;
+    }
+
     .message-content ul, .message-content ol {
       margin: 8px 0;
       padding-left: 20px;
@@ -623,8 +672,8 @@
         <div class="suggested-prompts" id="suggestedPrompts">
           <button class="suggested-prompt" data-prompt="What is AdCP?">What is AdCP?</button>
           <button class="suggested-prompt" data-prompt="How do I get started with AdCP?">How do I get started?</button>
+          <button class="suggested-prompt" data-prompt="Try AdCP with a test agent">Try AdCP live</button>
           <button class="suggested-prompt" data-prompt="What is agentic advertising?">What is agentic advertising?</button>
-          <button class="suggested-prompt" data-prompt="How do I become an AAO member?">Become a member</button>
         </div>
       </div>
     </div>
@@ -863,7 +912,7 @@
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
 
-        // Use marked's built-in renderer with custom link handling
+        // Use marked's built-in renderer with custom link and image handling
         const renderer = new marked.Renderer();
         renderer.link = function(href, title, text) {
           // Handle marked v17+ which passes an object
@@ -879,7 +928,44 @@
           return `<a href="${escapeAttr(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
         };
 
+        // Custom image renderer
+        renderer.image = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (typeof href === 'object') {
+            const img = href;
+            href = img.href;
+            title = img.title;
+            text = img.text;
+          }
+          const titleAttr = title ? ` title="${title}"` : '';
+          const altAttr = text ? ` alt="${text}"` : ' alt="Image"';
+          // Make images clickable to open in new tab
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer"><img src="${href}"${altAttr}${titleAttr} loading="lazy"></a>`;
+        };
+
         return marked.parse(text, { renderer });
+      }
+
+      // Render creative preview (iframe or HTML)
+      function renderCreativePreview(previewUrl, label) {
+        if (!previewUrl) return '';
+        const safeLabel = label ? label.replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Creative Preview';
+        return `
+          <div class="creative-preview-container">
+            <iframe src="${previewUrl}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
+            <div class="creative-preview-label">${safeLabel}</div>
+          </div>
+        `;
+      }
+
+      // Render inline HTML creative
+      function renderCreativeHtml(html, label) {
+        if (!html) return '';
+        return `
+          <div class="creative-html-container">
+            ${html}
+          </div>
+        `;
       }
 
       // Add message to chat
@@ -1344,9 +1430,33 @@
         }
       });
 
+      // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
+      function checkQueryPrompt() {
+        const params = new URLSearchParams(window.location.search);
+        const prompt = params.get('prompt');
+        if (prompt && prompt.trim()) {
+          // Wait for Addie to be ready before sending
+          const waitForReady = setInterval(() => {
+            if (isReady) {
+              clearInterval(waitForReady);
+              chatInput.value = prompt.trim();
+              autoResize();
+              updateSendButton();
+              sendMessage();
+              // Clean URL without reloading
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          }, 100);
+          // Timeout after 10 seconds
+          setTimeout(() => clearInterval(waitForReady), 10000);
+        }
+      }
+
       // Initialize
       checkStatus();
       checkImpersonation();
+      // Check for prompt in URL after status check
+      setTimeout(checkQueryPrompt, 500);
       // Check status periodically
       setInterval(checkStatus, 30000);
 
