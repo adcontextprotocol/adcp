@@ -311,6 +311,10 @@ export class HTTPServer {
   }
 
   private setupMiddleware(): void {
+    // Trust the first proxy (Fly.io) for accurate client IP detection
+    // Required for express-rate-limit and other middleware that use req.ip
+    this.app.set('trust proxy', 1);
+
     // Request logging for /api/me/member-profile to help diagnose issues
     this.app.use('/api/me/member-profile', (req, res, next) => {
       const startTime = Date.now();
