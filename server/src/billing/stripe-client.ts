@@ -897,16 +897,13 @@ export async function createCheckoutSession(
       sessionParams.customer_email = data.customerEmail;
     }
 
-    // For subscriptions, allow promotion codes and require billing address
-    // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
-    if (mode === 'subscription') {
-      sessionParams.allow_promotion_codes = true;
-      sessionParams.billing_address_collection = 'required';
-    }
+    // Allow promotion codes for all checkout sessions (subscriptions and one-time payments)
+    sessionParams.allow_promotion_codes = true;
+    sessionParams.billing_address_collection = 'required';
 
-    // For one-time payments, also collect billing address for invoices
+    // For one-time payments, also create invoices and customers
+    // Note: customer_creation is not allowed in subscription mode - Stripe creates customers automatically
     if (mode === 'payment') {
-      sessionParams.billing_address_collection = 'required';
       sessionParams.invoice_creation = {
         enabled: true,
       };
@@ -1403,4 +1400,223 @@ export async function getProductWithEventInfo(productId: string): Promise<{
     logger.error({ err: error, productId }, 'Error getting product info');
     return null;
   }
+}
+
+// ============================================================================
+// Coupons and Promotion Codes
+// ============================================================================
+
+export interface CreateCouponInput {
+  name: string;
+  percent_off?: number;
+  amount_off_cents?: number;
+  currency?: string;
+  duration: 'once' | 'repeating' | 'forever';
+  duration_in_months?: number;
+  max_redemptions?: number;
+  redeem_by?: Date;
+  metadata?: Record<string, string>;
+}
+
+export interface CreatePromotionCodeInput {
+  coupon_id: string;
+  code: string;
+  max_redemptions?: number;
+  expires_at?: Date;
+  first_time_transaction?: boolean;
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Create a Stripe coupon with percentage or fixed amount discount
+ */
+export async function createCoupon(input: CreateCouponInput): Promise<{
+  coupon_id: string;
+  name: string;
+} | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create coupon');
+    return null;
+  }
+
+  try {
+    const params: Stripe.CouponCreateParams = {
+      name: input.name,
+      duration: input.duration,
+      metadata: input.metadata,
+    };
+
+    if (input.percent_off !== undefined) {
+      params.percent_off = input.percent_off;
+    } else if (input.amount_off_cents !== undefined) {
+      params.amount_off = input.amount_off_cents;
+      params.currency = input.currency || 'usd';
+    }
+
+    if (input.duration === 'repeating' && input.duration_in_months) {
+      params.duration_in_months = input.duration_in_months;
+    }
+
+    if (input.max_redemptions) {
+      params.max_redemptions = input.max_redemptions;
+    }
+
+    if (input.redeem_by) {
+      params.redeem_by = Math.floor(input.redeem_by.getTime() / 1000);
+    }
+
+    const coupon = await stripe.coupons.create(params);
+
+    logger.info({
+      couponId: coupon.id,
+      name: input.name,
+      percentOff: input.percent_off,
+      amountOffCents: input.amount_off_cents,
+    }, 'Created Stripe coupon');
+
+    return {
+      coupon_id: coupon.id,
+      name: coupon.name || input.name,
+    };
+  } catch (error) {
+    logger.error({ err: error, input }, 'Error creating coupon');
+    return null;
+  }
+}
+
+/**
+ * Create a promotion code for an existing coupon
+ */
+export async function createPromotionCode(input: CreatePromotionCodeInput): Promise<{
+  promotion_code_id: string;
+  code: string;
+  coupon_id: string;
+} | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create promotion code');
+    return null;
+  }
+
+  try {
+    const params: Stripe.PromotionCodeCreateParams = {
+      promotion: {
+        type: 'coupon',
+        coupon: input.coupon_id,
+      },
+      code: input.code.toUpperCase(),
+      metadata: input.metadata,
+    };
+
+    if (input.max_redemptions) {
+      params.max_redemptions = input.max_redemptions;
+    }
+
+    if (input.expires_at) {
+      params.expires_at = Math.floor(input.expires_at.getTime() / 1000);
+    }
+
+    if (input.first_time_transaction !== undefined) {
+      params.restrictions = {
+        first_time_transaction: input.first_time_transaction,
+      };
+    }
+
+    const promoCode = await stripe.promotionCodes.create(params);
+
+    logger.info({
+      promotionCodeId: promoCode.id,
+      code: promoCode.code,
+      couponId: input.coupon_id,
+    }, 'Created Stripe promotion code');
+
+    return {
+      promotion_code_id: promoCode.id,
+      code: promoCode.code,
+      coupon_id: input.coupon_id,
+    };
+  } catch (error) {
+    logger.error({ err: error, input }, 'Error creating promotion code');
+    return null;
+  }
+}
+
+/**
+ * Create a coupon and promotion code for a specific organization
+ * Generates a unique code based on org name
+ */
+export async function createOrgDiscount(
+  orgId: string,
+  orgName: string,
+  options: {
+    percent_off?: number;
+    amount_off_cents?: number;
+    duration?: 'once' | 'repeating' | 'forever';
+    reason?: string;
+  }
+): Promise<{
+  coupon_id: string;
+  promotion_code: string;
+} | null> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot create org discount');
+    return null;
+  }
+
+  // Generate a unique code from org name
+  const baseCode = orgName
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .substring(0, 10);
+  const uniqueCode = `${baseCode}${Date.now().toString(36).toUpperCase().slice(-4)}`;
+
+  const discountDescription = options.percent_off
+    ? `${options.percent_off}% off`
+    : `$${((options.amount_off_cents || 0) / 100).toFixed(2)} off`;
+
+  // Create the coupon
+  const coupon = await createCoupon({
+    name: `${orgName} - ${discountDescription}`,
+    percent_off: options.percent_off,
+    amount_off_cents: options.amount_off_cents,
+    duration: options.duration || 'forever',
+    metadata: {
+      workos_organization_id: orgId,
+      reason: options.reason || 'Organization discount',
+    },
+  });
+
+  if (!coupon) {
+    return null;
+  }
+
+  // Create the promotion code
+  const promoCode = await createPromotionCode({
+    coupon_id: coupon.coupon_id,
+    code: uniqueCode,
+    metadata: {
+      workos_organization_id: orgId,
+    },
+  });
+
+  if (!promoCode) {
+    // Clean up the coupon if promo code creation failed
+    try {
+      await stripe.coupons.del(coupon.coupon_id);
+    } catch {
+      // Ignore cleanup errors
+    }
+    return null;
+  }
+
+  logger.info({
+    orgId,
+    orgName,
+    couponId: coupon.coupon_id,
+    promotionCode: promoCode.code,
+  }, 'Created organization discount');
+
+  return {
+    coupon_id: coupon.coupon_id,
+    promotion_code: promoCode.code,
+  };
 }

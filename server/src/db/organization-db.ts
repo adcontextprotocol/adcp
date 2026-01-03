@@ -30,6 +30,13 @@ export interface Organization {
   subscription_interval: string | null;
   subscription_canceled_at: Date | null;
   subscription_metadata: any | null;
+  discount_percent: number | null;
+  discount_amount_cents: number | null;
+  discount_reason: string | null;
+  discount_granted_by: string | null;
+  discount_granted_at: Date | null;
+  stripe_coupon_id: string | null;
+  stripe_promotion_code: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -128,6 +135,13 @@ export class OrganizationDatabase {
       subscription_interval: 'subscription_interval',
       subscription_canceled_at: 'subscription_canceled_at',
       subscription_metadata: 'subscription_metadata',
+      discount_percent: 'discount_percent',
+      discount_amount_cents: 'discount_amount_cents',
+      discount_reason: 'discount_reason',
+      discount_granted_by: 'discount_granted_by',
+      discount_granted_at: 'discount_granted_at',
+      stripe_coupon_id: 'stripe_coupon_id',
+      stripe_promotion_code: 'stripe_promotion_code',
     };
 
     const setClauses: string[] = [];
@@ -730,6 +744,95 @@ export class OrganizationDatabase {
        WHERE workos_organization_id = $1`,
       [workos_organization_id, data.interest_level, data.note || null, data.set_by || null]
     );
+  }
+
+  // ========================================
+  // DISCOUNT MANAGEMENT
+  // ========================================
+
+  /**
+   * Set or update discount for an organization
+   * Use discount_percent OR discount_amount_cents, not both
+   */
+  async setDiscount(
+    workos_organization_id: string,
+    data: {
+      discount_percent?: number | null;
+      discount_amount_cents?: number | null;
+      reason: string;
+      granted_by: string;
+      stripe_coupon_id?: string | null;
+      stripe_promotion_code?: string | null;
+    }
+  ): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `UPDATE organizations
+       SET discount_percent = $2,
+           discount_amount_cents = $3,
+           discount_reason = $4,
+           discount_granted_by = $5,
+           discount_granted_at = NOW(),
+           stripe_coupon_id = $6,
+           stripe_promotion_code = $7,
+           updated_at = NOW()
+       WHERE workos_organization_id = $1`,
+      [
+        workos_organization_id,
+        data.discount_percent ?? null,
+        data.discount_amount_cents ?? null,
+        data.reason,
+        data.granted_by,
+        data.stripe_coupon_id ?? null,
+        data.stripe_promotion_code ?? null,
+      ]
+    );
+  }
+
+  /**
+   * Remove discount from an organization
+   */
+  async removeDiscount(workos_organization_id: string): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `UPDATE organizations
+       SET discount_percent = NULL,
+           discount_amount_cents = NULL,
+           discount_reason = NULL,
+           discount_granted_by = NULL,
+           discount_granted_at = NULL,
+           stripe_coupon_id = NULL,
+           stripe_promotion_code = NULL,
+           updated_at = NOW()
+       WHERE workos_organization_id = $1`,
+      [workos_organization_id]
+    );
+  }
+
+  /**
+   * List all organizations with active discounts
+   */
+  async listOrganizationsWithDiscounts(): Promise<Array<{
+    workos_organization_id: string;
+    name: string;
+    discount_percent: number | null;
+    discount_amount_cents: number | null;
+    discount_reason: string | null;
+    discount_granted_by: string | null;
+    discount_granted_at: Date | null;
+    stripe_coupon_id: string | null;
+    stripe_promotion_code: string | null;
+  }>> {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT workos_organization_id, name, discount_percent, discount_amount_cents,
+              discount_reason, discount_granted_by, discount_granted_at,
+              stripe_coupon_id, stripe_promotion_code
+       FROM organizations
+       WHERE discount_percent IS NOT NULL OR discount_amount_cents IS NOT NULL
+       ORDER BY discount_granted_at DESC`
+    );
+    return result.rows;
   }
 
   /**
