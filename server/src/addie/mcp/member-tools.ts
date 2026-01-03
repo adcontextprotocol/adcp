@@ -15,11 +15,71 @@ import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import { AdAgentsManager } from '../../adagents-manager.js';
 import type { MemberContext } from '../member-context.js';
-import { testAgent, formatTestResults, type TestScenario, type TestOptions } from './agent-tester.js';
+import {
+  runAgentTests,
+  formatTestResults,
+  setAgentTesterLogger,
+  createTestClient,
+  type TestScenario,
+  type TestOptions,
+} from '@adcp/client/testing';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 
 const adagentsManager = new AdAgentsManager();
 const agentContextDb = new AgentContextDatabase();
+
+/**
+ * Known open-source agents and their GitHub repositories.
+ * Used to offer GitHub issue links when tests fail on these agents.
+ * Keys must be lowercase (hostnames are case-insensitive).
+ */
+const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name: string }> = {
+  'test-agent.adcontextprotocol.org': {
+    org: 'adcontextprotocol',
+    repo: 'salesagent',
+    name: 'AdCP Reference Sales Agent',
+  },
+  'wonderstruck.sales-agent.scope3.com': {
+    org: 'adcontextprotocol',
+    repo: 'salesagent',
+    name: 'Wonderstruck (Scope3 Sales Agent)',
+  },
+  'creative.adcontextprotocol.org': {
+    org: 'adcontextprotocol',
+    repo: 'creative-agent',
+    name: 'AdCP Reference Creative Agent',
+  },
+};
+
+/**
+ * Extract hostname from an agent URL for matching against known agents
+ */
+function getAgentHostname(agentUrl: string): string | null {
+  try {
+    const url = new URL(agentUrl);
+    return url.hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if an agent URL is a known open-source agent
+ */
+function getOpenSourceAgentInfo(agentUrl: string): { org: string; repo: string; name: string } | null {
+  const hostname = getAgentHostname(agentUrl);
+  if (!hostname) return null;
+  // Normalize to lowercase for case-insensitive matching
+  return KNOWN_OPEN_SOURCE_AGENTS[hostname.toLowerCase()] || null;
+}
+
+// Configure the agent tester to use our pino logger
+setAgentTesterLogger({
+  info: (ctx, msg) => logger.info(ctx, msg),
+  error: (ctx, msg) => logger.error(ctx, msg),
+  warn: (ctx, msg) => logger.warn(ctx, msg),
+  debug: (ctx, msg) => logger.debug(ctx, msg),
+});
 
 /**
  * Tool definitions for member-related operations
@@ -352,6 +412,38 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['agent_url'],
+    },
+  },
+  {
+    name: 'call_adcp_tool',
+    description:
+      'Call any AdCP task on an agent and return the raw response. Use this for custom testing, exploring agent capabilities, or when you need to call a specific task with specific parameters. This is lower-level than test_adcp_agent - use it when you need precise control over the request/response.',
+    usage_hints: 'use for "call get_products on my agent", "try create_media_buy with these parameters", "what does list_creative_formats return", exploring agent responses, debugging specific calls',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The agent URL to call (e.g., "https://sales.example.com/mcp")',
+        },
+        task: {
+          type: 'string',
+          description: 'The AdCP task to call (e.g., "get_products", "create_media_buy", "list_creative_formats", "sync_creatives")',
+        },
+        params: {
+          type: 'object',
+          description: 'Parameters to pass to the task. Structure depends on the task being called.',
+        },
+        auth_token: {
+          type: 'string',
+          description: 'Bearer token for agents that require authentication. Will auto-lookup saved token if not provided.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Whether to include X-Dry-Run header (default: true for safety)',
+        },
+      },
+      required: ['agent_url', 'task'],
     },
   },
 
@@ -1167,7 +1259,7 @@ export function createMemberToolHandlers(
     if (authToken) options.auth = { type: 'bearer', token: authToken };
 
     try {
-      const result = await testAgent(agentUrl, scenario, options);
+      const result = await runAgentTests(agentUrl, scenario, options);
 
       // If user is authenticated and agent test succeeded, update the saved context
       if (organizationId) {
@@ -1214,10 +1306,97 @@ export function createMemberToolHandlers(
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
       }
+
+      // If tests failed on a known open-source agent, offer to help file a GitHub issue
+      const failedSteps = result.steps.filter((s) => !s.passed);
+      if (failedSteps.length > 0) {
+        const openSourceInfo = getOpenSourceAgentInfo(agentUrl);
+        if (openSourceInfo) {
+          output += `\n---\n\n`;
+          output += `💡 **This is an open-source agent** (${openSourceInfo.name})\n\n`;
+          output += `Since ${failedSteps.length} test step(s) failed, would you like me to help you report this issue?\n`;
+          output += `I can draft a GitHub issue for the \`${openSourceInfo.org}/${openSourceInfo.repo}\` repository with all the relevant details.\n\n`;
+          output += `Just say "yes, file an issue" or "help me report this bug" and I'll create a pre-filled GitHub link for you.`;
+        }
+      }
+
       return output;
     } catch (error) {
       logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('call_adcp_tool', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const task = input.task as string;
+    const params = (input.params as Record<string, unknown>) || {};
+    const dryRun = input.dry_run as boolean | undefined;
+    let authToken = input.auth_token as string | undefined;
+
+    // Auto-lookup saved token if user didn't provide one and has org context
+    let usingSavedToken = false;
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    if (!authToken && organizationId) {
+      try {
+        const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(organizationId, agentUrl);
+        if (savedToken) {
+          authToken = savedToken;
+          usingSavedToken = true;
+          logger.info({ agentUrl, task }, 'Using saved auth token for call_adcp_tool');
+        }
+      } catch (error) {
+        logger.debug({ error, agentUrl }, 'Could not lookup saved token');
+      }
+    }
+
+    try {
+      // Create a test client for the agent
+      const testOptions: TestOptions = {
+        test_session_id: `addie-call-${Date.now()}`,
+        dry_run: dryRun, // undefined defaults to true in createTestClient
+      };
+      if (authToken) {
+        testOptions.auth = { type: 'bearer', token: authToken };
+      }
+
+      const client = createTestClient(agentUrl, 'mcp', testOptions);
+      const startTime = Date.now();
+
+      // Execute the task
+      const result = await client.executeTask(task, params);
+      const duration = Date.now() - startTime;
+
+      // Format response
+      let output = `## AdCP Task Result\n\n`;
+      output += `**Agent:** ${agentUrl}\n`;
+      output += `**Task:** \`${task}\`\n`;
+      output += `**Duration:** ${duration}ms\n`;
+      output += `**Mode:** ${dryRun !== false ? '🧪 Dry Run' : '🔴 Live'}\n`;
+      if (usingSavedToken) {
+        output += `**Auth:** Using saved credentials\n`;
+      }
+      output += `\n`;
+
+      if (result.success) {
+        output += `### ✅ Success\n\n`;
+        output += '```json\n';
+        output += JSON.stringify(result.data, null, 2);
+        output += '\n```\n';
+      } else {
+        output += `### ❌ Error\n\n`;
+        output += `**Error:** ${result.error || 'Unknown error'}\n`;
+        if (result.data) {
+          output += '\n**Response data:**\n```json\n';
+          output += JSON.stringify(result.data, null, 2);
+          output += '\n```\n';
+        }
+      }
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl, task }, 'Addie: call_adcp_tool failed');
+      return `Failed to call ${task} on ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
