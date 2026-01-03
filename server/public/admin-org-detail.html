@@ -174,6 +174,14 @@
       color: var(--color-text-muted);
       margin-left: var(--space-2);
     }
+    .member-name-link {
+      color: var(--color-brand);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .member-name-link:hover {
+      text-decoration: underline;
+    }
 
     /* Working groups */
     .wg-badge {
@@ -1009,6 +1017,19 @@
     </div>
   </div>
 
+  <!-- User Context Modal -->
+  <div id="userContextModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2 id="userContextModalTitle">Member Context</h2>
+        <button class="modal-close" onclick="closeUserContextModal()">&times;</button>
+      </div>
+      <div id="userContextModalBody" style="padding: var(--space-4);">
+        <!-- Content populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
   <script>
     let orgData = null;
     let stakeholders = [];
@@ -1168,11 +1189,16 @@
       count.textContent = `(${orgData.members.length})`;
       list.innerHTML = orgData.members.map(member => {
         const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email;
+        const escapedName = escapeHtml(name);
+        const escapedEmail = escapeHtml(member.email);
+        const memberId = member.id;
         return `
           <li>
-            ${name}
-            <span class="member-role">${member.role}</span>
-            <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${member.email}</span>
+            ${memberId
+              ? `<a href="#" class="member-name-link" onclick="showUserContext('${escapeHtml(memberId)}', 'workos', '${escapedName}'); return false;">${escapedName}</a>`
+              : escapedName}
+            <span class="member-role">${escapeHtml(member.role)}</span>
+            <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapedEmail}</span>
           </li>
         `;
       }).join('');
@@ -1947,12 +1973,174 @@
       }
     }
 
+    // ========================================
+    // USER CONTEXT MODAL
+    // ========================================
+
+    async function showUserContext(userId, type, userName) {
+      const modal = document.getElementById('userContextModal');
+      const modalTitle = document.getElementById('userContextModalTitle');
+      const modalBody = document.getElementById('userContextModalBody');
+
+      modalTitle.textContent = `Context: ${userName}`;
+      modalBody.innerHTML = '<div style="text-align: center; padding: var(--space-8);"><p>Loading context...</p></div>';
+      modal.style.display = 'block';
+
+      try {
+        const response = await fetch(`/api/admin/users/${userId}/context?type=${type}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch context');
+        }
+        const context = await response.json();
+        modalBody.innerHTML = renderUserContext(context, userId);
+      } catch (error) {
+        console.error('Error fetching context:', error);
+        modalBody.innerHTML = `
+          <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
+            <p>Failed to load context.</p>
+            <button class="btn btn-secondary" onclick="showUserContext('${escapeHtml(userId)}', '${escapeHtml(type)}', '${escapeHtml(userName)}')">Retry</button>
+          </div>
+        `;
+      }
+    }
+
+    function closeUserContextModal() {
+      document.getElementById('userContextModal').style.display = 'none';
+    }
+
+    function renderUserContext(context, userId) {
+      let html = '';
+
+      // Addie's Goal Section
+      if (context.addie_goal) {
+        html += '<div style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Addie\'s Goal</h3>';
+        html += `<div style="font-weight: var(--font-medium); color: var(--color-text-heading);">${escapeHtml(context.addie_goal.goal_name || context.addie_goal.goal_key)}</div>`;
+        if (context.addie_goal.reasoning) {
+          html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(context.addie_goal.reasoning)}</p>`;
+        }
+        html += '</div>';
+      }
+
+      // Identity Section
+      html += '<div style="margin-bottom: var(--space-4);">';
+      html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Identity</h3>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+
+      if (context.workos_user) {
+        html += renderContextItem('Email', context.workos_user.email);
+        const name = `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim();
+        if (name) html += renderContextItem('Name', name);
+      }
+
+      if (context.slack_user && !context.workos_user) {
+        html += renderContextItem('Email', context.slack_user.email || 'Not set');
+        html += renderContextItem('Slack Name', context.slack_user.display_name || context.slack_user.real_name || 'Not set');
+      }
+
+      // Status badges
+      const statusItems = [];
+      if (context.is_member) statusItems.push('<span style="display: inline-block; padding: 2px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">Member</span>');
+      if (context.slack_linked) statusItems.push('<span style="display: inline-block; padding: 2px 8px; background: #4A154B20; color: #4A154B; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">Slack</span>');
+
+      if (statusItems.length > 0) {
+        html += `<div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-md); grid-column: 1 / -1;">
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">Status</div>
+          <div style="display: flex; gap: var(--space-1);">${statusItems.join(' ')}</div>
+        </div>`;
+      }
+
+      html += '</div></div>';
+
+      // Organization Section
+      if (context.organization) {
+        html += '<div style="margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Organization</h3>';
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+        html += renderContextItem('Company', context.organization.name);
+        const subStatus = context.organization.subscription_status || 'None';
+        html += renderContextItem('Subscription', subStatus);
+        html += '</div></div>';
+      }
+
+      // Activity Section
+      html += '<div style="margin-bottom: var(--space-4);">';
+      html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Activity</h3>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+
+      if (context.engagement) {
+        html += renderContextItem('Dashboard Logins (30d)', context.engagement.login_count_30d.toString());
+        if (context.engagement.last_login) {
+          html += renderContextItem('Last Login', new Date(context.engagement.last_login).toLocaleDateString());
+        }
+        html += renderContextItem('Email Clicks (30d)', context.engagement.email_click_count_30d.toString());
+      }
+
+      if (context.slack_activity) {
+        html += renderContextItem('Slack Messages (30d)', context.slack_activity.total_messages_30d.toString());
+        html += renderContextItem('Reactions Given', context.slack_activity.total_reactions_30d.toString());
+        if (context.slack_activity.last_activity_at) {
+          html += renderContextItem('Last Slack Activity', new Date(context.slack_activity.last_activity_at).toLocaleDateString());
+        }
+      }
+
+      html += '</div></div>';
+
+      // Working Groups Section
+      if (context.working_groups && context.working_groups.length > 0) {
+        html += '<div style="margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Working Groups</h3>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">';
+        context.working_groups.forEach(wg => {
+          html += `<span style="display: inline-block; padding: 2px 8px; background: var(--color-primary-100); color: var(--color-primary-700); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">${escapeHtml(wg.name)}${wg.is_leader ? ' (Leader)' : ''}</span>`;
+        });
+        html += '</div></div>';
+      }
+
+      // Insights Section
+      if (context.insights && context.insights.length > 0) {
+        html += '<div style="margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Insights</h3>';
+        html += '<div style="max-height: 150px; overflow-y: auto;">';
+        context.insights.forEach(insight => {
+          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+            <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
+            <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+          </div>`;
+        });
+        html += '</div></div>';
+      }
+
+      // Link to full user view
+      html += `<div style="margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-gray-200);">
+        <a href="/admin/users" class="btn btn-secondary" style="text-decoration: none;">View in Users Page</a>
+      </div>`;
+
+      return html;
+    }
+
+    function renderContextItem(label, value) {
+      return `
+        <div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-md);">
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">${escapeHtml(label)}</div>
+          <div style="font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium);">${escapeHtml(value)}</div>
+        </div>
+      `;
+    }
+
     // Close modal when clicking outside
     window.onclick = function(event) {
       if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
       }
     }
+
+    // Close modals on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeUserContextModal();
+      }
+    });
 
     // Check for link_domain query parameter
     async function checkLinkDomainParam() {

@@ -869,6 +869,7 @@ export function setupDomainRoutes(
   );
 
   // POST /api/admin/organizations/:orgId/domains - Add a domain to an organization
+  // Writes to WorkOS first, then local DB is updated via webhook (or immediately for consistency)
   apiRouter.post(
     "/organizations/:orgId/domains",
     requireAuth,
@@ -876,13 +877,27 @@ export function setupDomainRoutes(
     async (req, res) => {
       try {
         const { orgId } = req.params;
-        const { domain, is_primary, sync_to_workos } = req.body;
+        const { domain, is_primary } = req.body;
 
         if (!domain) {
           return res.status(400).json({ error: "domain is required" });
         }
 
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
+
         const normalizedDomain = domain.toLowerCase().trim();
+
+        // Validate domain format
+        const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
+        if (!domainRegex.test(normalizedDomain)) {
+          return res.status(400).json({
+            error: "Invalid domain format",
+            message: `"${normalizedDomain}" is not a valid domain. Expected format: "example.com" or "sub.example.com"`,
+          });
+        }
+
         const pool = getPool();
 
         // Verify org exists
@@ -895,7 +910,7 @@ export function setupDomainRoutes(
           return res.status(404).json({ error: "Organization not found" });
         }
 
-        // Check if domain is already claimed by another org
+        // Check if domain is already claimed by another org locally
         const existingResult = await pool.query(
           `SELECT od.workos_organization_id, o.name as org_name
            FROM organization_domains od
@@ -921,6 +936,26 @@ export function setupDomainRoutes(
           });
         }
 
+        // Add to WorkOS first - this is the source of truth
+        try {
+          const workosOrg = await workos.organizations.getOrganization(orgId);
+          const existingDomains = workosOrg.domains.map(d => ({
+            domain: d.domain,
+            state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+          }));
+
+          await workos.organizations.updateOrganization({
+            organization: orgId,
+            domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+          });
+        } catch (workosErr) {
+          logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to add domain to WorkOS");
+          return res.status(500).json({
+            error: "WorkOS error",
+            message: `Failed to add domain to WorkOS: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`,
+          });
+        }
+
         // If setting as primary, clear existing primary first
         if (is_primary) {
           await pool.query(
@@ -930,10 +965,15 @@ export function setupDomainRoutes(
           );
         }
 
-        // Insert the domain
+        // Insert/update local DB immediately (webhook will also do this, but for immediate consistency)
         await pool.query(
           `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-           VALUES ($1, $2, $3, false, 'manual')`,
+           VALUES ($1, $2, $3, true, 'workos')
+           ON CONFLICT (workos_organization_id, domain) DO UPDATE SET
+             is_primary = EXCLUDED.is_primary,
+             verified = true,
+             source = 'workos',
+             updated_at = NOW()`,
           [orgId, normalizedDomain, is_primary || false]
         );
 
@@ -946,30 +986,13 @@ export function setupDomainRoutes(
           );
         }
 
-        // Optionally sync to WorkOS
-        if (sync_to_workos && workos) {
-          try {
-            await workos.organizations.updateOrganization({
-              organization: orgId,
-              domainData: [{ domain: normalizedDomain, state: DomainDataState.Verified }],
-            });
-            // Mark as verified since we added it to WorkOS
-            await pool.query(
-              `UPDATE organization_domains SET verified = true, source = 'workos', updated_at = NOW()
-               WHERE workos_organization_id = $1 AND domain = $2`,
-              [orgId, normalizedDomain]
-            );
-          } catch (workosErr) {
-            logger.warn({ err: workosErr, domain: normalizedDomain }, "Failed to sync domain to WorkOS");
-          }
-        }
-
-        logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization");
+        logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization via WorkOS");
 
         res.json({
           success: true,
           domain: normalizedDomain,
           is_primary: is_primary || false,
+          synced_to_workos: true,
         });
       } catch (error) {
         logger.error({ err: error }, "Error adding organization domain");
@@ -982,6 +1005,7 @@ export function setupDomainRoutes(
   );
 
   // DELETE /api/admin/organizations/:orgId/domains/:domain - Remove a domain from an organization
+  // Removes from WorkOS first, then local DB is updated via webhook (or immediately for consistency)
   apiRouter.delete(
     "/organizations/:orgId/domains/:domain",
     requireAuth,
@@ -991,6 +1015,10 @@ export function setupDomainRoutes(
         const { orgId, domain } = req.params;
         const normalizedDomain = domain.toLowerCase().trim();
         const pool = getPool();
+
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
 
         // Get domain info before deletion
         const domainResult = await pool.query(
@@ -1005,13 +1033,36 @@ export function setupDomainRoutes(
 
         const wasPrimary = domainResult.rows[0].is_primary;
 
-        // Delete the domain
+        // Remove from WorkOS first - this is the source of truth
+        try {
+          const workosOrg = await workos.organizations.getOrganization(orgId);
+          const remainingDomains = workosOrg.domains
+            .filter(d => d.domain.toLowerCase() !== normalizedDomain)
+            .map(d => ({
+              domain: d.domain,
+              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+            }));
+
+          await workos.organizations.updateOrganization({
+            organization: orgId,
+            domainData: remainingDomains,
+          });
+        } catch (workosErr) {
+          logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to remove domain from WorkOS");
+          return res.status(500).json({
+            error: "WorkOS error",
+            message: `Failed to remove domain from WorkOS: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`,
+          });
+        }
+
+        // Delete from local DB
         await pool.query(
           `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
           [orgId, normalizedDomain]
         );
 
         // If we deleted the primary domain, pick a new one
+        let newPrimary: string | null = null;
         if (wasPrimary) {
           const remaining = await pool.query(
             `SELECT domain FROM organization_domains
@@ -1021,7 +1072,7 @@ export function setupDomainRoutes(
             [orgId]
           );
 
-          const newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+          newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
 
           if (newPrimary) {
             await pool.query(
@@ -1038,12 +1089,13 @@ export function setupDomainRoutes(
           );
         }
 
-        logger.info({ orgId, domain: normalizedDomain, wasPrimary }, "Removed domain from organization");
+        logger.info({ orgId, domain: normalizedDomain, wasPrimary, newPrimary }, "Removed domain from organization via WorkOS");
 
         res.json({
           success: true,
           domain: normalizedDomain,
           was_primary: wasPrimary,
+          new_primary: newPrimary,
         });
       } catch (error) {
         logger.error({ err: error }, "Error removing organization domain");

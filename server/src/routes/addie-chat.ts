@@ -104,6 +104,12 @@ async function initializeChatClient(): Promise<void> {
 interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
+  message_id?: string;
+  rating?: number | null;
+  rating_category?: string | null;
+  rating_notes?: string | null;
+  feedback_tags?: string[] | null;
+  improvement_suggestion?: string | null;
 }
 
 /**
@@ -680,6 +686,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
+          message_id: m.message_id,
+          rating: m.rating,
+          rating_category: m.rating_category,
+          rating_notes: m.rating_notes,
+          feedback_tags: m.feedback_tags,
+          improvement_suggestion: m.improvement_suggestion,
         }));
 
       res.json({

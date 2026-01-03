@@ -55,6 +55,7 @@ import {
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
 import { workos } from '../../auth/workos-client.js';
+import { DomainDataState } from '@workos-inc/node';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -869,6 +870,49 @@ The goal: Every corporate email domain should map to a known organization (membe
         },
       },
       required: [],
+    },
+  },
+  {
+    name: 'manage_organization_domains',
+    description: `Add, remove, or list verified domains for an organization.
+
+Use this tool to:
+- **List** all domains associated with an organization
+- **Add** a new domain to an organization (e.g., when a company has multiple email domains)
+- **Remove** a domain from an organization
+- **Set primary** - designate which domain is the primary one for the organization
+
+Domains are synced to WorkOS, which means:
+1. New users signing up with that email domain are auto-associated with the organization
+2. The domain is marked as verified for SSO eligibility
+3. Organization enrichment uses the primary domain for company lookups
+
+Note: Each domain can only belong to one organization. If a domain is already claimed by another org, the add operation will fail.
+
+The "primary domain" is a local concept used for enrichment and display - WorkOS treats all domains equally for user association.`,
+    usage_hints: 'Use "list" action first to see current domains. Add/remove sync to WorkOS; set_primary is local only.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'add', 'remove', 'set_primary'],
+          description: 'The action to perform: list (show all domains), add (add a new domain), remove (delete a domain), set_primary (make a domain the primary one)',
+        },
+        organization_id: {
+          type: 'string',
+          description: 'The WorkOS organization ID. You can get this from lookup_organization or get_organization_details.',
+        },
+        domain: {
+          type: 'string',
+          description: 'The domain to add, remove, or set as primary (required for add/remove/set_primary actions). Example: "acme.com"',
+        },
+        set_as_primary: {
+          type: 'boolean',
+          description: 'When adding a domain, whether to set it as the primary domain (default: false)',
+        },
+      },
+      required: ['action', 'organization_id'],
     },
   },
 ];
@@ -3173,6 +3217,292 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error finding duplicate organizations');
       return '❌ Failed to search for duplicates. Please try again.';
+    }
+  });
+
+  // Manage organization domains
+  handlers.set('manage_organization_domains', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const action = input.action as string;
+    const organizationId = input.organization_id as string;
+    const domain = input.domain as string | undefined;
+    const setAsPrimary = input.set_as_primary as boolean | undefined;
+
+    if (!organizationId) {
+      return '❌ organization_id is required. Use lookup_organization to find the org ID first.';
+    }
+
+    if (!workos) {
+      return '❌ WorkOS is not configured. Domain management requires WorkOS to be set up.';
+    }
+
+    const pool = getPool();
+
+    try {
+      // Verify org exists
+      const orgResult = await pool.query(
+        `SELECT name, email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [organizationId]
+      );
+
+      if (orgResult.rows.length === 0) {
+        return `❌ Organization not found with ID: ${organizationId}`;
+      }
+
+      const orgName = orgResult.rows[0].name;
+
+      switch (action) {
+        case 'list': {
+          const domainsResult = await pool.query(
+            `SELECT domain, is_primary, verified, source, created_at
+             FROM organization_domains
+             WHERE workos_organization_id = $1
+             ORDER BY is_primary DESC, created_at ASC`,
+            [organizationId]
+          );
+
+          if (domainsResult.rows.length === 0) {
+            return `## Domains for ${orgName}\n\nNo domains configured for this organization.\n\nUse this tool with action "add" to add a domain.`;
+          }
+
+          let response = `## Domains for ${orgName}\n\n`;
+          for (const row of domainsResult.rows) {
+            const badges: string[] = [];
+            if (row.is_primary) badges.push('⭐ Primary');
+            if (row.verified) badges.push('✅ Verified');
+            badges.push(`Source: ${row.source}`);
+
+            response += `**${row.domain}** ${badges.join(' | ')}\n`;
+          }
+          response += `\n_Use action "add" to add a new domain, "remove" to delete one, or "set_primary" to change the primary domain._`;
+          return response;
+        }
+
+        case 'add': {
+          if (!domain) {
+            return '❌ domain is required for the "add" action. Example: "acme.com"';
+          }
+
+          const normalizedDomain = domain.toLowerCase().trim();
+
+          // Validate domain format
+          const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
+          if (!domainRegex.test(normalizedDomain)) {
+            return `❌ Invalid domain format: "${normalizedDomain}". Expected format: "example.com" or "sub.example.com"`;
+          }
+
+          // Check if domain is already claimed locally
+          const existingResult = await pool.query(
+            `SELECT od.workos_organization_id, o.name as org_name
+             FROM organization_domains od
+             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+             WHERE od.domain = $1`,
+            [normalizedDomain]
+          );
+
+          if (existingResult.rows.length > 0) {
+            const existingOrg = existingResult.rows[0];
+            if (existingOrg.workos_organization_id === organizationId) {
+              return `ℹ️ Domain **${normalizedDomain}** is already associated with ${orgName}.`;
+            }
+            return `❌ Domain **${normalizedDomain}** is already claimed by **${existingOrg.org_name}**.\n\nIf these organizations should be merged, use the merge_organizations tool.`;
+          }
+
+          // First, sync to WorkOS - this is required for user auto-association
+          try {
+            // Get existing domains from WorkOS to append the new one
+            const workosOrg = await workos.organizations.getOrganization(organizationId);
+            const existingDomains = workosOrg.domains.map(d => ({
+              domain: d.domain,
+              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+            }));
+
+            // Add the new domain
+            await workos.organizations.updateOrganization({
+              organization: organizationId,
+              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+            });
+          } catch (workosErr) {
+            logger.error({ err: workosErr, domain: normalizedDomain, organizationId }, 'Failed to add domain to WorkOS');
+            return `❌ Failed to add domain **${normalizedDomain}** to WorkOS. Error: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`;
+          }
+
+          // If setting as primary, clear existing primary first
+          if (setAsPrimary) {
+            await pool.query(
+              `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+               WHERE workos_organization_id = $1 AND is_primary = true`,
+              [organizationId]
+            );
+          }
+
+          // Insert/update the domain in local DB (WorkOS webhook will also do this, but let's be explicit)
+          await pool.query(
+            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+             VALUES ($1, $2, $3, true, 'workos')
+             ON CONFLICT (workos_organization_id, domain) DO UPDATE SET
+               is_primary = EXCLUDED.is_primary,
+               verified = true,
+               source = 'workos',
+               updated_at = NOW()`,
+            [organizationId, normalizedDomain, setAsPrimary || false]
+          );
+
+          // If primary, also update the email_domain column
+          if (setAsPrimary) {
+            await pool.query(
+              `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+               WHERE workos_organization_id = $2`,
+              [normalizedDomain, organizationId]
+            );
+          }
+
+          logger.info({ organizationId, domain: normalizedDomain, setAsPrimary }, 'Addie: Added domain to organization via WorkOS');
+
+          let response = `✅ Added domain **${normalizedDomain}** to ${orgName} and synced to WorkOS`;
+          if (setAsPrimary) response += ' (set as primary)';
+          response += '.\n\nUsers signing up with @' + normalizedDomain + ' emails will now be auto-associated with this organization.';
+          return response;
+        }
+
+        case 'remove': {
+          if (!domain) {
+            return '❌ domain is required for the "remove" action.';
+          }
+
+          const normalizedDomain = domain.toLowerCase().trim();
+
+          // Get domain info before deletion
+          const domainResult = await pool.query(
+            `SELECT is_primary, source FROM organization_domains
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          if (domainResult.rows.length === 0) {
+            return `❌ Domain **${normalizedDomain}** not found for ${orgName}.`;
+          }
+
+          const wasPrimary = domainResult.rows[0].is_primary;
+
+          // First, remove from WorkOS
+          try {
+            const workosOrg = await workos.organizations.getOrganization(organizationId);
+            const remainingDomains = workosOrg.domains
+              .filter(d => d.domain.toLowerCase() !== normalizedDomain)
+              .map(d => ({
+                domain: d.domain,
+                state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+              }));
+
+            await workos.organizations.updateOrganization({
+              organization: organizationId,
+              domainData: remainingDomains,
+            });
+          } catch (workosErr) {
+            logger.error({ err: workosErr, domain: normalizedDomain, organizationId }, 'Failed to remove domain from WorkOS');
+            return `❌ Failed to remove domain **${normalizedDomain}** from WorkOS. Error: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`;
+          }
+
+          // Delete the domain from local DB
+          await pool.query(
+            `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          // If we deleted the primary domain, pick a new one
+          let newPrimary: string | null = null;
+          if (wasPrimary) {
+            const remaining = await pool.query(
+              `SELECT domain FROM organization_domains
+               WHERE workos_organization_id = $1
+               ORDER BY verified DESC, created_at ASC
+               LIMIT 1`,
+              [organizationId]
+            );
+
+            newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+
+            if (newPrimary) {
+              await pool.query(
+                `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+                 WHERE workos_organization_id = $1 AND domain = $2`,
+                [organizationId, newPrimary]
+              );
+            }
+
+            await pool.query(
+              `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+               WHERE workos_organization_id = $2`,
+              [newPrimary, organizationId]
+            );
+          }
+
+          logger.info({ organizationId, domain: normalizedDomain, wasPrimary, newPrimary }, 'Addie: Removed domain from organization via WorkOS');
+
+          let response = `✅ Removed domain **${normalizedDomain}** from ${orgName} and WorkOS`;
+          if (wasPrimary && newPrimary) {
+            response += `. New primary domain: **${newPrimary}**`;
+          } else if (wasPrimary) {
+            response += '. No domains remaining.';
+          }
+          response += '\n\nUsers signing up with @' + normalizedDomain + ' emails will no longer be auto-associated with this organization.';
+          return response;
+        }
+
+        case 'set_primary': {
+          if (!domain) {
+            return '❌ domain is required for the "set_primary" action.';
+          }
+
+          const normalizedDomain = domain.toLowerCase().trim();
+
+          // Verify domain belongs to this org
+          const domainResult = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          if (domainResult.rows.length === 0) {
+            return `❌ Domain **${normalizedDomain}** not found for ${orgName}. Use action "add" first.`;
+          }
+
+          // Clear existing primary
+          await pool.query(
+            `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND is_primary = true`,
+            [organizationId]
+          );
+
+          // Set new primary
+          await pool.query(
+            `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          // Update organizations.email_domain
+          await pool.query(
+            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2`,
+            [normalizedDomain, organizationId]
+          );
+
+          logger.info({ organizationId, domain: normalizedDomain }, 'Addie: Set primary domain for organization');
+
+          return `✅ Set **${normalizedDomain}** as the primary domain for ${orgName}.`;
+        }
+
+        default:
+          return `❌ Unknown action: ${action}. Valid actions are: list, add, remove, set_primary`;
+      }
+    } catch (error) {
+      logger.error({ error, organizationId, action }, 'Error managing organization domains');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to ${action} domain: ${errorMessage}`;
     }
   });
 

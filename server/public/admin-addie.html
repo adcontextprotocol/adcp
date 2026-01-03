@@ -3146,6 +3146,12 @@
         document.getElementById('thread-feedback-panel').style.display = 'block';
         clearThreadFeedback();
 
+        // Load existing feedback from last assistant message if present
+        const lastAssistantMsg = [...data.messages].reverse().find(m => m.role === 'assistant');
+        if (lastAssistantMsg && lastAssistantMsg.rating) {
+          loadExistingFeedback(lastAssistantMsg);
+        }
+
         // Show actions panel
         const actionsEl = document.getElementById('conversation-actions');
         actionsEl.style.display = 'block';
@@ -3701,6 +3707,36 @@
       document.getElementById('thread-thumbs-down').classList.remove('selected');
       document.querySelectorAll('#thread-feedback-tags .feedback-tag').forEach(tag => tag.classList.remove('selected'));
       document.getElementById('thread-feedback-notes').value = '';
+    }
+
+    function loadExistingFeedback(message) {
+      // Set sentiment based on rating (5 = positive, 1 = negative)
+      // Rating 3 is intentionally neutral and leaves sentiment unset
+      if (message.rating >= 4) {
+        setThreadRating('positive');
+      } else if (message.rating <= 2) {
+        setThreadRating('negative');
+      }
+
+      // Load feedback tags (validate against known tags for security)
+      const validTags = ['accurate', 'helpful', 'well_cited', 'good_tone', 'inaccurate', 'missing_info', 'wrong_source', 'too_verbose', 'too_brief', 'wrong_tone'];
+      if (message.feedback_tags && Array.isArray(message.feedback_tags)) {
+        message.feedback_tags.forEach(tag => {
+          if (validTags.includes(tag)) {
+            const tagEl = document.querySelector(`#thread-feedback-tags .feedback-tag[data-tag="${tag}"]`);
+            if (tagEl) {
+              tagEl.classList.add('selected');
+              threadFeedbackState.tags.push(tag);
+            }
+          }
+        });
+      }
+
+      // Load notes (rating_notes contains the text feedback)
+      if (message.rating_notes) {
+        document.getElementById('thread-feedback-notes').value = message.rating_notes;
+        threadFeedbackState.notes = message.rating_notes;
+      }
     }
 
     async function saveThreadFeedback() {
