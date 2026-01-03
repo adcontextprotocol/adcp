@@ -6,6 +6,8 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Admin - Account Management - AdCP Registry</title>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
@@ -32,6 +34,21 @@
     }
     h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
     .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+
+    /* Markdown content styling */
+    .markdown-content h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); margin: var(--space-4) 0 var(--space-2); color: var(--color-text-heading); }
+    .markdown-content h3 { font-size: var(--text-base); font-weight: var(--font-semibold); margin: var(--space-3) 0 var(--space-2); color: var(--color-text-heading); }
+    .markdown-content p { margin-bottom: var(--space-3); }
+    .markdown-content ul, .markdown-content ol { margin: var(--space-2) 0; padding-left: var(--space-5); }
+    .markdown-content li { margin-bottom: var(--space-1); }
+    .markdown-content strong { font-weight: var(--font-semibold); }
+    .markdown-content code { background: var(--color-bg-subtle); padding: var(--space-0.5) var(--space-1); border-radius: var(--radius-sm); font-size: 0.9em; }
+    .markdown-content pre { background: var(--color-bg-subtle); padding: var(--space-3); border-radius: var(--radius-md); overflow-x: auto; margin: var(--space-3) 0; }
+    .markdown-content pre code { background: none; padding: 0; }
+    .markdown-content blockquote { border-left: 3px solid var(--color-brand); padding-left: var(--space-3); margin: var(--space-3) 0; color: var(--color-text-secondary); }
+    .markdown-content table { width: 100%; border-collapse: collapse; margin: var(--space-3) 0; }
+    .markdown-content th, .markdown-content td { padding: var(--space-2); border: 1px solid var(--color-border); text-align: left; }
+    .markdown-content th { background: var(--color-bg-subtle); font-weight: var(--font-semibold); }
 
     /* View Tabs */
     .view-tabs {
@@ -842,6 +859,7 @@
           Showing 0 accounts
         </div>
 
+        <div style="overflow-x: auto;">
         <table class="prospects-table">
           <thead id="tableHeader">
             <tr>
@@ -858,6 +876,7 @@
             <tr><td colspan="7" class="empty-state">Loading...</td></tr>
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>
@@ -1150,6 +1169,14 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
   </div>
 
   <script>
+    // HTML escape function to prevent XSS
+    function escapeHtml(text) {
+      if (text == null) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
     let allProspects = [];
     let filteredProspects = [];
     let allOrganizations = [];
@@ -2177,7 +2204,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       // Show summary header and action buttons
       const summaryHtml = `
         <tr>
-          <td colspan="6" style="padding: var(--space-4); background: var(--color-bg-subtle);">
+          <td colspan="3" style="padding: var(--space-4); background: var(--color-bg-subtle);">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3);">
               <div>
                 <strong>${cleanupReport.total_analyzed}</strong> prospects analyzed,
@@ -2228,31 +2255,30 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
               <a href="/admin/member.html?org=${analysis.org_id}" target="_blank">
                 <strong>${analysis.org_name}</strong>
               </a>
-            </td>
-            <td>${issuesHtml}</td>
-            <td>
-              ${actionsHtml ? `<ul style="margin: 0; padding: 0; list-style: disc;">${actionsHtml}</ul>` : '-'}
-            </td>
-            <td style="text-align: center;">
-              ${analysis.can_auto_fix ? `
-                <button class="button button-sm" onclick="autoFixSingle('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''}>
-                  Auto-Fix
+              <div style="margin-top: var(--space-2); display: flex; gap: var(--space-1); flex-wrap: wrap;">
+                ${analysis.can_auto_fix ? `
+                  <button class="button button-sm" onclick="autoFixSingle('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''}>
+                    Auto-Fix
+                  </button>
+                ` : ''}
+                <button class="button button-sm button-secondary" onclick="analyzeWithAI('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''}>
+                  AI Analyze
                 </button>
-              ` : ''}
-              <button class="button button-sm button-secondary" onclick="analyzeWithAI('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''} style="margin-top: var(--space-1);">
-                AI Analyze
-              </button>
+              </div>
+            </td>
+            <td style="white-space: normal;">${issuesHtml}</td>
+            <td style="white-space: normal;">
+              ${actionsHtml ? `<ul style="margin: 0; padding: 0; list-style: disc;">${actionsHtml}</ul>` : '-'}
             </td>
           </tr>
         `;
       }).join('');
 
-      // Update table headers for cleanup view
+      // Update table headers for cleanup view (3 columns - actions moved into Organization cell)
       document.querySelector('thead tr').innerHTML = `
-        <th>Organization</th>
-        <th>Issues</th>
-        <th>Suggested Actions</th>
-        <th style="width: 120px;">Actions</th>
+        <th style="min-width: 180px;">Organization</th>
+        <th style="min-width: 350px;">Issues</th>
+        <th style="min-width: 250px;">Suggested Actions</th>
       `;
 
       document.getElementById('prospectsTableBody').innerHTML = summaryHtml + rowsHtml;
@@ -2356,6 +2382,10 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
         const result = await response.json();
 
+        // Render markdown analysis
+        // Sanitize markdown output to prevent XSS
+        const renderedAnalysis = DOMPurify.sanitize(marked.parse(result.analysis));
+
         // Show results
         const toolCallsHtml = result.tool_calls.length > 0 ? `
           <details style="margin-top: var(--space-4);">
@@ -2363,22 +2393,97 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
             <div style="margin-top: var(--space-2); font-size: 0.85em; background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); max-height: 200px; overflow: auto;">
               ${result.tool_calls.map(tc => `
                 <div style="margin-bottom: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);">
-                  <strong>${tc.tool}</strong>
-                  <pre style="margin: var(--space-1) 0; white-space: pre-wrap; font-size: 0.9em;">${JSON.stringify(tc.input, null, 2)}</pre>
+                  <strong>${escapeHtml(tc.tool)}</strong>
+                  <pre style="margin: var(--space-1) 0; white-space: pre-wrap; font-size: 0.9em;">${escapeHtml(JSON.stringify(tc.input, null, 2))}</pre>
                 </div>
               `).join('')}
             </div>
           </details>
         ` : '';
 
-        const actionsHtml = result.suggested_actions.length > 0 ? `
-          <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-md);">
-            <strong>Actions Taken:</strong>
-            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
-              ${result.suggested_actions.map(a => `<li>${a.action}: ${JSON.stringify(a.details)}</li>`).join('')}
-            </ul>
-          </div>
-        ` : '';
+        // Build actionable items from suggested_actions
+        const mergeActions = result.suggested_actions.filter(a => a.action === 'merge');
+        const updateActions = result.suggested_actions.filter(a => a.action === 'update_type' || a.action === 'add_domain');
+        const enrichActions = result.suggested_actions.filter(a => a.action === 'enrich');
+        const otherActions = result.suggested_actions.filter(a =>
+          !['merge', 'update_type', 'add_domain', 'enrich'].includes(a.action)
+        );
+
+        let actionsHtml = '';
+
+        // Merge actions with preview button
+        if (mergeActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+              <strong style="color: var(--color-warning-700);">Duplicate Organizations Found</strong>
+              ${mergeActions.map(a => `
+                <div style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-card); border-radius: var(--radius-sm);">
+                  <div style="margin-bottom: var(--space-2);">
+                    <strong>Primary:</strong> ${escapeHtml(a.details.primary_name || a.details.primary_org_id)}<br>
+                    <strong>Duplicate:</strong> ${escapeHtml(a.details.duplicate_name || a.details.duplicate_org_id)}
+                  </div>
+                  <div style="display: flex; gap: var(--space-2);">
+                    <button class="button button-secondary" onclick="previewMerge('${a.details.primary_org_id}', '${a.details.duplicate_org_id}')">
+                      Preview Merge
+                    </button>
+                    <button class="button" onclick="executeMerge('${a.details.primary_org_id}', '${a.details.duplicate_org_id}')">
+                      Merge Organizations
+                    </button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        // Update actions (company type, domain)
+        if (updateActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-info-50); border: 1px solid var(--color-info-200); border-radius: var(--radius-md);">
+              <strong style="color: var(--color-info-700);">Recommended Updates</strong>
+              <ul style="margin: var(--space-2) 0 0 var(--space-4); list-style: none; padding: 0;">
+                ${updateActions.map(a => {
+                  if (a.action === 'add_domain') {
+                    return `<li style="margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2);">
+                      <span>Add domain: <strong>${escapeHtml(a.details.domain)}</strong></span>
+                      <button class="button button-small" onclick="quickAddDomain('${escapeHtml(a.org_id)}', '${escapeHtml(a.details.domain)}')">Add</button>
+                    </li>`;
+                  } else if (a.action === 'update_type') {
+                    return `<li style="margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2);">
+                      <span>Set company type to: <strong>${escapeHtml(a.details.company_type)}</strong></span>
+                      <button class="button button-small" onclick="quickUpdateType('${escapeHtml(a.org_id)}', '${escapeHtml(a.details.company_type)}')">Update</button>
+                    </li>`;
+                  }
+                  return `<li>${escapeHtml(a.action)}: ${escapeHtml(JSON.stringify(a.details))}</li>`;
+                }).join('')}
+              </ul>
+            </div>
+          `;
+        }
+
+        // Enrich actions
+        if (enrichActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md);">
+              <strong style="color: var(--color-success-700);">Enrichment Available</strong>
+              <div style="margin-top: var(--space-2);">
+                <button class="button" onclick="enrichProspect('${orgId}')">Enrich with Lusha</button>
+              </div>
+            </div>
+          `;
+        }
+
+        // Other/completed actions
+        if (otherActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-md);">
+              <strong>Other Actions:</strong>
+              <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+                ${otherActions.map(a => `<li>${escapeHtml(a.action)}: ${escapeHtml(JSON.stringify(a.details))}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        }
 
         modal.innerHTML = `
           <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
@@ -2387,7 +2492,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
                 <h3>AI Analysis: ${orgName}</h3>
                 <button onclick="document.getElementById('aiAnalysisModal').remove()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
               </div>
-              <div style="white-space: pre-wrap; line-height: 1.6;">${result.analysis}</div>
+              <div class="markdown-content" style="line-height: 1.6;">${renderedAnalysis}</div>
               ${actionsHtml}
               ${toolCallsHtml}
               <div style="margin-top: var(--space-4); text-align: right;">
@@ -2408,6 +2513,203 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
             </div>
           </div>
         `;
+      }
+    }
+
+    // Preview merge operation
+    async function previewMerge(primaryOrgId, secondaryOrgId) {
+      const modal = document.getElementById('aiAnalysisModal');
+      const originalContent = modal.innerHTML;
+
+      modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+            <h3 style="margin-bottom: var(--space-4);">Loading merge preview...</h3>
+            <div class="loading-dots">Fetching organization details...</div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/preview-merge?primary=${primaryOrgId}&secondary=${secondaryOrgId}`);
+        if (!response.ok) throw new Error('Failed to load preview');
+        const preview = await response.json();
+
+        const warningsHtml = preview.warnings.length > 0 ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-warning-700);">Warnings:</strong>
+            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+              ${preview.warnings.map(w => `<li>${w}</li>`).join('')}
+            </ul>
+          </div>
+        ` : '';
+
+        const changesHtml = preview.estimated_changes.length > 0 ? `
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Data to be moved:</strong>
+            <table style="width: 100%; margin-top: var(--space-2); border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--color-bg-subtle);">
+                  <th style="padding: var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border);">Table</th>
+                  <th style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${preview.estimated_changes.map(c => `
+                  <tr>
+                    <td style="padding: var(--space-2); border-bottom: 1px solid var(--color-border);">${c.table_name}</td>
+                    <td style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">${c.rows_to_move}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<p>No data to move - secondary organization appears empty.</p>';
+
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>Merge Preview</h3>
+                <button onclick="document.getElementById('aiAnalysisModal').remove()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
+                <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.primary_org.name)}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(preview.primary_org.id)}</div>
+                  ${preview.primary_org.email_domain ? `<div style="margin-top: var(--space-2);"><strong>Domain:</strong> ${escapeHtml(preview.primary_org.email_domain)}</div>` : ''}
+                  ${preview.primary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.primary_org.company_type)}</div>` : ''}
+                  ${preview.primary_org.member_count !== undefined ? `<div><strong>Members:</strong> ${escapeHtml(preview.primary_org.member_count)}</div>` : ''}
+                  ${preview.primary_org.created_by ? `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary);">Created by: ${escapeHtml(preview.primary_org.created_by)}</div>` : ''}
+                </div>
+
+                <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">DUPLICATE (delete)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(preview.secondary_org.id)}</div>
+                  ${preview.secondary_org.email_domain ? `<div style="margin-top: var(--space-2);"><strong>Domain:</strong> ${escapeHtml(preview.secondary_org.email_domain)}</div>` : ''}
+                  ${preview.secondary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.secondary_org.company_type)}</div>` : ''}
+                  ${preview.secondary_org.member_count !== undefined ? `<div><strong>Members:</strong> ${escapeHtml(preview.secondary_org.member_count)}</div>` : ''}
+                  ${preview.secondary_org.created_by ? `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary);">Created by: ${escapeHtml(preview.secondary_org.created_by)}</div>` : ''}
+                </div>
+              </div>
+
+              ${warningsHtml}
+              ${changesHtml}
+
+              <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
+                <button class="button button-secondary" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Cancel</button>
+                <button class="button button-danger" onclick="executeMerge('${primaryOrgId}', '${secondaryOrgId}')">
+                  Confirm Merge
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        alert('Failed to load merge preview: ' + error.message);
+      }
+    }
+
+    // Execute merge operation
+    async function executeMerge(primaryOrgId, secondaryOrgId) {
+      if (!confirm('Are you sure you want to merge these organizations? This action cannot be undone.')) {
+        return;
+      }
+
+      const modal = document.getElementById('aiAnalysisModal');
+      modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+            <h3 style="margin-bottom: var(--space-4);">Merging organizations...</h3>
+            <div class="loading-dots">Please wait...</div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const response = await fetch('/api/admin/cleanup/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Merge failed');
+        }
+
+        const result = await response.json();
+
+        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">Merge Complete</h3>
+              <p>Successfully merged organizations. ${totalMoved} records were moved.</p>
+              ${result.warnings.length > 0 ? `
+                <div style="margin-top: var(--space-3); padding: var(--space-2); background: var(--color-warning-50); border-radius: var(--radius-sm);">
+                  <strong>Notes:</strong>
+                  <ul style="margin: var(--space-1) 0 0 var(--space-4);">
+                    ${result.warnings.map(w => `<li>${w}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Done</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-error-600); margin-bottom: var(--space-4);">Merge Failed</h3>
+              <p>${error.message}</p>
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove();">Close</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // Quick action: add domain
+    async function quickAddDomain(orgId, domain) {
+      if (!confirm(`Add domain "${domain}" to this organization?`)) return;
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email_domain: domain })
+        });
+        if (!response.ok) throw new Error('Failed to update');
+        alert(`Domain "${domain}" added successfully.`);
+        loadDataCleanup();
+      } catch (error) {
+        alert('Failed to add domain: ' + error.message);
+      }
+    }
+
+    // Quick action: update company type
+    async function quickUpdateType(orgId, companyType) {
+      if (!confirm(`Set company type to "${companyType}"?`)) return;
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_type: companyType })
+        });
+        if (!response.ok) throw new Error('Failed to update');
+        alert(`Company type updated to "${companyType}".`);
+        loadDataCleanup();
+      } catch (error) {
+        alert('Failed to update company type: ' + error.message);
       }
     }
 

@@ -220,7 +220,7 @@ Your job is to analyze prospect records and help clean up data quality issues. Y
 - Enrich prospects with company data (Lusha API)
 - Update prospect fields
 - Mark duplicates for merging
-- Research companies online
+- Research companies online (with live web search)
 
 ## Context about our organization types:
 - **adtech**: Companies that provide advertising technology (DSPs, SSPs, ad servers, measurement, identity, etc.)
@@ -239,11 +239,32 @@ Your job is to analyze prospect records and help clean up data quality issues. Y
 ## When analyzing prospects:
 1. First understand what data is missing or problematic
 2. Use enrichment when a domain exists but other data is missing
-3. Use web research when domain is missing or data needs verification
+3. **IMPORTANT: Use web_research to verify company information** - especially for:
+   - Confirming the correct domain/website
+   - Checking for recent mergers, acquisitions, or company changes
+   - Verifying company type and industry
+   - Getting current information that may not be in our database
 4. Look for duplicates by searching similar names
 5. Suggest specific, actionable fixes
 
-Be concise and action-oriented. Focus on fixes that can be automated when possible.`;
+## When you find duplicates:
+If you identify duplicate organizations, **USE the mark_duplicate tool** to record the suggestion. This tool does NOT automatically merge - it just records your recommendation so the admin can review and approve it.
+
+Example: If "IPG" is a duplicate of "Interpublic Group (IPG)", call:
+\`\`\`
+mark_duplicate({
+  duplicate_org_id: "org_id_of_ipg",
+  primary_org_id: "org_id_of_interpublic_group",
+  merge_notes: "IPG is an abbreviation of Interpublic Group"
+})
+\`\`\`
+
+This will allow the admin to preview the merge and execute it from the UI.
+
+## When you find missing data that can be fixed:
+Use the update_prospect tool to fix it directly (domain, company_type, etc.). The admin will see what was updated.
+
+Be concise and action-oriented. Use the tools to record your recommendations - don't just describe them in text.`;
 
 /**
  * Prospect cleanup service using Claude for intelligent analysis
@@ -660,60 +681,75 @@ export class ProspectCleanupService {
           return JSON.stringify({ error: "One or both organizations not found" });
         }
 
-        // Merge notes if requested
-        if (input.merge_notes && dup.prospect_notes) {
-          const mergedNotes = [
-            primary.prospect_notes,
-            `[Merged from ${dup.name}] ${dup.prospect_notes}`,
-          ]
-            .filter(Boolean)
-            .join("\n\n");
+        // Add merge action to suggested actions for admin to review
+        suggestedActions.push({
+          action: "merge",
+          org_id: String(input.duplicate_org_id),
+          details: {
+            primary_org_id: String(input.primary_org_id),
+            duplicate_org_id: String(input.duplicate_org_id),
+            primary_name: primary.name,
+            duplicate_name: dup.name,
+            merge_notes: input.merge_notes,
+          },
+        });
 
-          await pool.query(
-            "UPDATE organizations SET prospect_notes = $1, updated_at = NOW() WHERE workos_organization_id = $2",
-            [mergedNotes, input.primary_org_id]
-          );
-        }
-
-        // Mark duplicate as inactive
-        await pool.query(
-          `UPDATE organizations
-           SET prospect_status = 'inactive',
-               prospect_notes = COALESCE(prospect_notes, '') || $1,
-               updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [
-            `\n\n[DUPLICATE - merged into ${primary.name}]`,
-            input.duplicate_org_id,
-          ]
-        );
+        // Note: We do NOT automatically merge - just record the suggestion
+        // The admin will preview and confirm the merge from the UI
 
         return JSON.stringify({
           success: true,
-          message: `Marked ${dup.name} as duplicate of ${primary.name}`,
+          message: `Recorded merge suggestion: "${dup.name}" should be merged into "${primary.name}"`,
+          action: "merge",
+          details: {
+            primary_org_id: input.primary_org_id,
+            duplicate_org_id: input.duplicate_org_id,
+            primary_name: primary.name,
+            duplicate_name: dup.name,
+          },
         });
       },
 
       web_research: async (input) => {
-        // Use Claude's web search capability via a separate call
+        // Use Claude's web search capability via a separate call with web_search tool
         try {
           const response = await this.client.messages.create({
             model: this.model,
-            max_tokens: 1024,
+            max_tokens: 2048,
+            tools: [
+              {
+                type: "web_search_20250305",
+                name: "web_search",
+                max_uses: 3,
+              },
+            ],
             messages: [
               {
                 role: "user",
-                content: `Research "${input.company_name}" to ${input.research_goal}. Provide factual information only - company website/domain, industry, and any relevant details.`,
+                content: `Research "${input.company_name}" to ${input.research_goal}.
+
+Look up the company's official website and any recent news. Provide factual information including:
+- Official website/domain
+- Industry and business focus
+- Recent news or developments (mergers, acquisitions, leadership changes)
+- Company size/type if available
+
+Be thorough but concise.`,
               },
             ],
           });
 
-          const text =
-            response.content[0].type === "text"
-              ? response.content[0].text
-              : "No results";
-          return text;
+          // Extract text from the response, handling web search results
+          let resultText = "";
+          for (const block of response.content) {
+            if (block.type === "text") {
+              resultText += block.text;
+            }
+          }
+
+          return resultText || "No results found";
         } catch (error) {
+          logger.error({ err: error }, "Web research failed");
           return `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`;
         }
       },
