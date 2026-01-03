@@ -16,3 +16,6 @@ export { setupOrganizationRoutes } from './organizations.js';
 export { setupEnrichmentRoutes } from './enrichment.js';
 export { setupDomainRoutes } from './domains.js';
 export { setupCleanupRoutes } from './cleanup.js';
+export { setupStatsRoutes } from './stats.js';
+export { setupDiscountRoutes } from './discounts.js';
+export { setupMembersRoutes } from './members.js';
