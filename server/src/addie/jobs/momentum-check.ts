@@ -483,6 +483,81 @@ export async function dryRunMomentumCheck(): Promise<{
 }
 
 /**
+ * Check for tire-kicker pattern: users who ask many questions but never convert
+ * These users may need human outreach with a more targeted value proposition
+ */
+async function checkForTireKickers(): Promise<void> {
+  const QUESTION_THRESHOLD = 3;
+  const DAYS_ACTIVE_THRESHOLD = 14;
+
+  const result = await query<{
+    slack_user_id: string;
+    workos_user_id: string | null;
+    user_name: string | null;
+    conversation_count: number;
+    days_active: number;
+    stakeholder_id: string | null;
+  }>(
+    `WITH user_conversations AS (
+      SELECT
+        COALESCE(at.user_id, sm.slack_user_id) as slack_user_id,
+        sm.workos_user_id,
+        COALESCE(sm.slack_real_name, sm.slack_display_name) as user_name,
+        COUNT(DISTINCT at.thread_id) as conversation_count,
+        EXTRACT(DAY FROM NOW() - MIN(at.started_at))::integer as days_active
+      FROM addie_threads at
+      LEFT JOIN slack_user_mappings sm ON
+        (at.user_type = 'slack' AND at.user_id = sm.slack_user_id)
+        OR (at.user_type = 'workos' AND at.user_id = sm.workos_user_id)
+      WHERE at.started_at >= NOW() - INTERVAL '30 days'
+        AND sm.workos_user_id IS NULL  -- Not linked yet
+      GROUP BY COALESCE(at.user_id, sm.slack_user_id), sm.workos_user_id, sm.slack_real_name, sm.slack_display_name
+      HAVING COUNT(DISTINCT at.thread_id) >= $1
+        AND EXTRACT(DAY FROM NOW() - MIN(at.started_at)) >= $2
+    )
+    SELECT
+      uc.*,
+      us.stakeholder_id
+    FROM user_conversations uc
+    LEFT JOIN user_stakeholders us ON us.slack_user_id = uc.slack_user_id AND us.role = 'owner'
+    -- No existing tire-kicker action item
+    WHERE NOT EXISTS (
+      SELECT 1 FROM action_items ai
+      WHERE ai.slack_user_id = uc.slack_user_id
+        AND ai.action_type = 'warm_lead'
+        AND ai.title LIKE '%tire-kicker%'
+        AND ai.status = 'open'
+    )`,
+    [QUESTION_THRESHOLD, DAYS_ACTIVE_THRESHOLD]
+  );
+
+  for (const user of result.rows) {
+    await createActionItem({
+      slackUserId: user.slack_user_id,
+      workosUserId: user.workos_user_id || undefined,
+      assignedTo: user.stakeholder_id || undefined,
+      actionType: 'warm_lead',
+      priority: 'medium',
+      title: `Tire-kicker pattern: ${user.user_name || user.slack_user_id}`,
+      description: `User has had ${user.conversation_count} conversations over ${user.days_active} days without converting. Consider human outreach with targeted value proposition.`,
+      triggerType: 'insight',
+      triggerId: `tire_kicker_${user.slack_user_id}`,
+      context: {
+        conversation_count: user.conversation_count,
+        days_active: user.days_active,
+        pattern: 'tire_kicker',
+      },
+    });
+
+    logger.info({
+      slackUserId: user.slack_user_id,
+      conversationCount: user.conversation_count,
+      daysActive: user.days_active,
+    }, 'Created tire-kicker action item');
+  }
+}
+
+/**
  * Run the full momentum check job
  */
 export async function runMomentumCheck(): Promise<{
@@ -505,6 +580,9 @@ export async function runMomentumCheck(): Promise<{
 
   // Check for account links
   await checkForAccountLinks();
+
+  // Check for tire-kicker pattern
+  await checkForTireKickers();
 
   // Analyze outreach needing review
   const outreachToReview = await getOutreachNeedingReview();

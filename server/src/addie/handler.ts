@@ -48,6 +48,7 @@ import {
   checkAndMarkOutreachResponse,
   type ExtractionContext,
 } from './services/insight-extractor.js';
+import { checkForSensitiveTopics } from './sensitive-topics.js';
 import type { RequestTools } from './claude-client.js';
 import type {
   AssistantThreadStartedEvent,
@@ -293,22 +294,47 @@ export async function handleAssistantMessage(
     isAdmin
   );
 
-  // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = await createUserScopedTools(memberContext, event.user);
+  // Check for sensitive topics before processing
+  const sensitiveCheck = await checkForSensitiveTopics(
+    inputValidation.sanitized,
+    event.user,
+    channelId
+  );
 
-  // Process with Claude
+  // If we should deflect, return the deflection response instead of processing
   let response;
-  try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
-  } catch (error) {
-    logger.error({ error }, 'Addie: Error processing message');
+  if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
+    logger.info({
+      userId: event.user,
+      category: sensitiveCheck.topicResult.category,
+      severity: sensitiveCheck.topicResult.severity,
+      isKnownMedia: sensitiveCheck.isKnownMedia,
+    }, 'Addie: Deflecting sensitive topic');
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: sensitiveCheck.deflectResponse,
       tools_used: [],
       tool_executions: [],
       flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
     };
+  } else {
+    // Create user-scoped tools (these can only operate on behalf of this user)
+    const userTools = await createUserScopedTools(memberContext, event.user);
+
+    // Process with Claude
+    try {
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error processing message');
+      response = {
+        text: "I'm sorry, I encountered an error. Please try again.",
+        tools_used: [],
+        tool_executions: [],
+        flagged: true,
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+    }
   }
 
   // Validate output
@@ -412,22 +438,48 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     isAdmin
   );
 
-  // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = await createUserScopedTools(memberContext, event.user);
+  // Check for sensitive topics before processing (channel mentions are more public)
+  const sensitiveCheck = await checkForSensitiveTopics(
+    inputValidation.sanitized,
+    event.user,
+    event.channel
+  );
 
-  // Process with Claude
+  // If we should deflect, return the deflection response instead of processing
   let response;
-  try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
-  } catch (error) {
-    logger.error({ error }, 'Addie: Error processing mention');
+  if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
+    logger.info({
+      userId: event.user,
+      channel: event.channel,
+      category: sensitiveCheck.topicResult.category,
+      severity: sensitiveCheck.topicResult.severity,
+      isKnownMedia: sensitiveCheck.isKnownMedia,
+    }, 'Addie: Deflecting sensitive topic (mention)');
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: sensitiveCheck.deflectResponse,
       tools_used: [],
       tool_executions: [],
       flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
     };
+  } else {
+    // Create user-scoped tools (these can only operate on behalf of this user)
+    const userTools = await createUserScopedTools(memberContext, event.user);
+
+    // Process with Claude
+    try {
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error processing mention');
+      response = {
+        text: "I'm sorry, I encountered an error. Please try again.",
+        tools_used: [],
+        tool_executions: [],
+        flagged: true,
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+    }
   }
 
   // Validate output
