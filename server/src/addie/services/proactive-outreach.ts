@@ -18,6 +18,10 @@ import {
   type OutreachVariant,
   type InsightGoal,
 } from '../../db/insights-db.js';
+import {
+  assignUserStakeholder,
+  createActionItem,
+} from '../../db/account-management-db.js';
 import type { SlackUserMapping } from '../../slack/types.js';
 
 const insightsDb = new InsightsDatabase();
@@ -254,6 +258,10 @@ function buildMessage(
   const userName = candidate.slack_display_name || candidate.slack_real_name || 'there';
   message = message.replace(/\{\{user_name\}\}/g, userName);
 
+  // Build account link URL with slack_user_id for auto-linking
+  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
+  message = message.replace(/\{\{link_url\}\}/g, linkUrl);
+
   if (goal) {
     message = message.replace(/\{\{goal_question\}\}/g, goal.question);
   }
@@ -484,8 +492,12 @@ export async function runOutreachScheduler(options: {
 
 /**
  * Manually trigger outreach to a specific user (admin function)
+ * When an admin sends outreach, they become the account owner if no owner exists.
  */
-export async function manualOutreach(slackUserId: string): Promise<OutreachResult> {
+export async function manualOutreach(
+  slackUserId: string,
+  triggeredBy?: { id: string; name: string; email: string }
+): Promise<OutreachResult> {
   // Look up user
   const result = await query<SlackUserMapping>(
     `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
@@ -502,7 +514,32 @@ export async function manualOutreach(slackUserId: string): Promise<OutreachResul
     priority: calculatePriority(user),
   };
 
-  return initiateOutreach(candidate);
+  const outreachResult = await initiateOutreach(candidate);
+
+  // If outreach was successful and we know who triggered it, auto-assign them as owner
+  if (outreachResult.success && triggeredBy) {
+    try {
+      await assignUserStakeholder({
+        slackUserId,
+        workosUserId: user.workos_user_id || undefined,
+        stakeholderId: triggeredBy.id,
+        stakeholderName: triggeredBy.name,
+        stakeholderEmail: triggeredBy.email,
+        role: 'owner',
+        reason: 'outreach',
+      });
+
+      logger.info({
+        slackUserId,
+        stakeholderId: triggeredBy.id,
+      }, 'Auto-assigned user to admin after outreach');
+    } catch (error) {
+      // Don't fail the outreach if assignment fails
+      logger.warn({ error, slackUserId }, 'Failed to auto-assign user after outreach');
+    }
+  }
+
+  return outreachResult;
 }
 
 /**
