@@ -40,7 +40,7 @@ import {
   notifyPaymentSucceeded,
   notifyPaymentFailed,
   notifySubscriptionCancelled,
-} from "./notifications/slack.js";
+} from "./notifications/billing.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
@@ -49,7 +49,7 @@ import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRou
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
-import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter } from "./routes/admin/index.js";
+import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter, createAdminSettingsRouter } from "./routes/admin/index.js";
 import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
 import { processAlerts } from "./addie/services/industry-alerts.js";
 import { createBillingRouter } from "./routes/billing.js";
@@ -494,6 +494,8 @@ export class HTTPServer {
     this.app.use('/api/admin/notification-channels', adminNotificationChannelsRouter); // Notification Channels: /api/admin/notification-channels/*
     const adminUsersRouter = createAdminUsersRouter();
     this.app.use('/api/admin/users', adminUsersRouter); // Admin Users: /api/admin/users/*
+    const adminSettingsRouter = createAdminSettingsRouter();
+    this.app.use('/api/admin/settings', adminSettingsRouter); // Admin Settings: /api/admin/settings/*
 
     // Mount billing routes (admin)
     const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
@@ -4013,6 +4015,10 @@ Disallow: /api/admin/
 
     this.app.get('/admin/notification-channels', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-notification-channels.html');
+    });
+
+    this.app.get('/admin/settings', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-settings.html');
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)
