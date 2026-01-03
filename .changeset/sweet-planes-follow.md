@@ -1,6 +1,9 @@
 ---
 ---
 
-Fix Addie not seeing forwarded Slack messages
+Improve Addie's Slack message understanding
 
-When users forward messages in Slack, the content is in the `attachments` array, not the `text` field. Now extracts forwarded message content and includes it in what Claude sees.
+- Fix Addie not seeing forwarded Slack messages (content is in `attachments`, not `text`)
+- Add reaction-based confirmations: thumbs up on "should I proceed?" means yes
+- Add file share awareness: Addie now sees file metadata when users share files
+- Add URL extraction helper for future link following capability
