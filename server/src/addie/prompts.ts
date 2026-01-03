@@ -432,7 +432,8 @@ export async function buildDynamicSuggestedPrompts(
 }
 
 /**
- * Build context with thread history
+ * Build context with thread history (legacy - flattens to single string)
+ * @deprecated Use buildMessageTurns instead for proper conversation context
  */
 export function buildContextWithThread(
   userMessage: string,
@@ -451,4 +452,85 @@ export function buildContextWithThread(
 ${threadSummary}
 
 Current message: ${userMessage}`;
+}
+
+/**
+ * Thread context entry from conversation history
+ */
+export interface ThreadContextEntry {
+  user: string; // 'User' or 'Addie'
+  text: string;
+}
+
+/**
+ * Message turn for Claude API
+ */
+export interface MessageTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Build proper message turns from thread context for Claude API
+ *
+ * This converts conversation history into alternating user/assistant messages
+ * which Claude understands as actual conversation context (not just informational text).
+ *
+ * @param userMessage - The current user message
+ * @param threadContext - Previous messages in the thread
+ * @returns Array of message turns suitable for Claude API
+ */
+export function buildMessageTurns(
+  userMessage: string,
+  threadContext?: ThreadContextEntry[]
+): MessageTurn[] {
+  const messages: MessageTurn[] = [];
+
+  if (threadContext && threadContext.length > 0) {
+    // Take last N messages to avoid context overflow
+    const MAX_CONTEXT_MESSAGES = 10;
+    const recentHistory = threadContext.slice(-MAX_CONTEXT_MESSAGES);
+
+    // Convert each entry to proper message turn
+    // The 'user' field is 'User' or 'Addie' from bolt-app.ts
+    // Skip empty messages defensively
+    for (const entry of recentHistory) {
+      const trimmedText = entry.text?.trim();
+      if (!trimmedText) continue;
+      const role: 'user' | 'assistant' = entry.user === 'Addie' ? 'assistant' : 'user';
+      messages.push({ role, content: trimmedText });
+    }
+
+    // Claude API requires messages to start with 'user' role
+    // If history starts with assistant, we need to handle this
+    if (messages.length > 0 && messages[0].role === 'assistant') {
+      // Prepend a placeholder user message to maintain valid structure
+      messages.unshift({ role: 'user', content: '[conversation continued]' });
+    }
+
+    // Claude API requires alternating user/assistant messages
+    // Merge consecutive same-role messages
+    const mergedMessages: MessageTurn[] = [];
+    for (const msg of messages) {
+      if (mergedMessages.length === 0 || mergedMessages[mergedMessages.length - 1].role !== msg.role) {
+        mergedMessages.push({ ...msg });
+      } else {
+        // Merge with previous message of same role
+        mergedMessages[mergedMessages.length - 1].content += '\n\n' + msg.content;
+      }
+    }
+
+    messages.length = 0;
+    messages.push(...mergedMessages);
+  }
+
+  // Add the current user message
+  // If the last message in history is from user, merge with it
+  if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+    messages[messages.length - 1].content += '\n\n' + userMessage;
+  } else {
+    messages.push({ role: 'user', content: userMessage });
+  }
+
+  return messages;
 }
