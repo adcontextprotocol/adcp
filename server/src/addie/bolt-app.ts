@@ -67,6 +67,56 @@ import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 
+/**
+ * Slack attachment type for forwarded messages
+ */
+interface SlackAttachment {
+  author_name?: string;
+  pretext?: string;
+  text?: string;
+  footer?: string;
+  fallback?: string;
+  title?: string;
+  title_link?: string;
+}
+
+/**
+ * Extract text content from forwarded messages in Slack attachments.
+ * When users forward a message, Slack puts the forwarded content in the attachments array.
+ */
+function extractForwardedContent(attachments?: SlackAttachment[]): string {
+  if (!attachments || attachments.length === 0) {
+    return '';
+  }
+
+  const attachmentTexts: string[] = [];
+  for (const attachment of attachments) {
+    const parts: string[] = [];
+    if (attachment.author_name) {
+      parts.push(`From: ${attachment.author_name}`);
+    }
+    if (attachment.pretext) {
+      parts.push(attachment.pretext);
+    }
+    if (attachment.text) {
+      parts.push(attachment.text);
+    }
+    if (attachment.footer) {
+      parts.push(`(${attachment.footer})`);
+    }
+    if (parts.length > 0) {
+      attachmentTexts.push(parts.join('\n'));
+    }
+  }
+
+  if (attachmentTexts.length === 0) {
+    return '';
+  }
+
+  logger.debug({ attachmentCount: attachments.length, extractedLength: attachmentTexts.join('').length }, 'Addie Bolt: Extracted forwarded message content from attachments');
+  return `\n\n[Forwarded message]\n${attachmentTexts.join('\n---\n')}`;
+}
+
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
@@ -775,12 +825,19 @@ async function handleAppMention({
     rawText = rawText.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
   }
 
+  // Extract forwarded message content from attachments
+  const attachments = 'attachments' in event ? (event.attachments as SlackAttachment[]) : undefined;
+  const forwardedContent = extractForwardedContent(attachments);
+
   // Handle empty mentions (just @Addie with no message)
   // This commonly happens when Addie is added to a channel - provide clear context to Claude
-  const isEmptyMention = rawText.length === 0;
-  const originalUserInput = rawText; // Preserve for audit logging
+  const isEmptyMention = rawText.length === 0 && forwardedContent.length === 0;
+  const originalUserInput = rawText + forwardedContent; // Preserve for audit logging (includes forwarded content)
   if (isEmptyMention) {
     rawText = '[Empty mention - user tagged me without a question. Briefly introduce myself and offer help. Do not assume they are new to the channel.]';
+  } else {
+    // Append forwarded content to the user's message
+    rawText = rawText + forwardedContent;
   }
 
   const userId = event.user;
@@ -1198,7 +1255,7 @@ async function indexChannelMessage(
  * similar to chatting with a human user.
  */
 async function handleDirectMessage(
-  event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string },
+  event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string; attachments?: SlackAttachment[] },
   _context: { botUserId?: string }
 ): Promise<void> {
   if (!claudeClient || !boltApp) {
@@ -1213,11 +1270,16 @@ async function handleDirectMessage(
   }
 
   const userId = event.user;
-  const messageText = event.text;
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.ts;
 
-  if (!userId || !messageText) {
+  // Extract forwarded message content from attachments
+  const forwardedContent = extractForwardedContent(event.attachments);
+
+  // Combine message text with any forwarded content
+  const messageText = (event.text || '') + forwardedContent;
+
+  if (!userId || !messageText.trim()) {
     logger.debug('Addie Bolt: Ignoring DM without user or text');
     return;
   }
@@ -1412,27 +1474,40 @@ async function handleChannelMessage({
     return;
   }
 
-  // Type guard for message events - skip subtypes (edits, deletes, etc.)
-  if (!('text' in event) || !event.text || ('subtype' in event && event.subtype)) {
-    return;
-  }
-
   // Skip bot messages (including our own)
   if ('bot_id' in event && event.bot_id) {
     return;
   }
 
-  // Skip if this is a mention (handled by handleAppMention)
-  if (context.botUserId && event.text.includes(`<@${context.botUserId}>`)) {
-    return;
-  }
+  // Skip subtypes (edits, deletes, etc.) - but only for non-DM messages
+  // DMs can have forwarded messages where text is empty but attachments have content
+  const hasText = 'text' in event && event.text;
+  const hasAttachments = 'attachments' in event && Array.isArray(event.attachments) && event.attachments.length > 0;
+  const hasSubtype = 'subtype' in event && event.subtype;
 
   const userId = 'user' in event ? event.user : undefined;
 
   // Handle DMs differently - route to the user message handler
+  // For DMs, allow messages with attachments even if text is empty (forwarded messages)
   if (event.channel_type === 'im') {
+    if (!hasText && !hasAttachments) {
+      return;
+    }
+    if (hasSubtype) {
+      return;
+    }
     logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to user message handler');
-    await handleDirectMessage(event, context);
+    await handleDirectMessage(event as typeof event & { attachments?: SlackAttachment[] }, context);
+    return;
+  }
+
+  // For channel messages, require text and skip subtypes
+  if (!hasText || hasSubtype) {
+    return;
+  }
+
+  // Skip if this is a mention (handled by handleAppMention)
+  if (context.botUserId && event.text && event.text.includes(`<@${context.botUserId}>`)) {
     return;
   }
   if (!userId) {
@@ -1440,7 +1515,8 @@ async function handleChannelMessage({
   }
 
   const channelId = event.channel;
-  const messageText = event.text;
+  // At this point we know hasText is true, so event.text exists
+  const messageText = event.text!;
   const threadTs = ('thread_ts' in event ? event.thread_ts : undefined) || event.ts;
   const isInThread = !!('thread_ts' in event && event.thread_ts);
   const startTime = Date.now();
