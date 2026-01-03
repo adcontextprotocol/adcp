@@ -243,7 +243,7 @@ Returns: Slack user count and activity, working groups, engagement level and sig
   {
     name: 'update_prospect',
     description:
-      'Update information about an existing prospect. Use this to add notes, change status, or update contact info.',
+      'Update information about an existing prospect. Use this to add notes, change status, update contact info, or set interest level. IMPORTANT: When adding notes that indicate excitement, resource commitment, or intent to join, also set interest_level accordingly.',
     input_schema: {
       type: 'object',
       properties: {
@@ -260,6 +260,11 @@ Returns: Slack user count and activity, working groups, engagement level and sig
           type: 'string',
           enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'],
           description: 'Prospect status',
+        },
+        interest_level: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'very_high'],
+          description: 'How interested is this prospect? Set based on signals: low=not interested, medium=lukewarm, high=actively engaged/excited, very_high=ready to move forward/committed resources',
         },
         contact_name: {
           type: 'string',
@@ -1007,6 +1012,13 @@ export function createAdminToolHandlers(
       updates.push(`prospect_status = $${paramIndex++}`);
       values.push(input.status);
     }
+    if (input.interest_level) {
+      updates.push(`interest_level = $${paramIndex++}`);
+      values.push(input.interest_level);
+      updates.push(`interest_level_set_by = $${paramIndex++}`);
+      values.push('Addie');
+      updates.push(`interest_level_set_at = NOW()`);
+    }
     if (input.contact_name) {
       updates.push(`prospect_contact_name = $${paramIndex++}`);
       values.push(input.contact_name);
@@ -1031,7 +1043,7 @@ export function createAdminToolHandlers(
     }
 
     if (updates.length === 0) {
-      return `No updates provided. Specify at least one field to update (company_type, status, contact_name, contact_email, domain, notes).`;
+      return `No updates provided. Specify at least one field to update (company_type, status, interest_level, contact_name, contact_email, domain, notes).`;
     }
 
     updates.push(`updated_at = NOW()`);
@@ -1045,6 +1057,7 @@ export function createAdminToolHandlers(
     let response = `✅ Updated **${orgName}**\n\n`;
     if (input.company_type) response += `• Company type → ${input.company_type}\n`;
     if (input.status) response += `• Status → ${input.status}\n`;
+    if (input.interest_level) response += `• Interest level → ${input.interest_level}\n`;
     if (input.contact_name) response += `• Contact → ${input.contact_name}\n`;
     if (input.contact_email) response += `• Email → ${input.contact_email}\n`;
     if (input.domain) response += `• Domain → ${input.domain}\n`;

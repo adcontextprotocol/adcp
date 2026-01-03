@@ -123,6 +123,28 @@ export async function upsertEmailContact(
     );
   }
 
+  // If not found via membership, try to match by verified domain
+  if (!organizationId && domain) {
+    try {
+      const domainResult = await pool.query(
+        `SELECT workos_organization_id
+         FROM organization_domains
+         WHERE LOWER(domain) = LOWER($1) AND verified = true
+         LIMIT 1`,
+        [domain]
+      );
+      if (domainResult.rows[0]?.workos_organization_id) {
+        organizationId = domainResult.rows[0].workos_organization_id;
+        logger.debug({ email, domain, organizationId }, 'Matched contact to org by domain');
+      }
+    } catch (domainLookupError) {
+      logger.debug(
+        { error: domainLookupError, domain },
+        'Domain lookup failed, proceeding with unmapped contact'
+      );
+    }
+  }
+
   const mappingStatus = organizationId ? 'mapped' : 'unmapped';
   const mappingSource = organizationId ? 'email_auto' : null;
 
