@@ -80,6 +80,7 @@
     .badge-council { background: var(--color-purple-100, #f3e8ff); color: var(--color-purple-700, #7c3aed); }
     .badge-chapter { background: var(--color-teal-100, #ccfbf1); color: var(--color-teal-700, #0f766e); }
     .badge-governance { background: var(--color-gray-300); color: var(--color-gray-700); }
+    .badge-event { background: var(--color-warning-100); color: var(--color-warning-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -348,6 +349,7 @@
               <option value="council">Industry Councils</option>
               <option value="chapter">Regional Chapters</option>
               <option value="governance">Governance</option>
+              <option value="event">Event Groups</option>
             </select>
             <select id="statusFilter" onchange="renderGroupsList()">
               <option value="">All Statuses</option>
@@ -425,6 +427,7 @@
                 <option value="council">Industry Council</option>
                 <option value="chapter">Regional Chapter</option>
                 <option value="governance">Governance</option>
+                <option value="event">Event Group</option>
               </select>
             </div>
           </div>
@@ -682,7 +685,8 @@
       working_group: 'Working Group',
       council: 'Industry Council',
       chapter: 'Regional Chapter',
-      governance: 'Governance'
+      governance: 'Governance',
+      event: 'Event Group'
     };
 
     // Render groups list
@@ -721,6 +725,9 @@
         const regionDisplay = committeeType === 'chapter' && group.region
           ? `<span>📍 ${escapeHtml(group.region)}</span>`
           : '';
+        const eventDateDisplay = committeeType === 'event' && group.event_start_date
+          ? `<span>📅 ${new Date(group.event_start_date).toLocaleDateString()}</span>`
+          : '';
 
         html += `
           <div class="group-item">
@@ -731,6 +738,7 @@
                 ${statusBadge}
                 ${accessBadge}
                 ${regionDisplay}
+                ${eventDateDisplay}
                 <span>${group.member_count || 0} members</span>
                 ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || 'Unknown')).join(', ')}</span>` : ''}
               </div>
