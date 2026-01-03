@@ -49,7 +49,9 @@ export function setupProspectRoutes(apiRouter: Router): void {
           (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count,
           o.subscription_status,
           o.subscription_product_name,
-          o.subscription_current_period_end
+          o.subscription_current_period_end,
+          o.engagement_score,
+          o.org_scores_computed_at
       `;
 
       const params: (string | Date | null)[] = [];
@@ -76,8 +78,8 @@ export function setupProspectRoutes(apiRouter: Router): void {
             break;
 
           case "hot_prospects":
-            // Non-paying orgs with high engagement (level 3+)
-            // We'll calculate engagement in JS, so just get non-paying orgs
+            // Non-paying orgs with high engagement score (30+)
+            // Uses the stored engagement_score from compute_org_engagement_score()
             query = `
               ${selectFields}
               FROM organizations o
@@ -87,8 +89,9 @@ export function setupProspectRoutes(apiRouter: Router): void {
                 OR o.subscription_status NOT IN ('active', 'trialing')
                 OR o.subscription_canceled_at IS NOT NULL
               )
+              AND COALESCE(o.engagement_score, 0) >= 30
             `;
-            orderBy = ` ORDER BY o.invoice_requested_at DESC NULLS LAST, o.last_activity_at DESC NULLS LAST`;
+            orderBy = ` ORDER BY o.engagement_score DESC NULLS LAST, o.invoice_requested_at DESC NULLS LAST`;
             break;
 
           case "new_signups":
@@ -389,32 +392,61 @@ export function setupProspectRoutes(apiRouter: Router): void {
         }
       }
 
-      // Enrich with membership count and engagement level (using local data instead of N+1 WorkOS API calls)
+      // Enrich with membership count and engagement data
       const prospects = result.rows.map((row) => {
         const memberCount = memberCountMap.get(row.workos_organization_id) || 0;
-
-        // Calculate engagement level
         const wgCount = wgCountMap.get(row.workos_organization_id) || 0;
-        const recentActivityCount =
-          activityCountMap.get(row.workos_organization_id) || 0;
+        const recentActivityCount = activityCountMap.get(row.workos_organization_id) || 0;
         const pendingInvoices = pendingInvoicesMap.get(row.workos_organization_id) || [];
+        const slackUserCount = slackUserCountMap.get(row.workos_organization_id) || 0;
 
-        let engagementLevel = 1; // Base level - exists
+        // Use stored engagement_score (0-100) and convert to display level (1-5)
+        const engagementScore = row.engagement_score || 0;
+        let engagementLevel: number;
+        if (engagementScore >= 60) {
+          engagementLevel = 5;
+        } else if (engagementScore >= 45) {
+          engagementLevel = 4;
+        } else if (engagementScore >= 30) {
+          engagementLevel = 3;
+        } else if (engagementScore >= 15) {
+          engagementLevel = 2;
+        } else {
+          engagementLevel = 1;
+        }
+
+        // Build engagement reasons from actual data (additive - all contributing factors)
         const engagementReasons: string[] = [];
 
         if (pendingInvoices.length > 0) {
-          engagementLevel = 5;
           const totalAmount = pendingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
           engagementReasons.push(`Open invoice: $${(totalAmount / 100).toLocaleString()}`);
-        } else if (wgCount > 0) {
-          engagementLevel = 4;
-          engagementReasons.push(`In ${wgCount} working group(s)`);
-        } else if (memberCount > 0) {
-          engagementLevel = 3;
+        }
+        if (slackUserCount > 0) {
+          engagementReasons.push(`${slackUserCount} Slack user(s)`);
+        }
+        if (memberCount > 0) {
           engagementReasons.push(`${memberCount} team member(s)`);
-        } else if (recentActivityCount > 0) {
-          engagementLevel = 2;
-          engagementReasons.push("Recent contact");
+        }
+        if (wgCount > 0) {
+          engagementReasons.push(`In ${wgCount} working group(s)`);
+        }
+        if (recentActivityCount > 0) {
+          engagementReasons.push(`${recentActivityCount} recent activity(ies)`);
+        }
+        if (row.interest_level) {
+          // Low interest caps the score at 20 (matching SQL behavior)
+          if (row.interest_level === 'low') {
+            engagementReasons.push(`Interest: Low (capped)`);
+          } else {
+            const interestDisplay = row.interest_level.replace('_', ' ');
+            engagementReasons.push(`Interest: ${interestDisplay.charAt(0).toUpperCase() + interestDisplay.slice(1)}`);
+          }
+        }
+
+        // If no reasons found, show base state
+        if (engagementReasons.length === 0) {
+          engagementReasons.push("New prospect");
         }
 
         return {
@@ -423,9 +455,10 @@ export function setupProspectRoutes(apiRouter: Router): void {
           has_members: memberCount > 0,
           working_group_count: wgCount,
           engagement_level: engagementLevel,
+          engagement_score: engagementScore,
           engagement_reasons: engagementReasons,
           stakeholders: stakeholdersMap.get(row.workos_organization_id) || [],
-          slack_user_count: slackUserCountMap.get(row.workos_organization_id) || 0,
+          slack_user_count: slackUserCount,
           domains: domainsMap.get(row.workos_organization_id) || [],
           last_activity: lastActivityMap.get(row.workos_organization_id) || null,
           pending_steps: pendingStepsMap.get(row.workos_organization_id) || { pending: 0, overdue: 0 },
@@ -434,14 +467,11 @@ export function setupProspectRoutes(apiRouter: Router): void {
         };
       });
 
-      // Filter by engagement level for specific views
+      // Filter by engagement score for specific views (hot_prospects already filtered in SQL)
       let filteredProspects = prospects;
-      if (view === "hot_prospects") {
-        // Only show high engagement (level 3+)
-        filteredProspects = prospects.filter((p) => p.engagement_level >= 3);
-      } else if (view === "low_engagement") {
-        // Only show low engagement (level 2 or less)
-        filteredProspects = prospects.filter((p) => p.engagement_level <= 2);
+      if (view === "low_engagement") {
+        // Only show low engagement (score < 30)
+        filteredProspects = prospects.filter((p) => (p.engagement_score || 0) < 30);
       }
 
       res.json(filteredProspects);
@@ -713,6 +743,42 @@ export function setupProspectRoutes(apiRouter: Router): void {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch organizations",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/prospects/refresh-scores - Refresh engagement scores for all orgs
+  apiRouter.post(
+    "/prospects/refresh-scores",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { orgId } = req.body;
+
+        let result;
+        if (orgId) {
+          // Refresh single org
+          await pool.query("SELECT update_org_engagement($1)", [orgId]);
+          result = { updated: 1, message: `Refreshed score for ${orgId}` };
+        } else {
+          // Refresh all stale scores (limit to 200 at a time)
+          const updateResult = await pool.query(
+            "SELECT update_stale_org_engagement_scores(200)"
+          );
+          const count = updateResult.rows[0]?.update_stale_org_engagement_scores || 0;
+          result = { updated: count, message: `Refreshed ${count} stale scores` };
+        }
+
+        logger.info(result, "Engagement scores refreshed");
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error }, "Error refreshing engagement scores");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to refresh engagement scores",
         });
       }
     }
