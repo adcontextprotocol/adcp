@@ -68,6 +68,7 @@ import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.j
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
+import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
   extractArticleUrls,
@@ -350,6 +351,9 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
+
+  // Initialize email handler (for responding to emails)
+  initializeEmailHandler();
 
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie Bolt: Ready');
