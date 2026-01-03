@@ -554,5 +554,148 @@ ${footerText}`,
   }
 }
 
+/**
+ * Email thread context for replies
+ * Contains the information needed to properly thread a reply
+ */
+export interface EmailThreadContext {
+  messageId: string; // The Message-ID of the email being replied to
+  references?: string[]; // Previous Message-IDs in the thread
+  subject: string; // Original subject (we'll add "Re: " if needed)
+  from: string; // Who sent the original email
+  to: string[]; // Original TO recipients
+  cc?: string[]; // Original CC recipients
+  replyTo?: string; // Reply-To header if present
+}
+
+/**
+ * Send an email reply that properly threads with the original conversation
+ * Used by Addie to respond to email invocations
+ */
+export async function sendEmailReply(data: {
+  threadContext: EmailThreadContext;
+  htmlContent: string;
+  textContent: string;
+  fromName?: string; // Name to show (defaults to "Addie from AgenticAdvertising.org")
+  fromEmail?: string; // Email address to send from (defaults to addie@agenticadvertising.org)
+  excludeAddresses?: string[]; // Addresses to exclude from recipients (e.g., the Addie address itself)
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (!resend) {
+    logger.warn('Resend not configured, cannot send email reply');
+    return { success: false, error: 'Email not configured' };
+  }
+
+  const fromName = data.fromName || 'Addie from AgenticAdvertising.org';
+  // Validate fromEmail is from our domain to prevent spoofing
+  const ALLOWED_FROM_DOMAINS = ['agenticadvertising.org', 'updates.agenticadvertising.org'];
+  const fromEmail = (() => {
+    if (data.fromEmail) {
+      const domain = data.fromEmail.split('@')[1]?.toLowerCase();
+      if (domain && ALLOWED_FROM_DOMAINS.includes(domain)) {
+        return data.fromEmail;
+      }
+      logger.warn({ requestedFromEmail: data.fromEmail }, 'Rejected invalid fromEmail domain');
+    }
+    return 'addie@agenticadvertising.org';
+  })();
+  const from = `${fromName} <${fromEmail}>`;
+
+  // Build recipient list for reply-all
+  // Include original sender + all TO/CC, excluding our own addresses
+  const shouldInclude = (addr: string): boolean => {
+    const email = addr.toLowerCase();
+    // Exclude our own domain addresses
+    if (email.includes('@agenticadvertising.org') || email.includes('@updates.agenticadvertising.org')) {
+      return false;
+    }
+    // Exclude explicitly provided addresses
+    return !(data.excludeAddresses || []).some(pattern => email.includes(pattern.toLowerCase()));
+  };
+
+  // Parse the original sender - they go in TO
+  const replyTo = data.threadContext.replyTo || data.threadContext.from;
+  const toRecipients = [replyTo].filter(shouldInclude);
+
+  // Original TO and CC (minus sender, minus us) go in CC
+  const ccRecipients = [
+    ...data.threadContext.to,
+    ...(data.threadContext.cc || []),
+  ].filter(addr => {
+    const email = addr.toLowerCase();
+    // Exclude the original sender (they're in TO now) and our addresses
+    return shouldInclude(addr) && !email.includes(replyTo.toLowerCase().split('<').pop()?.split('>')[0] || '');
+  });
+
+  if (toRecipients.length === 0) {
+    logger.error({ threadContext: data.threadContext }, 'No valid recipients for email reply');
+    return { success: false, error: 'No valid recipients' };
+  }
+
+  // Build subject - add "Re: " if not already present
+  let subject = data.threadContext.subject;
+  if (!subject.toLowerCase().startsWith('re:')) {
+    subject = `Re: ${subject}`;
+  }
+
+  // Build References header - includes all previous message IDs plus the one we're replying to
+  const references = [
+    ...(data.threadContext.references || []),
+    data.threadContext.messageId,
+  ].filter(Boolean).join(' ');
+
+  try {
+    const { data: sendData, error } = await resend.emails.send({
+      from,
+      to: toRecipients,
+      cc: ccRecipients.length > 0 ? ccRecipients : undefined,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  ${data.htmlContent}
+
+  <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 30px 0;">
+  <p style="font-size: 12px; color: #666;">
+    Addie is the AI assistant for <a href="https://agenticadvertising.org" style="color: #2563eb;">AgenticAdvertising.org</a>
+  </p>
+</body>
+</html>
+      `.trim(),
+      text: `${data.textContent}
+
+---
+Addie is the AI assistant for AgenticAdvertising.org
+https://agenticadvertising.org`,
+      headers: {
+        'In-Reply-To': data.threadContext.messageId,
+        ...(references && { References: references }),
+      },
+    });
+
+    if (error) {
+      logger.error({ error, to: toRecipients, cc: ccRecipients }, 'Failed to send email reply');
+      return { success: false, error: error.message };
+    }
+
+    logger.info({
+      messageId: sendData?.id,
+      to: toRecipients,
+      cc: ccRecipients,
+      subject,
+      inReplyTo: data.threadContext.messageId,
+    }, 'Addie sent email reply');
+
+    return { success: true, messageId: sendData?.id };
+  } catch (error) {
+    logger.error({ error }, 'Error sending email reply');
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 // Re-export for use in routes
 export { emailDb, emailPrefsDb, getUnsubscribeToken };

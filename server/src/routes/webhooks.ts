@@ -25,6 +25,10 @@ import {
   parseEmailAddress,
   type EmailContactResult,
 } from '../db/contacts-db.js';
+import {
+  handleEmailInvocation,
+  type InboundEmailContext,
+} from '../addie/email-handler.js';
 
 const logger = createLogger('webhooks');
 
@@ -205,6 +209,7 @@ async function getOrCreateEmailContact(
 ): Promise<{
   contactId: string;
   organizationId: string | null;
+  workosUserId: string | null;
   isNew: boolean;
   email: string;
   domain: string;
@@ -218,6 +223,7 @@ async function getOrCreateEmailContact(
   return {
     contactId: result.contactId,
     organizationId: result.organizationId,
+    workosUserId: result.workosUserId,
     isNew: result.isNew,
     email: result.email,
     domain: result.domain,
@@ -233,6 +239,7 @@ async function ensureContactsForParticipants(
 ): Promise<Array<{
   contactId: string;
   organizationId: string | null;
+  workosUserId: string | null;
   email: string;
   domain: string;
   role: 'sender' | 'recipient' | 'cc';
@@ -241,6 +248,7 @@ async function ensureContactsForParticipants(
   const contacts: Array<{
     contactId: string;
     organizationId: string | null;
+    workosUserId: string | null;
     email: string;
     domain: string;
     role: 'sender' | 'recipient' | 'cc';
@@ -521,10 +529,18 @@ function verifyResendWebhook(req: Request, rawBody: string): boolean {
  */
 async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<{
   activityId: string;
-  contacts: Array<{ contactId: string; email: string; role: string; isNew: boolean }>;
+  contacts: Array<{ contactId: string; workosUserId: string | null; email: string; role: string; isNew: boolean }>;
   insights: string;
   method: string;
   tokensUsed?: number;
+  // Email content for potential Addie invocation
+  emailContent?: {
+    text?: string;
+    html?: string;
+    messageId: string;
+    to: string[];
+    cc?: string[];
+  };
 }> {
   const pool = getPool();
 
@@ -667,6 +683,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     activityId: activityResult.rows[0].id,
     contacts: contacts.map(c => ({
       contactId: c.contactId,
+      workosUserId: c.workosUserId,
       email: c.email,
       role: c.role,
       isNew: c.isNew,
@@ -674,6 +691,14 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     insights,
     method,
     tokensUsed,
+    // Include email content for potential Addie invocation
+    emailContent: {
+      text: emailBody?.text,
+      html: emailBody?.html,
+      messageId: data.message_id,
+      to: toAddresses,
+      cc: ccAddresses,
+    },
   };
 }
 
@@ -1066,6 +1091,43 @@ export function createWebhooksRouter(): Router {
               totalDurationMs,
               insightPreview: result.insights.substring(0, 100) + (result.insights.length > 100 ? '...' : ''),
             }, 'Processed prospect email');
+
+            // Check for Addie invocation and respond if needed
+            // This runs async - don't block the webhook response
+            if (result.emailContent?.text) {
+              // Find which addie address was used
+              const allAddresses = [...data.to, ...(data.cc || [])];
+              const addieAddress = allAddresses.find(addr =>
+                addr.toLowerCase().includes('addie') &&
+                (addr.includes('@agenticadvertising.org') || addr.includes('@updates.agenticadvertising.org'))
+              ) || 'addie+prospect@agenticadvertising.org';
+
+              const emailContext: InboundEmailContext = {
+                emailId: data.email_id,
+                messageId: data.message_id,
+                from: data.from,
+                to: result.emailContent.to,
+                cc: result.emailContent.cc,
+                subject: data.subject,
+                textContent: result.emailContent.text,
+                htmlContent: result.emailContent.html,
+                addieAddress,
+              };
+
+              // Find the sender's WorkOS user ID if they're a known member
+              const senderContact = result.contacts.find(c => c.email.toLowerCase() === parseEmailAddress(data.from).email.toLowerCase());
+
+              // Fire and forget - don't await (pass workosUserId for authorization, not contactId)
+              handleEmailInvocation(emailContext, senderContact?.workosUserId ?? undefined)
+                .then(invocationResult => {
+                  if (invocationResult.responded) {
+                    logger.info({ emailId: data.email_id }, 'Addie responded to email invocation');
+                  }
+                })
+                .catch(err => {
+                  logger.error({ err, emailId: data.email_id }, 'Error checking email invocation');
+                });
+            }
 
             return res.status(200).json({ ok: true, context: 'prospect' });
           }

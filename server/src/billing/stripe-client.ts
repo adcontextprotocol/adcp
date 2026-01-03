@@ -851,6 +851,9 @@ export interface CheckoutSessionData {
   eventId?: string;
   eventSponsorshipId?: string;
   sponsorshipTierId?: string;
+  // Discount - provide coupon ID or promotion code (not both)
+  couponId?: string; // Stripe coupon ID to pre-apply
+  promotionCode?: string; // Promotion code to pre-apply (mutually exclusive with couponId)
 }
 
 /**
@@ -897,8 +900,24 @@ export async function createCheckoutSession(
       sessionParams.customer_email = data.customerEmail;
     }
 
-    // Allow promotion codes for all checkout sessions (subscriptions and one-time payments)
-    sessionParams.allow_promotion_codes = true;
+    // Handle discounts - either pre-apply a specific coupon/promotion code, or allow user entry
+    if (data.couponId) {
+      // Pre-apply a specific coupon
+      sessionParams.discounts = [{ coupon: data.couponId }];
+      // Don't allow additional promotion codes when one is pre-applied
+    } else if (data.promotionCode) {
+      // Look up the promotion code to get its ID
+      const promoCodes = await stripe.promotionCodes.list({ code: data.promotionCode, limit: 1 });
+      if (promoCodes.data.length > 0) {
+        sessionParams.discounts = [{ promotion_code: promoCodes.data[0].id }];
+      } else {
+        logger.warn({ promotionCode: data.promotionCode }, 'Promotion code not found, proceeding without discount');
+        sessionParams.allow_promotion_codes = true;
+      }
+    } else {
+      // Allow manual entry of promotion codes
+      sessionParams.allow_promotion_codes = true;
+    }
     sessionParams.billing_address_collection = 'required';
 
     // For one-time payments, also create invoices and customers
