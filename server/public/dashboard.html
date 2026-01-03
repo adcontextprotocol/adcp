@@ -2143,7 +2143,6 @@
           renderSelectedOrg();
 
           // Check if org needs profile info (legacy accounts) before showing dashboard
-          const selectedOrg = orgsWithBilling.find(o => o.id === selectedOrgId) || orgsWithBilling[0];
           if (orgNeedsProfileInfo(selectedOrg)) {
             showProfileModal(selectedOrg);
           }
