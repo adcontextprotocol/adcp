@@ -66,6 +66,7 @@ import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
+import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,6 +194,14 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Register feedback button handler
   boltApp.action('addie_feedback', handleFeedbackAction);
+
+  // Register App Home handlers
+  boltApp.event('app_home_opened', handleAppHomeOpened);
+  boltApp.action('addie_home_refresh', handleHomeRefresh);
+  boltApp.action('addie_home_ask_addie', handleAskAddie);
+  boltApp.action('addie_home_update_profile', handleUpdateProfile);
+  boltApp.action('addie_home_browse_groups', handleBrowseGroups);
+  boltApp.action('addie_home_view_flagged', handleViewFlagged);
 
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie Bolt: Ready');
@@ -1699,5 +1708,187 @@ export async function sendAccountLinkedMessage(
   } catch (error) {
     logger.error({ error, slackUserId }, 'Addie Bolt: Failed to send account linked message');
     return false;
+  }
+}
+
+// ============================================================================
+// App Home Handlers
+// ============================================================================
+
+/**
+ * Handle app_home_opened event - user opened Addie's App Home tab
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleAppHomeOpened({ event, client }: any): Promise<void> {
+  const userId = event.user;
+
+  logger.debug({ userId }, 'Addie Bolt: App Home opened');
+
+  try {
+    const content = await getHomeContent(userId);
+    const view = renderHomeView(content);
+
+    await client.views.publish({
+      user_id: userId,
+      view,
+    });
+
+    logger.info({ userId }, 'Addie Bolt: App Home published');
+  } catch (error) {
+    logger.error({ error, userId }, 'Addie Bolt: Failed to render App Home');
+
+    // Publish error state
+    try {
+      await client.views.publish({
+        user_id: userId,
+        view: renderErrorView('Unable to load your home. Please try again.'),
+      });
+    } catch (publishError) {
+      logger.error({ error: publishError, userId }, 'Addie Bolt: Failed to publish error view');
+    }
+  }
+}
+
+/**
+ * Handle refresh button click - force refresh home content
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleHomeRefresh({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const userId = body.user?.id;
+  logger.debug({ userId }, 'Addie Bolt: Home refresh requested');
+
+  try {
+    // Force refresh by bypassing cache
+    const content = await getHomeContent(userId, { forceRefresh: true });
+    const view = renderHomeView(content);
+
+    await client.views.publish({
+      user_id: userId,
+      view,
+    });
+  } catch (error) {
+    logger.error({ error, userId }, 'Addie Bolt: Failed to refresh App Home');
+  }
+}
+
+/**
+ * Handle "Ask Addie" button - open DM with Addie
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleAskAddie({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const userId = body.user?.id;
+  logger.debug({ userId }, 'Addie Bolt: Ask Addie clicked');
+
+  try {
+    // Open a DM with the user
+    const result = await client.conversations.open({
+      users: userId,
+    });
+
+    if (result.channel?.id) {
+      // Send a welcome message to start the conversation
+      await client.chat.postMessage({
+        channel: result.channel.id,
+        text: "Hi! I'm Addie, your AI assistant for AgenticAdvertising.org. How can I help you today?",
+      });
+    }
+  } catch (error) {
+    logger.error({ error, userId }, 'Addie Bolt: Failed to open DM');
+  }
+}
+
+/**
+ * Handle "Update Profile" button - start profile update conversation
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleUpdateProfile({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const userId = body.user?.id;
+  logger.debug({ userId }, 'Addie Bolt: Update Profile clicked');
+
+  try {
+    // Open a DM with the user
+    const result = await client.conversations.open({
+      users: userId,
+    });
+
+    if (result.channel?.id) {
+      // Send a message to start the profile update flow
+      await client.chat.postMessage({
+        channel: result.channel.id,
+        text: "I'd be happy to help you update your profile! What would you like to change?\n\n• Company description\n• Add or update agents\n• Add or update publishers\n• Contact information\n• Markets served\n\nJust let me know what you'd like to update.",
+      });
+    }
+  } catch (error) {
+    logger.error({ error, userId }, 'Addie Bolt: Failed to start profile update conversation');
+  }
+}
+
+/**
+ * Handle "Browse Working Groups" button - show available groups
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleBrowseGroups({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const userId = body.user?.id;
+  logger.debug({ userId }, 'Addie Bolt: Browse Groups clicked');
+
+  try {
+    // Open a DM with the user
+    const result = await client.conversations.open({
+      users: userId,
+    });
+
+    if (result.channel?.id) {
+      // Send a message to show working groups
+      await client.chat.postMessage({
+        channel: result.channel.id,
+        text: "I can help you explore working groups! Would you like me to:\n\n• List all available working groups\n• Show groups you're already in\n• Find groups by topic (e.g., Signals, Creatives, Publishers)\n\nWhat sounds most helpful?",
+      });
+    }
+  } catch (error) {
+    logger.error({ error, userId }, 'Addie Bolt: Failed to start working groups conversation');
+  }
+}
+
+/**
+ * Handle "View Flagged" button (admin only) - show flagged conversations
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleViewFlagged({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const userId = body.user?.id;
+  logger.debug({ userId }, 'Addie Bolt: View Flagged clicked');
+
+  // Verify admin status
+  const admin = await isSlackUserAdmin(userId);
+  if (!admin) {
+    logger.warn({ userId }, 'Addie Bolt: Non-admin tried to view flagged threads');
+    return;
+  }
+
+  try {
+    // Post an ephemeral message with link to admin dashboard
+    // Using the channel from the home tab context isn't straightforward,
+    // so we open a DM instead
+    const result = await client.conversations.open({
+      users: userId,
+    });
+
+    if (result.channel?.id) {
+      await client.chat.postMessage({
+        channel: result.channel.id,
+        text: "You can view flagged conversations in the admin dashboard:\n\n<https://agenticadvertising.org/admin/addie|Open Addie Admin>",
+      });
+    }
+  } catch (error) {
+    logger.error({ error, userId }, 'Addie Bolt: Failed to send flagged threads link');
   }
 }

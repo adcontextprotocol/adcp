@@ -334,6 +334,31 @@
       margin-bottom: 24px;
     }
 
+    /* Addie Home Section */
+    .addie-home-container {
+      display: none;
+      padding: 16px 0;
+    }
+
+    .addie-home-container.visible {
+      display: block;
+    }
+
+    .addie-home-loading {
+      text-align: center;
+      padding: 24px;
+      color: var(--color-text-muted);
+    }
+
+    .addie-home-error {
+      text-align: center;
+      padding: 16px;
+      color: var(--color-error-600);
+      background: var(--color-error-50);
+      border-radius: var(--radius-lg);
+      margin-bottom: 16px;
+    }
+
     .error-toast {
       position: fixed;
       bottom: 100px;
@@ -585,6 +610,13 @@
     </div>
 
     <div class="messages-container" id="messagesContainer">
+      <!-- Addie Home (shown for authenticated users) -->
+      <div class="addie-home-container" id="addieHomeContainer">
+        <div class="addie-home-loading" id="addieHomeLoading">Loading your dashboard...</div>
+        <div id="addieHomeContent"></div>
+        <style id="addieHomeStyles"></style>
+      </div>
+
       <div class="welcome-message" id="welcomeMessage">
         <h2>Hi! I'm Addie</h2>
         <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
@@ -631,20 +663,27 @@
       const suggestedPrompts = document.getElementById('suggestedPrompts');
       const statusDot = document.getElementById('statusDot');
       const statusText = document.getElementById('statusText');
+      const addieHomeContainer = document.getElementById('addieHomeContainer');
+      const addieHomeContent = document.getElementById('addieHomeContent');
+      const addieHomeLoading = document.getElementById('addieHomeLoading');
+      const addieHomeStyles = document.getElementById('addieHomeStyles');
 
       // State
       let conversationId = null;
       let isLoading = false;
       let isReady = false;
       let impersonationInfo = null;
+      let isAuthenticated = false;
 
-      // Check for impersonation
+      // Check for impersonation and authentication
       async function checkImpersonation() {
         try {
           const response = await fetch('/api/me');
           if (!response.ok) return; // Not authenticated
 
           const data = await response.json();
+          isAuthenticated = true;
+
           if (data.impersonation && data.impersonation.active) {
             impersonationInfo = data.impersonation;
             const banner = document.getElementById('impersonation-banner');
@@ -658,9 +697,119 @@
             `;
             banner.classList.add('active');
           }
+
+          // Load Addie Home for authenticated users
+          loadAddieHome();
         } catch (error) {
           // Silently ignore - user may not be authenticated
         }
+      }
+
+      // Load Addie Home content
+      async function loadAddieHome() {
+        if (!isAuthenticated) return;
+
+        addieHomeContainer.classList.add('visible');
+        addieHomeLoading.style.display = 'block';
+        addieHomeContent.innerHTML = '';
+
+        try {
+          const response = await fetch('/api/me/addie-home?format=html');
+          if (!response.ok) {
+            throw new Error('Failed to load home content');
+          }
+
+          const data = await response.json();
+
+          // Inject CSS
+          addieHomeStyles.textContent = data.css;
+
+          // Inject HTML
+          addieHomeContent.innerHTML = data.html;
+          addieHomeLoading.style.display = 'none';
+
+          // Hide the generic welcome message since we have personalized content
+          welcomeMessage.style.display = 'none';
+
+          // Wire up action buttons
+          setupHomeActions();
+        } catch (error) {
+          console.error('Failed to load Addie Home:', error);
+          addieHomeLoading.style.display = 'none';
+          addieHomeContent.innerHTML = '<div class="addie-home-error">Failed to load your dashboard</div>';
+        }
+      }
+
+      // Setup click handlers for Addie Home action buttons
+      function setupHomeActions() {
+        // Handle quick action buttons
+        addieHomeContent.querySelectorAll('.addie-home-action').forEach(button => {
+          button.addEventListener('click', () => {
+            const actionId = button.dataset.action;
+            handleHomeAction(actionId);
+          });
+        });
+
+        // Handle alert action buttons
+        addieHomeContent.querySelectorAll('.addie-home-alert-action[data-action]').forEach(button => {
+          button.addEventListener('click', () => {
+            const actionId = button.dataset.action;
+            handleHomeAction(actionId);
+          });
+        });
+      }
+
+      // Valid action IDs to prevent injection
+      const VALID_HOME_ACTIONS = new Set([
+        'addie_home_ask_addie',
+        'addie_home_update_profile',
+        'addie_home_browse_groups',
+        'addie_home_view_flagged',
+        'addie_home_pay_invoice',
+        'addie_home_complete_profile',
+        'addie_home_link_account',
+      ]);
+
+      // Handle Addie Home actions by starting a conversation
+      function handleHomeAction(actionId) {
+        // Validate action ID against whitelist
+        if (!VALID_HOME_ACTIONS.has(actionId)) {
+          console.warn('Invalid action ID:', actionId);
+          return;
+        }
+
+        let prompt = '';
+
+        switch (actionId) {
+          case 'addie_home_ask_addie':
+            // Just focus the input
+            chatInput.focus();
+            return;
+          case 'addie_home_update_profile':
+            prompt = 'Help me update my profile';
+            break;
+          case 'addie_home_browse_groups':
+            prompt = 'Show me working groups I can join';
+            break;
+          case 'addie_home_view_flagged':
+            prompt = 'Show me flagged conversations';
+            break;
+          case 'addie_home_pay_invoice':
+            prompt = 'Help me pay my pending invoice';
+            break;
+          case 'addie_home_complete_profile':
+            prompt = 'Help me complete my profile';
+            break;
+          case 'addie_home_link_account':
+            prompt = 'Help me link my Slack account';
+            break;
+        }
+
+        // Send the prompt as a message
+        chatInput.value = prompt;
+        autoResize();
+        updateSendButton();
+        sendMessage();
       }
 
       // Check Addie status

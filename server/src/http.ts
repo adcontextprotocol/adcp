@@ -5031,6 +5031,32 @@ Disallow: /api/admin/
       }
     });
 
+    // GET /api/me/addie-home - Get Addie Home content for current user
+    this.app.get('/api/me/addie-home', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import('./addie/home/index.js');
+
+        const content = await getWebHomeContent(user.id);
+
+        // Check if HTML rendering is requested
+        const format = req.query.format as string | undefined;
+        if (format === 'html') {
+          const html = renderHomeHTML(content);
+          res.json({ html, css: ADDIE_HOME_CSS });
+        } else {
+          // Default: return JSON content
+          res.json(content);
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'GET /api/me/addie-home error');
+        res.status(500).json({
+          error: 'Failed to get Addie home content',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /api/me/invitations - Get pending invitations for the current user
     this.app.get('/api/me/invitations', requireAuth, async (req, res) => {
       try {
