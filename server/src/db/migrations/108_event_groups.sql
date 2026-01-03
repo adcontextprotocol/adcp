@@ -1,4 +1,4 @@
--- Migration: 107_event_groups.sql
+-- Migration: 108_event_groups.sql
 -- Add 'event' committee type and link working groups to events
 -- This enables temporary "chapter-like" groups for industry events (CES, Cannes Lions, etc.)
 
