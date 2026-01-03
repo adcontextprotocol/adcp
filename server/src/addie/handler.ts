@@ -6,7 +6,7 @@
 
 import { logger } from '../logger.js';
 import { sendChannelMessage } from '../slack/client.js';
-import { AddieClaudeClient } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -187,13 +187,15 @@ async function buildMessageWithMemberContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string
-): Promise<RequestTools> {
+): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  const userIsAdmin = isAdmin(memberContext);
+
   // Add admin tools if user is admin
-  if (isAdmin(memberContext)) {
+  if (userIsAdmin) {
     const adminHandlers = createAdminToolHandlers(memberContext);
     allTools.push(...ADMIN_TOOLS);
     for (const [name, handler] of adminHandlers) {
@@ -203,7 +205,7 @@ async function createUserScopedTools(
   }
 
   // Add event tools if user can create events (admin or committee lead)
-  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : isAdmin(memberContext);
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : userIsAdmin;
   if (canCreate) {
     const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
     allTools.push(...EVENT_TOOLS);
@@ -214,8 +216,11 @@ async function createUserScopedTools(
   }
 
   return {
-    tools: allTools,
-    handlers: allHandlers,
+    tools: {
+      tools: allTools,
+      handlers: allHandlers,
+    },
+    isAdmin: userIsAdmin,
   };
 }
 
@@ -320,11 +325,14 @@ export async function handleAssistantMessage(
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const userTools = await createUserScopedTools(memberContext, event.user);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+
+    // Admin users get higher iteration limit for bulk operations
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
 
     // Process with Claude
     try {
-      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
     } catch (error) {
       logger.error({ error }, 'Addie: Error processing message');
       response = {
@@ -465,11 +473,14 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const userTools = await createUserScopedTools(memberContext, event.user);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+
+    // Admin users get higher iteration limit for bulk operations
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
 
     // Process with Claude
     try {
-      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
     } catch (error) {
       logger.error({ error }, 'Addie: Error processing mention');
       response = {

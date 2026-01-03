@@ -2225,7 +2225,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         return `
           <tr style="vertical-align: top;">
             <td>
-              <a href="/admin/member.html?org=${analysis.org_id}" target="_blank">
+              <a href="/admin/organizations/${analysis.org_id}" target="_blank">
                 <strong>${analysis.org_name}</strong>
               </a>
             </td>
@@ -2249,7 +2249,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
       // Update table headers for cleanup view
       document.querySelector('thead tr').innerHTML = `
-        <th>Organization</th>
+        <th style="width: 180px;">Organization</th>
         <th>Issues</th>
         <th>Suggested Actions</th>
         <th style="width: 120px;">Actions</th>

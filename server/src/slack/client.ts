@@ -684,3 +684,41 @@ export async function setChannelPurpose(
     return { ok: false, error: errorMessage };
   }
 }
+
+/**
+ * Get channels that a specific user is a member of
+ * Uses users.conversations API to list user's channel memberships
+ *
+ * @param userId - The Slack user ID to query
+ * @returns Array of channel IDs the user is a member of
+ */
+export async function getUserChannels(userId: string): Promise<string[]> {
+  const channelIds: string[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const response = await slackRequest<{
+      channels: Array<{ id: string; name: string }>;
+      response_metadata?: { next_cursor?: string };
+    }>('users.conversations', {
+      user: userId,
+      types: 'public_channel',
+      exclude_archived: true,
+      limit: 200,
+      cursor,
+    });
+
+    if (response.channels) {
+      channelIds.push(...response.channels.map(c => c.id));
+    }
+
+    cursor = response.response_metadata?.next_cursor;
+
+    if (cursor) {
+      await sleep(RATE_LIMIT_DELAY_MS);
+    }
+  } while (cursor);
+
+  logger.debug({ userId, channelCount: channelIds.length }, 'Fetched user channel memberships');
+  return channelIds;
+}

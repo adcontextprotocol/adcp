@@ -15,12 +15,34 @@ import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.j
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
+/** Default max tool iterations for regular users */
+export const DEFAULT_MAX_ITERATIONS = 10;
+
+/** Elevated max tool iterations for admin users doing bulk operations */
+export const ADMIN_MAX_ITERATIONS = 25;
+
 /**
  * Per-request tools that can be added dynamically
  */
 export interface RequestTools {
   tools: AddieTool[];
   handlers: Map<string, ToolHandler>;
+}
+
+/**
+ * Result from createUserScopedTools including admin status
+ */
+export interface UserScopedToolsResult {
+  tools: RequestTools;
+  isAdmin: boolean;
+}
+
+/**
+ * Options for message processing
+ */
+export interface ProcessMessageOptions {
+  /** Maximum tool iterations (default: DEFAULT_MAX_ITERATIONS) */
+  maxIterations?: number;
 }
 
 /**
@@ -187,12 +209,14 @@ export class AddieClaudeClient {
    * @param threadContext - Optional thread history
    * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
    * @param rulesOverride - Optional rules override for eval framework (bypasses DB lookup)
+   * @param options - Optional processing options (e.g., maxIterations for admin users)
    */
   async processMessage(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
     requestTools?: RequestTools,
-    rulesOverride?: RulesOverride
+    rulesOverride?: RulesOverride,
+    options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -240,7 +264,7 @@ export class AddieClaudeClient {
       { role: 'user', content: contextualMessage },
     ];
 
-    let maxIterations = 10;
+    const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
 
     // Combine global tools with per-request tools
@@ -610,11 +634,13 @@ export class AddieClaudeClient {
    * @param userMessage - The user's message
    * @param threadContext - Optional thread history
    * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
+   * @param options - Optional processing options (e.g., maxIterations for admin users)
    */
   async *processMessageStream(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
-    requestTools?: RequestTools
+    requestTools?: RequestTools,
+    options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -647,7 +673,7 @@ export class AddieClaudeClient {
       { role: 'user', content: contextualMessage },
     ];
 
-    const maxIterations = 10;
+    const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
 
     // Combine global tools with per-request tools

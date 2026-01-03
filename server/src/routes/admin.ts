@@ -176,17 +176,17 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
           // Get member insights
           const insightsQuery = workosUserId
-            ? `SELECT mi.type_key, it.name as type_name, mi.value
+            ? `SELECT mit.name as type_key, mit.name as type_name, mi.value
                FROM member_insights mi
-               LEFT JOIN insight_types it ON it.key = mi.type_key
+               LEFT JOIN member_insight_types mit ON mit.id = mi.insight_type_id
                WHERE mi.workos_user_id = $1 AND mi.is_current = TRUE
-               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               ORDER BY mi.confidence DESC, mi.created_at DESC
                LIMIT 10`
-            : `SELECT mi.type_key, it.name as type_name, mi.value
+            : `SELECT mit.name as type_key, mit.name as type_name, mi.value
                FROM member_insights mi
-               LEFT JOIN insight_types it ON it.key = mi.type_key
+               LEFT JOIN member_insight_types mit ON mit.id = mi.insight_type_id
                WHERE mi.slack_user_id = $1 AND mi.is_current = TRUE
-               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               ORDER BY mi.confidence DESC, mi.created_at DESC
                LIMIT 10`;
 
           const insightsResult = await pool.query(insightsQuery, [workosUserId || slackUserId]);
@@ -201,8 +201,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 sm.last_outreach_at,
                 sm.outreach_opt_out,
                 EXTRACT(EPOCH FROM (NOW() - sm.last_outreach_at)) / 86400 as days_since_outreach,
-                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id) as total_outreach_count,
-                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id AND po.response_received = TRUE) as responses_received
+                (SELECT COUNT(*) FROM member_outreach mo WHERE mo.slack_user_id = sm.slack_user_id) as total_outreach_count,
+                (SELECT COUNT(*) FROM member_outreach mo WHERE mo.slack_user_id = sm.slack_user_id AND mo.user_responded = TRUE) as responses_received
               FROM slack_user_mappings sm
               WHERE sm.slack_user_id = $1`;
             const outreachResult = await pool.query(outreachQuery, [slackUserId]);
