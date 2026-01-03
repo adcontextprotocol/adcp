@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS flagged_conversations (
   severity VARCHAR(20),
   response_given TEXT,
   was_deflected BOOLEAN DEFAULT FALSE,
-  reviewed_by INTEGER REFERENCES users(id),
+  reviewed_by VARCHAR(255) REFERENCES users(workos_user_id),
   reviewed_at TIMESTAMP WITH TIME ZONE,
   review_notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS known_media_contacts (
   handling_level VARCHAR(20) DEFAULT 'standard'
     CHECK (handling_level IN ('standard', 'careful', 'executive_only')),
   is_active BOOLEAN DEFAULT TRUE,
-  added_by INTEGER REFERENCES users(id),
+  added_by VARCHAR(255) REFERENCES users(workos_user_id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
