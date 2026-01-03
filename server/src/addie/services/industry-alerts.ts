@@ -101,24 +101,14 @@ function evaluateFallbackRules(
 
 /**
  * Build Slack message blocks for an article alert
+ * Format: Title header, source link, Addie's take (with emoji baked in)
  */
 function buildAlertBlocks(
   article: ArticleToAlert,
-  alertLevel: 'urgent' | 'high' | 'medium' | 'digest'
+  _alertLevel: 'urgent' | 'high' | 'medium' | 'digest'
 ): SlackBlock[] {
-  const emoji = {
-    urgent: ':rotating_light:',
-    high: ':star:',
-    medium: ':newspaper:',
-    digest: ':bookmark:',
-  }[alertLevel];
-
-  const levelText = {
-    urgent: 'URGENT - AdCP/Agentic Mention',
-    high: 'HIGH - Agentic AI in Advertising',
-    medium: 'Notable Industry Article',
-    digest: 'Industry Update',
-  }[alertLevel];
+  // Slack header blocks have a 150 character limit for plain_text
+  const headerTitle = (article.title || 'Industry Alert').substring(0, 150);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blocks: any[] = [
@@ -126,50 +116,29 @@ function buildAlertBlocks(
       type: 'header',
       text: {
         type: 'plain_text',
-        text: `${emoji} ${levelText}`,
+        text: headerTitle,
         emoji: true,
       },
     },
     {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*<${article.link}|${article.title}>*\n_Source: ${article.feed_name}_`,
-      },
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `<${article.link}|${article.feed_name}>`,
+        },
+      ],
     },
   ];
 
-  if (article.summary) {
+  // Addie's take includes emoji and CTA baked in from content curator
+  if (article.addie_notes) {
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: article.summary,
+        text: article.addie_notes,
       },
-    });
-  }
-
-  if (article.addie_notes) {
-    blocks.push({
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: `*Why this matters:* ${article.addie_notes}`,
-        },
-      ],
-    });
-  }
-
-  if (article.relevance_tags && article.relevance_tags.length > 0) {
-    blocks.push({
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: `Tags: ${article.relevance_tags.map(t => `\`${t}\``).join(' ')}`,
-        },
-      ],
     });
   }
 
