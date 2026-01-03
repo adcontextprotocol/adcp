@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_outreach_sentiment ON member_outreach(response_se
 CREATE INDEX IF NOT EXISTS idx_outreach_intent ON member_outreach(response_intent)
   WHERE response_intent IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_outreach_follow_up ON member_outreach(follow_up_date)
-  WHERE follow_up_date IS NOT NULL AND follow_up_date > CURRENT_DATE;
+  WHERE follow_up_date IS NOT NULL;
 
 -- =====================================================
 -- ENHANCE SLACK_USER_MAPPINGS
