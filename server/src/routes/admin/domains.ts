@@ -1293,8 +1293,21 @@ export function setupDomainRoutes(
           LIMIT $${allExcludedDomains.length + 1}
         `, [...allExcludedDomains, limit]);
 
-        // 2. Misaligned users (corporate emails in personal workspaces)
+        // 2. Misaligned users (corporate emails in personal workspaces WHERE a company org exists for that domain)
+        // We only flag users if there's already an existing non-personal org for their domain
+        // Personal workspaces with corporate emails are fine if no company has registered
         const misalignedResult = await pool.query(`
+          WITH company_domains AS (
+            -- All domains that have been claimed by non-personal organizations
+            SELECT DISTINCT LOWER(domain) as domain
+            FROM organization_domains od
+            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+            WHERE o.is_personal = false
+            UNION
+            SELECT DISTINCT LOWER(email_domain) as domain
+            FROM organizations
+            WHERE is_personal = false AND email_domain IS NOT NULL
+          )
           SELECT
             om.email,
             om.first_name,
@@ -1305,6 +1318,7 @@ export function setupDomainRoutes(
             om.workos_organization_id
           FROM organization_memberships om
           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+          JOIN company_domains cd ON cd.domain = LOWER(SPLIT_PART(om.email, '@', 2))
           WHERE o.is_personal = true
             AND om.email IS NOT NULL
             AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
@@ -1368,6 +1382,61 @@ export function setupDomainRoutes(
           misalignedByDomain[row.email_domain].push(row);
         }
 
+        // 6. Related domains - find organizations with domains that share a root domain
+        // e.g., yahooinc.com and advertising.yahoo.com should be grouped together
+        const relatedDomainsResult = await pool.query(`
+          WITH org_domains AS (
+            -- Get all domains associated with orgs (from organization_domains, email_domain, and user emails)
+            SELECT DISTINCT
+              o.workos_organization_id,
+              o.name as org_name,
+              o.subscription_status,
+              o.is_personal,
+              COALESCE(od.domain, o.email_domain, LOWER(SPLIT_PART(om.email, '@', 2))) as domain
+            FROM organizations o
+            LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+            LEFT JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+            WHERE o.is_personal = false
+              AND (od.domain IS NOT NULL OR o.email_domain IS NOT NULL OR om.email IS NOT NULL)
+          ),
+          domain_roots AS (
+            -- Extract root domain (last two parts, e.g., yahoo.com from advertising.yahoo.com)
+            SELECT
+              workos_organization_id,
+              org_name,
+              subscription_status,
+              is_personal,
+              domain,
+              -- Extract root domain (last two parts): a.b.yahoo.com -> yahoo.com
+              -- This handles any depth of subdomain
+              SUBSTRING(domain FROM '([^.]+\\.[^.]+)$') as root_domain
+            FROM org_domains
+            WHERE domain IS NOT NULL
+          ),
+          root_groups AS (
+            -- Group by root domain, only keep groups with multiple orgs
+            SELECT
+              root_domain,
+              COUNT(DISTINCT workos_organization_id) as org_count,
+              json_agg(DISTINCT jsonb_build_object(
+                'org_id', workos_organization_id,
+                'name', org_name,
+                'subscription_status', subscription_status,
+                'domains', (
+                  SELECT array_agg(DISTINCT d2.domain)
+                  FROM domain_roots d2
+                  WHERE d2.workos_organization_id = domain_roots.workos_organization_id
+                )
+              )) as organizations
+            FROM domain_roots
+            GROUP BY root_domain
+            HAVING COUNT(DISTINCT workos_organization_id) > 1
+          )
+          SELECT * FROM root_groups
+          ORDER BY org_count DESC
+          LIMIT $1
+        `, [limit]);
+
         res.json({
           summary: {
             total_organizations: parseInt(statsResult.rows[0].total_orgs, 10),
@@ -1379,6 +1448,7 @@ export function setupDomainRoutes(
               misaligned_users: misalignedResult.rows.length,
               unverified_orgs: unverifiedResult.rows.length,
               domain_conflicts: conflictResult.rows.length,
+              related_domains: relatedDomainsResult.rows.length,
             },
           },
           orphan_domains: orphanResult.rows.map(row => ({
@@ -1409,6 +1479,11 @@ export function setupDomainRoutes(
           })),
           domain_conflicts: conflictResult.rows.map(row => ({
             domain: row.email_domain,
+            org_count: parseInt(row.org_count, 10),
+            organizations: row.organizations,
+          })),
+          related_domains: relatedDomainsResult.rows.map(row => ({
+            root_domain: row.root_domain,
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
           })),

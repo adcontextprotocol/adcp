@@ -273,10 +273,10 @@
         <div class="section-header">
           <div>
             <div class="section-title">
-              Corporate Users in Personal Workspaces
+              Users Who Should Join Their Company
               <span class="section-badge" id="misalignedBadge">0</span>
             </div>
-            <p class="section-description">Users with company email addresses who are in personal workspaces instead of company organizations.</p>
+            <p class="section-description">Users in personal workspaces whose company already has an organization. Consider inviting them to join.</p>
           </div>
         </div>
         <div id="misalignedUsersContent"></div>
@@ -308,6 +308,20 @@
           </div>
         </div>
         <div id="domainConflictsContent"></div>
+      </div>
+
+      <!-- Related Domains Section -->
+      <div class="card" id="relatedDomainsSection">
+        <div class="section-header">
+          <div>
+            <div class="section-title">
+              Related Organizations (Potential Duplicates)
+              <span class="section-badge" id="relatedBadge">0</span>
+            </div>
+            <p class="section-description">Organizations that may be related based on similar domain names (e.g., yahoo.com and yahooinc.com). Consider merging these.</p>
+          </div>
+        </div>
+        <div id="relatedDomainsContent"></div>
       </div>
     </div>
   </div>
@@ -366,6 +380,7 @@
       renderMisalignedUsers();
       renderUnverifiedOrgs();
       renderDomainConflicts();
+      renderRelatedDomains();
 
       // Set up event delegation for merge buttons (avoiding inline onclick for XSS safety)
       document.querySelectorAll('.merge-orgs-btn').forEach(btn => {
@@ -624,7 +639,8 @@
     function renderSummary() {
       const { summary } = healthData;
       const totalIssues = summary.issues.orphan_domains + summary.issues.misaligned_users +
-                          summary.issues.unverified_orgs + summary.issues.domain_conflicts;
+                          summary.issues.unverified_orgs + summary.issues.domain_conflicts +
+                          (summary.issues.related_domains || 0);
 
       const grid = document.getElementById('summaryGrid');
       grid.innerHTML = `
@@ -760,7 +776,7 @@
         content.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-icon">&#10003;</div>
-            <p>No misaligned users found. All corporate users are in proper company workspaces.</p>
+            <p>No users found who should join their company. Personal workspace users with corporate emails are only flagged when their company already has an organization.</p>
           </div>
         `;
         return;
@@ -791,7 +807,7 @@
                 </td>
                 <td>
                   <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Org</button>
+                    <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
                     <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
                   </div>
                 </td>
@@ -908,6 +924,65 @@
                 <td>
                   <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}" data-domain="${encodeURIComponent(c.domain)}">
                     Merge Orgs
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderRelatedDomains() {
+      const relatedDomains = healthData.related_domains || [];
+      const badge = document.getElementById('relatedBadge');
+      const content = document.getElementById('relatedDomainsContent');
+
+      badge.textContent = relatedDomains.length;
+      badge.className = relatedDomains.length === 0 ? 'section-badge success' : 'section-badge';
+
+      if (relatedDomains.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>No related organizations found based on domain similarity.</p>
+          </div>
+        `;
+        return;
+      }
+
+      content.innerHTML = `
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>Root Domain</th>
+              <th>Related Organizations</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${relatedDomains.map(r => `
+              <tr>
+                <td>
+                  <span class="domain-name">${escapeHtml(r.root_domain)}</span>
+                  <br><small style="color: var(--color-text-muted);">${r.org_count} organizations</small>
+                </td>
+                <td>
+                  <ul class="org-list">
+                    ${r.organizations.map(o => `
+                      <li>
+                        <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
+                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
+                          ${escapeHtml(o.subscription_status || 'prospect')}
+                        </span>
+                        ${o.domains && o.domains.length > 0 ? `<br><small style="color: var(--color-text-muted);">${o.domains.filter(Boolean).map(d => escapeHtml(d)).join(', ')}</small>` : ''}
+                      </li>
+                    `).join('')}
+                  </ul>
+                </td>
+                <td>
+                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${r.organizations.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(r.root_domain)}">
+                    Review &amp; Merge
                   </button>
                 </td>
               </tr>
