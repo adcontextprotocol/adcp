@@ -8,6 +8,7 @@ import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { createProspect } from "../../services/prospect.js";
+import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 
 const logger = createLogger("admin-prospects");
 
@@ -25,9 +26,10 @@ export function setupProspectRoutes(apiRouter: Router): void {
           o.workos_organization_id,
           o.name,
           o.company_type,
+          o.company_types,
           o.revenue_tier,
           o.is_personal,
-          COALESCE(o.prospect_status, 'signed_up') as prospect_status,
+          COALESCE(o.prospect_status, 'prospect') as prospect_status,
           COALESCE(o.prospect_source, 'organic') as prospect_source,
           o.prospect_owner,
           o.prospect_notes,
@@ -194,10 +196,10 @@ export function setupProspectRoutes(apiRouter: Router): void {
       // Apply additional filters
       if (status && typeof status === "string") {
         params.push(status);
-        query += ` AND COALESCE(o.prospect_status, 'signed_up') = $${params.length}`;
+        query += ` AND COALESCE(o.prospect_status, 'prospect') = $${params.length}`;
       } else {
         // Exclude disqualified orgs by default unless explicitly filtering for them
-        query += ` AND COALESCE(o.prospect_status, 'signed_up') != 'disqualified'`;
+        query += ` AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'`;
       }
 
       if (source && typeof source === "string") {
@@ -592,7 +594,9 @@ export function setupProspectRoutes(apiRouter: Router): void {
 
         // Build dynamic UPDATE query
         const allowedFields = [
-          "company_type",
+          "name",
+          "company_type", // Deprecated: kept for backwards compatibility
+          "company_types", // New: array of types
           "prospect_status",
           "prospect_source",
           "prospect_owner",
@@ -612,9 +616,28 @@ export function setupProspectRoutes(apiRouter: Router): void {
 
         for (const field of allowedFields) {
           if (updates[field] !== undefined) {
-            setClauses.push(`${field} = $${paramIndex}`);
-            values.push(updates[field] === "" ? null : updates[field]);
-            paramIndex++;
+            if (field === "company_types") {
+              // Handle array field - validate and ensure it's stored as a PostgreSQL array
+              let typesArray = Array.isArray(updates[field]) ? updates[field] : null;
+              // Validate each type value against allowed values
+              if (typesArray) {
+                typesArray = typesArray.filter((t: string) => COMPANY_TYPE_VALUES.includes(t as any));
+                if (typesArray.length === 0) typesArray = null;
+              }
+              setClauses.push(`${field} = $${paramIndex}`);
+              values.push(typesArray);
+              paramIndex++;
+              // Also update legacy company_type with first value for backwards compatibility
+              if (typesArray && typesArray.length > 0) {
+                setClauses.push(`company_type = $${paramIndex}`);
+                values.push(typesArray[0]);
+                paramIndex++;
+              }
+            } else {
+              setClauses.push(`${field} = $${paramIndex}`);
+              values.push(updates[field] === "" ? null : updates[field]);
+              paramIndex++;
+            }
           }
         }
 
@@ -659,10 +682,10 @@ export function setupProspectRoutes(apiRouter: Router): void {
       try {
         const pool = getPool();
 
-        // Count all non-paying orgs by status (including signed_up for those without explicit status)
+        // Count all non-paying orgs by status
         const result = await pool.query(`
         SELECT
-          COALESCE(prospect_status, 'signed_up') as prospect_status,
+          COALESCE(prospect_status, 'prospect') as prospect_status,
           COUNT(*) as count
         FROM organizations
         WHERE (
@@ -670,11 +693,11 @@ export function setupProspectRoutes(apiRouter: Router): void {
           OR subscription_status NOT IN ('active', 'trialing')
           OR subscription_canceled_at IS NOT NULL
         )
-        GROUP BY COALESCE(prospect_status, 'signed_up')
+        GROUP BY COALESCE(prospect_status, 'prospect')
         ORDER BY
-          CASE COALESCE(prospect_status, 'signed_up')
-            WHEN 'signed_up' THEN 0
-            WHEN 'prospect' THEN 1
+          CASE COALESCE(prospect_status, 'prospect')
+            WHEN 'prospect' THEN 0
+            WHEN 'signed_up' THEN 1
             WHEN 'contacted' THEN 2
             WHEN 'interested' THEN 3
             WHEN 'negotiating' THEN 4
