@@ -848,6 +848,10 @@
                 <span class="signal-label">List Price</span>
                 <span class="signal-value" id="pricingListPrice">-</span>
               </div>
+              <div id="pricingRationaleRow" class="signal-item" style="display: none;">
+                <span class="signal-label">Rationale</span>
+                <span class="signal-value" id="pricingRationale" style="font-size: var(--text-sm); color: var(--color-text-muted);">-</span>
+              </div>
               <div class="signal-item" id="discountRow" style="display: none;">
                 <span class="signal-label">Discount</span>
                 <span class="signal-value" id="pricingDiscount">-</span>
@@ -1025,6 +1029,20 @@
               <option value="organic">Organic</option>
             </select>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label>Revenue Tier</label>
+          <select id="editRevenueTier">
+            <option value="">Unknown</option>
+            <option value="under_1m">Under $1M (Startup)</option>
+            <option value="1m_5m">$1M - $5M</option>
+            <option value="5m_50m">$5M - $50M</option>
+            <option value="50m_250m">$50M - $250M</option>
+            <option value="250m_1b">$250M - $1B</option>
+            <option value="1b_plus">Over $1B (Enterprise)</option>
+          </select>
+          <div class="form-hint">Used to determine membership pricing tier.</div>
         </div>
 
         <h3 style="margin-top: var(--space-5); margin-bottom: var(--space-4); font-size: var(--text-base);">Contact Info</h3>
@@ -2092,6 +2110,9 @@
         cb.checked = types.includes(cb.value);
       });
 
+      // Populate revenue tier
+      document.getElementById('editRevenueTier').value = orgData.revenue_tier || '';
+
       // Load parent organization options
       await loadParentOrgOptions();
 
@@ -2142,6 +2163,13 @@
       document.getElementById('editOrgModal').style.display = 'none';
     }
 
+    function openRevenueTierModal() {
+      // Open the edit modal and focus on revenue tier field
+      openEditOrgModal().then(() => {
+        document.getElementById('editRevenueTier').focus();
+      });
+    }
+
     async function saveOrgChanges(event) {
       event.preventDefault();
 
@@ -2157,6 +2185,7 @@
         prospect_status: status,
         prospect_owner: document.getElementById('editOrgOwner').value || null,
         company_types: selectedTypes.length > 0 ? selectedTypes : null,
+        revenue_tier: document.getElementById('editRevenueTier').value || null,
         prospect_source: document.getElementById('editOrgSource').value || null,
         prospect_contact_name: document.getElementById('editContactName').value || null,
         prospect_contact_email: document.getElementById('editContactEmail').value || null,
@@ -3499,6 +3528,7 @@
     function renderPricing() {
       // Get the org's revenue tier - either explicitly set or derived from enrichment
       let orgRevenueTier = orgData.revenue_tier;
+      let revenueTierSource = orgData.revenue_tier ? 'manual' : null;
 
       // If no revenue_tier set, try to derive from enrichment data
       if (!orgRevenueTier && orgData.enrichment_revenue_range) {
@@ -3515,14 +3545,18 @@
         for (const [key, value] of Object.entries(rangeMap)) {
           if (lowerRange.includes(key.replace('$', '').replace('-', ' to '))) {
             orgRevenueTier = value;
+            revenueTierSource = 'enrichment';
             break;
           }
         }
       }
 
-      // Filter membership products that match the org's revenue tier
+      // Filter membership products for companies (orgs in admin are always companies)
+      // Include products that either: have no customer_types restriction, or explicitly allow 'company'
       const membershipProducts = productsData.filter(p =>
-        p.category === 'membership' && p.billing_type === 'subscription'
+        p.category === 'membership' &&
+        p.billing_type === 'subscription' &&
+        (!p.customer_types || p.customer_types.length === 0 || p.customer_types.includes('company'))
       );
 
       // Find products that match the org's revenue tier
@@ -3535,16 +3569,24 @@
         return orgRevenueTier && p.revenue_tiers.includes(orgRevenueTier);
       });
 
-      // If no matches, show all membership products (they can choose)
-      if (matchingProducts.length === 0) {
-        matchingProducts = membershipProducts;
-      }
+      // Sort matching products by price (highest first)
+      matchingProducts.sort((a, b) => (b.amount_cents || 0) - (a.amount_cents || 0));
 
-      // Sort by price (lowest first)
-      matchingProducts.sort((a, b) => (a.amount_cents || 0) - (b.amount_cents || 0));
+      // Only recommend a product if we have revenue tier data
+      // If we don't know the tier, don't guess - show "Unknown" and let the admin set it
+      const suggestedProduct = orgRevenueTier && matchingProducts.length > 0 ? matchingProducts[0] : null;
 
-      // Pick the best match (first one after sorting, or the one with matching tier)
-      const suggestedProduct = matchingProducts[0];
+      // Build context about what we know (even if we can't make a recommendation)
+      const pricingContext = buildPricingContext({
+        orgRevenueTier,
+        revenueTierSource,
+        suggestedProduct,
+        companyTypes: orgData.company_types || [],
+        employeeCount: orgData.enrichment_employee_count,
+        fundingStage: orgData.enrichment_funding_stage,
+        fundingTotal: orgData.enrichment_funding_total,
+        foundedYear: orgData.enrichment_founded_year,
+      });
 
       // Display product info
       if (suggestedProduct) {
@@ -3554,14 +3596,24 @@
             ` <span style="font-size: var(--text-xs); color: var(--color-text-muted);">(${matchingProducts.length} options)</span>`;
         }
       } else {
-        document.getElementById('pricingSuggestedTier').textContent = orgRevenueTier ?
-          `No products for ${orgRevenueTier}` : 'Unknown';
+        // No recommendation - we don't have enough data
+        document.getElementById('pricingSuggestedTier').innerHTML =
+          `<span style="color: var(--color-text-muted);">Unknown</span>` +
+          ` <button onclick="openRevenueTierModal()" style="margin-left: 8px; font-size: var(--text-xs); color: var(--color-brand); background: none; border: none; cursor: pointer; text-decoration: underline;">Set tier</button>`;
       }
 
       // Display list price
       let listPrice = suggestedProduct?.amount_cents || 0;
       document.getElementById('pricingListPrice').textContent =
         listPrice > 0 ? formatPriceCurrency(listPrice) + '/year' : '-';
+
+      // Display context (what we know about this org)
+      if (pricingContext) {
+        document.getElementById('pricingRationaleRow').style.display = 'flex';
+        document.getElementById('pricingRationale').innerHTML = pricingContext;
+      } else {
+        document.getElementById('pricingRationaleRow').style.display = 'none';
+      }
 
       // Check for discount
       const hasDiscount = orgData.discount_percent || orgData.discount_amount_cents;
@@ -3617,6 +3669,102 @@
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
       }).format(cents / 100);
+    }
+
+    function formatRevenueTierDisplay(tier) {
+      const tierLabels = {
+        'under_1m': 'Under $1M',
+        '1m_5m': '$1M-$5M',
+        '5m_50m': '$5M-$50M',
+        '50m_250m': '$50M-$250M',
+        '250m_1b': '$250M-$1B',
+        '1b_plus': 'Over $1B'
+      };
+      return tierLabels[tier] || tier;
+    }
+
+    function buildPricingContext(params) {
+      const {
+        orgRevenueTier,
+        revenueTierSource,
+        suggestedProduct,
+        companyTypes,
+        employeeCount,
+        fundingStage,
+        fundingTotal,
+        foundedYear,
+      } = params;
+
+      const signals = [];
+
+      // If we have a revenue tier, show how we know it
+      if (orgRevenueTier && revenueTierSource === 'manual') {
+        signals.push(`Revenue: ${formatRevenueTierDisplay(orgRevenueTier)}`);
+      } else if (orgRevenueTier && revenueTierSource === 'enrichment') {
+        signals.push(`Revenue: ${formatRevenueTierDisplay(orgRevenueTier)} (enrichment)`);
+      }
+
+      // Funding info - strong signal for startups
+      if (fundingStage || fundingTotal) {
+        let fundingInfo = '';
+        if (fundingStage) {
+          // Escape enrichment data to prevent XSS
+          fundingInfo = escapeHtml(String(fundingStage));
+        }
+        if (fundingTotal) {
+          const totalFormatted = fundingTotal >= 1000000
+            ? `$${(fundingTotal / 1000000).toFixed(1)}M`
+            : `$${(fundingTotal / 1000).toFixed(0)}K`;
+          fundingInfo = fundingInfo ? `${fundingInfo} (${totalFormatted} raised)` : `${totalFormatted} raised`;
+        }
+        signals.push(fundingInfo);
+      }
+
+      // Founded year - helps identify startups
+      if (foundedYear) {
+        const currentYear = new Date().getFullYear();
+        const age = currentYear - foundedYear;
+        if (age <= 2) {
+          signals.push(`Founded ${foundedYear} (startup)`);
+        } else if (age <= 5) {
+          signals.push(`Founded ${foundedYear}`);
+        }
+      }
+
+      // Employee count
+      if (employeeCount) {
+        if (employeeCount >= 1000) {
+          signals.push(`${employeeCount.toLocaleString()} employees (enterprise)`);
+        } else if (employeeCount >= 100) {
+          signals.push(`${employeeCount.toLocaleString()} employees (mid-market)`);
+        } else if (employeeCount >= 10) {
+          signals.push(`${employeeCount.toLocaleString()} employees`);
+        } else {
+          signals.push(`${employeeCount} employees (early stage)`);
+        }
+      }
+
+      // Company type
+      if (companyTypes && companyTypes.length > 0) {
+        const typeLabels = {
+          'brand': 'Brand',
+          'publisher': 'Publisher',
+          'agency': 'Agency',
+          'adtech': 'Ad Tech',
+          'data': 'Data & Measurement',
+          'ai': 'AI & Tech',
+          'other': 'Other'
+        };
+        const typeNames = companyTypes.map(t => typeLabels[t] || t).join(', ');
+        signals.push(typeNames);
+      }
+
+      // If no signals at all, return null
+      if (signals.length === 0) {
+        return suggestedProduct ? null : '<span style="color: var(--color-warning-600);">No data - set revenue tier to recommend a membership</span>';
+      }
+
+      return signals.join(' · ');
     }
 
     function copyPromoCode(code) {
