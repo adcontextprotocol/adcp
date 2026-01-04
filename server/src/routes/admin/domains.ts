@@ -887,7 +887,7 @@ export function setupDomainRoutes(
           return res.status(500).json({ error: "WorkOS not configured" });
         }
 
-        const normalizedDomain = domain.toLowerCase().trim();
+        const normalizedDomain = domain.toLowerCase().trim().replace(/^www\./, '');
 
         // Validate domain format
         const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
@@ -939,15 +939,35 @@ export function setupDomainRoutes(
         // Add to WorkOS first - this is the source of truth
         try {
           const workosOrg = await workos.organizations.getOrganization(orgId);
-          const existingDomains = workosOrg.domains.map(d => ({
-            domain: d.domain,
-            state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
-          }));
 
-          await workos.organizations.updateOrganization({
-            organization: orgId,
-            domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
-          });
+          // Check if domain already exists in WorkOS for this org
+          const existingDomain = workosOrg.domains.find(d => d.domain.toLowerCase() === normalizedDomain);
+
+          if (existingDomain) {
+            // Domain already exists - just verify it if not already verified
+            if (existingDomain.state !== 'verified') {
+              const updatedDomains = workosOrg.domains.map(d => ({
+                domain: d.domain,
+                state: d.domain.toLowerCase() === normalizedDomain ? DomainDataState.Verified : (d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending)
+              }));
+              await workos.organizations.updateOrganization({
+                organization: orgId,
+                domainData: updatedDomains,
+              });
+            }
+            // If already verified, no WorkOS update needed
+          } else {
+            // Domain doesn't exist - add it
+            const existingDomains = workosOrg.domains.map(d => ({
+              domain: d.domain,
+              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+            }));
+
+            await workos.organizations.updateOrganization({
+              organization: orgId,
+              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+            });
+          }
         } catch (workosErr) {
           logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to add domain to WorkOS");
           return res.status(500).json({
@@ -1209,9 +1229,9 @@ export function setupDomainRoutes(
             GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
           ),
           claimed_domains AS (
-            SELECT LOWER(domain) as domain FROM organization_domains
+            SELECT REGEXP_REPLACE(LOWER(domain), '^www\\.', '') as domain FROM organization_domains
             UNION
-            SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+            SELECT REGEXP_REPLACE(LOWER(email_domain), '^www\\.', '') FROM organizations WHERE email_domain IS NOT NULL
           ),
           domain_orgs AS (
             -- Find which orgs users with each domain actually belong to
