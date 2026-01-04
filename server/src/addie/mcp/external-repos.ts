@@ -42,15 +42,55 @@ export interface IndexedExternalDoc {
 }
 
 /**
+ * Indexed heading from external repo - a section within a doc, searchable by itself
+ * Enables finding specific protocol details buried in larger spec documents
+ */
+export interface IndexedExternalHeading {
+  id: string;              // e.g., "external:iab-gpp:Core/Consent String Specification#string-format"
+  doc_id: string;          // parent doc ID
+  repoId: string;
+  repoName: string;
+  anchor: string;          // e.g., "string-format"
+  title: string;           // heading text
+  level: number;           // 2, 3 (skip level 1 - doc title)
+  parent_headings: string[]; // breadcrumb: ["Consent String Specification", "String Format"]
+  content: string;         // content under this heading
+  sourceUrl: string;       // with anchor: ".../spec.md#string-format"
+  path: string;            // file path within repo
+}
+
+/**
  * External repositories to index.
  * Add new repos here to make them available to Addie.
+ *
+ * These repos are pre-cloned at Docker build time (see Dockerfile)
+ * and updated on each server startup.
  */
 const EXTERNAL_REPOS: ExternalRepo[] = [
+  // ============================================
+  // AdCP Ecosystem (CORE)
+  // ============================================
+  {
+    id: 'adcp',
+    url: 'https://github.com/adcontextprotocol/adcp',
+    name: 'AdCP Protocol',
+    description: 'The Ad Context Protocol - core specification, docs, and schemas',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'docs/**/*.mdx', 'CHANGELOG.md'],
+    branch: 'main',
+  },
   {
     id: 'salesagent',
     url: 'https://github.com/adcontextprotocol/salesagent',
     name: 'AdCP Sales Agent',
     description: 'Reference implementation of an AdCP sales agent for publishers',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],
+    branch: 'main',
+  },
+  {
+    id: 'signals-agent',
+    url: 'https://github.com/adcontextprotocol/signals-agent',
+    name: 'AdCP Signals Agent',
+    description: 'Reference implementation of an AdCP Signals Agent',
     indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],
     branch: 'main',
   },
@@ -70,10 +110,215 @@ const EXTERNAL_REPOS: ExternalRepo[] = [
     indexPatterns: ['README.md', 'docs/**/*.md', 'CHANGELOG.md'],
     branch: 'main',
   },
+
+  // ============================================
+  // Agent Protocols - A2A
+  // ============================================
+  {
+    id: 'a2a',
+    url: 'https://github.com/a2aproject/A2A',
+    name: 'Google A2A Protocol',
+    description: 'Agent-to-Agent protocol for AI agent interoperability (Google/Linux Foundation)',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'spec/**/*.md', '*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'a2a-samples',
+    url: 'https://github.com/a2aproject/a2a-samples',
+    name: 'A2A Samples',
+    description: 'Sample code demonstrating A2A protocol mechanics',
+    indexPatterns: ['README.md', '**/*.md'],
+    branch: 'main',
+  },
+
+  // ============================================
+  // Agent Protocols - MCP
+  // ============================================
+  {
+    id: 'mcp-spec',
+    url: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
+    name: 'MCP Specification',
+    description: 'Model Context Protocol specification from Anthropic',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'spec/**/*.md', '*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'mcp-typescript-sdk',
+    url: 'https://github.com/modelcontextprotocol/typescript-sdk',
+    name: 'MCP TypeScript SDK',
+    description: 'Official TypeScript SDK for building MCP servers and clients',
+    indexPatterns: ['README.md', 'docs/**/*.md', '*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'mcp-python-sdk',
+    url: 'https://github.com/modelcontextprotocol/python-sdk',
+    name: 'MCP Python SDK',
+    description: 'Official Python SDK for building MCP servers and clients',
+    indexPatterns: ['README.md', 'docs/**/*.md', '*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'mcp-servers',
+    url: 'https://github.com/modelcontextprotocol/servers',
+    name: 'MCP Reference Servers',
+    description: 'Reference MCP server implementations',
+    indexPatterns: ['README.md', 'src/**/*.md', '*.md'],
+    branch: 'main',
+  },
+
+  // ============================================
+  // IAB Tech Lab - Agentic Advertising
+  // ============================================
+  {
+    id: 'iab-artf',
+    url: 'https://github.com/IABTechLab/agentic-rtb-framework',
+    name: 'IAB ARTF',
+    description: 'Agentic RTB Framework - containerized architecture for agentic ad trading',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'spec/**/*.md', '*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'iab-ucp',
+    url: 'https://github.com/IABTechLab/user-context-protocol',
+    name: 'IAB UCP',
+    description: 'User Context Protocol - agent context exchange (identity, contextual, reinforcement)',
+    indexPatterns: ['README.md', 'docs/**/*.md', 'spec/**/*.md', '*.md'],
+    branch: 'main',
+  },
+
+  // ============================================
+  // IAB Tech Lab - OpenMedia Stack
+  // ============================================
+  {
+    id: 'iab-openrtb2',
+    url: 'https://github.com/InteractiveAdvertisingBureau/openrtb2.x',
+    name: 'OpenRTB 2.x',
+    description: 'OpenRTB 2.6+ real-time bidding specification (production standard)',
+    indexPatterns: ['README.md', '*.md', 'extensions/**/*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'iab-openrtb3',
+    url: 'https://github.com/InteractiveAdvertisingBureau/openrtb',
+    name: 'OpenRTB 3.0',
+    description: 'OpenRTB 3.0 specification with layered architecture',
+    indexPatterns: ['README.md', '*.md', 'specification/**/*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'iab-adcom',
+    url: 'https://github.com/InteractiveAdvertisingBureau/AdCOM',
+    name: 'IAB AdCOM',
+    description: 'Advertising Common Object Model - domain objects for ads, placements, users',
+    indexPatterns: ['README.md', '*.md', 'specification/**/*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'iab-opendirect',
+    url: 'https://github.com/InteractiveAdvertisingBureau/OpenDirect',
+    name: 'IAB OpenDirect',
+    description: 'Automated Guaranteed buying specification for direct sales',
+    indexPatterns: ['README.md', '*.md', 'specification/**/*.md'],
+    branch: 'main',
+  },
+
+  // ============================================
+  // IAB Tech Lab - Privacy & Consent
+  // ============================================
+  {
+    id: 'iab-gpp',
+    url: 'https://github.com/InteractiveAdvertisingBureau/Global-Privacy-Platform',
+    name: 'IAB GPP',
+    description: 'Global Privacy Platform - consent signaling (TCF, MSPA, US State strings)',
+    indexPatterns: ['README.md', '*.md', 'Core/**/*.md', 'Sections/**/*.md'],
+    branch: 'main',
+  },
+  {
+    id: 'iab-tcf',
+    url: 'https://github.com/InteractiveAdvertisingBureau/GDPR-Transparency-and-Consent-Framework',
+    name: 'IAB TCF',
+    description: 'Transparency and Consent Framework technical specs for GDPR compliance',
+    indexPatterns: ['README.md', '*.md', 'TCFv2/**/*.md'],
+    branch: 'master',
+  },
+  {
+    id: 'iab-usprivacy',
+    url: 'https://github.com/InteractiveAdvertisingBureau/USPrivacy',
+    name: 'IAB US Privacy',
+    description: 'US Privacy technical specifications (CCPA compliance)',
+    indexPatterns: ['README.md', '*.md'],
+    branch: 'master',
+  },
+
+  // ============================================
+  // IAB Tech Lab - Identity
+  // ============================================
+  {
+    id: 'iab-uid2-docs',
+    url: 'https://github.com/IABTechLab/uid2docs',
+    name: 'UID2 Documentation',
+    description: 'Unified ID 2.0 documentation - privacy-safe identity solution',
+    indexPatterns: ['README.md', 'docs/**/*.md', '*.md'],
+    branch: 'main',
+  },
+
+  // ============================================
+  // IAB Tech Lab - Video & Security
+  // ============================================
+  {
+    id: 'iab-vast',
+    url: 'https://github.com/InteractiveAdvertisingBureau/vast',
+    name: 'IAB VAST',
+    description: 'Video Ad Serving Template - XML schema for video ad serving',
+    indexPatterns: ['README.md', '*.md', 'docs/**/*.md'],
+    branch: 'master',
+  },
+  {
+    id: 'iab-adscert',
+    url: 'https://github.com/IABTechLab/adscert',
+    name: 'IAB ads.cert',
+    description: 'ads.cert 2.0 authenticated connections protocol for supply chain security',
+    indexPatterns: ['README.md', '*.md', 'docs/**/*.md'],
+    branch: 'main',
+  },
+
+  // ============================================
+  // Prebid Ecosystem
+  // ============================================
+  {
+    id: 'prebid-js',
+    url: 'https://github.com/prebid/Prebid.js',
+    name: 'Prebid.js',
+    description: 'Client-side header bidding library with 200+ bid adapters',
+    indexPatterns: ['README.md', 'CONTRIBUTING.md'],
+    branch: 'master',
+  },
+  {
+    id: 'prebid-server',
+    url: 'https://github.com/prebid/prebid-server',
+    name: 'Prebid Server',
+    description: 'Server-side header bidding for mobile, AMP, CTV, DOOH',
+    indexPatterns: ['README.md', 'docs/**/*.md'],
+    branch: 'master',
+  },
+
+  // ============================================
+  // Agent Frameworks (for reference)
+  // ============================================
+  {
+    id: 'langgraph',
+    url: 'https://github.com/langchain-ai/langgraph',
+    name: 'LangGraph',
+    description: 'Framework for building controllable agent workflows',
+    indexPatterns: ['README.md', 'docs/**/*.md'],
+    branch: 'main',
+  },
 ];
 
-// In-memory index of external docs
+// In-memory index of external docs and headings
 let externalDocsIndex: IndexedExternalDoc[] = [];
+let externalHeadingsIndex: IndexedExternalHeading[] = [];
 let initialized = false;
 
 // Directory where repos are cached
@@ -251,6 +496,149 @@ function extractTitle(content: string, filename: string): string {
 }
 
 /**
+ * Generate a URL-safe anchor slug from heading text
+ * Follows GitHub/Mintlify conventions for heading anchors
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+    .replace(/\s+/g, '-')          // Spaces to hyphens
+    .replace(/-+/g, '-')           // Collapse multiple hyphens
+    .replace(/^-|-$/g, '');        // Trim leading/trailing hyphens
+}
+
+/**
+ * Extract headings from markdown content with their content sections
+ * Used to enable section-level search in external specs
+ */
+function extractHeadings(
+  content: string,
+  docId: string,
+  docTitle: string,
+  baseUrl: string,
+  repoId: string,
+  repoName: string,
+  filePath: string
+): IndexedExternalHeading[] {
+  const headings: IndexedExternalHeading[] = [];
+  const lines = content.split('\n');
+
+  // Track the parent heading stack for breadcrumbs
+  const parentStack: Array<{ level: number; title: string }> = [];
+
+  // Track seen anchors to handle duplicates (matching GitHub's behavior)
+  const seenAnchors = new Map<string, number>();
+
+  let currentHeading: {
+    level: number;
+    title: string;
+    anchor: string;
+    startLine: number;
+    parentHeadings: string[];
+  } | null = null;
+
+  let contentLines: string[] = [];
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Track code blocks to avoid extracting headings from code examples
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      if (currentHeading) contentLines.push(line);
+      continue;
+    }
+
+    // Skip processing inside code blocks
+    if (inCodeBlock) {
+      if (currentHeading) contentLines.push(line);
+      continue;
+    }
+
+    // Match ## or ### headings (skip # which is the doc title)
+    const headingMatch = line.match(/^(#{2,3})\s+(.+)$/);
+
+    if (headingMatch) {
+      // Save previous heading if exists
+      if (currentHeading) {
+        const headingContent = contentLines.join('\n').trim();
+        if (headingContent.length > 20) { // Only index headings with meaningful content
+          headings.push({
+            id: `${docId}#${currentHeading.anchor}`,
+            doc_id: docId,
+            repoId,
+            repoName,
+            anchor: currentHeading.anchor,
+            title: currentHeading.title,
+            level: currentHeading.level,
+            parent_headings: currentHeading.parentHeadings,
+            content: headingContent,
+            sourceUrl: `${baseUrl}#${currentHeading.anchor}`,
+            path: filePath,
+          });
+        }
+      }
+
+      const level = headingMatch[1].length;
+      const title = headingMatch[2].trim();
+      const baseAnchor = slugify(title);
+
+      // Handle duplicate anchors by appending a counter (matching GitHub's behavior)
+      const count = seenAnchors.get(baseAnchor) || 0;
+      const anchor = count > 0 ? `${baseAnchor}-${count}` : baseAnchor;
+      seenAnchors.set(baseAnchor, count + 1);
+
+      // Update parent stack - pop any headings at same or lower level
+      while (parentStack.length > 0 && parentStack[parentStack.length - 1].level >= level) {
+        parentStack.pop();
+      }
+
+      // Build breadcrumb from stack + current
+      const parentHeadings = [docTitle, ...parentStack.map(p => p.title)];
+
+      // Push current heading onto stack
+      parentStack.push({ level, title });
+
+      currentHeading = {
+        level,
+        title,
+        anchor,
+        startLine: i,
+        parentHeadings,
+      };
+
+      contentLines = [];
+    } else if (currentHeading) {
+      contentLines.push(line);
+    }
+  }
+
+  // Don't forget the last heading
+  if (currentHeading) {
+    const headingContent = contentLines.join('\n').trim();
+    if (headingContent.length > 20) {
+      headings.push({
+        id: `${docId}#${currentHeading.anchor}`,
+        doc_id: docId,
+        repoId,
+        repoName,
+        anchor: currentHeading.anchor,
+        title: currentHeading.title,
+        level: currentHeading.level,
+        parent_headings: currentHeading.parentHeadings,
+        content: headingContent,
+        sourceUrl: `${baseUrl}#${currentHeading.anchor}`,
+        path: filePath,
+      });
+    }
+  }
+
+  return headings;
+}
+
+/**
  * Clean markdown content
  */
 function cleanContent(content: string): string {
@@ -279,10 +667,14 @@ function buildSourceUrl(repo: ExternalRepo, relativePath: string): string {
 }
 
 /**
- * Index a single repository
+ * Index a single repository - returns both docs and headings
  */
-function indexRepo(repo: ExternalRepo, repoPath: string): IndexedExternalDoc[] {
-  const indexed: IndexedExternalDoc[] = [];
+function indexRepo(
+  repo: ExternalRepo,
+  repoPath: string
+): { docs: IndexedExternalDoc[]; headings: IndexedExternalHeading[] } {
+  const docs: IndexedExternalDoc[] = [];
+  const headings: IndexedExternalHeading[] = [];
   const patterns = repo.indexPatterns || ['README.md', 'docs/**/*.md'];
 
   const files = findMatchingFiles(repoPath, patterns);
@@ -300,21 +692,36 @@ function indexRepo(repo: ExternalRepo, repoPath: string): IndexedExternalDoc[] {
         continue;
       }
 
-      indexed.push({
-        id: `external:${repo.id}:${relativePath.replace(/\\/g, '/').replace(/\.(md|mdx)$/, '')}`,
+      const docId = `external:${repo.id}:${relativePath.replace(/\\/g, '/').replace(/\.(md|mdx)$/, '')}`;
+      const sourceUrl = buildSourceUrl(repo, relativePath);
+
+      docs.push({
+        id: docId,
         repoId: repo.id,
         repoName: repo.name,
         title,
         path: relativePath,
         content: cleanedContent,
-        sourceUrl: buildSourceUrl(repo, relativePath),
+        sourceUrl,
       });
+
+      // Extract headings for section-level search
+      const docHeadings = extractHeadings(
+        cleanedContent,
+        docId,
+        title,
+        sourceUrl,
+        repo.id,
+        repo.name,
+        relativePath
+      );
+      headings.push(...docHeadings);
     } catch (error) {
       logger.warn({ repoId: repo.id, filePath, error }, 'Addie External Repos: Failed to index file');
     }
   }
 
-  return indexed;
+  return { docs, headings };
 }
 
 /**
@@ -339,12 +746,14 @@ export async function initializeExternalRepos(): Promise<void> {
   logger.info({ repoCount: EXTERNAL_REPOS.length }, 'Addie External Repos: Syncing repositories');
 
   externalDocsIndex = [];
+  externalHeadingsIndex = [];
 
   for (const repo of EXTERNAL_REPOS) {
     const repoPath = syncRepo(repo);
     if (repoPath) {
-      const docs = indexRepo(repo, repoPath);
+      const { docs, headings } = indexRepo(repo, repoPath);
       externalDocsIndex.push(...docs);
+      externalHeadingsIndex.push(...headings);
     }
   }
 
@@ -352,6 +761,7 @@ export async function initializeExternalRepos(): Promise<void> {
   logger.info(
     {
       totalDocs: externalDocsIndex.length,
+      totalHeadings: externalHeadingsIndex.length,
       repos: EXTERNAL_REPOS.map((r) => r.id).join(', '),
     },
     'Addie External Repos: Indexing complete'
@@ -493,21 +903,125 @@ export function searchExternalDocs(
 }
 
 /**
- * Get all indexed external repos with doc counts
+ * Search external repos at heading/section level
+ * Better for finding specific protocol details buried in larger spec documents
  */
-export function getExternalRepoStats(): Array<{ id: string; name: string; docCount: number }> {
-  const counts = new Map<string, number>();
+export function searchExternalHeadings(
+  query: string,
+  options: { repoId?: string; limit?: number } = {}
+): IndexedExternalHeading[] {
+  if (!initialized || externalHeadingsIndex.length === 0) {
+    return [];
+  }
+
+  const limit = options.limit ?? 5;
+  const queryLower = query.toLowerCase();
+  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+
+  // Expand query words with synonyms
+  const expandedWords = new Set(queryWords);
+  for (const word of queryWords) {
+    const synonyms = SEARCH_SYNONYMS[word];
+    if (synonyms) {
+      synonyms.forEach((syn) => expandedWords.add(syn));
+    }
+  }
+
+  // Pre-compile regexes for expanded words (avoid creating 36,785 regexes per search)
+  const wordPatterns = Array.from(expandedWords).map((word) => ({
+    word,
+    regex: new RegExp(escapeRegex(word), 'g'),
+  }));
+
+  // Score each heading
+  const scored = externalHeadingsIndex
+    .filter((heading) => {
+      // Filter by repo if specified
+      if (options.repoId && heading.repoId !== options.repoId) {
+        return false;
+      }
+      return true;
+    })
+    .map((heading) => {
+      const titleLower = heading.title.toLowerCase();
+      const contentLower = heading.content.toLowerCase();
+      const breadcrumbLower = heading.parent_headings.join(' ').toLowerCase();
+
+      let score = 0;
+
+      // Exact query match in heading title (highest weight)
+      if (titleLower.includes(queryLower)) {
+        score += 150;
+      }
+
+      // Exact title match (bonus)
+      if (titleLower === queryLower) {
+        score += 100;
+      }
+
+      // Match in parent headings (breadcrumb context)
+      if (breadcrumbLower.includes(queryLower)) {
+        score += 40;
+      }
+
+      // Exact query match in content
+      if (contentLower.includes(queryLower)) {
+        score += 30;
+      }
+
+      // Individual word matches (including synonyms)
+      for (const { word, regex } of wordPatterns) {
+        if (titleLower.includes(word)) {
+          score += 25;
+        }
+        if (breadcrumbLower.includes(word)) {
+          score += 10;
+        }
+        // Count occurrences in content (limited to avoid huge scores)
+        regex.lastIndex = 0; // Reset regex since we're reusing
+        const occurrences = Math.min((contentLower.match(regex) || []).length, 5);
+        score += occurrences * 2;
+      }
+
+      return { heading, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ heading }) => heading);
+
+  return scored;
+}
+
+/**
+ * Get total heading count for external repos
+ */
+export function getExternalHeadingCount(): number {
+  return externalHeadingsIndex.length;
+}
+
+/**
+ * Get all indexed external repos with doc and heading counts
+ */
+export function getExternalRepoStats(): Array<{ id: string; name: string; docCount: number; headingCount: number }> {
+  const docCounts = new Map<string, number>();
+  const headingCounts = new Map<string, number>();
   const names = new Map<string, string>();
 
   for (const doc of externalDocsIndex) {
-    counts.set(doc.repoId, (counts.get(doc.repoId) || 0) + 1);
+    docCounts.set(doc.repoId, (docCounts.get(doc.repoId) || 0) + 1);
     names.set(doc.repoId, doc.repoName);
   }
 
-  return Array.from(counts.entries()).map(([id, count]) => ({
+  for (const heading of externalHeadingsIndex) {
+    headingCounts.set(heading.repoId, (headingCounts.get(heading.repoId) || 0) + 1);
+  }
+
+  return Array.from(docCounts.entries()).map(([id, count]) => ({
     id,
     name: names.get(id) || id,
     docCount: count,
+    headingCount: headingCounts.get(id) || 0,
   }));
 }
 

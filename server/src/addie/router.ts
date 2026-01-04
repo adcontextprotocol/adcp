@@ -150,10 +150,40 @@ export const ROUTING_RULES = {
       tools: ['search_slack'],
       description: 'Community discussions',
     },
-    external_protocols: {
-      patterns: ['mcp', 'model context protocol', 'a2a', 'agent to agent'],
-      tools: ['web_search'],
-      description: 'External protocols (MCP, A2A) - web search only',
+    ad_tech_protocols: {
+      patterns: [
+        'openrtb',
+        'open rtb',
+        'adcom',
+        'vast',
+        'opendirect',
+        'prebid',
+        'header bidding',
+        'rtb',
+        'real-time bidding',
+        'iab',
+        'tcf',
+        'transparency consent',
+        'gpp',
+        'global privacy',
+        'ccpa',
+        'us privacy',
+        'uid2',
+        'unified id',
+        'ads.cert',
+        'adscert',
+        'artf',
+        'agentic rtb',
+        'ucp',
+        'user context protocol',
+      ],
+      tools: ['search_repos', 'search_docs'],
+      description: 'IAB Tech Lab specs and ad tech protocols - we have these indexed!',
+    },
+    agent_protocols: {
+      patterns: ['mcp', 'model context protocol', 'a2a', 'agent to agent', 'langgraph', 'langchain'],
+      tools: ['search_repos'],
+      description: 'Agent protocols (MCP, A2A, LangGraph) - we have these indexed!',
     },
     industry_news: {
       patterns: ['news', 'industry', 'announcement', 'latest', 'trend'],
@@ -276,8 +306,9 @@ IMPORTANT: Choose tools based on the user's INTENT, not just keywords:
 - "Validate my adagents.json" / "Check example.com" / "Debug my setup" → validate_adagents (action/validation)
 - "How do I use the SDK?" / "Salesagent setup" → search_repos (implementation help)
 - "What did someone say about X?" → search_slack (community discussions)
-- Questions about MCP, A2A, external protocols → web_search (external info)
+- Questions about MCP, A2A, OpenRTB, AdCOM, TCF, GPP, UID2, Prebid, IAB specs → search_repos (we have these indexed!)
 - "Is my agent working?" / "Test my endpoint" → check_agent_health (testing)
+- Questions about topics NOT in our indexed repos → web_search (external info)
 
 ## Messages to React To (emoji only, no response)
 ${reactList}
