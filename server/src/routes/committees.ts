@@ -11,6 +11,7 @@ import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeader } from "../middleware/auth.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
+import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyWorkingGroupPost } from "../notifications/slack.js";
@@ -673,6 +674,33 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get working group posts error');
       res.status(500).json({
         error: 'Failed to get posts',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/events - Get events for a committee
+  publicApiRouter.get('/:slug/events', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: `No working group found with slug: ${slug}`,
+        });
+      }
+
+      // Get events linked to this committee (published only for public view)
+      const events = await eventsDb.getEventsByCommittee(group.id, { includeUnpublished: false });
+
+      res.json(events);
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee events error');
+      res.status(500).json({
+        error: 'Failed to get events',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -1469,6 +1497,273 @@ export function createCommitteeRouters(): {
   });
 
   // =========================================================================
+  // COMMITTEE EVENT MANAGEMENT (Leader-only)
+  // =========================================================================
+
+  // GET /api/working-groups/:slug/manage/events - List committee events for leaders
+  publicApiRouter.get('/:slug/manage/events', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: `No working group found with slug: ${slug}`,
+        });
+      }
+
+      // Get events linked to this committee (including drafts for leaders)
+      const { upcoming, past } = await eventsDb.getEventsByCommittee(group.id, { includeUnpublished: true });
+
+      // Combine and sort by start_time descending
+      const allEvents = [...upcoming, ...past].sort((a, b) =>
+        new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+      );
+
+      res.json({ events: allEvents });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee events error');
+      res.status(500).json({
+        error: 'Failed to get events',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/manage/events/:eventId - Get single event for editing
+  publicApiRouter.get('/:slug/manage/events/:eventId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, eventId } = req.params;
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const event = await eventsDb.getEventById(eventId);
+
+      if (!event) {
+        return res.status(404).json({
+          error: 'Event not found',
+          message: `No event found with id: ${eventId}`,
+        });
+      }
+
+      // Verify event is linked to this committee
+      const isLinked = await eventsDb.isCommitteeLinkedToEvent(eventId, group.id);
+      if (!isLinked) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'This event is not linked to your committee',
+        });
+      }
+
+      res.json(event);
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee event error');
+      res.status(500).json({
+        error: 'Failed to get event',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/working-groups/:slug/manage/events - Create event as committee leader
+  publicApiRouter.post('/:slug/manage/events', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const user = req.user!;
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const {
+        title,
+        description,
+        slug: eventSlug,
+        start_time,
+        end_time,
+        event_format,
+        event_type,
+        status,
+        venue_name,
+        venue_address,
+        venue_city,
+        venue_state,
+        virtual_meeting_url,
+        max_attendees,
+      } = req.body;
+
+      if (!title || !eventSlug) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Title and slug are required',
+        });
+      }
+
+      // Default venue_city from chapter region if this is a chapter
+      let defaultCity = venue_city;
+      if (!defaultCity && group.committee_type === 'chapter' && group.region) {
+        defaultCity = group.region.replace(' Chapter', '').replace(' chapter', '').trim();
+      }
+
+      const event = await eventsDb.createEvent({
+        title,
+        description: description || undefined,
+        slug: eventSlug,
+        start_time: start_time ? new Date(start_time) : new Date(),
+        end_time: end_time ? new Date(end_time) : undefined,
+        event_format: event_format || 'in_person',
+        event_type: event_type || 'meetup',
+        status: status || 'draft',
+        venue_name: venue_name || undefined,
+        venue_address: venue_address || undefined,
+        venue_city: defaultCity || undefined,
+        venue_state: venue_state || undefined,
+        virtual_url: virtual_meeting_url || undefined,
+        max_attendees: max_attendees || undefined,
+        created_by_user_id: user.id,
+      });
+
+      // Link the event to this committee as the host
+      await eventsDb.linkEventToCommittee(event.id, group.id, 'host', user.id);
+
+      res.status(201).json(event);
+    } catch (error) {
+      logger.error({ err: error }, 'Create committee event error');
+      res.status(500).json({
+        error: 'Failed to create event',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // PUT /api/working-groups/:slug/manage/events/:eventId - Update event as committee leader
+  publicApiRouter.put('/:slug/manage/events/:eventId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, eventId } = req.params;
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      // Verify event is linked to this committee
+      const isLinked = await eventsDb.isCommitteeLinkedToEvent(eventId, group.id);
+      if (!isLinked) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'This event is not linked to your committee',
+        });
+      }
+
+      const existingEvent = await eventsDb.getEventById(eventId);
+      if (!existingEvent) {
+        return res.status(404).json({
+          error: 'Event not found',
+          message: `No event found with id: ${eventId}`,
+        });
+      }
+
+      const {
+        title,
+        description,
+        start_time,
+        end_time,
+        event_format,
+        event_type,
+        status,
+        venue_name,
+        venue_address,
+        venue_city,
+        venue_state,
+        virtual_meeting_url,
+        max_attendees,
+      } = req.body;
+
+      const updatedEvent = await eventsDb.updateEvent(eventId, {
+        title,
+        description,
+        start_time: start_time ? new Date(start_time) : undefined,
+        end_time: end_time ? new Date(end_time) : undefined,
+        event_format,
+        event_type,
+        status,
+        venue_name,
+        venue_address,
+        venue_city,
+        venue_state,
+        virtual_url: virtual_meeting_url,
+        max_attendees,
+      });
+
+      res.json(updatedEvent);
+    } catch (error) {
+      logger.error({ err: error }, 'Update committee event error');
+      res.status(500).json({
+        error: 'Failed to update event',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // DELETE /api/working-groups/:slug/manage/events/:eventId - Delete event as committee leader
+  publicApiRouter.delete('/:slug/manage/events/:eventId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, eventId } = req.params;
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      // Verify event is linked to this committee
+      const isLinked = await eventsDb.isCommitteeLinkedToEvent(eventId, group.id);
+      if (!isLinked) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'This event is not linked to your committee',
+        });
+      }
+
+      const existingEvent = await eventsDb.getEventById(eventId);
+      if (!existingEvent) {
+        return res.status(404).json({
+          error: 'Event not found',
+          message: `No event found with id: ${eventId}`,
+        });
+      }
+
+      // First unlink from all committees, then delete
+      await eventsDb.unlinkEventFromCommittee(eventId, group.id);
+      await eventsDb.deleteEvent(eventId);
+
+      res.json({ success: true, deleted: eventId });
+    } catch (error) {
+      logger.error({ err: error }, 'Delete committee event error');
+      res.status(500).json({
+        error: 'Failed to delete event',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // =========================================================================
   // USER API ROUTES (/api/me/working-groups)
   // =========================================================================
 
@@ -1482,6 +1777,21 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get user working groups error');
       res.status(500).json({
         error: 'Failed to get working groups',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/me/working-groups/leading - Get committees the current user leads
+  userApiRouter.get('/leading', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const committees = await workingGroupDb.getCommitteesLedByUser(user.id);
+      res.json({ committees });
+    } catch (error) {
+      logger.error({ err: error }, 'Get user led committees error');
+      res.status(500).json({
+        error: 'Failed to get led committees',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
