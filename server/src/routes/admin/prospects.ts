@@ -679,15 +679,21 @@ export function setupProspectRoutes(apiRouter: Router): void {
     try {
       const pool = getPool();
 
-      // Get unique stakeholders who have been assigned as owners across any organization
+      // Get all members of the aao-admin working group (the actual admins)
       const result = await pool.query(`
-        SELECT DISTINCT user_id, user_name, user_email
-        FROM org_stakeholders
-        WHERE role = 'owner'
+        SELECT DISTINCT
+          u.workos_user_id as user_id,
+          COALESCE(u.first_name || ' ' || u.last_name, u.email) as user_name,
+          u.email as user_email
+        FROM working_group_memberships wgm
+        JOIN working_groups wg ON wg.id = wgm.working_group_id
+        JOIN users u ON u.workos_user_id = wgm.workos_user_id
+        WHERE wg.slug = 'aao-admin'
+          AND wgm.status = 'active'
         ORDER BY user_name ASC
       `);
 
-      // Also include the current user if not already in the list
+      // Also include the current user if not already in the list (they should be admin to reach here)
       const currentUserId = req.user?.id;
       const currentUserName =
         req.user?.firstName && req.user?.lastName
