@@ -489,24 +489,26 @@ export class WorkingGroupDatabase {
     // 3. organization_memberships (older sync)
     // 4. Falls back to user_id if no name found
     const result = await query<WorkingGroupMembership>(
-      `SELECT
-         wgm.*,
-         COALESCE(
-           NULLIF(wgm.user_name, ''),
-           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
-           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
-           u.email,
-           om.email,
-           wgm.workos_user_id
-         ) AS user_name,
-         COALESCE(wgm.user_email, u.email, om.email) AS user_email,
-         COALESCE(wgm.user_org_name, user_org.name, org.name) AS user_org_name
-       FROM working_group_memberships wgm
-       LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
-       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgm.workos_user_id = om.workos_user_id
-       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
-       WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
+      `SELECT * FROM (
+         SELECT
+           wgm.*,
+           COALESCE(
+             NULLIF(wgm.user_name, ''),
+             NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+             NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+             u.email,
+             om.email,
+             wgm.workos_user_id
+           ) AS user_name,
+           COALESCE(wgm.user_email, u.email, om.email) AS user_email,
+           COALESCE(wgm.user_org_name, user_org.name, org.name) AS user_org_name
+         FROM working_group_memberships wgm
+         LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
+         LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
+         LEFT JOIN organization_memberships om ON wgm.workos_user_id = om.workos_user_id
+         LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+         WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
+       ) AS enriched
        ORDER BY user_name, user_email`,
       [workingGroupId]
     );
