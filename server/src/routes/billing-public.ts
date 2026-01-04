@@ -415,24 +415,28 @@ export function createPublicBillingRouter(): Router {
         // Dev mode: return mock billing data based on dev user type
         const devUser = isDevModeEnabled() ? getDevUser(req) : null;
         if (devUser) {
-          // For 'member' and 'admin' dev users, simulate organization needing profile info
-          // with enrichment-based suggestions for prefilling the modal
-          // For 'nonmember' dev user, simulate personal workspace (no modal needed)
+          // For 'member' and 'admin' dev users, simulate active membership
+          // For 'nonmember' dev user, simulate personal workspace with no subscription
           if (devUser.isMember) {
             return res.json({
-              subscription: null, // No subscription yet - needs to sign up
+              subscription: {
+                status: "active",
+                product_id: "prod_dev_membership",
+                product_name: "Company Membership (Dev)",
+                current_period_end: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60, // 1 year from now
+                cancel_at_period_end: false,
+              },
               stripe_customer_id: "cus_dev_mock",
               customer_session_secret: null,
-              company_type: null, // Not set - triggers modal
-              revenue_tier: null, // Not set - triggers modal
+              company_type: "adtech",
+              revenue_tier: "5m_50m",
               is_personal: false,
               pending_invoices: [],
-              // Enrichment-based suggestions for prefilling the profile modal
-              suggested_company_type: "adtech", // Simulates Lusha enrichment data
-              suggested_revenue_tier: "5m_50m", // Simulates Lusha enrichment data
+              suggested_company_type: "adtech",
+              suggested_revenue_tier: "5m_50m",
             });
           } else {
-            // Non-member dev user - personal workspace (no profile modal needed)
+            // Non-member dev user - personal workspace (no subscription)
             return res.json({
               subscription: null,
               stripe_customer_id: "cus_dev_mock",
