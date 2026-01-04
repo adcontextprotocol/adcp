@@ -634,6 +634,17 @@
         </div>
       </section>
 
+      <!-- ========== LEADERSHIP SECTION ========== -->
+      <section id="leadership" class="dashboard-section" style="display: none;">
+        <div class="section-header">
+          <h2>Leadership</h2>
+          <p>Manage the committees you lead</p>
+        </div>
+        <div id="leadershipContent">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: 20px;">Loading committees...</div>
+        </div>
+      </section>
+
       <!-- ========== MEMBERSHIP SECTION ========== -->
       <section id="membership" class="dashboard-section">
         <div class="section-header">
@@ -1011,6 +1022,7 @@
       // ===== LOAD DATA =====
       loadTeamSection(org.id);
       loadCommitteesSection();
+      loadLeadershipSection();
 
       // ===== MEMBERSHIP SIGNUP SECTION (hidden, for modal use) =====
       const membershipSection = document.getElementById('membershipSection');
@@ -1957,6 +1969,100 @@
       }
     }
 
+    // Load leadership section - committees the user leads
+    async function loadLeadershipSection() {
+      const section = document.getElementById('leadership');
+      const container = document.getElementById('leadershipContent');
+      if (!container) return;
+
+      try {
+        const response = await fetch('/api/me/working-groups/leading', { credentials: 'include' });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Not logged in - hide section
+            if (section) section.style.display = 'none';
+            return;
+          }
+          throw new Error('Failed to load leadership data');
+        }
+
+        const data = await response.json();
+        const committees = data.committees || [];
+
+        if (committees.length === 0) {
+          // No committees - hide section and nav item
+          if (section) section.style.display = 'none';
+          if (window.DashboardNav) {
+            DashboardNav.showLeadershipNav(false);
+          }
+          return;
+        }
+
+        // Show the section and nav item
+        if (section) section.style.display = 'block';
+        if (window.DashboardNav) {
+          DashboardNav.showLeadershipNav(true);
+        }
+
+        // Committee type labels
+        const typeLabels = {
+          working_group: 'Working Group',
+          council: 'Council',
+          chapter: 'Chapter',
+          governance: 'Governance',
+          industry_gathering: 'Industry Gathering'
+        };
+
+        // Committee type icons
+        const typeIcons = {
+          working_group: '🏛️',
+          council: '👥',
+          chapter: '📍',
+          governance: '⚖️',
+          industry_gathering: '🎪'
+        };
+
+        // Render committee cards with manage link
+        const committeesHtml = committees.map(c => {
+          const typeLabel = typeLabels[c.committee_type] || 'Committee';
+          const typeIcon = typeIcons[c.committee_type] || '📋';
+
+          return `
+            <div class="section-card" style="margin-bottom: 16px;">
+              <div style="display: flex; align-items: start; gap: 16px; padding: 20px;">
+                <div style="width: 48px; height: 48px; border-radius: 10px; background: var(--color-primary-100); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;">
+                  ${typeIcon}
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                    <h3 style="margin: 0; font-size: 16px; color: var(--color-text-heading);">${escapeHtml(c.name)}</h3>
+                    <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: var(--color-gray-100); color: var(--color-text-secondary);">${typeLabel}</span>
+                  </div>
+                  <p style="margin: 0 0 12px 0; color: var(--color-text-secondary); font-size: 13px;">
+                    ${c.member_count || 0} member${c.member_count === 1 ? '' : 's'}${c.region ? ' &bull; ' + escapeHtml(c.region) : ''}
+                  </p>
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <a href="/working-groups/${escapeHtml(c.slug)}" class="btn btn-ghost btn-sm">View Page</a>
+                    <a href="/working-groups/${escapeHtml(c.slug)}/manage" class="btn btn-primary btn-sm">Manage</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = committeesHtml;
+
+      } catch (error) {
+        console.error('Error loading leadership section:', error);
+        if (section) section.style.display = 'none';
+        if (window.DashboardNav) {
+          DashboardNav.showLeadershipNav(false);
+        }
+      }
+    }
+
     // Handle interest click for launching committees
     async function handleCommitteeInterest(committeeSlug, committeeName, buttonEl) {
       try {
@@ -2023,6 +2129,7 @@
         setTimeout(() => toast.remove(), 300);
       }, 3000);
     }
+
 
     // Load working groups for the current user (legacy - kept for compatibility)
     async function loadWorkingGroups() {

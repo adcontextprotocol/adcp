@@ -274,6 +274,83 @@
     }
     .char-count.warning { color: var(--color-warning-600); }
     .char-count.over { color: var(--color-error-600); }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      margin-bottom: var(--space-6);
+    }
+    .tab-btn {
+      padding: var(--space-3) var(--space-5);
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: var(--transition-all);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .tab-btn:hover {
+      color: var(--color-text-heading);
+    }
+    .tab-btn.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Events list */
+    .events-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .event-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-4);
+    }
+    .event-item:hover {
+      border-color: var(--color-brand);
+    }
+    .event-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .event-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .event-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    .badge-in_person { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-virtual { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-hybrid { background: var(--color-purple-100, var(--color-primary-100)); color: var(--color-purple-700, var(--color-primary-700)); }
+    .badge-cancelled { background: var(--color-error-100); color: var(--color-error-700); }
+
     @media (max-width: 768px) {
       .form-row { grid-template-columns: 1fr; }
       .editor-preview { grid-template-columns: 1fr; }
@@ -311,20 +388,65 @@
     <div class="card">
       <div class="header-bar">
         <div>
-          <h1>Manage Posts</h1>
-          <p class="subtitle">Create and manage posts for <strong id="groupNameTitle"></strong></p>
+          <h1 id="pageHeading">Manage</h1>
+          <p class="subtitle">Manage content for <strong id="groupNameTitle"></strong></p>
         </div>
-        <button class="btn btn-primary" onclick="showCreateModal()">
+      </div>
+
+      <!-- Tabs (events tab shown only for chapters) -->
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('posts')" id="postsTab">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
-          New Post
+          Posts
+        </button>
+        <button class="tab-btn" onclick="switchTab('events')" id="eventsTab" style="display: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Events
         </button>
       </div>
 
-      <div id="postsList" class="posts-list">
-        Loading posts...
+      <!-- Posts Tab Content -->
+      <div id="postsContent" class="tab-content active">
+        <div class="header-bar" style="margin-bottom: var(--space-4);">
+          <div></div>
+          <button class="btn btn-primary" onclick="showCreateModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Post
+          </button>
+        </div>
+        <div id="postsList" class="posts-list">
+          Loading posts...
+        </div>
+      </div>
+
+      <!-- Events Tab Content (chapters only) -->
+      <div id="eventsContent" class="tab-content">
+        <div class="header-bar" style="margin-bottom: var(--space-4);">
+          <div></div>
+          <button class="btn btn-primary" onclick="showCreateEventModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Event
+          </button>
+        </div>
+        <div id="eventsList" class="events-list">
+          Loading events...
+        </div>
       </div>
     </div>
   </div>
@@ -466,12 +588,141 @@
     </div>
   </div>
 
+  <!-- Event Create/Edit Modal -->
+  <div id="eventModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="eventModalTitle">New Event</h2>
+
+      <form id="eventForm" onsubmit="saveEvent(event)">
+        <input type="hidden" id="eventId">
+
+        <div class="form-group">
+          <label>Event Title *</label>
+          <input type="text" id="eventTitle" required placeholder="e.g., NYC Chapter Happy Hour">
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="eventDescription" placeholder="Describe what attendees can expect..." rows="4"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date & Time *</label>
+            <input type="datetime-local" id="eventStartTime" required>
+          </div>
+          <div class="form-group">
+            <label>End Time (optional)</label>
+            <input type="datetime-local" id="eventEndTime">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Event Format</label>
+            <select id="eventFormat">
+              <option value="in_person">In Person</option>
+              <option value="virtual">Virtual</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Event Type</label>
+            <select id="eventType">
+              <option value="meetup">Meetup</option>
+              <option value="workshop">Workshop</option>
+              <option value="conference">Conference</option>
+              <option value="webinar">Webinar</option>
+              <option value="social">Social</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="venueFields">
+          <div class="form-group">
+            <label>Venue Name</label>
+            <input type="text" id="eventVenueName" placeholder="e.g., The Local Bar & Grill">
+          </div>
+
+          <div class="form-group">
+            <label>Venue Address</label>
+            <input type="text" id="eventVenueAddress" placeholder="123 Main St">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>City</label>
+              <input type="text" id="eventVenueCity" placeholder="New York">
+            </div>
+            <div class="form-group">
+              <label>State</label>
+              <input type="text" id="eventVenueState" placeholder="NY">
+            </div>
+          </div>
+        </div>
+
+        <div id="virtualFields" style="display: none;">
+          <div class="form-group">
+            <label>Virtual Meeting URL</label>
+            <input type="url" id="eventVirtualUrl" placeholder="https://zoom.us/j/...">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>URL Slug *</label>
+            <input type="text" id="eventSlug" required placeholder="nyc-happy-hour-jan-2025" pattern="[a-z0-9-]+">
+            <small>URL: /events/{slug}</small>
+          </div>
+          <div class="form-group">
+            <label>Max Attendees (optional)</label>
+            <input type="number" id="eventMaxAttendees" min="1" placeholder="Leave empty for unlimited">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Status</label>
+            <select id="eventStatus">
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeEventModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveEventBtn">Save Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Event Confirmation Modal -->
+  <div id="deleteEventModal" class="modal-overlay">
+    <div class="modal" style="max-width: 450px;">
+      <h2>Delete Event</h2>
+      <p style="margin: var(--space-5) 0; color: var(--color-text-secondary);">
+        Are you sure you want to delete "<span id="deleteEventTitle"></span>"? This action cannot be undone.
+      </p>
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteEventModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDeleteEvent()">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentSlug = '';
     let currentGroup = null;
     let posts = [];
+    let events = [];
     let editingPost = null;
+    let editingEvent = null;
     let deletingPostId = null;
+    let deletingEventId = null;
+    let currentTab = 'posts';
 
     async function init() {
       // Get slug from URL
@@ -486,8 +737,41 @@
         return;
       }
 
+      // Check for tab query param
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam === 'events') {
+        currentTab = 'events';
+      }
+
       // Try to load posts - this will fail with 403 if not a leader
       await loadPosts();
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+
+      // Update tab buttons
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(tab + 'Tab').classList.add('active');
+
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      document.getElementById(tab + 'Content').classList.add('active');
+
+      // Load events if switching to events tab for first time
+      if (tab === 'events' && events.length === 0) {
+        loadEvents();
+      }
+
+      // Update URL without reload
+      const url = new URL(window.location);
+      if (tab === 'events') {
+        url.searchParams.set('tab', 'events');
+      } else {
+        url.searchParams.delete('tab');
+      }
+      window.history.replaceState({}, '', url);
     }
 
     async function loadPosts() {
@@ -522,16 +806,32 @@
         if (groupResponse.ok) {
           const groupData = await groupResponse.json();
           currentGroup = groupData.working_group;
-          document.getElementById('pageTitle').textContent = `Manage Posts | ${currentGroup.name} | AgenticAdvertising.org`;
+          document.getElementById('pageTitle').textContent = `Manage | ${currentGroup.name} | AgenticAdvertising.org`;
           document.getElementById('groupNameBack').textContent = currentGroup.name;
           document.getElementById('groupNameTitle').textContent = currentGroup.name;
           document.getElementById('backLink').href = `/working-groups/${currentSlug}`;
+
+          // Show events tab for all committees
+          document.getElementById('eventsTab').style.display = 'flex';
+
+          // Pre-fill city from chapter region (if applicable)
+          if (currentGroup.committee_type === 'chapter' && currentGroup.region) {
+            const cityField = document.getElementById('eventVenueCity');
+            if (cityField && !cityField.value) {
+              cityField.value = currentGroup.region.replace(' Chapter', '').replace(' chapter', '').trim();
+            }
+          }
         }
 
         renderPosts();
 
         document.getElementById('loadingState').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
+
+        // Switch to events tab if requested via URL
+        if (currentTab === 'events') {
+          switchTab('events');
+        }
       } catch (error) {
         console.error('Error loading posts:', error);
         showError('Failed to load posts. Please try again.');
@@ -835,6 +1135,253 @@
       return div.innerHTML;
     }
 
+    // =========================================================================
+    // EVENT MANAGEMENT FUNCTIONS
+    // =========================================================================
+
+    async function loadEvents() {
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/manage/events`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          if (response.status === 403) {
+            document.getElementById('eventsList').innerHTML = `
+              <div class="empty-state">
+                <p>You don't have permission to manage events.</p>
+              </div>
+            `;
+            return;
+          }
+          throw new Error('Failed to load events');
+        }
+
+        const data = await response.json();
+        events = data.events || [];
+        renderEvents();
+      } catch (error) {
+        console.error('Error loading events:', error);
+        document.getElementById('eventsList').innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load events. Please try again.</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderEvents() {
+      const listDiv = document.getElementById('eventsList');
+
+      if (events.length === 0) {
+        listDiv.innerHTML = `
+          <div class="empty-state">
+            <p>No events yet.</p>
+            <p>Click "New Event" to create your first event.</p>
+          </div>
+        `;
+        return;
+      }
+
+      listDiv.innerHTML = events.map(event => {
+        const statusBadge = `<span class="badge badge-${event.status}">${event.status}</span>`;
+        const formatBadge = event.event_format ? `<span class="badge badge-${event.event_format}">${event.event_format.replace('_', ' ')}</span>` : '';
+        const date = event.start_time
+          ? new Date(event.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const time = event.start_time
+          ? new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+          : '';
+
+        return `
+          <div class="event-item">
+            <div class="event-info">
+              <h3>${escapeHtml(event.title)}</h3>
+              <div class="event-meta">
+                ${statusBadge}
+                ${formatBadge}
+                ${date ? `<span>${date}</span>` : ''}
+                ${time ? `<span>${time}</span>` : ''}
+                ${event.venue_name ? `<span>${escapeHtml(event.venue_name)}</span>` : ''}
+              </div>
+            </div>
+            <div class="event-actions">
+              ${event.status === 'published' ? `<a href="/events/${event.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
+              <button class="btn btn-primary btn-small" onclick="editEvent('${event.id}')">Edit</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteEventModal('${event.id}', '${escapeHtml(event.title).replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showCreateEventModal() {
+      editingEvent = null;
+      document.getElementById('eventModalTitle').textContent = 'New Event';
+      document.getElementById('eventForm').reset();
+      document.getElementById('eventId').value = '';
+
+      // Pre-fill city from chapter region
+      if (currentGroup?.region) {
+        document.getElementById('eventVenueCity').value = currentGroup.region.replace(' Chapter', '').replace(' chapter', '').trim();
+      }
+
+      updateEventFormatFields();
+      document.getElementById('eventModal').style.display = 'flex';
+    }
+
+    async function editEvent(id) {
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/manage/events/${id}`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to load event');
+
+        editingEvent = await response.json();
+
+        document.getElementById('eventModalTitle').textContent = 'Edit Event';
+        document.getElementById('eventId').value = editingEvent.id;
+        document.getElementById('eventTitle').value = editingEvent.title || '';
+        document.getElementById('eventDescription').value = editingEvent.description || '';
+        document.getElementById('eventSlug').value = editingEvent.slug || '';
+        document.getElementById('eventFormat').value = editingEvent.event_format || 'in_person';
+        document.getElementById('eventType').value = editingEvent.event_type || 'meetup';
+        document.getElementById('eventStatus').value = editingEvent.status || 'draft';
+        document.getElementById('eventVenueName').value = editingEvent.venue_name || '';
+        document.getElementById('eventVenueAddress').value = editingEvent.venue_address || '';
+        document.getElementById('eventVenueCity').value = editingEvent.venue_city || '';
+        document.getElementById('eventVenueState').value = editingEvent.venue_state || '';
+        document.getElementById('eventVirtualUrl').value = editingEvent.virtual_url || '';
+        document.getElementById('eventMaxAttendees').value = editingEvent.max_attendees || '';
+
+        // Format datetime-local values
+        if (editingEvent.start_time) {
+          document.getElementById('eventStartTime').value = formatDateTimeLocal(editingEvent.start_time);
+        }
+        if (editingEvent.end_time) {
+          document.getElementById('eventEndTime').value = formatDateTimeLocal(editingEvent.end_time);
+        }
+
+        updateEventFormatFields();
+        document.getElementById('eventModal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error loading event:', error);
+        alert('Failed to load event');
+      }
+    }
+
+    function formatDateTimeLocal(dateStr) {
+      const date = new Date(dateStr);
+      return date.toISOString().slice(0, 16);
+    }
+
+    function closeEventModal() {
+      document.getElementById('eventModal').style.display = 'none';
+      editingEvent = null;
+    }
+
+    function updateEventFormatFields() {
+      const format = document.getElementById('eventFormat').value;
+      const venueFields = document.getElementById('venueFields');
+      const virtualFields = document.getElementById('virtualFields');
+
+      if (format === 'virtual') {
+        venueFields.style.display = 'none';
+        virtualFields.style.display = 'block';
+      } else if (format === 'hybrid') {
+        venueFields.style.display = 'block';
+        virtualFields.style.display = 'block';
+      } else {
+        venueFields.style.display = 'block';
+        virtualFields.style.display = 'none';
+      }
+    }
+
+    async function saveEvent(e) {
+      e.preventDefault();
+
+      const id = document.getElementById('eventId').value;
+      const data = {
+        title: document.getElementById('eventTitle').value.trim(),
+        description: document.getElementById('eventDescription').value.trim() || null,
+        slug: document.getElementById('eventSlug').value.trim(),
+        start_time: document.getElementById('eventStartTime').value || null,
+        end_time: document.getElementById('eventEndTime').value || null,
+        event_format: document.getElementById('eventFormat').value,
+        event_type: document.getElementById('eventType').value,
+        status: document.getElementById('eventStatus').value,
+        venue_name: document.getElementById('eventVenueName').value.trim() || null,
+        venue_address: document.getElementById('eventVenueAddress').value.trim() || null,
+        venue_city: document.getElementById('eventVenueCity').value.trim() || null,
+        venue_state: document.getElementById('eventVenueState').value.trim() || null,
+        virtual_meeting_url: document.getElementById('eventVirtualUrl').value.trim() || null,
+        max_attendees: document.getElementById('eventMaxAttendees').value ? parseInt(document.getElementById('eventMaxAttendees').value) : null,
+      };
+
+      const saveBtn = document.getElementById('saveEventBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const url = id
+          ? `/api/working-groups/${currentSlug}/manage/events/${id}`
+          : `/api/working-groups/${currentSlug}/manage/events`;
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to save');
+        }
+
+        closeEventModal();
+        await loadEvents();
+      } catch (error) {
+        console.error('Error saving:', error);
+        alert('Failed to save: ' + error.message);
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Event';
+    }
+
+    function showDeleteEventModal(id, title) {
+      deletingEventId = id;
+      document.getElementById('deleteEventTitle').textContent = title;
+      document.getElementById('deleteEventModal').style.display = 'flex';
+    }
+
+    function closeDeleteEventModal() {
+      document.getElementById('deleteEventModal').style.display = 'none';
+      deletingEventId = null;
+    }
+
+    async function confirmDeleteEvent() {
+      if (!deletingEventId) return;
+
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/manage/events/${deletingEventId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete');
+
+        closeDeleteEventModal();
+        await loadEvents();
+      } catch (error) {
+        console.error('Error deleting:', error);
+        alert('Failed to delete: ' + error.message);
+      }
+    }
+
     // Event listeners
     document.getElementById('excerpt').addEventListener('input', updateExcerptCount);
     document.getElementById('title').addEventListener('input', function() {
@@ -842,6 +1389,12 @@
         document.getElementById('slug').value = generateSlug(this.value);
       }
     });
+    document.getElementById('eventTitle').addEventListener('input', function() {
+      if (!document.getElementById('eventId').value && !document.getElementById('eventSlug').value) {
+        document.getElementById('eventSlug').value = generateSlug(this.value);
+      }
+    });
+    document.getElementById('eventFormat').addEventListener('change', updateEventFormatFields);
 
     // Initialize
     init();

@@ -653,6 +653,34 @@ export class WorkingGroupDatabase {
   }
 
   /**
+   * Get all committees led by a user
+   * Returns committees of all types where the user is a leader
+   */
+  async getCommitteesLedByUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       INNER JOIN working_group_leaders wgl ON wg.id = wgl.working_group_id
+       LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
+       WHERE wgl.user_id = $1
+         AND wg.status = 'active'
+       GROUP BY wg.id
+       ORDER BY wg.display_order, wg.name`,
+      [userId]
+    );
+
+    const groups = result.rows;
+    const groupIds = groups.map(g => g.id);
+    const leadersByGroup = await this.getLeadersBatch(groupIds);
+
+    for (const group of groups) {
+      group.leaders = leadersByGroup.get(group.id) || [];
+    }
+
+    return groups;
+  }
+
+  /**
    * Ensure leaders are members of their working group
    */
   async ensureLeadersAreMembers(workingGroupId: string): Promise<void> {
