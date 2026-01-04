@@ -210,15 +210,16 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 2: Profile completion (critical setup step)
-    if (caps && !caps.profile_complete) {
+    // PRIORITY 2: Profile completion (only for paid members - profiles are only visible to members)
+    // Skip for personal workspaces since those aren't real company profiles
+    if (caps && !caps.profile_complete && ctx.user.is_member && !ctx.company?.is_personal_workspace) {
       const profileGoal = goals.find(g =>
         g.name.toLowerCase().includes('profile') && g.category === 'admin'
       );
       if (profileGoal) {
         return {
           goal: profileGoal,
-          reason: 'Profile not complete - key capability to unlock',
+          reason: 'Profile not complete - visible to other members once set up',
           priority_score: 85,
           alternative_goals: goals.filter(g => g.id !== profileGoal.id).slice(0, 3),
           decision_method: 'rule_match',

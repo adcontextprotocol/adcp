@@ -1826,19 +1826,6 @@
           html += '<div style="font-size: var(--text-sm); color: var(--color-text-muted); font-style: italic;">No action recommended at this time.</div>';
         }
         html += '</div>';
-      } else if (context.addie_goal) {
-        // Fallback to legacy addie_goal if no planner data
-        html += '<div class="context-section" style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
-        html += '<h3 style="margin-bottom: var(--space-2);">Addie\'s Goal</h3>';
-        html += `<div style="margin-bottom: var(--space-2);">
-          <span class="goal-badge goal-${context.addie_goal.goal_key}" style="font-size: var(--text-sm); padding: var(--space-1) var(--space-3);">
-            ${escapeHtml(context.addie_goal.goal_name || formatGoalKey(context.addie_goal.goal_key))}
-          </span>
-        </div>`;
-        if (context.addie_goal.reasoning) {
-          html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">${escapeHtml(context.addie_goal.reasoning)}</p>`;
-        }
-        html += '</div>';
       }
 
       // Capabilities Section - What has this member done?

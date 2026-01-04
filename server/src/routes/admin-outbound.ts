@@ -444,6 +444,7 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
           workos_user_id: memberContext?.workos_user?.workos_user_id,
           display_name: memberContext?.slack_user?.display_name ?? undefined,
           is_mapped: !!memberContext?.is_mapped,
+          is_member: memberContext?.is_member ?? false,
           engagement_score: 0, // Could compute from activity later
           insights: insights.map(i => ({
             type: i.insight_type_name ?? 'unknown',
@@ -451,10 +452,15 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
             confidence: i.confidence,
           })),
         },
-        company: memberContext?.organization ? {
-          name: memberContext.organization.name,
-          type: 'unknown', // Would need to look up company_type from organization
-        } : undefined,
+        company: memberContext?.organization ? (() => {
+          const orgName = memberContext.organization!.name;
+          const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace");
+          return {
+            name: isPersonalWorkspace ? 'your account' : orgName,
+            type: 'unknown', // Would need to look up company_type from organization
+            is_personal_workspace: isPersonalWorkspace,
+          };
+        })() : undefined,
         history,
         contact_eligibility: {
           can_contact: contactEligibility.canContact,
@@ -531,6 +537,7 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
           workos_user_id: workosUserId,
           display_name: memberContext?.slack_user?.display_name ?? undefined,
           is_mapped: !!memberContext?.is_mapped,
+          is_member: memberContext?.is_member ?? false,
           engagement_score: capabilities.slack_message_count_30d > 10 ? 75 :
                             capabilities.slack_message_count_30d > 5 ? 50 :
                             capabilities.slack_message_count_30d > 0 ? 25 : 0,
@@ -540,10 +547,15 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
             confidence: i.confidence,
           })),
         },
-        company: memberContext?.organization ? {
-          name: memberContext.organization.name,
-          type: 'unknown',
-        } : undefined,
+        company: memberContext?.organization ? (() => {
+          const orgName = memberContext.organization!.name;
+          const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace");
+          return {
+            name: isPersonalWorkspace ? 'your account' : orgName,
+            type: 'unknown',
+            is_personal_workspace: isPersonalWorkspace,
+          };
+        })() : undefined,
         capabilities,
         history,
         contact_eligibility: {

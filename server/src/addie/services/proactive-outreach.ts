@@ -172,14 +172,16 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
     canContactUser(candidate.slack_user_id),
   ]);
 
-  // Get company info if user is mapped
+  // Get company info and membership status if user is mapped
   let company: PlannerContext['company'] | undefined;
+  let isMember = false;
   if (candidate.workos_user_id) {
     const orgResult = await query<{
       name: string;
       company_types: string[] | null;
+      subscription_status: string | null;
     }>(
-      `SELECT o.name, o.company_types
+      `SELECT o.name, o.company_types, o.subscription_status
        FROM organization_memberships om
        JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
        WHERE om.workos_user_id = $1
@@ -188,10 +190,14 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
     );
     if (orgResult.rows[0]) {
       const org = orgResult.rows[0];
+      const isPersonalWorkspace = org.name.toLowerCase().endsWith("'s workspace") ||
+                                  org.name.toLowerCase().endsWith("'s workspace");
       company = {
-        name: org.name,
+        name: isPersonalWorkspace ? 'your account' : org.name,
         type: org.company_types?.[0] ?? 'unknown',
+        is_personal_workspace: isPersonalWorkspace,
       };
+      isMember = org.subscription_status === 'active';
     }
   }
 
@@ -206,6 +212,7 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
       workos_user_id: candidate.workos_user_id ?? undefined,
       display_name: candidate.slack_display_name ?? candidate.slack_real_name ?? undefined,
       is_mapped: !!candidate.workos_user_id,
+      is_member: isMember,
       engagement_score: engagementScore,
       insights: insights.map(i => ({
         type: i.insight_type_name ?? 'unknown',

@@ -333,6 +333,7 @@ export class RehearsalService {
         slack_user_id: `rehearsal_${persona.name?.replace(/\s+/g, '_').toLowerCase() ?? 'user'}`,
         display_name: persona.name,
         is_mapped: isMapped,
+        is_member: true, // Rehearsals assume member context
         engagement_score: persona.engagement_score ?? 50,
         insights: (persona.existing_insights ?? []).map(i => ({
           type: i.type,

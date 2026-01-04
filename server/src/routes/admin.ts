@@ -260,12 +260,18 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 canContactUser(slackUserId),
               ]);
 
+              // Check if this is a personal workspace (auto-generated "User's Workspace" name)
+              const orgName = context.organization?.name ?? '';
+              const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace") ||
+                                          orgName.toLowerCase().endsWith("'s workspace");
+
               const plannerCtx: PlannerContext = {
                 user: {
                   slack_user_id: slackUserId,
                   workos_user_id: workosUserId,
                   display_name: context.slack_user?.display_name ?? undefined,
                   is_mapped: !!workosUserId,
+                  is_member: context.is_member ?? false,
                   engagement_score: capabilities.slack_message_count_30d > 10 ? 75 :
                                     capabilities.slack_message_count_30d > 5 ? 50 :
                                     capabilities.slack_message_count_30d > 0 ? 25 : 0,
@@ -276,8 +282,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                   })),
                 },
                 company: context.organization ? {
-                  name: context.organization.name,
+                  name: isPersonalWorkspace ? 'your account' : context.organization.name,
                   type: 'unknown',
+                  is_personal_workspace: isPersonalWorkspace,
                 } : undefined,
                 capabilities,
                 history,
