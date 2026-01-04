@@ -733,15 +733,17 @@
             ${hasLeadership ? `
               <div class="group-leadership">
                 <div class="group-leadership-title">Leadership</div>
-                ${group.leaders.map(leader => `
+                ${group.leaders.map(leader => {
+                  const displayName = leader.name || leader.user_id;
+                  return `
                   <div class="leader-item">
-                    <div class="leader-avatar">${getInitials(leader.name || 'Unknown')}</div>
+                    <div class="leader-avatar">${getInitials(displayName)}</div>
                     <div class="leader-info">
-                      <div class="leader-name">${escapeHtml(leader.name || 'Unknown')}</div>
+                      <div class="leader-name">${escapeHtml(displayName)}</div>
                       <div class="leader-role">Leader${leader.org_name ? ' · ' + escapeHtml(leader.org_name) : ''}</div>
                     </div>
                   </div>
-                `).join('')}
+                `}).join('')}
               </div>
             ` : ''}
           </div>

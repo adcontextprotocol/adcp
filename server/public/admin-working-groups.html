@@ -771,7 +771,7 @@
                 ${regionDisplay}
                 ${gatheringDateDisplay}
                 <span>${group.member_count || 0} members</span>
-                ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || 'Unknown')).join(', ')}</span>` : ''}
+                ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || l.user_id)).join(', ')}</span>` : ''}
               </div>
             </div>
             <div class="group-actions">
@@ -879,10 +879,10 @@
       listDiv.innerHTML = currentLeaders.map(l => `
         <div class="selected-user" style="display: flex; margin-bottom: var(--space-2);">
           <div>
-            <span class="name">${escapeHtml(l.name || 'Unknown')}</span>
+            <span class="name">${escapeHtml(l.name || l.user_id)}</span>
             <span class="org">${l.org_name ? ` (${escapeHtml(l.org_name)})` : ''}</span>
           </div>
-          <span class="clear" onclick="removeLeader('${escapeJs(l.user_id)}')">Remove</span>
+          <button class="btn btn-danger btn-small" onclick="removeLeader('${escapeJs(l.user_id)}')">Remove</button>
         </div>
       `).join('');
     }
