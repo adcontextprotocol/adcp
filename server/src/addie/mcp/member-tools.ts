@@ -54,40 +54,37 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 /**
  * Known error patterns that indicate bugs in the @adcp/client testing library
  * rather than in the agent being tested.
+ *
+ * Each pattern should be specific enough to avoid false positives where an agent
+ * is actually returning invalid data.
  */
 const CLIENT_LIBRARY_ERROR_PATTERNS: Array<{
   pattern: RegExp;
   repo: string;
-  title: string;
   description: string;
 }> = [
   {
+    // This specific Zod validation error occurs when the test code tries to access
+    // authorized_properties (old field) but the schema expects publisher_domains (new field)
     pattern: /publisher_domains\.\d+: Invalid input: expected string, received undefined/i,
     repo: 'adcp-client',
-    title: 'Discovery test uses wrong field name for list_authorized_properties response',
     description: 'The discovery test scenario references `authorized_properties` (v2.2 field) instead of `publisher_domains` (v2.3+ field).',
-  },
-  {
-    pattern: /authorized_properties.*undefined/i,
-    repo: 'adcp-client',
-    title: 'Test code references deprecated field name',
-    description: 'The test code is looking for a field that was renamed in a schema update.',
   },
 ];
 
 /**
- * Check if an error indicates a bug in the client library rather than the agent
+ * Check if an error indicates a bug in the client library rather than the agent.
+ * Returns null if no known client library bug pattern matches.
  */
 function detectClientLibraryBug(
   failedSteps: Array<{ error?: string; step?: string; details?: string }>
-): { repo: string; title: string; description: string; matchedError: string } | null {
+): { repo: string; description: string; matchedError: string } | null {
   for (const step of failedSteps) {
     const errorText = step.error || step.details || '';
     for (const pattern of CLIENT_LIBRARY_ERROR_PATTERNS) {
       if (pattern.pattern.test(errorText)) {
         return {
           repo: pattern.repo,
-          title: pattern.title,
           description: pattern.description,
           matchedError: errorText,
         };
@@ -1361,6 +1358,10 @@ export function createMemberToolHandlers(
         // First, check if this looks like a bug in the @adcp/client testing library itself
         const clientLibraryBug = detectClientLibraryBug(failedSteps);
         if (clientLibraryBug) {
+          logger.info(
+            { agentUrl, repo: clientLibraryBug.repo, matchedError: clientLibraryBug.matchedError },
+            'Detected known client library bug in test results'
+          );
           output += `\n---\n\n`;
           output += `⚠️ **This looks like a bug in the testing library** (not the agent)\n\n`;
           output += `The error pattern suggests an issue in \`@adcp/client\`:\n`;
