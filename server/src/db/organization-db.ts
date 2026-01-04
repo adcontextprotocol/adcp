@@ -2,17 +2,19 @@ import { getPool } from './client.js';
 import { getSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
+import { CompanyTypeValue } from '../config/company-types.js';
 
 const logger = createLogger('organization-db');
 
-export type CompanyType = 'brand' | 'publisher' | 'agency' | 'adtech' | 'other';
+export type CompanyType = CompanyTypeValue;
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
 
 export interface Organization {
   workos_organization_id: string;
   name: string;
   is_personal: boolean;
-  company_type: CompanyType | null;
+  company_type: CompanyType | null; // Deprecated: use company_types
+  company_types: CompanyType[] | null;
   revenue_tier: RevenueTier | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;

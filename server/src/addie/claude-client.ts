@@ -906,6 +906,12 @@ export class AddieClaudeClient {
               is_error: r.is_error,
             })),
           });
+
+          // Add spacing between tool use and subsequent text to prevent run-on text
+          if (fullText.length > 0 && !fullText.endsWith('\n')) {
+            fullText += '\n\n';
+            yield { type: 'text', text: '\n\n' };
+          }
         }
       }
 

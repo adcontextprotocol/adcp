@@ -115,6 +115,11 @@ export const ROUTING_RULES = {
    * Topics Addie can help with (and the tools to use)
    */
   expertise: {
+    capabilities: {
+      patterns: ['what can you do', 'what can you help with', 'how can you help me', 'what do you do', 'what are you capable of', 'what are you', 'what kinds of things', 'your capabilities'],
+      tools: [], // No tools needed - respond from system prompt knowledge
+      description: 'Questions about what Addie can help with - respond with capability overview',
+    },
     adcp_protocol: {
       patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
       tools: ['search_docs'],

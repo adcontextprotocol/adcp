@@ -358,12 +358,13 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const { channel, flagged_only, unreviewed_only, user_id, since, limit, offset } = req.query;
+      const { channel, flagged_only, unreviewed_only, has_user_feedback, user_id, since, limit, offset } = req.query;
 
       const threads = await threadService.listThreads({
         channel: channel as ThreadChannel | undefined,
         flagged_only: flagged_only === "true",
         unreviewed_only: unreviewed_only === "true",
+        has_user_feedback: has_user_feedback === "true",
         user_id: user_id as string | undefined,
         since: since ? new Date(since as string) : undefined,
         limit: limit ? parseInt(limit as string, 10) : 50,
@@ -527,7 +528,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
       }
 
-      await threadService.addMessageFeedback(messageId, {
+      const updated = await threadService.addMessageFeedback(messageId, {
         rating,
         rating_category,
         rating_notes,
@@ -536,6 +537,11 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         rated_by: req.user?.id || "admin",
         rating_source: 'admin',
       });
+
+      if (!updated) {
+        logger.warn({ messageId }, "No message found to add feedback to");
+        return res.status(404).json({ error: "Message not found" });
+      }
 
       // Also mark the thread as reviewed when admin provides feedback
       const threadResult = await query<{ thread_id: string }>(

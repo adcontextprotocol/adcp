@@ -75,6 +75,12 @@ import {
 } from './services/community-articles.js';
 
 /**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
+
+/**
  * Slack attachment type for forwarded messages
  */
 interface SlackAttachment {
@@ -586,6 +592,12 @@ async function handleUserMessage({
   // Skip if not a user message
   if (!userId || !messageText) {
     logger.debug('Addie Bolt: Ignoring message event without user or text');
+    return;
+  }
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (userId === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: messageText?.substring(0, 50) }, 'Addie Bolt: Ignoring Slackbot system message');
     return;
   }
 
@@ -1398,6 +1410,13 @@ async function handleDirectMessage(
   }
 
   const userId = event.user;
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (userId === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: event.text?.substring(0, 50) }, 'Addie Bolt: Ignoring Slackbot system message in DM');
+    return;
+  }
+
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.ts;
 
