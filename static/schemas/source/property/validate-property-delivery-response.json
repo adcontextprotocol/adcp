@@ -44,12 +44,6 @@
         "unknown_impressions": {
           "type": "integer",
           "description": "Impressions from unknown records"
-        },
-        "compliance_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Compliant impressions divided by (total - unknown) impressions. Unknown impressions are excluded from the rate calculation."
         }
       },
       "required": [
@@ -60,8 +54,7 @@
         "non_compliant_records",
         "non_compliant_impressions",
         "unknown_records",
-        "unknown_impressions",
-        "compliance_rate"
+        "unknown_impressions"
       ],
       "additionalProperties": false
     },
@@ -100,12 +93,6 @@
         "unknown_impressions": {
           "type": "integer",
           "description": "Impressions from records where authorization could not be determined"
-        },
-        "authorization_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Authorized impressions divided by (checked - unknown) impressions. Unknown impressions are excluded from the rate calculation."
         }
       },
       "required": [
@@ -116,8 +103,7 @@
         "unauthorized_records",
         "unauthorized_impressions",
         "unknown_records",
-        "unknown_impressions",
-        "authorization_rate"
+        "unknown_impressions"
       ],
       "additionalProperties": false
     },

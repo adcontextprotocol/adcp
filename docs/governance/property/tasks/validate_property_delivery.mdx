@@ -70,8 +70,7 @@ Validates delivery records against a property list to determine compliance. Answ
     "non_compliant_records": 1,
     "non_compliant_impressions": 47,
     "unknown_records": 1,
-    "unknown_impressions": 25,
-    "compliance_rate": 0.687
+    "unknown_impressions": 25
   },
   "results": [
     {
@@ -101,19 +100,30 @@ Validates delivery records against a property list to determine compliance. Answ
 | Field | Type | Description |
 |-------|------|-------------|
 | `list_id` | string | ID of the property list validated against |
-| `summary` | object | Aggregate validation statistics |
-| `summary.compliance_rate` | number | Compliant / (total - unknown) impressions |
+| `summary` | object | Raw counts for property compliance validation |
 | `results` | array | Per-record validation results |
 | `validated_at` | datetime | When validation was performed |
 | `list_resolved_at` | datetime | Resolution timestamp of the property list used |
 
+### Summary Fields
+
+The summary provides raw counts - consumers calculate rates as needed:
+
+| Field | Description |
+|-------|-------------|
+| `total_records` | Total records validated |
+| `total_impressions` | Total impressions across all records |
+| `compliant_records` / `compliant_impressions` | Records/impressions in the property list |
+| `non_compliant_records` / `non_compliant_impressions` | Records/impressions NOT in the property list |
+| `unknown_records` / `unknown_impressions` | Records/impressions that couldn't be resolved |
+
 ### Validation Statuses
 
-| Status | Meaning | Included in compliance_rate? |
-|--------|---------|------------------------------|
-| `compliant` | Identifier is in the resolved property list | Yes (numerator) |
-| `non_compliant` | Identifier is NOT in the resolved property list | Yes (denominator only) |
-| `unknown` | Identifier type not resolvable by this agent | No (excluded) |
+| Status | Meaning |
+|--------|---------|
+| `compliant` | Identifier is in the resolved property list |
+| `non_compliant` | Identifier is NOT in the resolved property list |
+| `unknown` | Identifier type not resolvable by this agent |
 
 ## Understanding Unknown Status
 
@@ -123,19 +133,23 @@ Records receive `unknown` status when the governance agent cannot resolve the id
 - **Identifier type mismatch**: The agent specializes in domains but receives app store IDs
 - **New properties**: Recently added properties not yet in the agent's database
 
-**Unknown records are valid** - you cannot penalize for detection gaps. They are excluded from the `compliance_rate` calculation.
+**Unknown records are valid** - you cannot penalize for detection gaps.
 
-## Compliance Rate Calculation
+## Calculating Rates
 
-```
-compliance_rate = compliant_impressions / (total_impressions - unknown_impressions)
+The response returns raw counts. Calculate rates as needed:
+
+```python
+# Compliance rate (exclude unknowns from denominator)
+verifiable = summary.total_impressions - summary.unknown_impressions
+compliance_rate = summary.compliant_impressions / verifiable if verifiable > 0 else None
 ```
 
 In the example above:
 - Compliant impressions: 103
 - Non-compliant impressions: 47
 - Unknown impressions: 25 (excluded)
-- Compliance rate: 103 / (175 - 25) = 103 / 150 = 0.687 (68.7%)
+- Compliance rate: 103 / (175 - 25) = 103 / 150 = 68.7%
 
 ## Violation Codes
 
@@ -146,6 +160,30 @@ In the example above:
 | `country_mismatch` | Property not compliant in required countries |
 | `channel_mismatch` | Property doesn't support required channels |
 | `feature_failed` | Property failed a `feature_requirements` filter |
+
+### Feature Violation Details
+
+When a property fails a feature requirement, the violation includes the feature details:
+
+```json
+{
+  "identifier": { "type": "domain", "value": "low-quality-site.example" },
+  "status": "non_compliant",
+  "impressions": 150,
+  "violations": [
+    {
+      "code": "feature_failed",
+      "message": "Property failed consent_quality requirement (min: 85)",
+      "feature_id": "consent_quality",
+      "requirement": {
+        "min_value": 85
+      }
+    }
+  ]
+}
+```
+
+The `feature_id` and `requirement` fields are optional - they're included when the violation is due to a feature requirement filter.
 
 ## Supply Path Authorization
 
@@ -186,8 +224,7 @@ When authorization is validated, each result includes an `authorization` field:
     "non_compliant_records": 0,
     "non_compliant_impressions": 0,
     "unknown_records": 0,
-    "unknown_impressions": 0,
-    "compliance_rate": 1.0
+    "unknown_impressions": 0
   },
   "authorization_summary": {
     "records_checked": 2,
@@ -197,8 +234,7 @@ When authorization is validated, each result includes an `authorization` field:
     "unauthorized_records": 1,
     "unauthorized_impressions": 50,
     "unknown_records": 0,
-    "unknown_impressions": 0,
-    "authorization_rate": 0.673
+    "unknown_impressions": 0
   },
   "results": [
     {

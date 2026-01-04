@@ -265,13 +265,9 @@ Performs two independent validations:
 - `unauthorized`: Sales agent is NOT in publisher's authorized_agents list
 - `unknown`: Could not fetch or parse adagents.json
 
-**Unknown Records Are Valid**: For both property and authorization checks, unknown records are excluded from rate calculations. You cannot penalize for detection gaps or unreachable publisher files.
+**Unknown Records Are Valid**: For both property and authorization checks, unknown records should be excluded when calculating rates. You cannot penalize for detection gaps or unreachable publisher files.
 
-**Rate Calculations**:
-```
-compliance_rate = compliant_impressions / (total_impressions - unknown_impressions)
-authorization_rate = authorized_impressions / (checked_impressions - unknown_impressions)
-```
+**Response Format**: The response returns raw counts (compliant, non_compliant, unknown impressions). Consumers calculate rates as needed, typically excluding unknown impressions from the denominator.
 
 ## Typical Flows
 

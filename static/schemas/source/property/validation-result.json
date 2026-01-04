@@ -36,6 +36,30 @@
           "message": {
             "type": "string",
             "description": "Human-readable violation description"
+          },
+          "feature_id": {
+            "type": "string",
+            "description": "ID of the feature that caused the violation (only present for feature_failed violations)"
+          },
+          "requirement": {
+            "type": "object",
+            "description": "The feature requirement that was not met (only present for feature_failed violations)",
+            "properties": {
+              "min_value": {
+                "type": "number",
+                "description": "Minimum value that was required"
+              },
+              "max_value": {
+                "type": "number",
+                "description": "Maximum value that was allowed"
+              },
+              "allowed_values": {
+                "type": "array",
+                "description": "Values that would have been acceptable",
+                "items": {}
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": ["code", "message"],
