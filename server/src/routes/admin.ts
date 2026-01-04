@@ -113,7 +113,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   setupMembersRoutes(apiRouter, { workos });
 
   // Unified account management routes (replaces separate prospect/org detail)
-  setupAccountRoutes(pageRouter, apiRouter, { workos });
+  setupAccountRoutes(pageRouter, apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
