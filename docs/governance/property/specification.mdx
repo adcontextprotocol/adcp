@@ -245,21 +245,32 @@ Remove a property list.
 
 Validates delivery records against a property list to determine compliance. Closes the loop between "what I wanted" and "what I got."
 
+Performs two independent validations:
+1. **Property compliance**: Is the identifier in the resolved property list?
+2. **Supply path authorization**: Was the sales agent authorized to sell that property? (optional, requires `sales_agent_url`)
+
 **Use Cases**:
 - Post-campaign validation: Verify impressions landed on compliant properties
+- Supply path verification: Confirm sales agents were authorized by publishers
 - Real-time monitoring: Check compliance rate during campaign execution
 - Audit trails: Generate compliance reports for regulatory or brand safety reviews
 
-**Validation Statuses**:
+**Property Validation Statuses**:
 - `compliant`: Identifier is in the resolved property list
 - `non_compliant`: Identifier is NOT in the resolved property list
 - `unknown`: Identifier type not resolvable by this agent
 
-**Unknown Records Are Valid**: When a governance agent cannot resolve an identifier (e.g., client-side JavaScript detection didn't fire, or the identifier type is outside the agent's coverage), the record receives `unknown` status. Unknown records are excluded from compliance rate calculations - you cannot penalize for detection gaps.
+**Authorization Validation Statuses** (when `sales_agent_url` provided):
+- `authorized`: Sales agent is listed in publisher's adagents.json
+- `unauthorized`: Sales agent is NOT in publisher's authorized_agents list
+- `unknown`: Could not fetch or parse adagents.json
 
-**Compliance Rate Calculation**:
+**Unknown Records Are Valid**: For both property and authorization checks, unknown records are excluded from rate calculations. You cannot penalize for detection gaps or unreachable publisher files.
+
+**Rate Calculations**:
 ```
 compliance_rate = compliant_impressions / (total_impressions - unknown_impressions)
+authorization_rate = authorized_impressions / (checked_impressions - unknown_impressions)
 ```
 
 ## Typical Flows

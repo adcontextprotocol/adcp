@@ -65,6 +65,62 @@
       ],
       "additionalProperties": false
     },
+    "authorization_summary": {
+      "type": "object",
+      "description": "Aggregate authorization statistics. Only present if any records included sales_agent_url.",
+      "properties": {
+        "records_checked": {
+          "type": "integer",
+          "description": "Number of records with sales_agent_url provided"
+        },
+        "impressions_checked": {
+          "type": "integer",
+          "description": "Total impressions from records with sales_agent_url"
+        },
+        "authorized_records": {
+          "type": "integer",
+          "description": "Number of records where sales agent was authorized"
+        },
+        "authorized_impressions": {
+          "type": "integer",
+          "description": "Impressions from authorized records"
+        },
+        "unauthorized_records": {
+          "type": "integer",
+          "description": "Number of records where sales agent was NOT authorized"
+        },
+        "unauthorized_impressions": {
+          "type": "integer",
+          "description": "Impressions from unauthorized records"
+        },
+        "unknown_records": {
+          "type": "integer",
+          "description": "Number of records where authorization could not be determined (adagents.json unavailable)"
+        },
+        "unknown_impressions": {
+          "type": "integer",
+          "description": "Impressions from records where authorization could not be determined"
+        },
+        "authorization_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Authorized impressions divided by (checked - unknown) impressions. Unknown impressions are excluded from the rate calculation."
+        }
+      },
+      "required": [
+        "records_checked",
+        "impressions_checked",
+        "authorized_records",
+        "authorized_impressions",
+        "unauthorized_records",
+        "unauthorized_impressions",
+        "unknown_records",
+        "unknown_impressions",
+        "authorization_rate"
+      ],
+      "additionalProperties": false
+    },
     "results": {
       "type": "array",
       "description": "Per-record validation results. By default only includes non_compliant and unknown records. Set include_compliant=true to include all records.",

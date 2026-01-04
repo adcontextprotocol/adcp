@@ -9,11 +9,14 @@ title: validate_property_delivery
 **AdCP 3.0 Proposal** - This task is under development for AdCP 3.0.
 </Info>
 
-Validates delivery records against a property list to determine compliance. Answers the question: "Did my impressions land on properties in my list?"
+Validates delivery records against a property list to determine compliance. Answers two questions:
+1. **Property compliance**: Did my impressions land on properties in my list?
+2. **Supply path authorization**: Was the sales agent authorized to sell that inventory?
 
 ## Use Cases
 
 - **Post-campaign validation**: Verify that impressions were delivered to compliant properties
+- **Supply path verification**: Confirm sales agents were authorized by publishers
 - **Real-time monitoring**: Check compliance rate during campaign execution
 - **Audit trails**: Generate compliance reports for regulatory or brand safety reviews
 
@@ -50,6 +53,7 @@ Validates delivery records against a property list to determine compliance. Answ
 | `records[].identifier` | object | Yes | Property identifier (`type` and `value`) |
 | `records[].impressions` | integer | Yes | Number of impressions delivered |
 | `records[].record_id` | string | No | Client-provided ID for correlation |
+| `records[].sales_agent_url` | string | No | Sales agent URL to validate authorization against adagents.json |
 | `include_compliant` | boolean | No | Include compliant records in results (default: false) |
 
 ## Response
@@ -142,6 +146,109 @@ In the example above:
 | `country_mismatch` | Property not compliant in required countries |
 | `channel_mismatch` | Property doesn't support required channels |
 | `feature_failed` | Property failed a `feature_requirements` filter |
+
+## Supply Path Authorization
+
+When `sales_agent_url` is provided in delivery records, the governance agent validates that the sales agent is authorized to sell the property by checking the publisher's `adagents.json`.
+
+### Request with Authorization
+
+```json
+{
+  "list_id": "pl_abc123",
+  "records": [
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "impressions": 103,
+      "sales_agent_url": "https://legitimate-ssp.example.com"
+    },
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "impressions": 50,
+      "sales_agent_url": "https://unauthorized-reseller.example.com"
+    }
+  ]
+}
+```
+
+### Response with Authorization
+
+When authorization is validated, each result includes an `authorization` field:
+
+```json
+{
+  "list_id": "pl_abc123",
+  "summary": {
+    "total_records": 2,
+    "total_impressions": 153,
+    "compliant_records": 2,
+    "compliant_impressions": 153,
+    "non_compliant_records": 0,
+    "non_compliant_impressions": 0,
+    "unknown_records": 0,
+    "unknown_impressions": 0,
+    "compliance_rate": 1.0
+  },
+  "authorization_summary": {
+    "records_checked": 2,
+    "impressions_checked": 153,
+    "authorized_records": 1,
+    "authorized_impressions": 103,
+    "unauthorized_records": 1,
+    "unauthorized_impressions": 50,
+    "unknown_records": 0,
+    "unknown_impressions": 0,
+    "authorization_rate": 0.673
+  },
+  "results": [
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "status": "compliant",
+      "impressions": 50,
+      "authorization": {
+        "status": "unauthorized",
+        "publisher_domain": "nytimes.com",
+        "sales_agent_url": "https://unauthorized-reseller.example.com",
+        "violation": {
+          "code": "agent_not_authorized",
+          "message": "Sales agent not listed in nytimes.com/.well-known/adagents.json"
+        }
+      }
+    }
+  ],
+  "validated_at": "2026-01-04T19:00:00Z"
+}
+```
+
+### Authorization Statuses
+
+| Status | Meaning | Included in authorization_rate? |
+|--------|---------|--------------------------------|
+| `authorized` | Sales agent is listed in publisher's adagents.json | Yes (numerator) |
+| `unauthorized` | Sales agent is NOT listed in publisher's adagents.json | Yes (denominator only) |
+| `unknown` | Could not fetch or parse adagents.json | No (excluded) |
+
+### Authorization Violation Codes
+
+| Code | Description |
+|------|-------------|
+| `agent_not_authorized` | Sales agent URL not found in publisher's authorized_agents list |
+| `adagents_not_found` | Publisher's adagents.json could not be fetched (404, timeout, etc.) |
+| `adagents_invalid` | Publisher's adagents.json exists but is malformed |
+| `property_not_declared` | Property identifier not declared in publisher's adagents.json |
+
+### Two Independent Checks
+
+Property compliance and authorization are **independent checks**. A record can be:
+
+| Property Status | Authorization Status | Meaning |
+|-----------------|---------------------|---------|
+| compliant | authorized | Fully valid - property in list, sold by authorized agent |
+| compliant | unauthorized | Property is approved but sold by unauthorized reseller |
+| non_compliant | authorized | Authorized agent sold property outside your list |
+| non_compliant | unauthorized | Neither property nor agent validated |
+
+Both checks use the same "unknown excludes from rate" pattern - you cannot penalize for detection gaps.
 
 ## Best Practices
 

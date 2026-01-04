@@ -42,6 +42,10 @@
         "additionalProperties": false
       }
     },
+    "authorization": {
+      "$ref": "/schemas/property/authorization-result.json",
+      "description": "Authorization validation result (only present if sales_agent_url was provided in the delivery record)"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

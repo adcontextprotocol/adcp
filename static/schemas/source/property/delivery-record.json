@@ -18,6 +18,11 @@
       "type": "string",
       "description": "Optional client-provided ID for correlating results back to source data"
     },
+    "sales_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the sales agent that sold this inventory. If provided, authorization is validated against the property's adagents.json."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
