@@ -501,9 +501,28 @@ function formatCurrency(amountCents, currency = 'usd') {
 }
 
 /**
- * Open the invoice request modal
+ * Escape HTML special characters to prevent XSS
  */
-async function openInvoiceRequestModal() {
+function escapeHtmlForInvoice(str) {
+  if (!str) return '';
+  return str.replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char]);
+}
+
+/**
+ * Open the invoice request modal
+ * @param {Object} options - Optional configuration
+ * @param {string} options.companyName - Pre-fill company name
+ * @param {string} options.selectedProduct - Pre-select a product by lookup_key
+ * @param {string} options.customerType - Filter products by customer type (e.g., 'company', 'individual')
+ * @param {string} options.revenueTier - Filter products by revenue tier
+ */
+async function openInvoiceRequestModal(options = {}) {
   // Ensure styles are injected
   injectJoinCtaStyles();
 
@@ -513,23 +532,43 @@ async function openInvoiceRequestModal() {
     existingModal.remove();
   }
 
-  // Fetch products from API
-  const products = await fetchBillingProducts();
+  // Fetch products from API with filtering if provided
+  let url = '/api/billing-products?category=membership';
+  if (options.customerType) {
+    url += `&customer_type=${encodeURIComponent(options.customerType)}`;
+  }
+  if (options.revenueTier) {
+    url += `&revenue_tier=${encodeURIComponent(options.revenueTier)}`;
+  }
 
-  // Filter to membership products only for the main modal
-  const membershipProducts = products.filter(p => p.category === 'membership');
+  let membershipProducts = [];
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      membershipProducts = data.products || [];
+    }
+  } catch (error) {
+    console.error('Error fetching products:', error);
+  }
 
   // Generate product options HTML
   let productOptionsHtml = '<option value="">Select a product...</option>';
   if (membershipProducts.length > 0) {
     for (const product of membershipProducts) {
       const price = formatCurrency(product.amount_cents, product.currency);
-      productOptionsHtml += `<option value="${product.lookup_key}">${product.display_name} - ${price}/year</option>`;
+      const selected = options.selectedProduct === product.lookup_key ? ' selected' : '';
+      const escapedLookupKey = escapeHtmlForInvoice(product.lookup_key);
+      const escapedDisplayName = escapeHtmlForInvoice(product.display_name);
+      productOptionsHtml += `<option value="${escapedLookupKey}"${selected}>${escapedDisplayName} - ${price}/year</option>`;
     }
   } else {
     // Fallback if no products configured in Stripe
     productOptionsHtml += '<option value="" disabled>No products available - please contact finance@agenticadvertising.org</option>';
   }
+
+  // Escape company name for HTML attribute
+  const companyNameValue = escapeHtmlForInvoice(options.companyName || '');
 
   const modalHtml = `
     <div id="invoiceRequestModal" class="invoice-modal-overlay" onclick="if(event.target === this) closeInvoiceRequestModal()">
@@ -542,7 +581,7 @@ async function openInvoiceRequestModal() {
           <div class="invoice-modal-body">
             <div class="invoice-form-group">
               <label for="invoice-company">Company Name *</label>
-              <input type="text" id="invoice-company" name="companyName" required placeholder="Acme Corporation">
+              <input type="text" id="invoice-company" name="companyName" required placeholder="Acme Corporation" value="${companyNameValue}">
             </div>
 
             <div class="invoice-form-row">
