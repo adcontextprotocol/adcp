@@ -57,6 +57,12 @@ import type {
   SuggestedPrompt,
 } from './types.js';
 
+/**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
+
 let claudeClient: AddieClaudeClient | null = null;
 let addieDb: AddieDatabase | null = null;
 let initialized = false;
@@ -272,6 +278,12 @@ export async function handleAssistantMessage(
 ): Promise<void> {
   if (!initialized || !claudeClient) {
     logger.warn('Addie: Not initialized, ignoring message');
+    return;
+  }
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (event.user === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: event.text?.substring(0, 50) }, 'Addie: Ignoring Slackbot system message');
     return;
   }
 
