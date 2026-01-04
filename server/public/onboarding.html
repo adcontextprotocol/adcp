@@ -562,7 +562,28 @@
       <div id="createForm" class="form-section">
         <a href="#" class="back-link" onclick="showCompanyOptions(); return false;">&larr; Back</a>
         <h2 style="margin-bottom: var(--space-5);">Register Your Company</h2>
+
+        <!-- Personal email warning - shown when user has gmail/yahoo/etc -->
+        <div id="personalEmailWarning" class="error" style="display: none;">
+          <strong>Corporate email required</strong>
+          <p style="margin-top: var(--space-2); margin-bottom: 0;">To register a company, please sign in with your corporate email address (e.g., you@yourcompany.com). Personal email addresses like Gmail, Yahoo, etc. cannot be used for company registration.</p>
+          <p style="margin-top: var(--space-3); margin-bottom: 0;"><a href="/auth/logout" style="color: var(--color-error-700);">Sign out</a> and sign back in with your work email, or <a href="#" onclick="showStep1(); return false;" style="color: var(--color-error-700);">join as an individual</a> instead.</p>
+        </div>
+
         <form id="createOrgForm">
+          <!-- Corporate domain display -->
+          <div class="form-group" id="domainGroup">
+            <label>Corporate Domain</label>
+            <div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); background: var(--color-success-50); border: var(--border-1) solid var(--color-success-200); border-radius: var(--radius-md);">
+              <span style="font-size: var(--text-xl);">&#10003;</span>
+              <div>
+                <div style="font-weight: var(--font-semibold); color: var(--color-success-700);" id="domainDisplay">company.com</div>
+                <div style="font-size: var(--text-sm); color: var(--color-success-600);">Verified via your email address</div>
+              </div>
+            </div>
+            <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">Your company domain will be automatically verified based on your email.</p>
+          </div>
+
           <div class="form-group">
             <label for="orgName">Company Name *</label>
             <input type="text" id="orgName" required placeholder="Acme Corporation">
@@ -847,6 +868,25 @@
       selectCompanyOption('create');
     });
 
+    // Common free/personal email domains
+    const freeEmailDomains = new Set([
+      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+      'yandex.com', 'gmx.com', 'gmx.net', 'fastmail.com', 'tutanota.com',
+    ]);
+
+    function isPersonalEmail(email) {
+      if (!email) return true;
+      const domain = email.split('@')[1]?.toLowerCase();
+      return !domain || freeEmailDomains.has(domain);
+    }
+
+    function getEmailDomain(email) {
+      if (!email) return null;
+      return email.split('@')[1]?.toLowerCase() || null;
+    }
+
     function selectCompanyOption(option) {
       // Hide company options section
       document.getElementById('companyOptionsSection').classList.remove('active');
@@ -903,6 +943,27 @@
 
       } else if (option === 'create') {
         document.getElementById('createForm').classList.add('active');
+
+        // Check if user has a personal email
+        const userEmail = currentUser?.email;
+        const personalEmailWarning = document.getElementById('personalEmailWarning');
+        const createOrgForm = document.getElementById('createOrgForm');
+        const domainGroup = document.getElementById('domainGroup');
+        const domainDisplay = document.getElementById('domainDisplay');
+
+        if (isPersonalEmail(userEmail)) {
+          // Show warning, hide form
+          personalEmailWarning.style.display = 'block';
+          createOrgForm.style.display = 'none';
+        } else {
+          // Show form with domain
+          personalEmailWarning.style.display = 'none';
+          createOrgForm.style.display = 'block';
+          const domain = getEmailDomain(userEmail);
+          if (domain) {
+            domainDisplay.textContent = domain;
+          }
+        }
       }
     }
 
@@ -1119,6 +1180,9 @@
       createBtn.disabled = true;
       createBtn.textContent = 'Registering...';
 
+      // Get the corporate domain from the user's email
+      var corporateDomain = getEmailDomain(currentUser?.email);
+
       try {
         var response = await fetch('/api/organizations', {
           method: 'POST',
@@ -1126,7 +1190,8 @@
           body: JSON.stringify({
             organization_name: orgName,
             company_type: companyType.value,
-            revenue_tier: revenueTier.value
+            revenue_tier: revenueTier.value,
+            corporate_domain: corporateDomain
           }),
         });
 
