@@ -416,11 +416,6 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label>Slug</label>
-              <input type="text" id="slug" required placeholder="e.g., protocol-development" pattern="[a-z0-9-]+">
-              <small>URL path: /working-groups/{slug}</small>
-            </div>
-            <div class="form-group">
               <label>Committee Type</label>
               <select id="committeeType" onchange="updateRegionVisibility()">
                 <option value="working_group">Working Group</option>
@@ -429,6 +424,11 @@
                 <option value="governance">Governance</option>
                 <option value="industry_gathering">Industry Gathering</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label>Slug</label>
+              <input type="text" id="slug" required placeholder="e.g., protocol-development" pattern="[a-z0-9-]+">
+              <small>URL path: /working-groups/{slug}</small>
             </div>
           </div>
 
@@ -1043,7 +1043,7 @@
 
       // Update slug help text based on type
       if (committeeType === 'industry_gathering') {
-        slugHelp.textContent = 'URL path: /working-groups/industry-gatherings/{year}/{name}';
+        slugHelp.textContent = 'URL path: /industry-gatherings/{year}/{name}';
         // Auto-update slug if name is set
         updateGatheringSlug();
       } else {

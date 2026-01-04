@@ -923,6 +923,67 @@ Example: If someone in Austin says "I want to start a chapter", use this to crea
   },
 
   // ============================================
+  // INDUSTRY GATHERING TOOLS
+  // ============================================
+  {
+    name: 'create_industry_gathering',
+    description: `Create a new industry gathering (temporary committee for conferences/trade shows like CES, Cannes Lions, etc).
+
+This tool:
+1. Creates a working group with committee_type 'industry_gathering'
+2. Creates a public Slack channel for coordination
+3. Sets the event dates and location for automatic archival
+
+Industry gatherings are temporary committees that auto-archive after the event ends.
+
+Example: For CES 2026, create an industry gathering with name "CES 2026", location "Las Vegas, NV", start date 2026-01-07, end date 2026-01-10.`,
+    usage_hints: 'Use this when a member or admin wants to coordinate around a major industry event. Ask for the event name, dates, and location.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Event/gathering name (e.g., "CES 2026", "Cannes Lions 2026")',
+        },
+        start_date: {
+          type: 'string',
+          description: 'Event start date in YYYY-MM-DD format',
+        },
+        end_date: {
+          type: 'string',
+          description: 'Event end date in YYYY-MM-DD format (optional if single-day event)',
+        },
+        location: {
+          type: 'string',
+          description: 'Event location (e.g., "Las Vegas, NV", "Cannes, France")',
+        },
+        website_url: {
+          type: 'string',
+          description: 'Official event website URL (optional)',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description for the gathering',
+        },
+        founding_member_id: {
+          type: 'string',
+          description: 'WorkOS user ID of the founding member who will become gathering leader',
+        },
+      },
+      required: ['name', 'start_date', 'location'],
+    },
+  },
+  {
+    name: 'list_industry_gatherings',
+    description: 'List all industry gatherings with their dates, locations, and member counts.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
   // ORGANIZATION MANAGEMENT TOOLS
   // ============================================
   {
@@ -3498,6 +3559,173 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error listing chapters');
       return '❌ Failed to list chapters. Please try again.';
+    }
+  });
+
+  // ============================================
+  // INDUSTRY GATHERING HANDLERS
+  // ============================================
+
+  // Create industry gathering
+  handlers.set('create_industry_gathering', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = (input.name as string)?.trim();
+    const startDateStr = input.start_date as string;
+    const endDateStr = input.end_date as string | undefined;
+    const location = (input.location as string)?.trim();
+    const websiteUrl = input.website_url as string | undefined;
+    const description = input.description as string | undefined;
+    const foundingMemberId = input.founding_member_id as string | undefined;
+
+    if (!name) {
+      return '❌ Please provide a gathering name (e.g., "CES 2026").';
+    }
+
+    if (!startDateStr) {
+      return '❌ Please provide a start date in YYYY-MM-DD format.';
+    }
+
+    if (!location) {
+      return '❌ Please provide an event location (e.g., "Las Vegas, NV").';
+    }
+
+    // Parse dates
+    const startDate = new Date(startDateStr);
+    if (isNaN(startDate.getTime())) {
+      return '❌ Invalid start date format. Please use YYYY-MM-DD.';
+    }
+
+    let endDate: Date | undefined;
+    if (endDateStr) {
+      endDate = new Date(endDateStr);
+      if (isNaN(endDate.getTime())) {
+        return '❌ Invalid end date format. Please use YYYY-MM-DD.';
+      }
+    }
+
+    // Generate slug from name
+    const nameSlug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 50);
+
+    try {
+      // Check if gathering with this slug already exists
+      const year = startDate.getFullYear();
+      const fullSlug = `industry-gatherings/${year}/${nameSlug}`;
+      const existingGathering = await wgDb.getWorkingGroupBySlug(fullSlug);
+      if (existingGathering) {
+        return `⚠️ An industry gathering with slug "${fullSlug}" already exists: **${existingGathering.name}**\n\nJoin their Slack channel: ${existingGathering.slack_channel_url || 'Not set'}`;
+      }
+
+      // Create Slack channel (use shortened slug for channel name)
+      const channelSlug = `${nameSlug.slice(0, 30)}`;
+      const channelResult = await createChannel(channelSlug);
+      if (!channelResult) {
+        return `❌ Failed to create Slack channel #${channelSlug}. The channel name might already be taken. Try a different gathering name.`;
+      }
+
+      // Set channel purpose
+      const purpose = description || `Coordinate AgenticAdvertising.org attendance at ${name} (${location}).`;
+      await setChannelPurpose(channelResult.channel.id, purpose);
+
+      // Create the industry gathering
+      const gathering = await wgDb.createIndustryGathering({
+        name,
+        slug: nameSlug,
+        description: purpose,
+        slack_channel_url: channelResult.url,
+        slack_channel_id: channelResult.channel.id,
+        start_date: startDate,
+        end_date: endDate,
+        location,
+        website_url: websiteUrl,
+        founding_member_id: foundingMemberId,
+      });
+
+      logger.info({
+        gatheringId: gathering.id,
+        name: gathering.name,
+        location,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        slackChannelId: channelResult.channel.id,
+        foundingMemberId,
+      }, 'Addie: Created new industry gathering');
+
+      let response = `✅ Created **${name}** industry gathering!\n\n`;
+      response += `**Location:** ${location}\n`;
+      response += `**Dates:** ${startDateStr}${endDateStr ? ` to ${endDateStr}` : ''}\n`;
+      response += `**Slack Channel:** <#${channelResult.channel.id}>\n`;
+      response += `**Channel URL:** ${channelResult.url}\n`;
+      if (websiteUrl) {
+        response += `**Event Website:** ${websiteUrl}\n`;
+      }
+
+      if (foundingMemberId) {
+        response += `\n🎉 The founding member has been set as gathering leader.\n`;
+      }
+
+      response += `\n_Members can join the Slack channel to coordinate attendance. The gathering will auto-archive after the event ends._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, location }, 'Error creating industry gathering');
+      return '❌ Failed to create industry gathering. Please try again.';
+    }
+  });
+
+  // List industry gatherings
+  handlers.set('list_industry_gatherings', async () => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    try {
+      const gatherings = await wgDb.getIndustryGatherings();
+
+      if (gatherings.length === 0) {
+        return 'ℹ️ No industry gatherings exist yet. Use create_industry_gathering to start one!';
+      }
+
+      let response = `## Industry Gatherings\n\n`;
+      response += `Found **${gatherings.length}** gathering(s):\n\n`;
+
+      for (const gathering of gatherings) {
+        response += `### ${gathering.name}\n`;
+        response += `**Location:** ${gathering.event_location || 'Not set'}\n`;
+
+        if (gathering.event_start_date) {
+          const startStr = new Date(gathering.event_start_date).toISOString().split('T')[0];
+          const endStr = gathering.event_end_date
+            ? new Date(gathering.event_end_date).toISOString().split('T')[0]
+            : null;
+          response += `**Dates:** ${startStr}${endStr ? ` to ${endStr}` : ''}\n`;
+        }
+
+        response += `**Members:** ${gathering.member_count}\n`;
+
+        if (gathering.slack_channel_id) {
+          response += `**Slack:** <#${gathering.slack_channel_id}>\n`;
+        } else {
+          response += `**Slack:** _No channel linked_\n`;
+        }
+
+        if (gathering.website_url) {
+          response += `**Website:** ${gathering.website_url}\n`;
+        }
+
+        response += '\n';
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing industry gatherings');
+      return '❌ Failed to list industry gatherings. Please try again.';
     }
   });
 
