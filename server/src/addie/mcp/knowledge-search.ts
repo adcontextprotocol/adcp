@@ -288,6 +288,35 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
       required: ['url', 'title', 'reason'],
     },
   },
+  {
+    name: 'get_recent_news',
+    description:
+      'Get recent news and articles about ad tech and agentic advertising from curated industry feeds. Returns articles sorted by recency with summaries and analysis. Use this when users ask "what\'s happening in the news?", "what\'s new in ad tech?", or "what have we learned lately?"',
+    usage_hints: 'use for recent news, "what\'s happening?", "what\'s new?", industry updates, trending topics',
+    input_schema: {
+      type: 'object',
+      properties: {
+        days: {
+          type: 'number',
+          description: 'How many days back to look (default 7, max 30)',
+        },
+        topic: {
+          type: 'string',
+          description: 'Optional topic filter (e.g., "agentic advertising", "CTV", "retail media")',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter by relevance tags (e.g., mcp, a2a, industry-trend, competitor)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of articles (default 10, max 20)',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -646,6 +675,60 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
     } catch (error) {
       logger.error({ error, url }, 'Addie: Bookmark failed');
       return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_recent_news', async (input) => {
+    const days = Math.min((input.days as number) || 7, 30);
+    const limit = Math.min((input.limit as number) || 10, 20);
+    const topic = input.topic as string | undefined;
+    const tags = input.tags as string[] | undefined;
+
+    try {
+      const results = await addieDb.getRecentNews({
+        days,
+        limit,
+        topic,
+        tags,
+        minQuality: 3, // Only show quality content
+      });
+
+      if (results.length === 0) {
+        const topicHint = topic ? ` about "${topic}"` : '';
+        const tagHint = tags?.length ? ` tagged with ${tags.join(', ')}` : '';
+        return `No recent news found${topicHint}${tagHint} in the last ${days} days.\n\nTry:\n- Expanding the time range (days parameter)\n- Removing topic/tag filters\n- Using web_search for live results`;
+      }
+
+      const formatted = results
+        .map((article, i) => {
+          const qualityStars = article.quality_score
+            ? '★'.repeat(article.quality_score) + '☆'.repeat(5 - article.quality_score)
+            : 'Not rated';
+          const tagsDisplay = article.relevance_tags?.length
+            ? article.relevance_tags.join(', ')
+            : 'No tags';
+          const dateStr = new Date(article.last_fetched_at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+
+          return `### ${i + 1}. ${article.title}
+**Date:** ${dateStr} | **Quality:** ${qualityStars}
+**Tags:** ${tagsDisplay}
+**URL:** ${article.source_url}
+
+${article.summary || 'No summary available.'}
+
+${article.addie_notes ? `**Addie's Take:** ${article.addie_notes}` : ''}`;
+        })
+        .join('\n\n---\n\n');
+
+      const topicNote = topic ? ` about "${topic}"` : '';
+      return `Found ${results.length} recent articles${topicNote} from the last ${days} days:\n\n${formatted}\n\n**Remember to cite the source URL when sharing this information.**`;
+    } catch (error) {
+      logger.error({ error }, 'Addie: get_recent_news failed');
+      return `Failed to fetch recent news: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

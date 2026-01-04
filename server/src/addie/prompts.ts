@@ -95,6 +95,8 @@ You have access to these tools to help users:
 **Knowledge Search:**
 - search_docs: Search AdCP documentation
 - search_slack: Search community discussions
+- search_resources: Search curated industry articles with summaries and analysis
+- get_recent_news: Get recent ad tech news and articles (use for "what's happening?", "what's new?", industry updates)
 - web_search: Search the web for external information
 
 **Adagents & Agent Testing:**
