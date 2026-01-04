@@ -1107,6 +1107,62 @@ export class WorkingGroupDatabase {
     return chapter;
   }
 
+  /**
+   * Create a new industry gathering (temporary committee for conferences/events)
+   */
+  async createIndustryGathering(input: {
+    name: string;
+    slug: string;
+    description?: string;
+    slack_channel_url?: string;
+    slack_channel_id?: string;
+    start_date: Date;
+    end_date?: Date;
+    location: string;
+    website_url?: string;
+    logo_url?: string;
+    founding_member_id?: string;
+  }): Promise<WorkingGroup> {
+    // Generate the full slug: industry-gatherings/YYYY/name
+    const year = input.start_date.getFullYear();
+    const fullSlug = `industry-gatherings/${year}/${input.slug}`;
+
+    const gathering = await this.createWorkingGroup({
+      name: input.name,
+      slug: fullSlug,
+      description: input.description || `Connect with AgenticAdvertising.org members at ${input.name}.`,
+      slack_channel_url: input.slack_channel_url,
+      slack_channel_id: input.slack_channel_id,
+      committee_type: 'industry_gathering',
+      is_private: false,
+      event_start_date: input.start_date,
+      event_end_date: input.end_date,
+      event_location: input.location,
+      website_url: input.website_url,
+      logo_url: input.logo_url,
+      auto_archive_after_event: true,
+      leader_user_ids: input.founding_member_id ? [input.founding_member_id] : undefined,
+    });
+
+    return gathering;
+  }
+
+  /**
+   * Get all active industry gatherings
+   */
+  async getIndustryGatherings(): Promise<WorkingGroupWithMemberCount[]> {
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       LEFT JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id AND wgm.status = 'active'
+       WHERE wg.committee_type = 'industry_gathering'
+         AND wg.status = 'active'
+       GROUP BY wg.id
+       ORDER BY wg.event_start_date DESC NULLS LAST, wg.name ASC`
+    );
+    return result.rows;
+  }
+
   // ============== Membership with Interest Tracking ==============
 
   /**
