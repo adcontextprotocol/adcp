@@ -768,9 +768,9 @@ export async function getMemberCapabilities(
           (SELECT last_slack_activity_at FROM slack_user_mappings WHERE workos_user_id = $1),
           (SELECT created_at FROM slack_user_mappings WHERE workos_user_id = $1)
         )) as last_active_days,
-        COALESCE((SELECT SUM(messages_sent) FROM slack_activity_daily
+        COALESCE((SELECT SUM(message_count) FROM slack_activity_daily
                   WHERE slack_user_id = (SELECT slack_user_id FROM slack_user_mappings WHERE workos_user_id = $1)
-                  AND date > NOW() - INTERVAL '30 days'), 0) as slack_messages_30d`,
+                  AND activity_date > NOW() - INTERVAL '30 days'), 0) as slack_messages_30d`,
       [workosUserId]
     ),
 
