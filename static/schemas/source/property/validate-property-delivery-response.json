@@ -37,13 +37,21 @@
           "type": "integer",
           "description": "Impressions from non_compliant records"
         },
-        "unknown_records": {
+        "unmodeled_records": {
           "type": "integer",
-          "description": "Number of records with unknown status (identifier not resolvable)"
+          "description": "Number of records where identifier was recognized but no data available"
         },
-        "unknown_impressions": {
+        "unmodeled_impressions": {
           "type": "integer",
-          "description": "Impressions from unknown records"
+          "description": "Impressions from unmodeled records"
+        },
+        "unidentified_records": {
+          "type": "integer",
+          "description": "Number of records where identifier type was not resolvable"
+        },
+        "unidentified_impressions": {
+          "type": "integer",
+          "description": "Impressions from unidentified records"
         }
       },
       "required": [
@@ -53,10 +61,36 @@
         "compliant_impressions",
         "non_compliant_records",
         "non_compliant_impressions",
-        "unknown_records",
-        "unknown_impressions"
+        "unmodeled_records",
+        "unmodeled_impressions",
+        "unidentified_records",
+        "unidentified_impressions"
       ],
       "additionalProperties": false
+    },
+    "aggregate": {
+      "type": "object",
+      "description": "Optional aggregate measurements computed by the governance agent. Format and meaning are agent-specific.",
+      "properties": {
+        "score": {
+          "type": "number",
+          "description": "Numeric score (0-100 scale typical, but agent-defined)"
+        },
+        "grade": {
+          "type": "string",
+          "description": "Letter grade or category (e.g., 'A+', 'B-', 'Gold', 'Compliant')"
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable summary (e.g., '85% compliant', 'High quality')"
+        },
+        "methodology_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL explaining how this aggregate was calculated"
+        }
+      },
+      "additionalProperties": true
     },
     "authorization_summary": {
       "type": "object",

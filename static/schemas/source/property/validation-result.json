@@ -15,8 +15,8 @@
     },
     "status": {
       "type": "string",
-      "enum": ["compliant", "non_compliant", "unknown"],
-      "description": "Validation status: compliant (in list), non_compliant (not in list), unknown (identifier type not resolvable by this governance agent)"
+      "enum": ["compliant", "non_compliant", "unmodeled", "unidentified"],
+      "description": "Validation status: compliant (in list), non_compliant (not in list), unmodeled (identifier recognized but no data available), unidentified (identifier type not resolvable by this governance agent)"
     },
     "impressions": {
       "type": "integer",
