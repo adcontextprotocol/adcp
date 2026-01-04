@@ -11,7 +11,6 @@
  */
 
 import { Router } from "express";
-import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
@@ -60,16 +59,10 @@ function scoreToFires(score: number): number {
   return 0;
 }
 
-interface AccountsRoutesConfig {
-  workos: WorkOS | null;
-}
-
 export function setupAccountRoutes(
   pageRouter: Router,
-  apiRouter: Router,
-  config: AccountsRoutesConfig
+  apiRouter: Router
 ): void {
-  const { workos } = config;
 
   // Page route for unified account list
   pageRouter.get(
@@ -167,56 +160,14 @@ export function setupAccountRoutes(
         const memberStatus = deriveMemberStatus(org);
         const isDisqualified = org.prospect_status === "disqualified";
 
-        // Get member count and details from WorkOS
-        let memberCount = 0;
-        let members: any[] = [];
-        try {
-          if (workos) {
-            const memberships =
-              await workos.userManagement.listOrganizationMemberships({
-                organizationId: orgId,
-              });
-            memberCount = memberships.data?.length || 0;
-
-            // Fetch all users in parallel to avoid N+1 queries
-            const memberResults = await Promise.all(
-              (memberships.data || []).map(async (membership) => {
-                try {
-                  const user = await workos.userManagement.getUser(
-                    membership.userId
-                  );
-                  return {
-                    id: user.id,
-                    email: user.email,
-                    firstName: user.firstName,
-                    lastName: user.lastName,
-                    role: membership.role?.slug || "member",
-                  };
-                } catch (err) {
-                  logger.debug(
-                    { err, userId: membership.userId },
-                    "Could not fetch user from WorkOS"
-                  );
-                  return null;
-                }
-              })
-            );
-            members = memberResults.filter(Boolean);
-          }
-        } catch (err) {
-          logger.debug(
-            { err, orgId },
-            "Could not fetch organization memberships from WorkOS"
-          );
-        }
-
-        // Run parallel queries for related data
+        // Run parallel queries for related data (including members from local cache)
         const [
           workingGroupResult,
           activitiesResult,
           nextStepsResult,
           stakeholdersResult,
           domainsResult,
+          membersResult,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -322,6 +273,21 @@ export function setupAccountRoutes(
             FROM organization_domains
             WHERE workos_organization_id = $1
             ORDER BY is_primary DESC, domain ASC
+          `,
+            [orgId]
+          ),
+
+          // Members (from local cache instead of WorkOS API)
+          pool.query(
+            `
+            SELECT
+              workos_user_id as id,
+              email,
+              first_name,
+              last_name
+            FROM organization_memberships
+            WHERE workos_organization_id = $1
+            ORDER BY created_at ASC
           `,
             [orgId]
           ),
@@ -450,8 +416,14 @@ export function setupAccountRoutes(
             : null,
 
           // Relationships
-          members,
-          member_count: memberCount,
+          members: membersResult.rows.map((m) => ({
+            id: m.id,
+            email: m.email,
+            firstName: m.first_name,
+            lastName: m.last_name,
+            role: "member", // Role not cached locally
+          })),
+          member_count: membersResult.rows.length,
           working_groups: workingGroupResult.rows,
           stakeholders: stakeholdersResult.rows,
           domains: domainsResult.rows,
@@ -541,11 +513,7 @@ export function setupAccountRoutes(
 
       switch (viewName) {
         case "needs_attention":
-          // Default view: accounts owned by current user that need action
-          // Combines: pending next steps + recent activity + open invoices + going cold
-          if (!currentUserId) {
-            return res.json([]);
-          }
+          // All accounts needing action: overdue next steps, open invoices, high engagement unowned
           query = `
             ${selectFields},
             na.next_step_due_date as next_step_due,
@@ -554,12 +522,12 @@ export function setupAccountRoutes(
               WHEN na.next_step_due_date < CURRENT_DATE THEN 'overdue'
               WHEN na.next_step_due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
-              WHEN o.last_activity_at < NOW() - INTERVAL '30 days' THEN 'going_cold'
-              ELSE 'recent_activity'
+              WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
+                SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+              ) THEN 'high_engagement_unowned'
+              ELSE 'needs_review'
             END as attention_reason
             FROM organizations o
-            INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
-              AND os.user_id = $1
             LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
@@ -570,12 +538,23 @@ export function setupAccountRoutes(
               AND (
                 na.id IS NOT NULL
                 OR oi.stripe_invoice_id IS NOT NULL
-                OR o.last_activity_at < NOW() - INTERVAL '30 days'
-                OR o.last_activity_at > NOW() - INTERVAL '7 days'
+                OR (
+                  COALESCE(o.engagement_score, 0) >= 50
+                  AND NOT EXISTS (
+                    SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                  )
+                )
               )
           `;
-          params.push(currentUserId);
-          orderBy = ` ORDER BY na.next_step_due_date ASC NULLS LAST, o.last_activity_at DESC`;
+          orderBy = ` ORDER BY
+            CASE
+              WHEN na.next_step_due_date < CURRENT_DATE THEN 1
+              WHEN oi.stripe_invoice_id IS NOT NULL THEN 2
+              WHEN na.next_step_due_date IS NOT NULL THEN 3
+              ELSE 4
+            END,
+            na.next_step_due_date ASC NULLS LAST,
+            o.engagement_score DESC NULLS LAST`;
           break;
 
         case "needs_followup":
@@ -626,17 +605,49 @@ export function setupAccountRoutes(
           break;
 
         case "going_cold":
-          // Accounts with no activity in 30 days
+          // Accounts with no activity in 30 days (but had some activity before)
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE (
-              o.last_activity_at IS NULL
-              OR o.last_activity_at < NOW() - INTERVAL '30 days'
-            )
-            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+            WHERE o.last_activity_at IS NOT NULL
+              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (
+                o.subscription_status IS NULL
+                OR o.subscription_status NOT IN ('active', 'trialing')
+              )
           `;
-          orderBy = ` ORDER BY o.last_activity_at ASC NULLS FIRST`;
+          orderBy = ` ORDER BY o.last_activity_at DESC`;
+          break;
+
+        case "new_insights":
+          // Accounts with recent member activity/insights
+          // Joins through organization_memberships to find orgs with recent Slack activity
+          query = `
+            ${selectFields},
+            latest_activity.latest_activity_at as last_insight_at
+            FROM organizations o
+            INNER JOIN LATERAL (
+              SELECT MAX(sm.last_slack_activity_at) as latest_activity_at
+              FROM organization_memberships om
+              JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
+            ) latest_activity ON latest_activity.latest_activity_at IS NOT NULL
+            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+          `;
+          orderBy = ` ORDER BY latest_activity.latest_activity_at DESC`;
+          break;
+
+        case "members":
+          // All paying members
+          query = `
+            ${selectFields}
+            FROM organizations o
+            WHERE o.subscription_status = 'active'
+          `;
+          orderBy = ` ORDER BY o.name ASC`;
           break;
 
         case "renewals":
@@ -681,12 +692,14 @@ export function setupAccountRoutes(
           break;
 
         case "new":
-          // Recently created accounts
+        case "new_prospects":
+          // Recently created non-member accounts
           query = `
             ${selectFields}
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `;
           orderBy = ` ORDER BY o.created_at DESC`;
           break;
@@ -723,9 +736,11 @@ export function setupAccountRoutes(
       }
 
       if (search && typeof search === "string" && search.trim()) {
-        const searchPattern = `%${search.trim()}%`;
+        // Escape LIKE metacharacters to prevent wildcard injection
+        const escapedSearch = search.trim().replace(/[%_\\]/g, "\\$&");
+        const searchPattern = `%${escapedSearch}%`;
         params.push(searchPattern);
-        query += ` AND (o.name ILIKE $${params.length} OR o.email_domain ILIKE $${params.length})`;
+        query += ` AND (o.name ILIKE $${params.length} ESCAPE '\\' OR o.email_domain ILIKE $${params.length} ESCAPE '\\')`;
       }
 
       query += orderBy;
@@ -905,34 +920,51 @@ export function setupAccountRoutes(
         const currentUserId = req.user?.id;
 
         const [
-          needsFollowup,
-          openInvoices,
-          hot,
-          goingCold,
-          renewals,
-          lowEngagement,
-          myAccounts,
-          newAccounts,
-          disqualified,
           needsAttention,
+          newInsights,
+          hot,
+          newProspects,
+          goingCold,
+          myAccounts,
+          renewals,
+          members,
+          disqualified,
         ] = await Promise.all([
-          // Needs followup
+          // Needs attention - all accounts needing action
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
-            INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
+            LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
               AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
+            LEFT JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
+              AND oi.status IN ('draft', 'open')
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (
+                na.id IS NOT NULL
+                OR oi.stripe_invoice_id IS NOT NULL
+                OR (
+                  COALESCE(o.engagement_score, 0) >= 50
+                  AND NOT EXISTS (
+                    SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                  )
+                )
+              )
           `),
 
-          // Open invoices
+          // New insights - prospects with recent Slack activity
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
-            INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
+            WHERE EXISTS (
+              SELECT 1 FROM organization_memberships om
+              JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+            AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `),
 
           // Hot prospects
@@ -945,30 +977,23 @@ export function setupAccountRoutes(
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
 
+          // New prospects - recently created non-members
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.created_at >= NOW() - INTERVAL '14 days'
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+          `),
+
           // Going cold
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE (o.last_activity_at IS NULL OR o.last_activity_at < NOW() - INTERVAL '30 days')
+            WHERE o.last_activity_at IS NOT NULL
+              AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `),
-
-          // Renewals
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.subscription_status = 'active'
-              AND o.subscription_current_period_end IS NOT NULL
-              AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
-              AND o.subscription_current_period_end > NOW()
-          `),
-
-          // Low engagement members
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.subscription_status = 'active'
-              AND COALESCE(o.engagement_score, 0) < 30
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `),
 
           // My accounts
@@ -984,12 +1009,21 @@ export function setupAccountRoutes(
               )
             : Promise.resolve({ rows: [{ count: 0 }] }),
 
-          // New accounts
+          // Renewals
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.created_at >= NOW() - INTERVAL '14 days'
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+            WHERE o.subscription_status = 'active'
+              AND o.subscription_current_period_end IS NOT NULL
+              AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
+              AND o.subscription_current_period_end > NOW()
+          `),
+
+          // Members
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.subscription_status = 'active'
           `),
 
           // Disqualified
@@ -998,43 +1032,17 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.prospect_status = 'disqualified'
           `),
-
-          // Needs attention (for current user)
-          currentUserId
-            ? pool.query(
-                `
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id AND os.user_id = $1
-            LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
-              AND na.is_next_step = TRUE
-              AND na.next_step_completed_at IS NULL
-              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
-            LEFT JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
-            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (
-                na.id IS NOT NULL
-                OR oi.stripe_invoice_id IS NOT NULL
-                OR o.last_activity_at < NOW() - INTERVAL '30 days'
-                OR o.last_activity_at > NOW() - INTERVAL '7 days'
-              )
-          `,
-                [currentUserId]
-              )
-            : Promise.resolve({ rows: [{ count: 0 }] }),
         ]);
 
         res.json({
           needs_attention: parseInt(needsAttention.rows[0].count),
-          needs_followup: parseInt(needsFollowup.rows[0].count),
-          open_invoices: parseInt(openInvoices.rows[0].count),
+          new_insights: parseInt(newInsights.rows[0].count),
           hot: parseInt(hot.rows[0].count),
+          new_prospects: parseInt(newProspects.rows[0].count),
           going_cold: parseInt(goingCold.rows[0].count),
-          renewals: parseInt(renewals.rows[0].count),
-          low_engagement: parseInt(lowEngagement.rows[0].count),
           my_accounts: parseInt(myAccounts.rows[0].count),
-          new: parseInt(newAccounts.rows[0].count),
+          renewals: parseInt(renewals.rows[0].count),
+          members: parseInt(members.rows[0].count),
           disqualified: parseInt(disqualified.rows[0].count),
         });
       } catch (error) {
