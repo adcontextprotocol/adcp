@@ -20,3 +20,4 @@ export { setupCleanupRoutes } from './cleanup.js';
 export { setupStatsRoutes } from './stats.js';
 export { setupDiscountRoutes } from './discounts.js';
 export { setupMembersRoutes } from './members.js';
+export { setupAccountRoutes } from './accounts.js';

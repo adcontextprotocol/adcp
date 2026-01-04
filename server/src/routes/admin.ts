@@ -27,6 +27,7 @@ import { setupCleanupRoutes } from "./admin/cleanup.js";
 import { setupStatsRoutes } from "./admin/stats.js";
 import { setupDiscountRoutes } from "./admin/discounts.js";
 import { setupMembersRoutes } from "./admin/members.js";
+import { setupAccountRoutes } from "./admin/accounts.js";
 
 const logger = createLogger("admin-routes");
 
@@ -104,6 +105,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Members management routes (list, sync, payments, delete)
   setupMembersRoutes(apiRouter, { workos });
+
+  // Unified account management routes (replaces separate prospect/org detail)
+  setupAccountRoutes(pageRouter, apiRouter, { workos });
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
