@@ -17,7 +17,7 @@ export function setupProspectRoutes(apiRouter: Router): void {
   apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
-      const { status, source, view, owner } = req.query;
+      const { status, source, view, owner, mine } = req.query;
 
       // Base SELECT fields
       const selectFields = `
@@ -208,6 +208,20 @@ export function setupProspectRoutes(apiRouter: Router): void {
       if (owner && typeof owner === "string") {
         params.push(owner);
         query += ` AND o.prospect_owner = $${params.length}`;
+      }
+
+      // mine=true filter: only show prospects where current user is owner in org_stakeholders
+      if (mine === "true") {
+        const currentUserId = req.user?.id;
+        if (currentUserId) {
+          params.push(currentUserId);
+          query += ` AND EXISTS (
+            SELECT 1 FROM org_stakeholders os
+            WHERE os.organization_id = o.workos_organization_id
+              AND os.user_id = $${params.length}
+              AND os.role = 'owner'
+          )`;
+        }
       }
 
       query += orderBy;
@@ -697,15 +711,21 @@ export function setupProspectRoutes(apiRouter: Router): void {
     try {
       const pool = getPool();
 
-      // Get unique stakeholders who have been assigned as owners across any organization
+      // Get all members of the aao-admin working group (the actual admins)
       const result = await pool.query(`
-        SELECT DISTINCT user_id, user_name, user_email
-        FROM org_stakeholders
-        WHERE role = 'owner'
+        SELECT DISTINCT
+          u.workos_user_id as user_id,
+          COALESCE(u.first_name || ' ' || u.last_name, u.email) as user_name,
+          u.email as user_email
+        FROM working_group_memberships wgm
+        JOIN working_groups wg ON wg.id = wgm.working_group_id
+        JOIN users u ON u.workos_user_id = wgm.workos_user_id
+        WHERE wg.slug = 'aao-admin'
+          AND wgm.status = 'active'
         ORDER BY user_name ASC
       `);
 
-      // Also include the current user if not already in the list
+      // Also include the current user if not already in the list (they should be admin to reach here)
       const currentUserId = req.user?.id;
       const currentUserName =
         req.user?.firstName && req.user?.lastName

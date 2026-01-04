@@ -555,6 +555,18 @@ export function setupOrganizationRoutes(
 
         const pool = getPool();
 
+        // Check if user is already an owner - don't downgrade them
+        const existing = await pool.query(
+          `SELECT role FROM org_stakeholders WHERE organization_id = $1 AND user_id = $2`,
+          [orgId, req.user.id]
+        );
+
+        if (existing.rows.length > 0 && existing.rows[0].role === "owner" && actualRole !== "owner") {
+          return res.status(400).json({
+            error: "Cannot change role from owner. Use the owner selector to reassign ownership first.",
+          });
+        }
+
         const userName =
           `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
           req.user.email;
@@ -589,7 +601,7 @@ export function setupOrganizationRoutes(
     }
   );
 
-  // DELETE /api/admin/organizations/:orgId/stakeholders/me - Remove self as stakeholder
+  // DELETE /api/admin/organizations/:orgId/stakeholders/me - Remove self as stakeholder (but not if owner)
   apiRouter.delete(
     "/organizations/:orgId/stakeholders/me",
     requireAuth,
@@ -604,16 +616,27 @@ export function setupOrganizationRoutes(
 
         const pool = getPool();
 
+        // Only delete if not owner - owners must be reassigned via owner selector
         const result = await pool.query(
           `
           DELETE FROM org_stakeholders
-          WHERE organization_id = $1 AND user_id = $2
+          WHERE organization_id = $1 AND user_id = $2 AND role != 'owner'
           RETURNING *
         `,
           [orgId, req.user.id]
         );
 
         if (result.rows.length === 0) {
+          // Check if they're the owner
+          const ownerCheck = await pool.query(
+            `SELECT role FROM org_stakeholders WHERE organization_id = $1 AND user_id = $2`,
+            [orgId, req.user.id]
+          );
+          if (ownerCheck.rows.length > 0 && ownerCheck.rows[0].role === "owner") {
+            return res.status(400).json({
+              error: "Cannot remove yourself as owner. Reassign ownership first.",
+            });
+          }
           return res
             .status(404)
             .json({ error: "You are not a stakeholder for this organization" });

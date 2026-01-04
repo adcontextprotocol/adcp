@@ -47,11 +47,14 @@ export async function getHomeContent(
   // Check if user is admin
   const isAdmin = await isSlackUserAdmin(slackUserId);
 
+  // Get admin user ID for prospect stats (if admin)
+  const adminUserId = isAdmin ? memberContext?.workos_user?.workos_user_id : undefined;
+
   // Build all sections in parallel for speed
   const [alerts, activity, adminPanel] = await Promise.all([
     buildAlerts(memberContext),
     buildActivityFeed(memberContext),
-    isAdmin ? buildAdminPanel() : Promise.resolve(null),
+    isAdmin ? buildAdminPanel(adminUserId) : Promise.resolve(null),
   ]);
 
   // Build synchronous sections

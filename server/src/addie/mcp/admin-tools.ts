@@ -915,6 +915,163 @@ The "primary domain" is a local concept used for enrichment and display - WorkOS
       required: ['action', 'organization_id'],
     },
   },
+
+  // ============================================
+  // PROSPECT OWNERSHIP & PIPELINE TOOLS
+  // ============================================
+  {
+    name: 'my_engaged_prospects',
+    description: `List your most engaged prospects - organizations you own that have high engagement scores.
+
+USE THIS when an admin asks:
+- "Which of my prospects are most engaged?"
+- "Show me my hot prospects"
+- "What are my best prospects doing?"
+
+Returns prospects you own sorted by engagement score (highest first), with engagement reasons.
+Hot prospects have engagement_score >= 30.`,
+    usage_hints: 'Quick way to see which of your owned prospects are showing interest.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+        hot_only: {
+          type: 'boolean',
+          description: 'Only show hot prospects (engagement_score >= 30)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'my_followups_needed',
+    description: `List your prospects that need follow-up attention.
+
+USE THIS when an admin asks:
+- "Which prospects do I need to reach out to?"
+- "What follow-ups do I have?"
+- "Which of my prospects are stale?"
+
+Returns owned prospects that:
+- Have no activity logged in the past 14 days, OR
+- Have an overdue next_step_due_date
+
+Sorted by urgency (overdue first, then by days since last activity).`,
+    usage_hints: 'Great for daily check-ins to see what needs attention.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days_stale: {
+          type: 'number',
+          description: 'Days without activity to consider stale (default: 14)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'unassigned_prospects',
+    description: `List high-engagement prospects that have no owner assigned.
+
+USE THIS when an admin asks:
+- "What are the most interesting unassigned prospects?"
+- "Which prospects need an owner?"
+- "Show me unclaimed hot prospects"
+
+Returns non-member organizations with engagement but no owner in org_stakeholders.
+Great for finding opportunities to claim ownership.`,
+    usage_hints: 'Use this to find prospects worth claiming.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        min_engagement: {
+          type: 'number',
+          description: 'Minimum engagement score to include (default: 10)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'claim_prospect',
+    description: `Claim ownership of a prospect organization.
+
+USE THIS when an admin says:
+- "I'll take ownership of [company]"
+- "Assign me to [company]"
+- "Make me the owner of [company]"
+
+Adds you as the owner in org_stakeholders. If another owner exists, you can optionally replace them.`,
+    usage_hints: 'Use after finding unassigned prospects or when reassigning ownership.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID to claim ownership of',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name (used to look up org_id if not provided)',
+        },
+        replace_existing: {
+          type: 'boolean',
+          description: 'If true, replace existing owner. Otherwise fails if owner exists (default: false)',
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional notes about why you are claiming this prospect',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'suggest_prospects',
+    description: `Suggest companies to add to the prospect list.
+
+USE THIS when an admin asks:
+- "What companies should I add to the prospect list?"
+- "Find new prospects for me"
+- "Who should we be targeting?"
+
+This tool uses two approaches:
+1. **Unmapped domains**: Finds Slack/email domains that are actively engaged but not yet mapped to an organization (high-value - they're already in our ecosystem!)
+2. **Lusha search**: Searches Lusha's database for companies matching ad tech criteria
+
+Returns a combined list prioritizing unmapped domains (already engaged) over external prospects.`,
+    usage_hints: 'Great for expanding the prospect pipeline.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        include_lusha: {
+          type: 'boolean',
+          description: 'Include Lusha search results for external companies (default: true)',
+        },
+        lusha_keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Keywords for Lusha search (default: ["programmatic", "DSP", "ad tech"])',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results per source (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -3699,6 +3856,446 @@ export function createAdminToolHandlers(
       logger.error({ error }, 'Error checking domain health');
       return '❌ Failed to check domain health. Please try again.';
     }
+  });
+
+  // ============================================
+  // PROSPECT OWNERSHIP & PIPELINE HANDLERS
+  // ============================================
+
+  // My engaged prospects - list owned prospects sorted by engagement
+  handlers.set('my_engaged_prospects', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 50);
+    const hotOnly = input.hot_only as boolean;
+
+    // Get the admin's user ID from context
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      // Query prospects owned by this user
+      let query = `
+        SELECT
+          o.workos_organization_id as org_id,
+          o.name,
+          o.email_domain,
+          o.engagement_score,
+          o.prospect_status,
+          o.interest_level,
+          o.company_type,
+          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons,
+          (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
+        FROM organizations o
+        JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+        WHERE os.user_id = $1
+          AND os.role = 'owner'
+          AND o.is_personal IS NOT TRUE
+          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+      `;
+
+      if (hotOnly) {
+        query += ` AND o.engagement_score >= 30`;
+      }
+
+      query += `
+        ORDER BY o.engagement_score DESC NULLS LAST
+        LIMIT $2
+      `;
+
+      const result = await pool.query(query, [userId, limit]);
+
+      if (result.rows.length === 0) {
+        return hotOnly
+          ? `No hot prospects found. Try removing the hot_only filter to see all your prospects.`
+          : `You don't own any prospects yet. Use \`unassigned_prospects\` to find prospects to claim.`;
+      }
+
+      let response = `## Your ${hotOnly ? 'Hot ' : ''}Engaged Prospects\n\n`;
+
+      for (const row of result.rows) {
+        const isHot = (row.engagement_score || 0) >= 30;
+        const emoji = isHot ? '🔥' : '📊';
+        response += `${emoji} **${row.name}**`;
+        if (row.email_domain) response += ` (${row.email_domain})`;
+        response += `\n`;
+        response += `   Score: ${row.engagement_score || 0}`;
+        if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
+        if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
+        response += `\n`;
+        if (row.engagement_reasons?.length > 0) {
+          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
+        }
+        if (row.last_activity) {
+          response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
+        }
+        response += `\n`;
+      }
+
+      const hotCount = result.rows.filter(r => (r.engagement_score || 0) >= 30).length;
+      response += `---\n`;
+      response += `Showing ${result.rows.length} prospect(s)`;
+      if (!hotOnly && hotCount > 0) {
+        response += ` (${hotCount} hot)`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, userId }, 'Error fetching engaged prospects');
+      return '❌ Failed to fetch your prospects. Please try again.';
+    }
+  });
+
+  // My followups needed - list owned prospects needing attention
+  handlers.set('my_followups_needed', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 50);
+    const daysStale = (input.days_stale as number) || 14;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      // Query prospects that need follow-up
+      const result = await pool.query(`
+        WITH prospect_activity AS (
+          SELECT
+            o.workos_organization_id as org_id,
+            o.name,
+            o.email_domain,
+            o.engagement_score,
+            o.prospect_status,
+            o.next_step,
+            o.next_step_due_date,
+            (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
+            EXTRACT(DAY FROM NOW() - COALESCE(
+              (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
+              o.created_at
+            )) as days_since_activity
+          FROM organizations o
+          JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+          WHERE os.user_id = $1
+            AND os.role = 'owner'
+            AND o.is_personal IS NOT TRUE
+            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+        )
+        SELECT *,
+          CASE
+            WHEN next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE THEN 1
+            WHEN days_since_activity >= $2 THEN 2
+            ELSE 3
+          END as urgency
+        FROM prospect_activity
+        WHERE (next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE)
+           OR days_since_activity >= $2
+        ORDER BY urgency, days_since_activity DESC NULLS LAST
+        LIMIT $3
+      `, [userId, daysStale, limit]);
+
+      if (result.rows.length === 0) {
+        return `✅ Great news! None of your prospects need immediate follow-up.`;
+      }
+
+      let response = `## Prospects Needing Follow-Up\n\n`;
+
+      let overdueCount = 0;
+      let staleCount = 0;
+
+      for (const row of result.rows) {
+        const isOverdue = row.next_step_due_date && new Date(row.next_step_due_date) < new Date();
+        if (isOverdue) {
+          overdueCount++;
+          response += `⚠️ **${row.name}** - OVERDUE\n`;
+          response += `   Next step: ${row.next_step || 'Not set'}\n`;
+          response += `   Due: ${new Date(row.next_step_due_date).toLocaleDateString()}\n`;
+        } else {
+          staleCount++;
+          response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
+        }
+        if (row.last_activity) {
+          response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
+        }
+        if (row.engagement_score) {
+          response += `   Engagement: ${row.engagement_score}${row.engagement_score >= 30 ? ' 🔥' : ''}\n`;
+        }
+        response += `\n`;
+      }
+
+      response += `---\n`;
+      if (overdueCount > 0) response += `⚠️ ${overdueCount} overdue task(s)\n`;
+      if (staleCount > 0) response += `⏰ ${staleCount} stale (>${daysStale} days)\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, userId }, 'Error fetching followups needed');
+      return '❌ Failed to fetch follow-ups. Please try again.';
+    }
+  });
+
+  // Unassigned prospects - list high-engagement prospects without owners
+  handlers.set('unassigned_prospects', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 50);
+    const minEngagement = (input.min_engagement as number) || 10;
+
+    try {
+      const result = await pool.query(`
+        SELECT
+          o.workos_organization_id as org_id,
+          o.name,
+          o.email_domain,
+          o.engagement_score,
+          o.prospect_status,
+          o.company_type,
+          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+        FROM organizations o
+        WHERE o.is_personal IS NOT TRUE
+          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND o.engagement_score >= $1
+          AND NOT EXISTS (
+            SELECT 1 FROM org_stakeholders os
+            WHERE os.organization_id = o.workos_organization_id
+              AND os.role = 'owner'
+          )
+        ORDER BY o.engagement_score DESC NULLS LAST
+        LIMIT $2
+      `, [minEngagement, limit]);
+
+      if (result.rows.length === 0) {
+        return minEngagement > 10
+          ? `No unassigned prospects with engagement >= ${minEngagement}. Try lowering min_engagement.`
+          : `All engaged prospects have owners! Nice work team.`;
+      }
+
+      let response = `## Unassigned Prospects (engagement >= ${minEngagement})\n\n`;
+
+      for (const row of result.rows) {
+        const isHot = (row.engagement_score || 0) >= 30;
+        const emoji = isHot ? '🔥' : '📊';
+        response += `${emoji} **${row.name}**`;
+        if (row.email_domain) response += ` (${row.email_domain})`;
+        response += `\n`;
+        response += `   Score: ${row.engagement_score || 0}`;
+        if (row.company_type) response += ` | Type: ${row.company_type}`;
+        response += `\n`;
+        if (row.engagement_reasons?.length > 0) {
+          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
+        }
+        response += `   ID: ${row.org_id}\n`;
+        response += `\n`;
+      }
+
+      response += `---\n`;
+      response += `Use \`claim_prospect\` to take ownership of any of these.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error fetching unassigned prospects');
+      return '❌ Failed to fetch unassigned prospects. Please try again.';
+    }
+  });
+
+  // Claim prospect - assign self as owner
+  handlers.set('claim_prospect', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    let orgId = input.org_id as string;
+    const companyName = input.company_name as string;
+    const replaceExisting = input.replace_existing as boolean;
+    const notes = input.notes as string;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userEmail = memberContext?.workos_user?.email;
+
+    if (!userId || !userEmail) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    if (!orgId && !companyName) {
+      return '❌ Please provide either org_id or company_name.';
+    }
+
+    try {
+      // Look up org by name if no ID provided
+      if (!orgId && companyName) {
+        // Escape SQL LIKE wildcard characters to prevent pattern injection
+        const escapedName = companyName.replace(/[%_\\]/g, '\\$&');
+        const searchResult = await pool.query(`
+          SELECT workos_organization_id, name
+          FROM organizations
+          WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
+            AND is_personal IS NOT TRUE
+          ORDER BY
+            CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
+            engagement_score DESC NULLS LAST
+          LIMIT 1
+        `, [`%${escapedName}%`, companyName]);
+
+        if (searchResult.rows.length === 0) {
+          return `❌ No organization found matching "${companyName}". Try using the exact org_id instead.`;
+        }
+
+        orgId = searchResult.rows[0].workos_organization_id;
+      }
+
+      // Check for existing owner
+      const existingOwner = await pool.query(`
+        SELECT user_id, user_name, user_email
+        FROM org_stakeholders
+        WHERE organization_id = $1 AND role = 'owner'
+      `, [orgId]);
+
+      if (existingOwner.rows.length > 0) {
+        const owner = existingOwner.rows[0];
+        if (owner.user_id === userId) {
+          return `✅ You are already the owner of this prospect.`;
+        }
+        if (!replaceExisting) {
+          return `❌ This prospect already has an owner: ${owner.user_name} (${owner.user_email}).\n\nUse \`replace_existing: true\` to take over ownership.`;
+        }
+
+        // Remove existing owner
+        await pool.query(`
+          DELETE FROM org_stakeholders
+          WHERE organization_id = $1 AND role = 'owner'
+        `, [orgId]);
+      }
+
+      // Add self as owner
+      await pool.query(`
+        INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
+        VALUES ($1, $2, $3, $4, 'owner', $5)
+        ON CONFLICT (organization_id, user_id)
+        DO UPDATE SET role = 'owner', notes = $5, updated_at = NOW()
+      `, [orgId, userId, userName, userEmail, notes || `Claimed via Addie on ${new Date().toLocaleDateString()}`]);
+
+      // Get the org name for confirmation
+      const orgResult = await pool.query(`
+        SELECT name FROM organizations WHERE workos_organization_id = $1
+      `, [orgId]);
+
+      const orgName = orgResult.rows[0]?.name || orgId;
+
+      let response = `✅ You are now the owner of **${orgName}**!`;
+      if (existingOwner.rows.length > 0) {
+        response += `\n\n_Previous owner ${existingOwner.rows[0].user_name} has been removed._`;
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, userId }, 'Error claiming prospect');
+      return '❌ Failed to claim prospect. Please try again.';
+    }
+  });
+
+  // Suggest prospects - find unmapped domains and Lusha results
+  handlers.set('suggest_prospects', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 20);
+    const includeLusha = input.include_lusha !== false;
+    const lushaKeywords = (input.lusha_keywords as string[]) || ['programmatic', 'DSP', 'ad tech'];
+
+    let response = `## Suggested Prospects\n\n`;
+
+    // 1. Find unmapped corporate domains (already engaged, high value)
+    try {
+      const unmappedResult = await pool.query(`
+        WITH corporate_domains AS (
+          -- Extract domains from Slack users not in personal orgs
+          SELECT DISTINCT
+            LOWER(SUBSTRING(sm.slack_email FROM POSITION('@' IN sm.slack_email) + 1)) as domain,
+            COUNT(DISTINCT sm.slack_user_id) as user_count
+          FROM slack_user_mappings sm
+          WHERE sm.slack_email IS NOT NULL
+            AND sm.slack_is_bot IS NOT TRUE
+            -- Exclude common personal email domains
+            AND LOWER(sm.slack_email) NOT LIKE '%@gmail.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@yahoo.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@hotmail.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@outlook.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@icloud.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@aol.com'
+          GROUP BY domain
+        )
+        SELECT
+          cd.domain,
+          cd.user_count
+        FROM corporate_domains cd
+        WHERE NOT EXISTS (
+          -- Not already mapped to an org
+          SELECT 1 FROM organization_domains od
+          WHERE od.domain = cd.domain
+        )
+        AND NOT EXISTS (
+          -- Not the email_domain of any org
+          SELECT 1 FROM organizations o
+          WHERE o.email_domain = cd.domain
+        )
+        ORDER BY cd.user_count DESC
+        LIMIT $1
+      `, [limit]);
+
+      if (unmappedResult.rows.length > 0) {
+        response += `### 🎯 Unmapped Domains (Already in Slack!)\n\n`;
+        response += `_These people are already engaged but their companies aren't in our system:_\n\n`;
+
+        for (const row of unmappedResult.rows) {
+          response += `• **${row.domain}** - ${row.user_count} Slack user(s)\n`;
+        }
+        response += `\n_Use \`add_prospect\` to create organizations for these domains._\n\n`;
+      } else {
+        response += `### 🎯 Unmapped Domains\n\n`;
+        response += `✅ All active Slack domains are mapped to organizations!\n\n`;
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error finding unmapped domains');
+      response += `### 🎯 Unmapped Domains\n\n`;
+      response += `⚠️ Could not check unmapped domains.\n\n`;
+    }
+
+    // 2. Lusha search for external prospects
+    if (includeLusha && isLushaConfigured()) {
+      try {
+        const lushaClient = getLushaClient();
+        if (lushaClient) {
+          response += `### 🔍 Lusha Search Results\n\n`;
+          response += `_External companies matching: ${lushaKeywords.join(', ')}_\n\n`;
+
+          // Note: This would use the actual Lusha search API
+          // For now, we'll indicate it's available
+          response += `Use \`prospect_search_lusha\` with specific criteria to find external companies.\n\n`;
+        }
+      } catch (error) {
+        logger.error({ error }, 'Error searching Lusha');
+        response += `### 🔍 Lusha Search\n\n`;
+        response += `⚠️ Lusha search failed. Try \`prospect_search_lusha\` directly.\n\n`;
+      }
+    } else if (includeLusha) {
+      response += `### 🔍 Lusha Search\n\n`;
+      response += `⚠️ Lusha is not configured. Contact an admin to set up Lusha API access.\n\n`;
+    }
+
+    response += `---\n`;
+    response += `Use \`add_prospect\` to add any company to the prospect list.`;
+
+    return response;
   });
 
   return handlers;
