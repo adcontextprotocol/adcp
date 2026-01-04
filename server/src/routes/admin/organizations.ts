@@ -847,13 +847,13 @@ export function setupOrganizationRoutes(
             if (interaction.user_id) {
               // Try to get Slack user name
               const slackUserResult = await pool.query(
-                `SELECT display_name, real_name FROM slack_users WHERE slack_user_id = $1`,
+                `SELECT slack_display_name, slack_real_name FROM slack_user_mappings WHERE slack_user_id = $1`,
                 [interaction.user_id]
               );
               if (slackUserResult.rows.length > 0) {
                 userName =
-                  slackUserResult.rows[0].display_name ||
-                  slackUserResult.rows[0].real_name;
+                  slackUserResult.rows[0].slack_display_name ||
+                  slackUserResult.rows[0].slack_real_name;
               }
             }
 
@@ -911,8 +911,8 @@ export function setupOrganizationRoutes(
 
         // Get Slack user IDs for these WorkOS users
         const slackUsersResult = await pool.query(
-          `SELECT slack_user_id, display_name, real_name
-           FROM slack_users
+          `SELECT slack_user_id, slack_display_name, slack_real_name
+           FROM slack_user_mappings
            WHERE workos_user_id = ANY($1)`,
           [memberUserIds]
         );
@@ -920,7 +920,7 @@ export function setupOrganizationRoutes(
         const slackUserMap = new Map(
           slackUsersResult.rows.map((r) => [
             r.slack_user_id,
-            r.display_name || r.real_name,
+            r.slack_display_name || r.slack_real_name,
           ])
         );
         const slackUserIds = slackUsersResult.rows.map((r) => r.slack_user_id);
