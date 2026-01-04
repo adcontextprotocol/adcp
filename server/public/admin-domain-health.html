@@ -171,6 +171,18 @@
       padding: var(--space-1) var(--space-2);
       font-size: var(--text-xs);
     }
+    .btn-success {
+      background: var(--color-success-500);
+      color: white;
+    }
+    .btn-error {
+      background: var(--color-error-500);
+      color: white;
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
 
     /* Organization Links */
     .org-link {
@@ -363,6 +375,105 @@
           showMergeModal(orgIds, domain);
         });
       });
+
+      // Set up event handlers for link domain buttons
+      document.querySelectorAll('.link-domain-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const orgId = btn.dataset.orgId;
+          const orgName = btn.dataset.orgName;
+          const domain = btn.dataset.domain;
+          linkDomainToOrg(btn, orgId, orgName, domain);
+        });
+      });
+
+      // Set up event handlers for link domain selects
+      document.querySelectorAll('.link-domain-select').forEach(select => {
+        select.addEventListener('change', () => {
+          const orgId = select.value;
+          if (!orgId) return;
+          const option = select.options[select.selectedIndex];
+          const orgName = option.dataset.orgName;
+          const domain = select.dataset.domain;
+          linkDomainToOrg(select, orgId, orgName, domain);
+        });
+      });
+    }
+
+    async function linkDomainToOrg(element, orgId, orgName, domain) {
+      // Validate orgId format before using in URL
+      if (!isValidOrgId(orgId)) {
+        alert('Invalid organization ID format');
+        return;
+      }
+
+      const originalText = element.tagName === 'BUTTON' ? element.textContent : null;
+      const originalDisabled = element.disabled;
+
+      // Disable and show loading state
+      element.disabled = true;
+      if (element.tagName === 'BUTTON') {
+        element.textContent = 'Linking...';
+      }
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain.toLowerCase(), is_primary: true })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed to link domain');
+        }
+
+        // Success - show success state briefly then reload data
+        element.classList.remove('btn-primary');
+        element.classList.add('btn-success');
+        if (element.tagName === 'BUTTON') {
+          element.textContent = 'Linked!';
+        } else {
+          // For select, reset and disable
+          element.value = '';
+          const firstOption = element.options[0];
+          if (firstOption) firstOption.textContent = 'Linked!';
+        }
+
+        // Reload after brief delay to show success
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1000);
+      } catch (error) {
+        // Show error state
+        element.classList.remove('btn-primary');
+        element.classList.add('btn-error');
+        if (element.tagName === 'BUTTON') {
+          element.textContent = 'Failed';
+          element.title = error.message;
+        } else {
+          element.value = '';
+          const firstOption = element.options[0];
+          if (firstOption) firstOption.textContent = 'Failed: ' + error.message;
+        }
+
+        // Reset after delay
+        setTimeout(() => {
+          element.disabled = originalDisabled;
+          element.classList.remove('btn-error');
+          element.classList.add('btn-primary');
+          if (element.tagName === 'BUTTON') {
+            element.textContent = originalText;
+            element.title = '';
+          } else {
+            const firstOption = element.options[0];
+            if (firstOption) firstOption.textContent = 'Link to org...';
+          }
+        }, 3000);
+      }
     }
 
     function renderSummary() {
@@ -456,12 +567,12 @@
                   ${hasExistingOrgs ? `
                     <div style="display: flex; flex-direction: column; gap: var(--space-2);">
                       ${nonPersonalOrgs.length === 1 ? `
-                        <a href="/admin/organizations/${nonPersonalOrgs[0].org_id}?link_domain=${encodeURIComponent(d.domain)}" class="btn btn-primary btn-sm">Link to ${escapeHtml(nonPersonalOrgs[0].name)}</a>
+                        <button class="btn btn-primary btn-sm link-domain-btn" data-org-id="${escapeHtml(nonPersonalOrgs[0].org_id)}" data-org-name="${escapeHtml(nonPersonalOrgs[0].name)}" data-domain="${escapeHtml(d.domain)}">Link to ${escapeHtml(nonPersonalOrgs[0].name)}</button>
                       ` : `
-                        <select class="btn btn-sm" onchange="if(this.value) window.location.href=this.value" style="padding: var(--space-1) var(--space-2); cursor: pointer;">
+                        <select class="btn btn-sm link-domain-select" data-domain="${escapeHtml(d.domain)}" style="padding: var(--space-1) var(--space-2); cursor: pointer;">
                           <option value="">Link to org...</option>
                           ${nonPersonalOrgs.map(o => `
-                            <option value="/admin/organizations/${o.org_id}?link_domain=${encodeURIComponent(d.domain)}">${escapeHtml(o.name)}</option>
+                            <option value="${escapeHtml(o.org_id)}" data-org-name="${escapeHtml(o.name)}">${escapeHtml(o.name)}</option>
                           `).join('')}
                         </select>
                       `}

@@ -1804,8 +1804,9 @@
                 ${badges.join(' ')}
               </div>
               <div class="domain-actions">
+                ${!d.verified ? `<button class="btn btn-sm btn-primary" data-action="verify">Verify</button>` : ''}
                 ${!d.is_primary && !d.workos_only ? `<button class="btn btn-sm btn-secondary" data-action="set-primary">Set Primary</button>` : ''}
-                ${d.source !== 'workos' ? `<button class="btn-icon danger" data-action="remove" title="Remove domain" aria-label="Remove domain ${escapedDomain}">&times;</button>` : ''}
+                <button class="btn-icon danger" data-action="remove" title="Remove domain" aria-label="Remove domain ${escapedDomain}">&times;</button>
               </div>
             </li>
           `;
@@ -1830,6 +1831,8 @@
         setDomainPrimary(domain, btn);
       } else if (action === 'remove') {
         removeDomain(domain, btn);
+      } else if (action === 'verify') {
+        verifyDomain(domain, btn);
       }
     }
 
@@ -1942,6 +1945,39 @@
         alert('Error: ' + error.message);
         if (btn) {
           btn.disabled = false;
+        }
+      }
+    }
+
+    async function verifyDomain(domain, btn) {
+      const originalText = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+      }
+
+      try {
+        // Reuse the add domain endpoint - it handles verification of existing domains
+        const response = await fetch(`/api/admin/organizations/${orgId}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain.toLowerCase() })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error(await getErrorMessage(response, 'Failed to verify domain'));
+        }
+
+        await refreshDomains();
+      } catch (error) {
+        alert('Error: ' + error.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = originalText;
         }
       }
     }
