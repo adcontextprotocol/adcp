@@ -464,6 +464,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
             },
             url: {
               type: 'string',
+              format: 'uri',
               description: 'Brand website URL',
             },
             tagline: {
@@ -1288,7 +1289,7 @@ export function createMemberToolHandlers(
     const dryRun = input.dry_run as boolean | undefined;
     const channels = input.channels as string[] | undefined;
     const pricingModels = input.pricing_models as string[] | undefined;
-    const brandManifest = input.brand_manifest as { name: string; url?: string; tagline?: string } | undefined;
+    const brandManifest = input.brand_manifest as TestOptions['brand_manifest'];
     let authToken = input.auth_token as string | undefined;
 
     // Look up saved token for organization
