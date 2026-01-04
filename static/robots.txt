@@ -2,9 +2,9 @@ User-agent: *
 Allow: /
 
 # SEO-friendly paths for advertising automation content
-Allow: /advertising-automation-api
-Allow: /mcp-advertising-integration  
-Allow: /programmatic-advertising-protocol
+Allow: /docs/media-buy/task-reference/
+Allow: /docs/protocols/mcp-guide
+Allow: /docs/protocols/a2a-guide
 
 # Allow documentation crawling
 Allow: /docs/
