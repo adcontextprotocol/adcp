@@ -854,24 +854,15 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       const userName = user.slack_display_name || user.slack_real_name || 'there';
       let previewMessage: string;
 
-      // If user doesn't need account linking, don't show linking-focused messages
-      if (!needsLinking && variant?.message_template) {
-        previewMessage = `[Account already linked - no outreach needed]\n\nThis user's Slack and AgenticAdvertising.org accounts are already connected. The current goal for Addie is: ${user.goal_name || 'Drive Engagement'}`;
-      } else {
-        previewMessage = variant?.message_template || '[No active outreach variant configured]';
-        previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
-        if (goalQuestion) {
-          previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
-        }
+      // Use the variant's message template (already filtered to exclude linking messages for linked users)
+      previewMessage = variant?.message_template || '[No active outreach variant configured]';
+      previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
+      if (goalQuestion) {
+        previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
       }
 
-      // Check eligibility
-      const baseEligibility = await canContactUser(slackUserId);
-
-      // For already-linked users, override eligibility to indicate no linking outreach needed
-      const eligibility = !needsLinking
-        ? { canContact: false, reason: 'Account already linked - Slack and AAO accounts are connected' }
-        : baseEligibility;
+      // Check eligibility - use standard checks for all users (linked or not)
+      const eligibility = await canContactUser(slackUserId);
 
       res.json({
         user: {
