@@ -1651,12 +1651,12 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the DM thread
+  // Send response in the DM channel (no threading for DMs - just back-and-forth messages)
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
       text: outputValidation.sanitized,
-      thread_ts: threadTs !== event.ts ? threadTs : undefined, // Only thread if already in a thread
+      // Don't use thread_ts for DMs - threading feels awkward in direct messages
     });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
