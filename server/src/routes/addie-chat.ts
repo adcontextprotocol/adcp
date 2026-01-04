@@ -44,6 +44,7 @@ import {
   getThreadService,
   type ThreadContext,
 } from "../addie/thread-service.js";
+import { UsersDatabase } from "../db/users-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -697,6 +698,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
   apiRouter.get("/threads", optionalAuth, async (req, res) => {
     const threadService = getThreadService();
+    const usersDb = new UsersDatabase();
 
     try {
       // Require authentication for thread listing
@@ -710,12 +712,17 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const parsedLimit = parseInt(req.query.limit as string);
       const limit = Math.min(Math.max(parsedLimit > 0 ? parsedLimit : 20, 1), 50);
 
-      // Get user's threads
-      const threads = await threadService.getUserThreads(req.user.id, 'workos', limit);
+      // Look up user's linked Slack account
+      const user = await usersDb.getUser(req.user.id);
+      const slackUserId = user?.primary_slack_user_id || null;
+
+      // Get user's threads across all channels (web + linked Slack)
+      const threads = await threadService.getUserCrossChannelThreads(req.user.id, slackUserId, limit);
 
       // Map to API response format
       const conversations = threads.map((t) => ({
         conversation_id: t.external_id,
+        channel: t.channel,
         title: t.title || t.first_user_message?.slice(0, 50) || "New conversation",
         message_count: t.message_count,
         last_message_at: t.last_message_at,
@@ -736,21 +743,62 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   });
 
   // GET /api/addie/chat/:conversationId - Get conversation history
+  // Supports ?channel=slack for loading Slack threads
   apiRouter.get("/:conversationId", optionalAuth, async (req, res) => {
     const threadService = getThreadService();
+    const usersDb = new UsersDatabase();
 
     try {
       const { conversationId } = req.params;
+      const channel = (req.query.channel as string) || 'web';
 
-      // Validate conversation ID format
-      if (!isValidConversationId(conversationId)) {
-        return res.status(400).json({ error: "Invalid conversation ID format" });
+      // Validate channel
+      if (channel !== 'web' && channel !== 'slack') {
+        return res.status(400).json({ error: "Invalid channel" });
       }
 
-      // Get thread by external_id (which is the conversation_id for web)
-      const thread = await threadService.getThreadByExternalId('web', conversationId);
+      // Validate conversation ID format based on channel
+      if (channel === 'web') {
+        if (!isValidConversationId(conversationId)) {
+          return res.status(400).json({ error: "Invalid conversation ID format" });
+        }
+      } else if (channel === 'slack') {
+        // Slack external_id format: channel_id:thread_ts (e.g., C01234ABC:1234567890.123456)
+        const slackIdPattern = /^[A-Z0-9]{9,12}:\d+\.\d{6}$/;
+        if (!slackIdPattern.test(conversationId)) {
+          return res.status(400).json({ error: "Invalid Slack conversation ID format" });
+        }
+      }
+
+      // Get thread by external_id
+      const thread = await threadService.getThreadByExternalId(channel, conversationId);
       if (!thread) {
         return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Verify ownership - users can only view their own threads
+      if (req.user) {
+        let authorized = false;
+
+        if (thread.user_type === 'workos' && thread.user_id === req.user.id) {
+          authorized = true;
+        } else if (thread.user_type === 'slack' && channel === 'slack') {
+          // For Slack threads, verify the user's linked Slack account matches
+          const user = await usersDb.getUser(req.user.id);
+          if (user?.primary_slack_user_id === thread.user_id) {
+            authorized = true;
+          }
+        }
+
+        if (!authorized) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+      } else {
+        // Anonymous users cannot view threads
+        return res.status(401).json({
+          error: "Authentication required",
+          message: "Please log in to view conversations",
+        });
       }
 
       // Get messages
@@ -770,9 +818,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
       res.json({
         conversation_id: conversationId,
+        channel,
         user_name: thread.user_display_name,
         message_count: thread.message_count,
         messages,
+        read_only: channel === 'slack', // Slack threads are read-only in web UI
       });
     } catch (error) {
       logger.error({ err: error }, "Addie Chat: Error fetching conversation");

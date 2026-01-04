@@ -746,10 +746,33 @@
       justify-content: space-between;
     }
 
+    .thread-channel-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-muted);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .thread-channel-badge.slack {
+      background: #4A154B15;
+      color: #4A154B;
+    }
+
+    .thread-channel-badge svg {
+      width: 10px;
+      height: 10px;
+    }
+
     .thread-toggle-btn {
       position: fixed;
       left: 16px;
-      bottom: 100px;
+      bottom: calc(100px + env(safe-area-inset-bottom, 0px));
       background: var(--color-bg-card);
       border: 1px solid var(--color-border);
       border-radius: 8px;
@@ -762,6 +785,11 @@
       gap: 6px;
       z-index: 100;
       box-shadow: var(--shadow-sm);
+    }
+
+    /* In native app mode, position closer to bottom since there's no status bar */
+    body.native-app .thread-toggle-btn {
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     }
 
     .thread-toggle-btn:hover {
@@ -801,6 +829,21 @@
       .thread-sidebar-overlay.visible {
         display: block;
       }
+    }
+
+    /* Native app mode - hide site nav, chat header, and status indicator (app provides its own) */
+    body.native-app #adcp-nav,
+    body.native-app .chat-header,
+    body.native-app .status-indicator {
+      display: none !important;
+    }
+
+    body.native-app .chat-container {
+      padding-top: 0;
+    }
+
+    body.native-app .messages-container {
+      padding-top: 16px;
     }
   </style>
 </head>
@@ -920,10 +963,47 @@
       let threads = [];
       let sidebarVisible = false;
 
+      // Native app auth token (from URL hash, e.g., #token=xxx)
+      let nativeAuthToken = null;
+
+      // Extract token from URL hash for native apps (Tauri, Capacitor)
+      function extractNativeToken() {
+        const hash = window.location.hash;
+        if (hash && hash.includes('token=')) {
+          const params = new URLSearchParams(hash.slice(1));
+          const token = params.get('token');
+          if (token) {
+            nativeAuthToken = token;
+            // Mark body as native app mode to hide nav/header via CSS
+            document.body.classList.add('native-app');
+            // Clear hash from URL for cleaner appearance
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            console.log('Native auth token detected');
+          }
+        }
+
+        // Also detect if we're inside a Tauri webview (backup detection)
+        // Tauri injects __TAURI__ global, but this may not be available in iframe
+        // Check for window.self !== window.top (we're in an iframe)
+        if (window.self !== window.top) {
+          document.body.classList.add('native-app');
+          console.log('Running inside iframe, enabling native-app mode');
+        }
+      }
+
+      // Helper for authenticated API requests (works for both web cookies and native tokens)
+      function authFetch(url, options = {}) {
+        const headers = { ...options.headers };
+        if (nativeAuthToken) {
+          headers['Authorization'] = `Bearer ${nativeAuthToken}`;
+        }
+        return fetch(url, { ...options, headers, credentials: 'include' });
+      }
+
       // Check for impersonation and authentication
       async function checkImpersonation() {
         try {
-          const response = await fetch('/api/me');
+          const response = await authFetch('/api/me');
           if (!response.ok) return; // Not authenticated
 
           const data = await response.json();
@@ -959,7 +1039,7 @@
         if (!isAuthenticated) return;
 
         try {
-          const response = await fetch('/api/addie/chat/threads');
+          const response = await authFetch('/api/addie/chat/threads');
           if (!response.ok) return;
 
           const data = await response.json();
@@ -977,10 +1057,24 @@
           return;
         }
 
+        // Helper to render channel badge
+        function getChannelBadge(channel) {
+          if (channel === 'slack') {
+            return `<span class="thread-channel-badge slack">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+              </svg>
+              Slack
+            </span>`;
+          }
+          return '';
+        }
+
         threadList.innerHTML = threads.map(t => `
           <div class="thread-item ${t.conversation_id === conversationId ? 'active' : ''}"
-               data-conversation-id="${t.conversation_id}">
-            <div class="thread-item-title">${escapeHtml(t.title)}</div>
+               data-conversation-id="${t.conversation_id}"
+               data-channel="${t.channel || 'web'}">
+            <div class="thread-item-title">${escapeHtml(t.title)}${getChannelBadge(t.channel)}</div>
             ${t.preview ? `<div class="thread-item-preview">${escapeHtml(t.preview)}</div>` : ''}
             <div class="thread-item-meta">
               <span>${t.message_count} messages</span>
@@ -993,7 +1087,8 @@
         threadList.querySelectorAll('.thread-item').forEach(item => {
           item.addEventListener('click', () => {
             const id = item.dataset.conversationId;
-            switchToConversation(id);
+            const channel = item.dataset.channel;
+            switchToConversation(id, channel);
           });
         });
       }
@@ -1022,11 +1117,15 @@
         return div.innerHTML;
       }
 
+      // Current conversation channel (web or slack)
+      let currentChannel = 'web';
+
       // Switch to a different conversation
-      async function switchToConversation(newConversationId) {
-        if (newConversationId === conversationId) return;
+      async function switchToConversation(newConversationId, channel = 'web') {
+        if (newConversationId === conversationId && channel === currentChannel) return;
 
         conversationId = newConversationId;
+        currentChannel = channel;
 
         // Update active state in sidebar
         threadList.querySelectorAll('.thread-item').forEach(item => {
@@ -1040,7 +1139,8 @@
 
         // Load conversation history
         try {
-          const response = await fetch(`/api/addie/chat/${conversationId}`);
+          const url = `/api/addie/chat/${encodeURIComponent(conversationId)}${channel === 'slack' ? '?channel=slack' : ''}`;
+          const response = await authFetch(url);
           if (!response.ok) throw new Error('Failed to load conversation');
 
           const data = await response.json();
@@ -1049,6 +1149,13 @@
           data.messages.forEach(msg => {
             addMessage(msg.content, msg.role, msg.message_id);
           });
+
+          // Handle read-only mode for Slack threads
+          if (data.read_only) {
+            setReadOnlyMode(true);
+          } else {
+            setReadOnlyMode(false);
+          }
         } catch (error) {
           console.error('Failed to load conversation:', error);
           showError('Failed to load conversation');
@@ -1060,9 +1167,25 @@
         }
       }
 
+      // Set read-only mode for the chat input
+      function setReadOnlyMode(readOnly) {
+        if (readOnly) {
+          chatInput.disabled = true;
+          chatInput.placeholder = 'This is a Slack conversation - reply in Slack to continue';
+          sendButton.disabled = true;
+          sendButton.style.opacity = '0.5';
+        } else {
+          chatInput.disabled = false;
+          chatInput.placeholder = 'Ask Addie anything...';
+          sendButton.disabled = false;
+          sendButton.style.opacity = '1';
+        }
+      }
+
       // Start a new conversation
       function startNewConversation() {
         conversationId = null;
+        currentChannel = 'web';
 
         // Clear messages and show welcome
         messagesContainer.innerHTML = '';
@@ -1079,6 +1202,9 @@
         threadList.querySelectorAll('.thread-item').forEach(item => {
           item.classList.remove('active');
         });
+
+        // Reset read-only mode
+        setReadOnlyMode(false);
 
         // Close sidebar on mobile
         if (window.innerWidth <= 768) {
@@ -1104,7 +1230,7 @@
         addieHomeContent.innerHTML = '';
 
         try {
-          const response = await fetch('/api/me/addie-home?format=html');
+          const response = await authFetch('/api/me/addie-home?format=html');
           if (!response.ok) {
             throw new Error('Failed to load home content');
           }
@@ -1440,7 +1566,7 @@
 
       async function submitFeedback(messageId, rating, category, tags, suggestion) {
         try {
-          await fetch(`/api/addie/chat/${conversationId}/feedback`, {
+          await authFetch(`/api/addie/chat/${conversationId}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1656,7 +1782,7 @@
         let messageId = null;
 
         try {
-          const response = await fetch('/api/addie/chat/stream', {
+          const response = await authFetch('/api/addie/chat/stream', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1804,6 +1930,7 @@
       }
 
       // Initialize
+      extractNativeToken(); // Check for native app auth token in URL hash
       checkStatus();
       checkImpersonation();
       // Check for prompt in URL after status check
