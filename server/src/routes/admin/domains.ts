@@ -10,6 +10,11 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { enrichOrganization } from "../../services/enrichment.js";
+import {
+  addPersonalDomain,
+  removePersonalDomain,
+  listPersonalDomains,
+} from "../../db/personal-domains-db.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -1208,8 +1213,15 @@ export function setupDomainRoutes(
         const pool = getPool();
         const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
 
+        // Fetch admin-managed personal domains and combine with hardcoded list
+        const personalDomains = await listPersonalDomains();
+        const allExcludedDomains = [
+          ...freeEmailDomains,
+          ...personalDomains.map(d => d.domain),
+        ];
+
         // Build parameterized query for free email exclusion
-        const freeEmailPlaceholders = freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ');
+        const freeEmailPlaceholders = allExcludedDomains.map((_, i) => `$${i + 1}`).join(', ');
 
         // 1. Orphan corporate domains - domains not linked to any org, but users may already be members
         const orphanResult = await pool.query(`
@@ -1262,8 +1274,8 @@ export function setupDomainRoutes(
           LEFT JOIN domain_orgs dorgs ON dorgs.domain = ud.domain
           WHERE cd.domain IS NULL
           ORDER BY ud.user_count DESC
-          LIMIT $${freeEmailDomains.length + 1}
-        `, [...freeEmailDomains, limit]);
+          LIMIT $${allExcludedDomains.length + 1}
+        `, [...allExcludedDomains, limit]);
 
         // 2. Misaligned users (corporate emails in personal workspaces)
         const misalignedResult = await pool.query(`
@@ -1281,8 +1293,8 @@ export function setupDomainRoutes(
             AND om.email IS NOT NULL
             AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
           ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
-          LIMIT $${freeEmailDomains.length + 1}
-        `, [...freeEmailDomains, limit]);
+          LIMIT $${allExcludedDomains.length + 1}
+        `, [...allExcludedDomains, limit]);
 
         // 3. Orgs without verified domains
         const unverifiedResult = await pool.query(`
@@ -1390,6 +1402,91 @@ export function setupDomainRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch domain health data",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // PERSONAL DOMAINS API
+  // =========================================================================
+
+  // GET /api/admin/personal-domains - List all personal domains
+  apiRouter.get(
+    "/personal-domains",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const domains = await listPersonalDomains();
+        res.json({ domains });
+      } catch (error) {
+        logger.error({ err: error }, "Error listing personal domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to list personal domains",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/personal-domains - Add a personal domain
+  apiRouter.post(
+    "/personal-domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain, reason } = req.body;
+
+        if (!domain || typeof domain !== 'string') {
+          return res.status(400).json({
+            error: "Bad request",
+            message: "Domain is required",
+          });
+        }
+
+        const result = await addPersonalDomain({
+          domain,
+          reason,
+          created_by: req.user?.id,
+        });
+
+        res.status(201).json({ domain: result });
+      } catch (error) {
+        logger.error({ err: error }, "Error adding personal domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add personal domain",
+        });
+      }
+    }
+  );
+
+  // DELETE /api/admin/personal-domains/:domain - Remove a personal domain
+  apiRouter.delete(
+    "/personal-domains/:domain",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain } = req.params;
+
+        const removed = await removePersonalDomain(domain);
+
+        if (!removed) {
+          return res.status(404).json({
+            error: "Not found",
+            message: "Domain not found in personal domains list",
+          });
+        }
+
+        res.status(204).send();
+      } catch (error) {
+        logger.error({ err: error }, "Error removing personal domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to remove personal domain",
         });
       }
     }

@@ -397,6 +397,63 @@
           linkDomainToOrg(select, orgId, orgName, domain);
         });
       });
+
+      // Set up event handlers for mark as personal buttons
+      document.querySelectorAll('.mark-personal-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const domain = btn.dataset.domain;
+          markDomainAsPersonal(btn, domain);
+        });
+      });
+    }
+
+    async function markDomainAsPersonal(button, domain) {
+      const reason = prompt(`Mark "${domain}" as a personal domain?\n\nEnter a reason (e.g., "alumni email", "forwarding service"):`, 'personal email domain');
+      if (reason === null) return; // User cancelled
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/personal-domains', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain, reason: reason || 'personal email domain' })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Failed to mark domain as personal');
+        }
+
+        // Success
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-success');
+        button.textContent = 'Marked!';
+
+        // Reload after brief delay
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1000);
+      } catch (error) {
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-secondary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
     }
 
     async function linkDomainToOrg(element, orgId, orgName, domain) {
@@ -574,8 +631,8 @@
                   `}
                 </td>
                 <td>
-                  ${hasExistingOrgs ? `
-                    <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${hasExistingOrgs ? `
                       ${nonPersonalOrgs.length === 1 ? `
                         <button class="btn btn-primary btn-sm link-domain-btn" data-org-id="${escapeHtml(nonPersonalOrgs[0].org_id)}" data-org-name="${escapeHtml(nonPersonalOrgs[0].name)}" data-domain="${escapeHtml(d.domain)}">Link to ${escapeHtml(nonPersonalOrgs[0].name)}</button>
                       ` : `
@@ -589,10 +646,11 @@
                       ${hasMultipleOrgs ? `
                         <button class="btn btn-secondary btn-sm merge-orgs-btn" data-org-ids="${nonPersonalOrgs.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(d.domain)}">Merge ${nonPersonalOrgs.length} orgs</button>
                       ` : ''}
-                    </div>
-                  ` : `
-                    <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-primary btn-sm">Create Prospect</a>
-                  `}
+                    ` : `
+                      <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-primary btn-sm">Create Prospect</a>
+                    `}
+                    <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
+                  </div>
                 </td>
               </tr>
             `}).join('')}
@@ -644,7 +702,10 @@
                   </ul>
                 </td>
                 <td>
-                  <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-secondary btn-sm">Create Org</a>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-secondary btn-sm">Create Org</a>
+                    <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
+                  </div>
                 </td>
               </tr>
             `).join('')}
