@@ -332,11 +332,80 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Global error handler for Bolt
   boltApp.error(async (error) => {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isAssistantError = errorMessage.includes('Assistant') || errorMessage.includes('thread_ts');
+
     logger.error({
       error,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
+      isAssistantError,
     }, 'Addie Bolt: Unhandled error');
+
+    // If this is an Assistant-related error (likely missing thread_ts on first message),
+    // the event may have been lost. Log additional context to help debug.
+    if (isAssistantError) {
+      logger.warn(
+        { errorMessage },
+        'Addie Bolt: Assistant error detected - first DM may have been lost. Check if thread_ts was missing.'
+      );
+    }
+  });
+
+  // Add middleware to handle DMs that might fail the Assistant check
+  // This catches DMs without proper thread_ts before they reach the Assistant middleware
+  // and routes them directly to handleDirectMessage.
+  // Not calling next() stops the middleware chain, preventing downstream handlers from firing.
+  boltApp.use(async ({ payload, next, context }) => {
+    // Only intercept message events in IM channels
+    if (payload.type === 'message' && 'channel_type' in payload && payload.channel_type === 'im') {
+      const hasThreadTs = 'thread_ts' in payload && payload.thread_ts !== undefined;
+      const hasTs = 'ts' in payload;
+      const hasText = 'text' in payload && payload.text;
+      const hasBotId = 'bot_id' in payload && payload.bot_id;
+      const hasSubtype = 'subtype' in payload && payload.subtype;
+      const userId = 'user' in payload ? payload.user : undefined;
+      const channelId = 'channel' in payload ? payload.channel : undefined;
+
+      logger.debug({
+        channelId,
+        userId,
+        hasThreadTs,
+        hasTs,
+        hasText: !!hasText,
+        hasBotId: !!hasBotId,
+        hasSubtype: !!hasSubtype,
+      }, 'Addie Bolt: DM message received in middleware');
+
+      // If this is a DM without thread_ts (first message in new conversation),
+      // the Assistant middleware will fail with AssistantMissingPropertyError.
+      // Route directly to handleDirectMessage instead.
+      if (!hasThreadTs && hasTs && hasText && !hasBotId && !hasSubtype && userId) {
+        logger.info({
+          channelId,
+          userId,
+          ts: payload.ts,
+        }, 'Addie Bolt: Intercepting first DM (no thread_ts) - routing directly to handleDirectMessage');
+
+        try {
+          // Route directly to handleDirectMessage
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await handleDirectMessage(
+            payload as any,
+            { botUserId: context.botUserId }
+          );
+        } catch (error) {
+          logger.error({ error, channelId, userId }, 'Addie Bolt: Error handling first DM in middleware');
+          // The message was still processed (attempted), so don't retry via next()
+        }
+
+        // Don't call next() - we've handled this event
+        return;
+      }
+    }
+
+    // For all other events, continue normal processing
+    await next();
   });
 
   // Register the assistant
@@ -598,6 +667,16 @@ async function handleUserMessage({
   setTitle,
   getThreadContext,
 }: AllAssistantMiddlewareArgs<AssistantUserMessageMiddlewareArgs>): Promise<void> {
+  // Log entry into Assistant's userMessage handler for debugging
+  logger.debug({
+    channelId: 'channel' in event ? event.channel : undefined,
+    userId: 'user' in event ? event.user : undefined,
+    threadTs: 'thread_ts' in event ? event.thread_ts : undefined,
+    ts: 'ts' in event ? event.ts : undefined,
+    hasText: 'text' in event && !!event.text,
+    channelType: 'channel_type' in event ? event.channel_type : undefined,
+  }, 'Addie Bolt: handleUserMessage called (Assistant handler)');
+
   if (!claudeClient) {
     logger.warn('Addie Bolt: Claude client not initialized');
     return;
@@ -616,7 +695,7 @@ async function handleUserMessage({
 
   // Skip if not a user message
   if (!userId || !messageText) {
-    logger.debug('Addie Bolt: Ignoring message event without user or text');
+    logger.debug({ userId, hasText: !!messageText }, 'Addie Bolt: Ignoring message event without user or text');
     return;
   }
 
@@ -1423,6 +1502,17 @@ async function handleDirectMessage(
   event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string; attachments?: SlackAttachment[]; files?: SlackFile[] },
   _context: { botUserId?: string }
 ): Promise<void> {
+  // Log entry for DM debugging
+  logger.debug({
+    channelId: event.channel,
+    userId: event.user,
+    ts: event.ts,
+    threadTs: event.thread_ts,
+    hasText: !!event.text,
+    textLength: event.text?.length || 0,
+    botId: event.bot_id,
+  }, 'Addie Bolt: handleDirectMessage called');
+
   if (!claudeClient || !boltApp) {
     logger.warn('Addie Bolt: Not initialized for DM handling');
     return;
@@ -1669,13 +1759,30 @@ async function handleChannelMessage({
   // Handle DMs differently - route to the user message handler
   // For DMs, allow messages with attachments or files even if text is empty
   if (event.channel_type === 'im') {
+    // Log detailed info for DM debugging (use same check as middleware for consistency)
+    const hasThreadTs = 'thread_ts' in event && event.thread_ts !== undefined;
+    logger.debug({
+      channelId: event.channel,
+      userId,
+      hasText,
+      hasAttachments,
+      hasFiles,
+      hasSubtype,
+      subtype: 'subtype' in event ? event.subtype : undefined,
+      hasThreadTs,
+      threadTs: 'thread_ts' in event ? event.thread_ts : undefined,
+      ts: 'ts' in event ? event.ts : undefined,
+    }, 'Addie Bolt: Received DM in handleChannelMessage');
+
     if (!hasText && !hasAttachments && !hasFiles) {
+      logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Ignoring DM without content');
       return;
     }
     if (hasSubtype) {
+      logger.debug({ channelId: event.channel, userId, subtype: 'subtype' in event ? event.subtype : undefined }, 'Addie Bolt: Ignoring DM with subtype');
       return;
     }
-    logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to user message handler');
+    logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to handleDirectMessage');
     await handleDirectMessage(event as typeof event & { attachments?: SlackAttachment[]; files?: SlackFile[] }, context);
     return;
   }
