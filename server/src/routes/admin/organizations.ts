@@ -774,4 +774,300 @@ export function setupOrganizationRoutes(
       }
     }
   );
+
+  // GET /api/admin/organizations/:orgId/addie-research - Get Addie interactions related to this org
+  apiRouter.get(
+    "/organizations/:orgId/addie-research",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Get org details to find related domains and member emails
+        const orgResult = await pool.query(
+          `SELECT name, email_domain FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const orgName = org.name;
+        const emailDomain = org.email_domain;
+
+        // Get linked domains
+        const domainsResult = await pool.query(
+          `SELECT domain FROM organization_domains WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        const domains = domainsResult.rows.map((r) => r.domain);
+
+        // Search Addie interactions that mention this org name or domains
+        // Look in both input_text and output_text
+        const searchTerms = [orgName, ...domains].filter(Boolean);
+
+        if (searchTerms.length === 0) {
+          return res.json({ interactions: [] });
+        }
+
+        // Build search pattern - case insensitive search for org name or domains
+        const searchPattern = searchTerms
+          .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+
+        const interactionsResult = await pool.query(
+          `
+          SELECT
+            id,
+            event_type,
+            input_text,
+            output_text,
+            tools_used,
+            user_id,
+            created_at
+          FROM addie_interactions
+          WHERE (
+            input_text ~* $1 OR
+            output_text ~* $1
+          )
+          ORDER BY created_at DESC
+          LIMIT 20
+        `,
+          [searchPattern]
+        );
+
+        // Get user names for interactions
+        const interactions = await Promise.all(
+          interactionsResult.rows.map(async (interaction) => {
+            let userName = null;
+            if (interaction.user_id) {
+              // Try to get Slack user name
+              const slackUserResult = await pool.query(
+                `SELECT display_name, real_name FROM slack_users WHERE slack_user_id = $1`,
+                [interaction.user_id]
+              );
+              if (slackUserResult.rows.length > 0) {
+                userName =
+                  slackUserResult.rows[0].display_name ||
+                  slackUserResult.rows[0].real_name;
+              }
+            }
+
+            return {
+              id: interaction.id,
+              event_type: interaction.event_type,
+              summary: interaction.output_text?.substring(0, 500),
+              output_text: interaction.output_text,
+              tools_used: interaction.tools_used,
+              user_name: userName,
+              created_at: interaction.created_at,
+            };
+          })
+        );
+
+        res.json({ interactions });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching Addie research");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch Addie research",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/organizations/:orgId/member-insights - Get member insights for this org
+  apiRouter.get(
+    "/organizations/:orgId/member-insights",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Get all WorkOS user IDs for members of this org
+        // We need to look up via organization memberships
+        let memberUserIds: string[] = [];
+        try {
+          if (workos) {
+            const memberships =
+              await workos.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+              });
+            memberUserIds = (memberships.data || []).map((m) => m.userId);
+          }
+        } catch {
+          // Org might not exist in WorkOS
+        }
+
+        if (memberUserIds.length === 0) {
+          return res.json({ insights: [] });
+        }
+
+        // Get Slack user IDs for these WorkOS users
+        const slackUsersResult = await pool.query(
+          `SELECT slack_user_id, display_name, real_name
+           FROM slack_users
+           WHERE workos_user_id = ANY($1)`,
+          [memberUserIds]
+        );
+
+        const slackUserMap = new Map(
+          slackUsersResult.rows.map((r) => [
+            r.slack_user_id,
+            r.display_name || r.real_name,
+          ])
+        );
+        const slackUserIds = slackUsersResult.rows.map((r) => r.slack_user_id);
+
+        if (slackUserIds.length === 0) {
+          return res.json({ insights: [] });
+        }
+
+        // Get insights for these Slack users
+        const insightsResult = await pool.query(
+          `
+          SELECT
+            mi.slack_user_id,
+            mi.value,
+            mi.confidence,
+            mi.source_type,
+            mi.created_at,
+            mit.name as insight_type,
+            mit.display_name as insight_type_display
+          FROM member_insights mi
+          JOIN member_insight_types mit ON mi.insight_type_id = mit.id
+          WHERE mi.slack_user_id = ANY($1)
+            AND mi.is_current = true
+          ORDER BY mi.created_at DESC
+        `,
+          [slackUserIds]
+        );
+
+        const insights = insightsResult.rows.map((row) => ({
+          slack_user_id: row.slack_user_id,
+          member_name: slackUserMap.get(row.slack_user_id) || row.slack_user_id,
+          insight_type: row.insight_type_display || row.insight_type,
+          value: row.value,
+          confidence: row.confidence,
+          source_type: row.source_type,
+          created_at: row.created_at,
+        }));
+
+        res.json({ insights });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching member insights");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch member insights",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/enrich - Refresh enrichment data for an org
+  apiRouter.post(
+    "/organizations/:orgId/enrich",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Check if enrichment was done recently (within last hour) to prevent abuse
+        const recentCheck = await pool.query(
+          `SELECT enrichment_at FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        if (recentCheck.rows[0]?.enrichment_at) {
+          const lastEnrichment = new Date(recentCheck.rows[0].enrichment_at);
+          const hourAgo = new Date(Date.now() - 3600000);
+          if (lastEnrichment > hourAgo) {
+            return res.status(429).json({
+              error: "Too soon",
+              message:
+                "Enrichment was refreshed recently. Please wait an hour.",
+            });
+          }
+        }
+
+        // Get primary domain for this org
+        const domainResult = await pool.query(
+          `SELECT domain FROM organization_domains
+           WHERE workos_organization_id = $1 AND is_primary = true
+           LIMIT 1`,
+          [orgId]
+        );
+
+        if (domainResult.rows.length === 0) {
+          // Try to get any domain
+          const anyDomainResult = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1
+             LIMIT 1`,
+            [orgId]
+          );
+
+          if (anyDomainResult.rows.length === 0) {
+            return res.status(400).json({
+              error: "No domain found",
+              message:
+                "Add a domain to this organization before enriching",
+            });
+          }
+        }
+
+        const domain =
+          domainResult.rows[0]?.domain ||
+          (
+            await pool.query(
+              `SELECT domain FROM organization_domains WHERE workos_organization_id = $1 LIMIT 1`,
+              [orgId]
+            )
+          ).rows[0]?.domain;
+
+        if (!domain) {
+          return res.status(400).json({
+            error: "No domain found",
+            message: "Add a domain to this organization before enriching",
+          });
+        }
+
+        // Import and call the enrichment function
+        const { enrichOrganization } = await import(
+          "../../services/enrichment"
+        );
+        const result = await enrichOrganization(orgId, domain);
+
+        if (!result.success) {
+          return res.status(500).json({
+            error: "Enrichment failed",
+            message: result.error || "Unable to enrich organization",
+          });
+        }
+
+        logger.info(
+          { orgId, domain, adminEmail: req.user!.email },
+          "Admin refreshed enrichment data"
+        );
+
+        res.json({
+          success: true,
+          message: "Enrichment data refreshed",
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error enriching organization");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to enrich organization",
+        });
+      }
+    }
+  );
 }

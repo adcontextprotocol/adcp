@@ -674,6 +674,14 @@
       font-weight: var(--font-medium);
       color: var(--color-text-heading);
     }
+    .quick-action-bar .result-name-link {
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+    .quick-action-bar .result-name-link:hover {
+      text-decoration: underline;
+    }
     .quick-action-bar .result-meta {
       font-size: var(--text-sm);
       color: var(--color-text-muted);
@@ -3542,7 +3550,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           return `
             <div class="search-result-item">
               <div>
-                <div class="result-name">${escapeHtml(org.name)} ${statusBadge}</div>
+                <a href="/admin/organizations/${org.workos_organization_id}" class="result-name-link">${escapeHtml(org.name)}</a> ${statusBadge}
                 <div class="result-meta">${escapeHtml(contactInfo)}</div>
               </div>
               <div class="result-actions">
