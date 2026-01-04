@@ -537,7 +537,10 @@
           <tbody>
             ${orphan_domains.map(d => {
               // Filter to non-personal orgs first, then personal
-              const nonPersonalOrgs = (d.existing_orgs || []).filter(o => !o.is_personal);
+              // Sort by user_count descending for consistent display
+              const nonPersonalOrgs = (d.existing_orgs || [])
+                .filter(o => !o.is_personal)
+                .sort((a, b) => (b.user_count || 0) - (a.user_count || 0));
               const personalOrgs = (d.existing_orgs || []).filter(o => o.is_personal);
               const hasExistingOrgs = nonPersonalOrgs.length > 0;
               const hasMultipleOrgs = nonPersonalOrgs.length > 1;

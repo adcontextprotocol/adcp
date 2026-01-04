@@ -720,6 +720,23 @@ export async function previewMerge(
     }
   }
 
+  // Check for membership being moved - warn if secondary has members
+  const membershipCheck = await pool.query(
+    `SELECT
+       (SELECT COUNT(*) FROM organization_memberships WHERE workos_organization_id = $1) as primary_count,
+       (SELECT COUNT(*) FROM organization_memberships WHERE workos_organization_id = $2) as secondary_count`,
+    [primaryOrgId, secondaryOrgId]
+  );
+
+  const primaryMemberCount = parseInt(membershipCheck.rows[0].primary_count, 10);
+  const secondaryMemberCount = parseInt(membershipCheck.rows[0].secondary_count, 10);
+
+  if (secondaryMemberCount > 0 && primaryMemberCount === 0) {
+    warnings.push(`⚠️ The secondary org has ${secondaryMemberCount} member(s) while the primary has none. Consider swapping which org is primary.`);
+  } else if (secondaryMemberCount > primaryMemberCount) {
+    warnings.push(`⚠️ The secondary org has more members (${secondaryMemberCount}) than the primary (${primaryMemberCount}). Consider swapping which org is primary.`);
+  }
+
   // Check for member profile conflict
   const profileCheck = await pool.query(
     `SELECT
