@@ -66,10 +66,19 @@
       },
       "additionalProperties": false
     },
+    "methodology_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to documentation explaining how this feature is calculated/measured"
+    },
+    "methodology_version": {
+      "type": "string",
+      "description": "Version identifier for the methodology (for audit trails)"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["feature_id", "name", "type"],
+  "required": ["feature_id", "name", "type", "methodology_url"],
   "additionalProperties": false
 }

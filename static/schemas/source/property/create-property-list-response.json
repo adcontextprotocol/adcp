@@ -9,10 +9,14 @@
       "$ref": "/schemas/property/property-list.json",
       "description": "The created property list"
     },
+    "auth_token": {
+      "type": "string",
+      "description": "Token that can be shared with sellers to authorize fetching this list. Store this - it is only returned at creation time."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["list"],
+  "required": ["list", "auth_token"],
   "additionalProperties": false
 }

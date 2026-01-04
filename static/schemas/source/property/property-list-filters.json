@@ -42,5 +42,6 @@
       }
     }
   },
+  "required": ["countries_all", "channels_any"],
   "additionalProperties": false
 }

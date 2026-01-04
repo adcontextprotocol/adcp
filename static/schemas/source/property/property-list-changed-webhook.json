@@ -47,10 +47,14 @@
       "format": "date-time",
       "description": "When the consumer should refresh from the governance agent"
     },
+    "signature": {
+      "type": "string",
+      "description": "Cryptographic signature of the webhook payload, signed with the agent's private key. Recipients MUST verify this signature."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["event", "list_id", "resolved_at"],
+  "required": ["event", "list_id", "resolved_at", "signature"],
   "additionalProperties": false
 }

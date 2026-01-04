@@ -9,10 +9,6 @@
       "$ref": "/schemas/property/property-list.json",
       "description": "The property list metadata (always returned)"
     },
-    "auth_token": {
-      "type": "string",
-      "description": "Token that can be shared with sellers to authorize fetching this list"
-    },
     "identifiers": {
       "type": "array",
       "description": "Resolved identifiers that passed filters (if resolve=true). Cache these locally for real-time use.",

@@ -88,7 +88,7 @@ Filters have two built-in fields (`countries_all`, `channels_any`) plus `feature
 
 ### Getting Resolved Properties
 
-Use `get_property_list` to retrieve the list. You'll receive an `auth_token` that can be shared with sellers:
+Use `get_property_list` to retrieve the list with resolved identifiers:
 
 ```json
 {
@@ -100,18 +100,20 @@ Use `get_property_list` to retrieve the list. You'll receive an `auth_token` tha
 }
 ```
 
-Response includes an auth token for sharing. Note that **raw scores are not returned** - only properties that pass the filter thresholds are included:
+Response includes resolved identifiers. Note that **raw scores are not returned** - only identifiers that pass the filter thresholds are included:
 
 ```json
 {
   "list_id": "pl_abc123",
-  "auth_token": "eyJhbGciOiJIUzI1NiIs...",
-  "properties": [...],
+  "identifiers": [
+    { "type": "domain", "value": "bbc.co.uk" },
+    { "type": "domain", "value": "news.sky.com" }
+  ],
   "cache_valid_until": "2026-01-04T17:15:00Z"
 }
 ```
 
-Pass the `auth_token` to sellers so they can fetch and cache the resolved list.
+The `auth_token` for sharing with sellers is returned at creation time (from `create_property_list`). Store it securely - it's only returned once.
 
 ### Multi-Agent Integration
 
