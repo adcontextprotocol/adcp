@@ -504,6 +504,9 @@ function formatCurrency(amountCents, currency = 'usd') {
  * Open the invoice request modal
  */
 async function openInvoiceRequestModal() {
+  // Ensure styles are injected
+  injectJoinCtaStyles();
+
   // Remove any existing modal
   const existingModal = document.getElementById('invoiceRequestModal');
   if (existingModal) {
