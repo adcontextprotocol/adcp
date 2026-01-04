@@ -218,11 +218,18 @@ export function createPublicBillingRouter(): Router {
 
       // Validate lookup key starts with our prefix
       if (!lookupKey.startsWith("aao_")) {
+        logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
         return res.status(400).json({
           error: "Invalid product",
           message: "Invalid product selection",
         });
       }
+
+      logger.info({
+        lookupKey,
+        companyName,
+        contactEmail,
+      }, 'Invoice request received');
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

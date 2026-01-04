@@ -154,9 +154,25 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
       });
 
       if (products.length === 0) {
+        // Try to get all products to see if there are any at all
+        const allProducts = await getProductsForCustomer({});
+        logger.warn({
+          customerType,
+          revenueTier,
+          allProductsCount: allProducts.length,
+          allProductLookupKeys: allProducts.map(p => p.lookup_key),
+        }, 'Addie: No membership products found');
+
+        if (allProducts.length === 0) {
+          return JSON.stringify({
+            success: false,
+            message: 'Unable to access billing products. This may be a configuration issue - please contact the team.',
+          });
+        }
+
         return JSON.stringify({
           success: false,
-          message: 'No products found matching the criteria. Please check the customer type and revenue tier.',
+          message: `No membership products found matching the criteria (customer_type: ${customerType || 'any'}, revenue_tier: ${revenueTier || 'any'}). Please try without filters or contact the team.`,
         });
       }
 

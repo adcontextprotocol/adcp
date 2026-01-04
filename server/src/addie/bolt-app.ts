@@ -50,6 +50,10 @@ import {
   createEventToolHandlers,
   canCreateEvents,
 } from './mcp/event-tools.js';
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from './mcp/billing-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
@@ -465,6 +469,14 @@ async function createUserScopedTools(
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Add billing tools for all users (membership signup assistance)
+  const billingHandlers = createBillingToolHandlers();
+  allTools.push(...BILLING_TOOLS);
+  for (const [name, handler] of billingHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Billing tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
