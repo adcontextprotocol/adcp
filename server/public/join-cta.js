@@ -321,6 +321,67 @@ function injectJoinCtaStyles() {
       margin-bottom: var(--space-4);
     }
 
+    /* Member Confirmation (for existing members) */
+    .join-cta-member-confirmed {
+      background: linear-gradient(135deg, var(--color-success-50) 0%, var(--color-success-100) 100%);
+      border: 2px solid var(--color-success-500);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      text-align: center;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .join-cta-member-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      background: var(--color-success-600);
+      color: white;
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-full);
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      margin-bottom: var(--space-4);
+    }
+
+    .join-cta-member-checkmark {
+      font-size: var(--text-xl);
+    }
+
+    .join-cta-member-thanks {
+      color: var(--color-success-700);
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-6);
+    }
+
+    .join-cta-member-benefits {
+      background: white;
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      text-align: left;
+      margin-bottom: var(--space-6);
+    }
+
+    .join-cta-member-benefits h4 {
+      color: var(--color-success-700);
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      margin: 0 0 var(--space-3) 0;
+    }
+
+    .join-cta-member-actions {
+      display: flex;
+      gap: var(--space-3);
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .join-cta-member-actions .btn {
+      min-width: 160px;
+    }
+
     @media (max-width: 768px) {
       .join-cta-grid {
         grid-template-columns: 1fr;
@@ -328,6 +389,14 @@ function injectJoinCtaStyles() {
 
       .join-cta-pricing-amount {
         font-size: var(--text-3xl);
+      }
+
+      .join-cta-member-actions {
+        flex-direction: column;
+      }
+
+      .join-cta-member-actions .btn {
+        width: 100%;
       }
     }
   `;
@@ -337,6 +406,7 @@ function injectJoinCtaStyles() {
 /**
  * Render the unified join CTA component
  * Fetches pricing from Stripe via API for single source of truth
+ * For logged-in users with a revenue tier, shows personalized pricing
  * @param {Object} options - Configuration options
  * @param {string} options.containerId - ID of the container element
  * @param {boolean} options.showFoundingNote - Whether to show founding member note (default: true)
@@ -357,6 +427,15 @@ async function renderJoinCta(options = {}) {
 
   injectJoinCtaStyles();
 
+  // Check if user is logged in and get their org info
+  const userContext = await fetchUserContext();
+
+  // If user is already a member, show a different message
+  if (userContext.isMember) {
+    container.innerHTML = renderMemberConfirmation(userContext, showContactLine);
+    return;
+  }
+
   // Fetch pricing from Stripe
   const products = await fetchBillingProducts();
 
@@ -371,6 +450,12 @@ async function renderJoinCta(options = {}) {
   const priceUnder5m = corporateUnder5m ? formatCurrency(corporateUnder5m.amount_cents, corporateUnder5m.currency) : '$2,500';
   const priceIndividual = individual ? formatCurrency(individual.amount_cents, individual.currency) : '$250';
   const priceDiscounted = individualDiscounted ? formatCurrency(individualDiscounted.amount_cents, individualDiscounted.currency) : '$50';
+
+  // Determine if we should show personalized pricing for company
+  // Revenue tiers indicating under $5M: 'under_1m', '1m_5m'
+  const isUnder5m = userContext.revenueTier && ['under_1m', '1m_5m'].includes(userContext.revenueTier);
+  const isOver5m = userContext.revenueTier && !isUnder5m;
+  const showPersonalizedCompanyPrice = userContext.isLoggedIn && !userContext.isPersonal && userContext.revenueTier;
 
   const companyBenefits = [
     'Eligibility to serve on Board',
@@ -392,6 +477,41 @@ async function renderJoinCta(options = {}) {
     'Newsletter and industry updates'
   ];
 
+  // Build company pricing HTML based on user context
+  let companyPricingHtml;
+  if (showPersonalizedCompanyPrice) {
+    // Show single personalized price
+    const price = isUnder5m ? priceUnder5m : price5m;
+    const label = isUnder5m ? 'Under $5M annual revenue' : '$5M+ annual revenue';
+    companyPricingHtml = `
+      <div class="join-cta-pricing-tier" style="padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
+        <div class="join-cta-pricing-label">${label}</div>
+        <div class="join-cta-pricing-amount">${price}<span class="join-cta-pricing-period">/year</span></div>
+      </div>
+    `;
+  } else {
+    // Show both tiers
+    companyPricingHtml = `
+      <div class="join-cta-pricing-tier">
+        <div class="join-cta-pricing-label">$5M+ annual revenue</div>
+        <div class="join-cta-pricing-amount">${price5m}<span class="join-cta-pricing-period">/year</span></div>
+      </div>
+      <div class="join-cta-pricing-secondary">
+        <div class="join-cta-pricing-secondary-label">Under $5M annual revenue</div>
+        <div class="join-cta-pricing-secondary-amount">${priceUnder5m}<span class="join-cta-pricing-period">/year</span></div>
+      </div>
+    `;
+  }
+
+  // Determine CTA button URL and text based on login status
+  const companyCta = userContext.isLoggedIn && userContext.orgId
+    ? { url: `/dashboard/membership?org=${userContext.orgId}`, text: 'Complete Membership' }
+    : { url: '/auth/signup?return_to=/onboarding?signup=true', text: 'Join as a Company' };
+
+  const individualCta = userContext.isLoggedIn
+    ? { url: '/dashboard/membership', text: 'Complete Membership' }
+    : { url: '/auth/signup?return_to=/onboarding?signup=true', text: 'Join as an Individual' };
+
   container.innerHTML = `
     <div class="join-cta-grid">
       <!-- Company Membership -->
@@ -399,14 +519,7 @@ async function renderJoinCta(options = {}) {
         <div class="join-cta-card-header">
           <div class="join-cta-card-title">Company Membership</div>
         </div>
-        <div class="join-cta-pricing-tier">
-          <div class="join-cta-pricing-label">$5M+ annual revenue</div>
-          <div class="join-cta-pricing-amount">${price5m}<span class="join-cta-pricing-period">/year</span></div>
-        </div>
-        <div class="join-cta-pricing-secondary">
-          <div class="join-cta-pricing-secondary-label">Under $5M annual revenue</div>
-          <div class="join-cta-pricing-secondary-amount">${priceUnder5m}<span class="join-cta-pricing-period">/year</span></div>
-        </div>
+        ${companyPricingHtml}
 
         <div class="join-cta-benefits-header">Company Membership Benefits</div>
         <ul class="join-cta-benefits-list">
@@ -414,7 +527,7 @@ async function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="/auth/signup?return_to=/onboarding?signup=true" class="btn btn-primary">Join as a Company</a>
+          <a href="${companyCta.url}" class="btn btn-primary">${companyCta.text}</a>
         </div>
         <p class="join-cta-invoice-link">
           Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal()">Request an invoice</button>
@@ -442,7 +555,7 @@ async function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="/auth/signup?return_to=/onboarding?signup=true" class="btn btn-primary">Join as an Individual</a>
+          <a href="${individualCta.url}" class="btn btn-primary">${individualCta.text}</a>
         </div>
         <p class="join-cta-card-footer">For consultants, professionals, and enthusiasts</p>
       </div>
@@ -464,6 +577,128 @@ async function renderJoinCta(options = {}) {
 
 // Cache for billing products
 let billingProductsCache = null;
+
+// Cache for user context
+let userContextCache = null;
+
+/**
+ * Render confirmation message for existing members
+ */
+function renderMemberConfirmation(userContext, showContactLine) {
+  const isPersonal = userContext.isPersonal;
+
+  const companyBenefits = [
+    'Eligibility to serve on Board',
+    'Right to vote for Board',
+    'Help build standards, practices, protocols, and policies',
+    'Right to vote on standards adoption',
+    'Serve on interim Advisory Council',
+    'Participate in working groups',
+    'All team members can participate in association activities'
+  ];
+
+  const individualBenefits = [
+    'Help build standards, practices, protocols, and policies',
+    'Eligible for professional development and certification courses',
+    'Personal listing in member directory',
+    'Working group participation',
+    'Community Slack access',
+    'Event discounts and early access',
+    'Newsletter and industry updates'
+  ];
+
+  const benefits = isPersonal ? individualBenefits : companyBenefits;
+  const memberType = isPersonal ? 'Individual' : 'Company';
+
+  return `
+    <div class="join-cta-member-confirmed">
+      <div class="join-cta-member-badge">
+        <span class="join-cta-member-checkmark">&#10003;</span>
+        <span>You're a Member!</span>
+      </div>
+      <p class="join-cta-member-thanks">
+        Thank you for being a founding member of AgenticAdvertising.org. Your support helps build the future of agentic advertising.
+      </p>
+      <div class="join-cta-member-benefits">
+        <h4>Your ${escapeHtml(memberType)} Member Benefits</h4>
+        <ul class="join-cta-benefits-list">
+          ${benefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+      </div>
+      <div class="join-cta-member-actions">
+        <a href="/dashboard/membership?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-primary">Manage Membership</a>
+        <a href="/dashboard/profile?org=${encodeURIComponent(userContext.orgId || '')}" class="btn btn-secondary">View Your Profile</a>
+      </div>
+    </div>
+    ${showContactLine ? `
+      <p class="join-cta-contact">
+        Questions? Contact us at <a href="mailto:membership@agenticadvertising.org">membership@agenticadvertising.org</a>
+      </p>
+    ` : ''}
+  `;
+}
+
+/**
+ * Fetch current user context (logged in status, org, revenue tier)
+ * Returns empty context if not logged in (silently handles 401)
+ */
+async function fetchUserContext() {
+  if (userContextCache !== null) {
+    return userContextCache;
+  }
+
+  try {
+    const response = await fetch('/api/me', { credentials: 'include' });
+    if (!response.ok) {
+      // Not logged in or other error - return empty context
+      userContextCache = { isLoggedIn: false };
+      return userContextCache;
+    }
+
+    const data = await response.json();
+
+    // Get the first organization (or selectedOrgId from localStorage)
+    const selectedOrgId = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedOrgId') : null;
+    const org = data.organizations?.find(o => o.id === selectedOrgId) || data.organizations?.[0];
+
+    if (!org) {
+      userContextCache = { isLoggedIn: true, orgId: null, isPersonal: true };
+      return userContextCache;
+    }
+
+    // Fetch billing info for revenue tier and subscription status
+    let revenueTier = null;
+    let isPersonal = org.is_personal;
+    let isMember = false;
+    try {
+      const billingResponse = await fetch(`/api/organizations/${org.id}/billing`, { credentials: 'include' });
+      if (billingResponse.ok) {
+        const billingData = await billingResponse.json();
+        revenueTier = billingData.revenue_tier;
+        isPersonal = billingData.is_personal ?? isPersonal;
+        isMember = billingData.subscription?.status === 'active';
+      }
+    } catch (billingError) {
+      // Billing fetch failed, proceed without revenue tier
+      console.warn('Could not fetch billing info for pricing personalization');
+    }
+
+    userContextCache = {
+      isLoggedIn: true,
+      orgId: org.id,
+      orgName: org.name,
+      isPersonal: isPersonal,
+      revenueTier: revenueTier,
+      isMember: isMember
+    };
+
+    return userContextCache;
+  } catch (error) {
+    console.error('Error fetching user context:', error);
+    userContextCache = { isLoggedIn: false };
+    return userContextCache;
+  }
+}
 
 /**
  * Fetch available billing products from the API
@@ -501,7 +736,17 @@ function formatCurrency(amountCents, currency = 'usd') {
 }
 
 /**
- * Escape HTML special characters to prevent XSS
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Escape HTML special characters to prevent XSS (for invoice modal)
  */
 function escapeHtmlForInvoice(str) {
   if (!str) return '';
