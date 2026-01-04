@@ -454,6 +454,25 @@ export const MEMBER_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Specific pricing models to test (e.g., ["cpm", "cpcv"]). If not specified, uses first available.',
         },
+        brand_manifest: {
+          type: 'object',
+          description: 'Brand manifest for the test advertiser. Can specify a well-known brand like {name: "Nike", url: "https://nike.com"} or a custom brand. If not specified, uses Nike as the default.',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Brand name (e.g., "Nike", "Coca-Cola", "Acme Corp")',
+            },
+            url: {
+              type: 'string',
+              description: 'Brand website URL',
+            },
+            tagline: {
+              type: 'string',
+              description: 'Brand tagline or slogan',
+            },
+          },
+          required: ['name'],
+        },
       },
       required: ['agent_url'],
     },
@@ -1269,6 +1288,7 @@ export function createMemberToolHandlers(
     const dryRun = input.dry_run as boolean | undefined;
     const channels = input.channels as string[] | undefined;
     const pricingModels = input.pricing_models as string[] | undefined;
+    const brandManifest = input.brand_manifest as { name: string; url?: string; tagline?: string } | undefined;
     let authToken = input.auth_token as string | undefined;
 
     // Look up saved token for organization
@@ -1293,9 +1313,16 @@ export function createMemberToolHandlers(
       }
     }
 
+    // Use a realistic default brand manifest that real sales agents will accept
+    const defaultBrandManifest = {
+      name: 'Nike',
+      url: 'https://nike.com',
+    };
+
     const options: TestOptions = {
       test_session_id: `addie-test-${Date.now()}`,
       dry_run: dryRun, // undefined means default to true
+      brand_manifest: brandManifest || defaultBrandManifest,
     };
     if (brief) options.brief = brief;
     if (budget) options.budget = budget;
