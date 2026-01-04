@@ -588,6 +588,32 @@ export class ThreadService {
   }
 
   /**
+   * Get threads for a user across all channels (web + linked Slack)
+   * This fetches both the user's web threads and any threads from their linked Slack account
+   */
+  async getUserCrossChannelThreads(
+    workosUserId: string,
+    slackUserId: string | null,
+    limit = 20
+  ): Promise<ThreadSummary[]> {
+    if (slackUserId) {
+      // User has linked Slack - fetch threads from both channels
+      const result = await query<ThreadSummary>(
+        `SELECT * FROM addie_threads_summary
+         WHERE (user_type = 'workos' AND user_id = $1)
+            OR (user_type = 'slack' AND user_id = $2)
+         ORDER BY last_message_at DESC
+         LIMIT $3`,
+        [workosUserId, slackUserId, limit]
+      );
+      return result.rows;
+    } else {
+      // No linked Slack - just return web threads
+      return this.getUserThreads(workosUserId, 'workos', limit);
+    }
+  }
+
+  /**
    * Get a user's most recent thread (for proactive messages)
    */
   async getUserRecentThread(
