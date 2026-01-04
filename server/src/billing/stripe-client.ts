@@ -742,12 +742,13 @@ export interface InvoiceRequestData {
 }
 
 /**
- * Create and send an invoice for a product
+ * Create a subscription with invoice billing and send the first invoice
  * Uses collection_method: 'send_invoice' so customer receives email with payment link
+ * When paid, this creates a proper subscription that will auto-renew
  */
 export async function createAndSendInvoice(
   data: InvoiceRequestData
-): Promise<{ invoiceId: string; invoiceUrl: string } | null> {
+): Promise<{ invoiceId: string; invoiceUrl: string; subscriptionId: string } | null> {
   if (!stripe) {
     logger.warn('Stripe not initialized - cannot create invoice');
     return null;
@@ -798,44 +799,42 @@ export async function createAndSendInvoice(
       logger.info({ customerId: customer.id, email: data.contactEmail }, 'Created new Stripe customer for invoice');
     }
 
-    // Create invoice with line item
-    const invoice = await stripe.invoices.create({
+    // Create subscription with invoice billing
+    // This creates a subscription AND generates an invoice for the first payment
+    // When the invoice is paid, the subscription becomes active and will auto-renew
+    const subscription = await stripe.subscriptions.create({
       customer: customer.id,
+      items: [{ price: priceId }],
       collection_method: 'send_invoice',
       days_until_due: 30,
-      auto_advance: true,
       metadata: {
         lookup_key: data.lookupKey,
         contact_name: data.contactName,
+        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
       },
     });
 
-    // Add line item with the price
-    await stripe.invoiceItems.create({
-      customer: customer.id,
-      invoice: invoice.id,
-      pricing: {
-        price: priceId,
-      },
-    });
+    // Get the invoice that was created with the subscription
+    const invoiceId = subscription.latest_invoice as string;
 
-    // Finalize and send the invoice
-    const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
-    await stripe.invoices.sendInvoice(invoice.id);
+    // Send the invoice email - this finalizes the invoice and returns the updated invoice
+    const sentInvoice = await stripe.invoices.sendInvoice(invoiceId);
 
     logger.info({
-      invoiceId: invoice.id,
+      subscriptionId: subscription.id,
+      invoiceId: invoiceId,
       customerId: customer.id,
       lookupKey: data.lookupKey,
       companyName: data.companyName,
-    }, 'Invoice created and sent');
+    }, 'Subscription created with invoice billing - invoice sent');
 
     return {
-      invoiceId: invoice.id,
-      invoiceUrl: finalizedInvoice.hosted_invoice_url || '',
+      invoiceId: invoiceId,
+      invoiceUrl: sentInvoice.hosted_invoice_url || '',
+      subscriptionId: subscription.id,
     };
   } catch (error) {
-    logger.error({ err: error, data }, 'Error creating invoice');
+    logger.error({ err: error, data }, 'Error creating subscription with invoice');
     return null;
   }
 }
