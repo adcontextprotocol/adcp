@@ -1085,12 +1085,13 @@
         let html = '';
 
         for (const leader of currentGroup.leaders) {
+          const displayName = leader.name || leader.user_id;
           html += `
             <div class="leader-card">
-              <div class="leader-avatar">${getInitials(leader.name || 'Unknown')}</div>
+              <div class="leader-avatar">${getInitials(displayName)}</div>
               <div class="leader-info">
                 <div class="leader-role">Leader</div>
-                <h4>${escapeHtml(leader.name || 'Unknown')}</h4>
+                <h4>${escapeHtml(displayName)}</h4>
                 ${leader.org_name ? `<div class="leader-org">${escapeHtml(leader.org_name)}</div>` : ''}
               </div>
             </div>

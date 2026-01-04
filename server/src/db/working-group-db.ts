@@ -528,11 +528,17 @@ export class WorkingGroupDatabase {
    */
   async getLeaders(workingGroupId: string): Promise<WorkingGroupLeader[]> {
     // Get leaders with user details from working_group_memberships (if they're a member),
-    // falling back to organization_memberships (the canonical source from WorkOS)
+    // falling back to organization_memberships (the canonical source from WorkOS),
+    // and finally to user_id as a last resort
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
-         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
+         COALESCE(
+           NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           om.email,
+           wgl.user_id
+         ) AS name,
          COALESCE(wgm.user_org_name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
@@ -559,7 +565,12 @@ export class WorkingGroupDatabase {
       `SELECT
          wgl.working_group_id,
          wgl.user_id,
-         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
+         COALESCE(
+           NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           om.email,
+           wgl.user_id
+         ) AS name,
          COALESCE(wgm.user_org_name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
