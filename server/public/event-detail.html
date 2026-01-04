@@ -8,6 +8,8 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
 
   <link rel="stylesheet" href="/design-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-TlkYLW9MJOrj6RxsljqD44MEH0KhYCqO9KfXIldmopHGZS+i/Rl7Gp6M1po8HDYh" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-bXvQH1Lsb1ep3ELgrEP/gCyaZJjYVLbvFjIkJNNWGZW2ruKS9ZijCBAdMoP0m0OA" crossorigin="anonymous"></script>
   <script src="/nav.js"></script>
   <style>
     body { padding-top: 60px; background: var(--color-bg-page); }
@@ -183,7 +185,139 @@
     .event-description {
       color: var(--color-text-secondary);
       line-height: 1.7;
-      white-space: pre-wrap;
+    }
+
+    .event-description h1,
+    .event-description h2,
+    .event-description h3,
+    .event-description h4 {
+      color: var(--color-text-heading);
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+    }
+
+    .event-description h1:first-child,
+    .event-description h2:first-child,
+    .event-description h3:first-child {
+      margin-top: 0;
+    }
+
+    .event-description p {
+      margin-bottom: 1em;
+    }
+
+    .event-description ul,
+    .event-description ol {
+      margin-bottom: 1em;
+      padding-left: 1.5em;
+    }
+
+    .event-description li {
+      margin-bottom: 0.5em;
+    }
+
+    .event-description a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .event-description a:hover {
+      text-decoration: underline;
+    }
+
+    .event-description strong {
+      color: var(--color-text-heading);
+    }
+
+    .event-description blockquote {
+      border-left: 3px solid var(--color-brand);
+      margin: 1em 0;
+      padding-left: 1em;
+      color: var(--color-text-muted);
+    }
+
+    .event-description code {
+      background: var(--color-gray-100);
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    .event-description pre {
+      background: var(--color-gray-100);
+      padding: 1em;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 1em;
+    }
+
+    .event-description pre code {
+      background: none;
+      padding: 0;
+    }
+
+    /* Attendee Group Section */
+    .attendee-group-cta {
+      background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
+      border: 1px solid var(--color-primary-200);
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .attendee-group-icon {
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      background: var(--color-brand);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .attendee-group-icon svg {
+      color: white;
+    }
+
+    .attendee-group-content {
+      flex: 1;
+    }
+
+    .attendee-group-content h3 {
+      color: var(--color-text-heading);
+      font-size: 1.1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .attendee-group-content p {
+      color: var(--color-text-secondary);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+
+    .attendee-group-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 768px) {
+      .attendee-group-cta {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .attendee-group-actions {
+        width: 100%;
+        flex-direction: column;
+      }
+
+      .attendee-group-actions .btn {
+        width: 100%;
+      }
     }
 
     /* Sponsors Section */
@@ -408,13 +542,14 @@
         const event = data.event;
         const sponsors = data.sponsors || [];
         const registrationCount = data.registration_count || 0;
+        const industryGathering = data.industry_gathering || null;
 
         document.title = `${event.title} | AgenticAdvertising.org`;
 
         // Update meta tags
         updateMetaTags(event);
 
-        renderEvent(event, sponsors, registrationCount);
+        renderEvent(event, sponsors, registrationCount, industryGathering);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -445,7 +580,7 @@
       }
     }
 
-    function renderEvent(event, sponsors, registrationCount) {
+    function renderEvent(event, sponsors, registrationCount, industryGathering) {
       const startDate = new Date(event.start_time);
       const endDate = event.end_time ? new Date(event.end_time) : null;
 
@@ -566,7 +701,38 @@
         html += `
           <div class="event-section">
             <h2 class="section-title">About This Event</h2>
-            <div class="event-description">${escapeHtml(event.description)}</div>
+            <div class="event-description">${renderDescription(event.description)}</div>
+          </div>
+        `;
+      }
+
+      // Industry Gathering / Attendee Group
+      if (industryGathering) {
+        html += `
+          <div class="event-section">
+            <h2 class="section-title">Connect with Attendees</h2>
+            <div class="attendee-group-cta">
+              <div class="attendee-group-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+              </div>
+              <div class="attendee-group-content">
+                <h3>${escapeHtml(industryGathering.name)}</h3>
+                <p>Join other AgenticAdvertising.org members attending this event to network and coordinate.</p>
+              </div>
+              <div class="attendee-group-actions">
+                ${industryGathering.slack_channel_url ? `
+                  <a href="${escapeHtml(industryGathering.slack_channel_url)}" class="btn btn-primary" target="_blank" rel="noopener">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 0.25rem;">
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                    </svg>
+                    Join Slack Channel
+                  </a>
+                ` : ''}
+                <a href="/committees/${escapeHtml(industryGathering.slug)}" class="btn btn-outline">View Group</a>
+              </div>
+            </div>
           </div>
         `;
       }
@@ -699,6 +865,38 @@
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML;
+    }
+
+    /**
+     * Clean up Slack username mentions and render markdown
+     * Converts @username or <@U123|username> patterns to readable format
+     */
+    function renderDescription(text) {
+      if (!text) return '';
+
+      // Clean up Slack user mention formats:
+      // <@U123ABC|displayname> -> displayname
+      // <@U123ABC> -> @member
+      let cleaned = text.replace(/<@([A-Z0-9]+)\|([^>]+)>/g, '$2');
+      cleaned = cleaned.replace(/<@[A-Z0-9]+>/g, '@member');
+
+      // Also handle plain @username patterns that might be Slack IDs
+      // These look like @U12345ABC - replace with @member
+      cleaned = cleaned.replace(/@U[A-Z0-9]{8,}/g, '@member');
+
+      // Fallback if marked or DOMPurify failed to load from CDN
+      if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+        return escapeHtml(cleaned).replace(/\n/g, '<br>');
+      }
+
+      // Configure marked for rendering
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+      });
+
+      // Parse markdown and sanitize to prevent XSS
+      return DOMPurify.sanitize(marked.parse(cleaned));
     }
 
     // Initialize
