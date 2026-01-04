@@ -594,6 +594,29 @@
     .btn-icon.danger:hover {
       color: var(--color-error-600);
     }
+    /* Quick follow-up inline form */
+    .quick-followup {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .quick-followup-input {
+      flex: 1;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .quick-followup-input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 2px var(--color-brand-light);
+    }
+    .quick-followup-input::placeholder {
+      color: var(--color-text-muted);
+    }
   </style>
 </head>
 <body>
@@ -733,6 +756,10 @@
             <div id="nextStepsList" class="empty-state">
               No pending next steps
             </div>
+            <form id="quickFollowUpForm" class="quick-followup" onsubmit="saveQuickFollowUp(event)">
+              <input type="text" id="quickFollowUpText" placeholder="e.g. Talk to Dave Osborne about pricing..." class="quick-followup-input" autocomplete="off">
+              <button type="submit" class="btn btn-primary btn-sm" id="quickFollowUpBtn">Add</button>
+            </form>
           </div>
 
           <!-- Team Members -->
@@ -806,9 +833,6 @@
             <label>Owner</label>
             <select id="editOrgOwner">
               <option value="">Not assigned</option>
-              <option value="Brian">Brian</option>
-              <option value="Randy">Randy</option>
-              <option value="Matt">Matt</option>
             </select>
           </div>
         </div>
@@ -933,9 +957,6 @@
               <label>Owner</label>
               <select id="nextStepOwner">
                 <option value="">Not assigned</option>
-                <option value="Brian">Brian</option>
-                <option value="Randy">Randy</option>
-                <option value="Matt">Matt</option>
               </select>
             </div>
           </div>
@@ -1074,6 +1095,7 @@
 
         renderOrganization();
         renderOwnerSelector();
+        populateOwnerDropdowns();
         renderDomains();
 
         document.getElementById('loading').style.display = 'none';
@@ -1551,6 +1573,60 @@
       }
     }
 
+    async function saveQuickFollowUp(event) {
+      event.preventDefault();
+
+      const input = document.getElementById('quickFollowUpText');
+      const btn = document.getElementById('quickFollowUpBtn');
+      const description = input.value.trim();
+
+      if (!description) return;
+
+      // Get current user's name for the owner
+      const currentUserMember = teamMembers.find(m => currentUserId && m.user_id === currentUserId);
+      const ownerName = currentUserMember?.user_name || null;
+
+      // Default due date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dueDate = tomorrow.toISOString().split('T')[0];
+
+      const data = {
+        activity_type: 'note',
+        description: description,
+        is_next_step: true,
+        next_step_due_date: dueDate,
+        next_step_owner_name: ownerName
+      };
+
+      btn.disabled = true;
+      btn.textContent = '...';
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/activities`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to save follow-up');
+        }
+
+        input.value = '';
+        loadOrganization(); // Refresh data
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add';
+      }
+    }
+
     async function completeNextStep(activityId) {
       try {
         const response = await fetch(`/api/admin/organizations/${orgId}/activities/${activityId}`, {
@@ -1627,6 +1703,31 @@
         watchBtn.textContent = isWatching ? '⭐' : '☆';
         watchBtn.title = isWatching ? 'Stop watching' : 'Watch this organization';
       }
+    }
+
+    function populateOwnerDropdowns() {
+      const editOrgOwner = document.getElementById('editOrgOwner');
+      const nextStepOwner = document.getElementById('nextStepOwner');
+
+      editOrgOwner.innerHTML = '<option value="">Not assigned</option>';
+      nextStepOwner.innerHTML = '<option value="">Not assigned</option>';
+
+      teamMembers.forEach(member => {
+        const isMe = currentUserId && member.user_id === currentUserId;
+        const displayName = isMe ? `${member.user_name} (me)` : member.user_name;
+
+        // Edit modal uses legacy prospect_owner field (stores name)
+        const editOption = document.createElement('option');
+        editOption.value = member.user_name;
+        editOption.textContent = displayName;
+        editOrgOwner.appendChild(editOption);
+
+        // Next step dropdown uses name for next_step_owner_name field
+        const nextStepOption = document.createElement('option');
+        nextStepOption.value = member.user_name;
+        nextStepOption.textContent = displayName;
+        nextStepOwner.appendChild(nextStepOption);
+      });
     }
 
     function showOwnerDropdown() {
