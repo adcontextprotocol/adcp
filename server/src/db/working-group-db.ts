@@ -484,9 +484,9 @@ export class WorkingGroupDatabase {
    */
   async getMembershipsByWorkingGroup(workingGroupId: string): Promise<WorkingGroupMembership[]> {
     const result = await query<WorkingGroupMembership>(
-      `SELECT * FROM working_group_memberships
-       WHERE working_group_id = $1 AND status = 'active'
-       ORDER BY user_name, user_email`,
+      `SELECT wgm.* FROM working_group_memberships wgm
+       WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
+       ORDER BY wgm.user_name, wgm.user_email`,
       [workingGroupId]
     );
     return result.rows;
