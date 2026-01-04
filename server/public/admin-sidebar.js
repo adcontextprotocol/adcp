@@ -17,6 +17,7 @@
       {
         label: 'Account Management',
         items: [
+          { href: '/admin/accounts', label: 'Accounts', icon: '📋' },
           { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
           { href: '/admin/prospects', label: 'Prospects', icon: '🎯' },
           { href: '/admin/members', label: 'Organizations', icon: '🏢' },
