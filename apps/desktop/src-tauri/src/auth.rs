@@ -1,4 +1,4 @@
-//! Authentication module for Addie Desktop
+//! Authentication module for Addie (Desktop + Mobile)
 //!
 //! Handles OAuth flow with WorkOS via deep links and secure session storage.
 
@@ -98,45 +98,60 @@ pub fn handle_deep_link(app: &AppHandle, url: &str) -> Result<(), Box<dyn std::e
 
     println!("auth-success event emitted");
 
-    // Bring window to foreground
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_focus();
-        let _ = window.show();
-        println!("Window focused");
-    } else {
-        eprintln!("Could not find main window to focus");
-    }
-
-    Ok(())
-}
-
-/// Save session to system keychain
-pub fn save_session(session: &UserSession) -> Result<(), Box<dyn std::error::Error>> {
-    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
-    let json = serde_json::to_string(session)?;
-    entry.set_password(&json)?;
-    Ok(())
-}
-
-/// Get session from system keychain
-pub fn get_session() -> Result<Option<UserSession>, Box<dyn std::error::Error>> {
-    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
-    match entry.get_password() {
-        Ok(json) => {
-            let session: UserSession = serde_json::from_str(&json)?;
-            Ok(Some(session))
+    // Bring window to foreground (desktop only)
+    #[cfg(desktop)]
+    {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_focus();
+            let _ = window.show();
+            println!("Window focused");
+        } else {
+            eprintln!("Could not find main window to focus");
         }
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(Box::new(e)),
     }
+
+    Ok(())
 }
 
-/// Clear session from system keychain
-pub fn clear_session() -> Result<(), Box<dyn std::error::Error>> {
-    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()), // Already cleared
-        Err(e) => Err(Box::new(e)),
+/// Get session file path
+fn get_session_file_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    std::path::PathBuf::from(home).join(".addie-session.json")
+}
+
+/// Save session to file (keychain unreliable for unsigned debug builds)
+pub fn save_session(session: &UserSession) -> Result<(), Box<dyn std::error::Error>> {
+    let json = serde_json::to_string(session)?;
+    let path = get_session_file_path();
+    std::fs::write(&path, &json)?;
+    println!("Session saved to file: {:?}", path);
+    Ok(())
+}
+
+/// Get session from file
+pub fn get_session() -> Result<Option<UserSession>, Box<dyn std::error::Error>> {
+    let path = get_session_file_path();
+    if path.exists() {
+        let json = std::fs::read_to_string(&path)?;
+        let session: UserSession = serde_json::from_str(&json)?;
+        println!("Session loaded from file");
+        return Ok(Some(session));
     }
+    Ok(None)
+}
+
+/// Clear session from both keychain and file
+pub fn clear_session() -> Result<(), Box<dyn std::error::Error>> {
+    // Try keychain
+    if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        let _ = entry.delete_credential();
+    }
+
+    // Also clear file
+    let path = get_session_file_path();
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+
+    Ok(())
 }

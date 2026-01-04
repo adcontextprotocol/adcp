@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Addie</title>
   <style>
     :root {
@@ -35,6 +35,11 @@
       height: 100vh;
       display: flex;
       flex-direction: column;
+      /* iOS safe area support */
+      padding-top: env(safe-area-inset-top);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
     }
 
     /* Header - draggable area */
@@ -212,6 +217,14 @@
       document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible' && !sessionToken) {
           console.log('Window visible, checking auth state...');
+          await checkAuthState();
+        }
+      });
+
+      // Also check on window focus (more reliable for app switching)
+      window.addEventListener('focus', async () => {
+        if (!sessionToken) {
+          console.log('Window focused, checking auth state...');
           await checkAuthState();
         }
       });

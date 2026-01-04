@@ -20,6 +20,12 @@
     return;
   }
 
+  // Skip when running inside an iframe (native app embeds the page)
+  // The native app provides its own header/navigation
+  if (window.self !== window.top) {
+    return;
+  }
+
   // Determine if running locally
   const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
 

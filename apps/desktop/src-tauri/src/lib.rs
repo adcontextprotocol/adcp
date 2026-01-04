@@ -1,4 +1,4 @@
-//! Addie Desktop App - Tauri backend
+//! Addie App - Tauri backend (Desktop + Mobile)
 //!
 //! Handles:
 //! - OAuth deep link authentication (addie://auth/callback)
@@ -88,18 +88,37 @@ pub fn run() {
             // Register deep link handler for OAuth callback
             let handle = app.handle().clone();
 
-            #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
 
-                app.deep_link().on_open_url(move |event| {
-                    let urls = event.urls();
+                println!("Setting up deep link handler...");
+
+                // Check if app was launched via deep link (covers cold start case)
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    println!("App launched with deep link URLs: {:?}", urls);
                     for url in urls {
+                        println!("Processing startup URL: {}", url.as_str());
                         if let Err(e) = auth::handle_deep_link(&handle, url.as_str()) {
+                            eprintln!("Failed to handle startup deep link: {}", e);
+                        }
+                    }
+                }
+
+                // Handle deep links while app is running
+                let handle_clone = handle.clone();
+                app.deep_link().on_open_url(move |event| {
+                    println!("Deep link received while running!");
+                    let urls = event.urls();
+                    println!("URLs: {:?}", urls);
+                    for url in urls {
+                        println!("Processing URL: {}", url.as_str());
+                        if let Err(e) = auth::handle_deep_link(&handle_clone, url.as_str()) {
                             eprintln!("Failed to handle deep link: {}", e);
                         }
                     }
                 });
+
+                println!("Deep link handler registered");
             }
 
             Ok(())

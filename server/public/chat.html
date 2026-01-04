@@ -803,9 +803,10 @@
       }
     }
 
-    /* Native app mode - hide site nav and chat header (app provides its own) */
+    /* Native app mode - hide site nav, chat header, and status indicator (app provides its own) */
     body.native-app #adcp-nav,
-    body.native-app .chat-header {
+    body.native-app .chat-header,
+    body.native-app .status-indicator {
       display: none !important;
     }
 
@@ -951,6 +952,14 @@
             history.replaceState(null, '', window.location.pathname + window.location.search);
             console.log('Native auth token detected');
           }
+        }
+
+        // Also detect if we're inside a Tauri webview (backup detection)
+        // Tauri injects __TAURI__ global, but this may not be available in iframe
+        // Check for window.self !== window.top (we're in an iframe)
+        if (window.self !== window.top) {
+          document.body.classList.add('native-app');
+          console.log('Running inside iframe, enabling native-app mode');
         }
       }
 
