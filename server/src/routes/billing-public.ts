@@ -374,7 +374,7 @@ export function createPublicBillingRouter(): Router {
         if (!result) {
           return res.status(500).json({
             error: "Failed to create checkout session",
-            message: "Could not create Stripe checkout session. Please try again.",
+            message: "Stripe is not configured. Please contact support.",
           });
         }
 
@@ -395,9 +395,10 @@ export function createPublicBillingRouter(): Router {
         });
       } catch (error) {
         logger.error({ err: error }, "Checkout session creation error");
+        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again.";
         res.status(500).json({
           error: "Failed to create checkout session",
-          message: "An unexpected error occurred. Please try again.",
+          message: errorMessage,
         });
       }
     }

@@ -3260,11 +3260,11 @@
           body: JSON.stringify(body)
         });
 
-        if (!response.ok) {
-          throw new Error('Failed to generate payment link');
-        }
-
         const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to generate payment link');
+        }
 
         if (data.success && data.payment_url) {
           container.style.display = 'none';

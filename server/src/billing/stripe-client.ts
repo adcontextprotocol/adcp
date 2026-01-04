@@ -948,7 +948,7 @@ export async function createCheckoutSession(
     };
   } catch (error) {
     logger.error({ err: error, data }, 'Error creating checkout session');
-    return null;
+    throw error;
   }
 }
 
