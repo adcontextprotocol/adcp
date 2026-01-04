@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/validation-result.json",
+  "title": "Validation Result",
+  "description": "Result of validating a single delivery record against a property list.",
+  "type": "object",
+  "properties": {
+    "identifier": {
+      "$ref": "/schemas/core/identifier.json",
+      "description": "The identifier that was validated"
+    },
+    "record_id": {
+      "type": "string",
+      "description": "Client-provided ID from the delivery record (if provided)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["compliant", "non_compliant", "unknown"],
+      "description": "Validation status: compliant (in list), non_compliant (not in list), unknown (identifier type not resolvable by this governance agent)"
+    },
+    "impressions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of impressions from this record"
+    },
+    "violations": {
+      "type": "array",
+      "description": "Specific violations found (only present for non_compliant records)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Machine-readable violation code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable violation description"
+          }
+        },
+        "required": ["code", "message"],
+        "additionalProperties": false
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["identifier", "status", "impressions"],
+  "additionalProperties": false
+}

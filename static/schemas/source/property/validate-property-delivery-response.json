@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/validate-property-delivery-response.json",
+  "title": "Validate Property Delivery Response",
+  "description": "Response payload for validate_property_delivery task. Returns aggregate compliance statistics and per-record validation results.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list validated against"
+    },
+    "summary": {
+      "type": "object",
+      "description": "Aggregate validation statistics",
+      "properties": {
+        "total_records": {
+          "type": "integer",
+          "description": "Total number of records validated"
+        },
+        "total_impressions": {
+          "type": "integer",
+          "description": "Total impressions across all records"
+        },
+        "compliant_records": {
+          "type": "integer",
+          "description": "Number of records with compliant status"
+        },
+        "compliant_impressions": {
+          "type": "integer",
+          "description": "Impressions from compliant records"
+        },
+        "non_compliant_records": {
+          "type": "integer",
+          "description": "Number of records with non_compliant status"
+        },
+        "non_compliant_impressions": {
+          "type": "integer",
+          "description": "Impressions from non_compliant records"
+        },
+        "unknown_records": {
+          "type": "integer",
+          "description": "Number of records with unknown status (identifier not resolvable)"
+        },
+        "unknown_impressions": {
+          "type": "integer",
+          "description": "Impressions from unknown records"
+        },
+        "compliance_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Compliant impressions divided by (total - unknown) impressions. Unknown impressions are excluded from the rate calculation."
+        }
+      },
+      "required": [
+        "total_records",
+        "total_impressions",
+        "compliant_records",
+        "compliant_impressions",
+        "non_compliant_records",
+        "non_compliant_impressions",
+        "unknown_records",
+        "unknown_impressions",
+        "compliance_rate"
+      ],
+      "additionalProperties": false
+    },
+    "results": {
+      "type": "array",
+      "description": "Per-record validation results. By default only includes non_compliant and unknown records. Set include_compliant=true to include all records.",
+      "items": {
+        "$ref": "/schemas/property/validation-result.json"
+      }
+    },
+    "validated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when validation was performed"
+    },
+    "list_resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the property list resolution used for validation"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["list_id", "summary", "results", "validated_at"],
+  "additionalProperties": false
+}

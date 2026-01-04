@@ -239,6 +239,29 @@ List all property lists accessible to the authenticated principal.
 
 Remove a property list.
 
+### Validation
+
+#### validate_property_delivery
+
+Validates delivery records against a property list to determine compliance. Closes the loop between "what I wanted" and "what I got."
+
+**Use Cases**:
+- Post-campaign validation: Verify impressions landed on compliant properties
+- Real-time monitoring: Check compliance rate during campaign execution
+- Audit trails: Generate compliance reports for regulatory or brand safety reviews
+
+**Validation Statuses**:
+- `compliant`: Identifier is in the resolved property list
+- `non_compliant`: Identifier is NOT in the resolved property list
+- `unknown`: Identifier type not resolvable by this agent
+
+**Unknown Records Are Valid**: When a governance agent cannot resolve an identifier (e.g., client-side JavaScript detection didn't fire, or the identifier type is outside the agent's coverage), the record receives `unknown` status. Unknown records are excluded from compliance rate calculations - you cannot penalize for detection gaps.
+
+**Compliance Rate Calculation**:
+```
+compliance_rate = compliant_impressions / (total_impressions - unknown_impressions)
+```
+
 ## Typical Flows
 
 ### Property List Flow
@@ -396,7 +419,8 @@ Governance agents expose capabilities via `.well-known/agent-card.json`:
       "get_property_list",
       "update_property_list",
       "delete_property_list",
-      "list_property_lists"
+      "list_property_lists",
+      "validate_property_delivery"
     ],
     "protocols": ["MCP", "A2A"],
     "schema_version": "v1"
@@ -576,3 +600,4 @@ Media buys can reference governance policies via property list references:
 - See the [adagents.json Tech Spec](/docs/governance/property/adagents) for property declaration and authorization
 - See the [list_property_features task reference](/docs/governance/property/tasks/list_property_features) for capability discovery
 - See the [Property List Management](/docs/governance/property/tasks/property_lists) for CRUD operations and webhooks
+- See the [validate_property_delivery task reference](/docs/governance/property/tasks/validate_property_delivery) for post-campaign compliance validation

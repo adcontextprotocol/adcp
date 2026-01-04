@@ -1,0 +1,214 @@
+---
+sidebar_position: 4
+title: validate_property_delivery
+---
+
+# validate_property_delivery
+
+<Info>
+**AdCP 3.0 Proposal** - This task is under development for AdCP 3.0.
+</Info>
+
+Validates delivery records against a property list to determine compliance. Answers the question: "Did my impressions land on properties in my list?"
+
+## Use Cases
+
+- **Post-campaign validation**: Verify that impressions were delivered to compliant properties
+- **Real-time monitoring**: Check compliance rate during campaign execution
+- **Audit trails**: Generate compliance reports for regulatory or brand safety reviews
+
+## Request
+
+```json
+{
+  "$schema": "/schemas/property/validate-property-delivery-request.json",
+  "list_id": "pl_abc123",
+  "records": [
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "impressions": 103
+    },
+    {
+      "identifier": { "type": "domain", "value": "sketchy-site.example" },
+      "impressions": 47
+    },
+    {
+      "identifier": { "type": "android_package", "value": "com.unknown.app" },
+      "impressions": 25
+    }
+  ],
+  "include_compliant": false
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `list_id` | string | Yes | ID of the property list to validate against |
+| `records` | array | Yes | Delivery records to validate (1-10,000 records) |
+| `records[].identifier` | object | Yes | Property identifier (`type` and `value`) |
+| `records[].impressions` | integer | Yes | Number of impressions delivered |
+| `records[].record_id` | string | No | Client-provided ID for correlation |
+| `include_compliant` | boolean | No | Include compliant records in results (default: false) |
+
+## Response
+
+```json
+{
+  "$schema": "/schemas/property/validate-property-delivery-response.json",
+  "list_id": "pl_abc123",
+  "summary": {
+    "total_records": 3,
+    "total_impressions": 175,
+    "compliant_records": 1,
+    "compliant_impressions": 103,
+    "non_compliant_records": 1,
+    "non_compliant_impressions": 47,
+    "unknown_records": 1,
+    "unknown_impressions": 25,
+    "compliance_rate": 0.687
+  },
+  "results": [
+    {
+      "identifier": { "type": "domain", "value": "sketchy-site.example" },
+      "status": "non_compliant",
+      "impressions": 47,
+      "violations": [
+        {
+          "code": "not_in_list",
+          "message": "Identifier not found in resolved property list"
+        }
+      ]
+    },
+    {
+      "identifier": { "type": "android_package", "value": "com.unknown.app" },
+      "status": "unknown",
+      "impressions": 25
+    }
+  ],
+  "validated_at": "2026-01-04T19:00:00Z",
+  "list_resolved_at": "2026-01-04T12:00:00Z"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `list_id` | string | ID of the property list validated against |
+| `summary` | object | Aggregate validation statistics |
+| `summary.compliance_rate` | number | Compliant / (total - unknown) impressions |
+| `results` | array | Per-record validation results |
+| `validated_at` | datetime | When validation was performed |
+| `list_resolved_at` | datetime | Resolution timestamp of the property list used |
+
+### Validation Statuses
+
+| Status | Meaning | Included in compliance_rate? |
+|--------|---------|------------------------------|
+| `compliant` | Identifier is in the resolved property list | Yes (numerator) |
+| `non_compliant` | Identifier is NOT in the resolved property list | Yes (denominator only) |
+| `unknown` | Identifier type not resolvable by this agent | No (excluded) |
+
+## Understanding Unknown Status
+
+Records receive `unknown` status when the governance agent cannot resolve the identifier type. This commonly occurs when:
+
+- **Client-side detection limitations**: JavaScript-based property detection may not identify all placements
+- **Identifier type mismatch**: The agent specializes in domains but receives app store IDs
+- **New properties**: Recently added properties not yet in the agent's database
+
+**Unknown records are valid** - you cannot penalize for detection gaps. They are excluded from the `compliance_rate` calculation.
+
+## Compliance Rate Calculation
+
+```
+compliance_rate = compliant_impressions / (total_impressions - unknown_impressions)
+```
+
+In the example above:
+- Compliant impressions: 103
+- Non-compliant impressions: 47
+- Unknown impressions: 25 (excluded)
+- Compliance rate: 103 / (175 - 25) = 103 / 150 = 0.687 (68.7%)
+
+## Violation Codes
+
+| Code | Description |
+|------|-------------|
+| `not_in_list` | Identifier not found in the resolved property list |
+| `excluded` | Identifier explicitly excluded via `exclude_identifiers` filter |
+| `country_mismatch` | Property not compliant in required countries |
+| `channel_mismatch` | Property doesn't support required channels |
+| `feature_failed` | Property failed a `feature_requirements` filter |
+
+## Best Practices
+
+### Batch Validation
+
+For large-scale validation, batch records up to the 10,000 limit:
+
+```python
+def validate_delivery_batch(records, list_id, governance_agent):
+    """Validate delivery records in batches."""
+    batch_size = 10000
+    all_results = []
+
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i + batch_size]
+        response = governance_agent.validate_property_delivery(
+            list_id=list_id,
+            records=batch
+        )
+        all_results.extend(response.results)
+
+    return all_results
+```
+
+### Sampling Strategy
+
+For real-time monitoring during campaign execution, validate a statistical sample rather than all records:
+
+```python
+import random
+
+def sample_and_validate(records, sample_size=1000):
+    """Validate a random sample for real-time monitoring."""
+    sample = random.sample(records, min(sample_size, len(records)))
+    return governance_agent.validate_property_delivery(
+        list_id=list_id,
+        records=sample
+    )
+```
+
+### Handling Unknown Records
+
+Track unknown rates separately to identify detection gaps:
+
+```python
+def analyze_validation(response):
+    """Analyze validation results with unknown handling."""
+    summary = response.summary
+
+    # Core compliance metric
+    compliance_rate = summary.compliance_rate
+
+    # Detection quality metric
+    unknown_rate = summary.unknown_impressions / summary.total_impressions
+
+    if unknown_rate > 0.1:
+        print(f"Warning: {unknown_rate:.1%} of impressions unresolvable")
+
+    return {
+        "compliance_rate": compliance_rate,
+        "unknown_rate": unknown_rate,
+        "non_compliant_impressions": summary.non_compliant_impressions
+    }
+```
+
+## Related Tasks
+
+- [create_property_list](/docs/governance/property/tasks/property_lists#create_property_list) - Create the list to validate against
+- [get_property_list](/docs/governance/property/tasks/property_lists#get_property_list) - Retrieve current list membership
+- [list_property_features](/docs/governance/property/tasks/list_property_features) - Discover available filter features
