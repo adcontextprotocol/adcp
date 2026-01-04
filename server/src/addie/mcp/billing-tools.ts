@@ -215,7 +215,7 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
       if (!session) {
         return JSON.stringify({
           success: false,
-          error: 'Failed to create payment link. Stripe may not be configured.',
+          error: 'Stripe is not configured. Please contact support.',
         });
       }
 
@@ -226,9 +226,10 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error creating payment link');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return JSON.stringify({
         success: false,
-        error: 'Failed to create payment link. Please try again.',
+        error: `Failed to create payment link: ${errorMessage}`,
       });
     }
   });

@@ -400,7 +400,14 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         if (!session) {
           return res.status(500).json({
             error: "Failed to create payment link",
-            message: "Stripe may not be configured",
+            message: "Stripe is not configured. Please contact support.",
+          });
+        }
+
+        if (!session.url) {
+          return res.status(500).json({
+            error: "Failed to create payment link",
+            message: "Stripe session created but no URL returned",
           });
         }
 
@@ -428,9 +435,14 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         });
       } catch (error) {
         logger.error({ err: error }, "Error generating payment link");
+        // Extract meaningful error message from Stripe errors
+        let errorMessage = "Unable to generate payment link";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
         res.status(500).json({
           error: "Internal server error",
-          message: "Unable to generate payment link",
+          message: errorMessage,
         });
       }
     }
