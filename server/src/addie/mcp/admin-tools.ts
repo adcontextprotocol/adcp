@@ -1,13 +1,16 @@
 /**
  * Addie Admin Tools
  *
- * Tools available only to admin users for:
+ * Tools available only to AAO platform admin users for:
  * - Looking up organization status and pending invoices
  * - Managing prospects and enrichment
  *
- * Admin users are determined by:
- * - Slack users: membership in the "aao-admin" working group
- * - Web users: org_membership.role === 'admin'
+ * AAO platform admins are determined by membership in the "aao-admin" working group:
+ * - Slack users: via isSlackUserAdmin() which looks up WorkOS user ID from Slack mapping
+ * - Web users: via isWebUserAdmin() which checks working group membership directly
+ *
+ * Note: This is distinct from WorkOS organization admins, who are admins within their
+ * own company's organization but do not have AAO platform-wide admin access.
  */
 
 import { createLogger } from '../../logger.js';
@@ -96,6 +99,8 @@ export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
 
     if (!adminGroup) {
       logger.warn('AAO Admin working group not found');
+      // Cache the negative result for a shorter time to avoid repeated DB lookups
+      adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
       return false;
     }
 
@@ -114,7 +119,7 @@ export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
 }
 
 /**
- * Invalidate admin status cache for a user (call when admin membership changes)
+ * Invalidate admin status cache for a Slack user (call when admin membership changes)
  */
 export function invalidateAdminStatusCache(slackUserId?: string): void {
   if (slackUserId) {
@@ -124,8 +129,68 @@ export function invalidateAdminStatusCache(slackUserId?: string): void {
   }
 }
 
+// Cache for web user admin status (keyed by WorkOS user ID)
+const webAdminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+
 /**
- * Check if a web user has admin privileges (via member context)
+ * Invalidate web admin status cache for a user (call when admin membership changes)
+ */
+export function invalidateWebAdminStatusCache(workosUserId?: string): void {
+  if (workosUserId) {
+    webAdminStatusCache.delete(workosUserId);
+  } else {
+    webAdminStatusCache.clear();
+  }
+}
+
+/**
+ * Invalidate all admin caches (both Slack and web)
+ */
+export function invalidateAllAdminCaches(): void {
+  adminStatusCache.clear();
+  webAdminStatusCache.clear();
+}
+
+/**
+ * Check if a web user is an AAO admin
+ * Checks membership in aao-admin working group by WorkOS user ID
+ * Results are cached for 30 minutes to reduce DB load
+ */
+export async function isWebUserAdmin(workosUserId: string): Promise<boolean> {
+  // Check cache first
+  const cached = webAdminStatusCache.get(workosUserId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isAdmin;
+  }
+
+  try {
+    // Get the aao-admin working group
+    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+
+    if (!adminGroup) {
+      logger.warn('AAO Admin working group not found');
+      // Cache the negative result for a shorter time to avoid repeated DB lookups
+      webAdminStatusCache.set(workosUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      return false;
+    }
+
+    // Check if the user is a member of the admin working group
+    const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
+
+    // Cache the result
+    webAdminStatusCache.set(workosUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+
+    logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
+    return isAdmin;
+  } catch (error) {
+    logger.error({ error, workosUserId }, 'Error checking if web user is admin');
+    return false;
+  }
+}
+
+/**
+ * Check if a web user has admin privileges (via member context org role)
+ * @deprecated Use isWebUserAdmin() for AAO admin checks - this only checks WorkOS org role
  */
 export function isAdmin(memberContext: MemberContext | null): boolean {
   return memberContext?.org_membership?.role === 'admin';
