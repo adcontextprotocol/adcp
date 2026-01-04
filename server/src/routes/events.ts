@@ -975,10 +975,19 @@ export function createEventsRouter(): {
         (r) => r.registration_status === "registered"
       ).length;
 
+      // Get industry gathering (attendee group) if one exists
+      const industryGathering = await workingGroupDb.getIndustryGatheringByEventId(event.id);
+
       res.json({
         event,
         sponsors,
         registration_count: registrationCount,
+        industry_gathering: industryGathering ? {
+          id: industryGathering.id,
+          name: industryGathering.name,
+          slug: industryGathering.slug,
+          slack_channel_url: industryGathering.slack_channel_url,
+        } : null,
       });
     } catch (error) {
       logger.error({ err: error }, "Error getting event");

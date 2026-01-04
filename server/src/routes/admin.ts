@@ -17,6 +17,12 @@ import {
   getProductsForCustomer,
   createAndSendInvoice,
 } from "../billing/stripe-client.js";
+import { getMemberCapabilities } from "../db/outbound-db.js";
+import { getOutboundPlanner } from "../addie/services/outbound-planner.js";
+import * as outboundDb from "../db/outbound-db.js";
+import { canContactUser } from "../addie/services/proactive-outreach.js";
+import { InsightsDatabase } from "../db/insights-db.js";
+import type { PlannerContext, MemberCapabilities } from "../addie/types.js";
 
 // Import route modules
 import { setupProspectRoutes } from "./admin/prospects.js";
@@ -233,6 +239,86 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           const threadsResult = await pool.query(threadsQuery, [workosUserId || slackUserId]);
           if (threadsResult.rows.length > 0) {
             (extendedContext as typeof extendedContext & { recent_conversations?: unknown }).recent_conversations = threadsResult.rows;
+          }
+
+          // Get capabilities and planner recommendation (if Slack user)
+          if (slackUserId) {
+            try {
+              const capabilities = await getMemberCapabilities(slackUserId, workosUserId);
+              (extendedContext as typeof extendedContext & { capabilities?: MemberCapabilities }).capabilities = capabilities;
+
+              // Get planner recommendation
+              const planner = getOutboundPlanner();
+              const insightsDb = new InsightsDatabase();
+              const [plannerInsights, history, contactEligibility] = await Promise.all([
+                insightsDb.getInsightsForUser(slackUserId),
+                outboundDb.getUserGoalHistory(slackUserId),
+                canContactUser(slackUserId),
+              ]);
+
+              const plannerCtx: PlannerContext = {
+                user: {
+                  slack_user_id: slackUserId,
+                  workos_user_id: workosUserId,
+                  display_name: context.slack_user?.display_name ?? undefined,
+                  is_mapped: !!workosUserId,
+                  engagement_score: capabilities.slack_message_count_30d > 10 ? 75 :
+                                    capabilities.slack_message_count_30d > 5 ? 50 :
+                                    capabilities.slack_message_count_30d > 0 ? 25 : 0,
+                  insights: plannerInsights.map(i => ({
+                    type: i.insight_type_name ?? 'unknown',
+                    value: i.value,
+                    confidence: i.confidence,
+                  })),
+                },
+                company: context.organization ? {
+                  name: context.organization.name,
+                  type: 'unknown',
+                } : undefined,
+                capabilities,
+                history,
+                contact_eligibility: {
+                  can_contact: contactEligibility.canContact,
+                  reason: contactEligibility.reason ?? 'Eligible',
+                },
+              };
+
+              const planned = await planner.planNextAction(plannerCtx);
+              if (planned) {
+                const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+                const messagePreview = planner.buildMessage(planned.goal, plannerCtx, linkUrl);
+                (extendedContext as typeof extendedContext & { planner?: unknown }).planner = {
+                  recommended_action: {
+                    goal_id: planned.goal.id,
+                    goal_name: planned.goal.name,
+                    category: planned.goal.category,
+                    reason: planned.reason,
+                    priority_score: planned.priority_score,
+                    decision_method: planned.decision_method,
+                  },
+                  message_preview: messagePreview,
+                  alternative_goals: planned.alternative_goals.map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    category: g.category,
+                  })),
+                  contact_eligibility: {
+                    can_contact: contactEligibility.canContact,
+                    reason: contactEligibility.reason,
+                  },
+                };
+              } else {
+                (extendedContext as typeof extendedContext & { planner?: unknown }).planner = {
+                  recommended_action: null,
+                  contact_eligibility: {
+                    can_contact: contactEligibility.canContact,
+                    reason: contactEligibility.reason,
+                  },
+                };
+              }
+            } catch (plannerError) {
+              logger.warn({ err: plannerError, slackUserId }, 'Failed to get planner recommendation');
+            }
           }
         }
 

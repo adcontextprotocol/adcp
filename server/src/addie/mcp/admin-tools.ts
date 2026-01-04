@@ -1373,6 +1373,124 @@ This logs the interaction, analyzes it for learnings, and automatically:
       required: ['summary'],
     },
   },
+
+  // ============================================
+  // INSIGHT GOALS MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'list_insight_goals',
+    description: `List all insight goals - the questions/topics we're trying to learn about from members.
+
+USE THIS when admin asks:
+- "What are we trying to learn about members?"
+- "What questions should Addie be asking?"
+- "Show me the insight goals"
+- "What member insights are we collecting?"
+
+Returns all configured insight goals with their priority and status.`,
+    usage_hints: 'Use to review what information we want to gather from members.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        active_only: {
+          type: 'boolean',
+          description: 'Only show active/enabled goals (default: false - show all)',
+        },
+      },
+    },
+  },
+  {
+    name: 'add_insight_goal',
+    description: `Add a new insight goal - a question or topic we want to naturally learn about from members.
+
+USE THIS when admin says:
+- "We should ask members about [topic]"
+- "I want to know what members think about [topic]"
+- "Add a question about [topic] to what Addie asks"
+- "Can we track [topic] for members?"
+
+The goal will be added to Addie's awareness, and she'll naturally try to learn this in conversations.`,
+    usage_hints: 'The question should be conversational, not survey-like.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Short name for the goal (e.g., "Learn 2026 Plans")',
+        },
+        question: {
+          type: 'string',
+          description: 'The question to explore (e.g., "What are you planning for agentic advertising in 2026?")',
+        },
+        priority: {
+          type: 'number',
+          description: 'Priority 1-100, higher = more important (default: 50)',
+        },
+        target_mapped_only: {
+          type: 'boolean',
+          description: 'Only ask users who have linked their accounts (default: false)',
+        },
+      },
+      required: ['name', 'question'],
+    },
+  },
+  {
+    name: 'update_insight_goal',
+    description: `Update an existing insight goal - change its priority, enable/disable it, or update the question.
+
+USE THIS when admin says:
+- "Disable the [goal] question"
+- "Make [goal] higher priority"
+- "Change the question for [goal]"`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'number',
+          description: 'ID of the goal to update',
+        },
+        is_enabled: {
+          type: 'boolean',
+          description: 'Enable or disable the goal',
+        },
+        priority: {
+          type: 'number',
+          description: 'New priority (1-100)',
+        },
+        question: {
+          type: 'string',
+          description: 'Updated question text',
+        },
+      },
+      required: ['goal_id'],
+    },
+  },
+  {
+    name: 'get_insight_summary',
+    description: `Get a summary of what we've learned from members - collected insights and statistics.
+
+USE THIS when admin asks:
+- "What have we learned from members?"
+- "Show me the insights we've collected"
+- "How much do we know about our members?"
+- "Summarize member insights"
+
+Returns counts and examples of collected insights by type.`,
+    usage_hints: 'Use to see the value of insight collection efforts.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        insight_type: {
+          type: 'string',
+          description: 'Filter to a specific insight type (e.g., "plans_2026", "challenges")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum examples to show per type (default: 5)',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -5366,6 +5484,189 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error, orgId, userId }, 'Error logging conversation');
       return '❌ Failed to log conversation. Please try again.';
+    }
+  });
+
+  // ============================================
+  // INSIGHT GOALS MANAGEMENT HANDLERS
+  // ============================================
+
+  // List insight goals
+  handlers.set('list_insight_goals', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const activeOnly = input.active_only === true;
+
+    try {
+      const goals = await insightsDb.listGoals({ activeOnly });
+
+      if (goals.length === 0) {
+        return JSON.stringify({
+          success: true,
+          message: activeOnly ? 'No active insight goals configured.' : 'No insight goals configured yet.',
+          goals: [],
+        });
+      }
+
+      const formatted = goals.map(g => ({
+        id: g.id,
+        name: g.name,
+        question: g.question,
+        priority: g.priority,
+        is_enabled: g.is_enabled,
+        goal_type: g.goal_type,
+        response_count: g.current_response_count,
+        target: g.target_mapped_only ? 'mapped users only' : g.target_unmapped_only ? 'unmapped users only' : 'all users',
+      }));
+
+      return JSON.stringify({
+        success: true,
+        total: goals.length,
+        goals: formatted,
+      }, null, 2);
+    } catch (error) {
+      logger.error({ error }, 'Error listing insight goals');
+      return '❌ Failed to list insight goals. Please try again.';
+    }
+  });
+
+  // Add insight goal
+  handlers.set('add_insight_goal', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = input.name as string;
+    const question = input.question as string;
+    const priority = (input.priority as number) || 50;
+    const targetMappedOnly = input.target_mapped_only === true;
+
+    if (!name || !question) {
+      return '❌ Both name and question are required.';
+    }
+
+    try {
+      const goal = await insightsDb.createGoal({
+        name,
+        question,
+        priority,
+        target_mapped_only: targetMappedOnly,
+        is_enabled: true,
+        created_by: memberContext?.workos_user?.workos_user_id || 'admin',
+      });
+
+      logger.info({ goalId: goal.id, name }, 'Admin created new insight goal');
+
+      return JSON.stringify({
+        success: true,
+        message: `✅ Created insight goal "${name}" with priority ${priority}. Addie will naturally try to learn this from members.`,
+        goal: {
+          id: goal.id,
+          name: goal.name,
+          question: goal.question,
+          priority: goal.priority,
+        },
+      });
+    } catch (error) {
+      logger.error({ error, name, question }, 'Error creating insight goal');
+      return '❌ Failed to create insight goal. Please try again.';
+    }
+  });
+
+  // Update insight goal
+  handlers.set('update_insight_goal', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const goalId = input.goal_id as number;
+    if (!goalId) {
+      return '❌ goal_id is required.';
+    }
+
+    try {
+      const updates: Record<string, unknown> = {};
+      if (input.is_enabled !== undefined) updates.is_enabled = input.is_enabled;
+      if (input.priority !== undefined) updates.priority = input.priority;
+      if (input.question !== undefined) updates.question = input.question;
+
+      if (Object.keys(updates).length === 0) {
+        return '❌ No updates provided. Specify is_enabled, priority, or question.';
+      }
+
+      const goal = await insightsDb.updateGoal(goalId, updates);
+      if (!goal) {
+        return `❌ Goal with ID ${goalId} not found.`;
+      }
+
+      logger.info({ goalId, updates }, 'Admin updated insight goal');
+
+      return JSON.stringify({
+        success: true,
+        message: `✅ Updated insight goal "${goal.name}".`,
+        goal: {
+          id: goal.id,
+          name: goal.name,
+          question: goal.question,
+          priority: goal.priority,
+          is_enabled: goal.is_enabled,
+        },
+      });
+    } catch (error) {
+      logger.error({ error, goalId }, 'Error updating insight goal');
+      return '❌ Failed to update insight goal. Please try again.';
+    }
+  });
+
+  // Get insight summary
+  handlers.set('get_insight_summary', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const insightType = input.insight_type as string | undefined;
+    const limit = (input.limit as number) || 5;
+
+    try {
+      // Get stats
+      const stats = await insightsDb.getInsightStats();
+
+      // Get insight types with counts
+      const types = await insightsDb.listInsightTypes(true);
+
+      // Build summary
+      const summary: Record<string, unknown> = {
+        overview: {
+          members_with_insights: stats.members_with_insights,
+          total_insights: stats.total_insights,
+          from_conversation: stats.from_conversation,
+          from_manual: stats.from_manual,
+        },
+        types: [] as unknown[],
+      };
+
+      // For each type, get example insights
+      // Note: N+1 queries here but acceptable - admin-only function with ~10 types max
+      for (const type of types) {
+        if (insightType && type.name !== insightType) continue;
+
+        const insights = await insightsDb.getInsightsByType(type.id, limit);
+
+        (summary.types as unknown[]).push({
+          name: type.name,
+          description: type.description,
+          count: insights.length,
+          examples: insights.map(i => ({
+            value: i.value,
+            confidence: i.confidence,
+            source: i.source_type,
+            created_at: i.created_at,
+          })),
+        });
+      }
+
+      return JSON.stringify(summary, null, 2);
+    } catch (error) {
+      logger.error({ error }, 'Error getting insight summary');
+      return '❌ Failed to get insight summary. Please try again.';
     }
   });
 

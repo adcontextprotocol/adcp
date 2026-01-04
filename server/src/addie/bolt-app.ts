@@ -69,6 +69,7 @@ import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
+import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { initializeEmailHandler } from './email-handler.js';
@@ -442,9 +443,21 @@ async function buildMessageWithMemberContext(
       channelContextText = channelLines.join('\n');
     }
 
-    if (memberContextText || channelContextText) {
+    // Get insight goals to naturally work into conversation
+    const isMapped = !!memberContext?.is_mapped;
+    let insightGoalsText = '';
+    try {
+      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+      if (goalsPrompt) {
+        insightGoalsText = goalsPrompt;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
+    }
+
+    if (memberContextText || channelContextText || insightGoalsText) {
       // Use double newline between sections for proper markdown spacing
-      const sections = [memberContextText, channelContextText].filter(Boolean);
+      const sections = [memberContextText, channelContextText, insightGoalsText].filter(Boolean);
       return {
         message: `${sections.join('\n\n')}\n\n---\n\n${sanitizedMessage}`,
         memberContext,
