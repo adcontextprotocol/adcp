@@ -24,6 +24,11 @@ import {
   type TestOptions,
 } from '@adcp/client/testing';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
+import {
+  findExistingProposalOrFeed,
+  createFeedProposal,
+  getPendingProposals,
+} from '../../db/industry-feeds-db.js';
 
 const adagentsManager = new AdAgentsManager();
 const agentContextDb = new AgentContextDatabase();
@@ -582,6 +587,39 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['title', 'body'],
+    },
+  },
+
+  // ============================================
+  // INDUSTRY FEED PROPOSALS
+  // ============================================
+  {
+    name: 'propose_news_source',
+    description:
+      'Propose a website or RSS feed as a news source for industry monitoring. Any community member can propose sources - admins will review and approve them. Use this when someone shares a link to a relevant ad-tech, marketing, or media publication and thinks it should be monitored for news. Check for duplicates before proposing.',
+    usage_hints: 'use when user shares a news link and suggests it as a source, or asks to add a publication to monitoring',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL of the proposed news source (website or RSS feed URL)',
+        },
+        name: {
+          type: 'string',
+          description: 'Suggested name for the feed (e.g., "AdExchanger", "Marketing Week")',
+        },
+        reason: {
+          type: 'string',
+          description: 'Brief reason why this source is relevant to the community',
+        },
+        category: {
+          type: 'string',
+          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
+          description: 'Category that best fits this publication',
+        },
+      },
+      required: ['url'],
     },
   },
 ];
@@ -1697,6 +1735,65 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Addie: setup_test_agent failed');
       return `Failed to set up test agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // INDUSTRY FEED PROPOSAL HANDLER
+  // ============================================
+
+  handlers.set('propose_news_source', async (input) => {
+    const url = (input.url as string)?.trim();
+    const name = input.name as string | undefined;
+    const reason = input.reason as string | undefined;
+    const category = input.category as string | undefined;
+
+    if (!url) {
+      return '❌ Please provide a URL for the proposed news source.';
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      return `❌ Invalid URL: "${url}". Please provide a valid website or RSS feed URL.`;
+    }
+
+    try {
+      // Check for existing feed or proposal
+      const { existingFeed, existingProposal } = await findExistingProposalOrFeed(url);
+
+      if (existingFeed) {
+        const status = existingFeed.is_active ? '✅ active' : '⏸️ inactive';
+        return `This source is already being monitored!\n\n**${existingFeed.name}** (${status})\n**URL:** ${existingFeed.feed_url}\n${existingFeed.category ? `**Category:** ${existingFeed.category}\n` : ''}`;
+      }
+
+      if (existingProposal) {
+        return `This source has already been proposed and is pending review.\n\n**URL:** ${existingProposal.url}\n${existingProposal.name ? `**Suggested name:** ${existingProposal.name}\n` : ''}**Proposed:** ${existingProposal.proposed_at.toLocaleDateString()}`;
+      }
+
+      // Create the proposal
+      const proposal = await createFeedProposal({
+        url,
+        name,
+        reason,
+        category,
+        proposed_by_slack_user_id: memberContext?.slack_user?.slack_user_id,
+        proposed_by_workos_user_id: memberContext?.workos_user?.workos_user_id,
+      });
+
+      let response = `✅ **News source proposed!**\n\n`;
+      response += `**URL:** ${url}\n`;
+      if (name) response += `**Suggested name:** ${name}\n`;
+      if (category) response += `**Category:** ${category}\n`;
+      if (reason) response += `**Reason:** ${reason}\n`;
+      response += `\nAn admin will review this proposal and decide whether to add it to our monitored feeds. Thanks for the suggestion!`;
+
+      logger.info({ proposalId: proposal.id, url, name }, 'Feed proposal created');
+      return response;
+    } catch (error) {
+      logger.error({ error, url }, 'Error creating feed proposal');
+      return '❌ Failed to submit the proposal. Please try again.';
     }
   });
 
