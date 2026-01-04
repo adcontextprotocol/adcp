@@ -18,6 +18,9 @@ import { notifyWorkingGroupPost } from "../notifications/slack.js";
 
 const logger = createLogger("committee-routes");
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Valid committee types
 const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'industry_gathering'] as const;
 type CommitteeType = typeof VALID_COMMITTEE_TYPES[number];
@@ -1633,8 +1636,8 @@ export function createCommitteeRouters(): {
 
       if (!group) {
         return res.status(404).json({
-          error: 'Working group not found',
-          message: `No working group found with slug: ${slug}`,
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
         });
       }
 
@@ -1660,6 +1663,15 @@ export function createCommitteeRouters(): {
   publicApiRouter.get('/:slug/manage/events/:eventId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
     try {
       const { slug, eventId } = req.params;
+
+      // Validate UUID format
+      if (!UUID_REGEX.test(eventId)) {
+        return res.status(400).json({
+          error: 'Invalid event ID',
+          message: 'Event ID must be a valid UUID',
+        });
+      }
+
       const group = await workingGroupDb.getWorkingGroupBySlug(slug);
 
       if (!group) {
@@ -1735,6 +1747,30 @@ export function createCommitteeRouters(): {
         });
       }
 
+      // Validate slug format (lowercase alphanumeric with hyphens)
+      if (!/^[a-z0-9-]+$/.test(eventSlug)) {
+        return res.status(400).json({
+          error: 'Invalid slug format',
+          message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+        });
+      }
+
+      // Validate date range if both provided
+      if (start_time && end_time && new Date(end_time) <= new Date(start_time)) {
+        return res.status(400).json({
+          error: 'Invalid date range',
+          message: 'End time must be after start time',
+        });
+      }
+
+      // Validate max attendees if provided
+      if (max_attendees !== undefined && max_attendees !== null && max_attendees < 1) {
+        return res.status(400).json({
+          error: 'Invalid max attendees',
+          message: 'Max attendees must be a positive number',
+        });
+      }
+
       // Default venue_city from chapter region if this is a chapter
       let defaultCity = venue_city;
       if (!defaultCity && group.committee_type === 'chapter' && group.region) {
@@ -1776,6 +1812,15 @@ export function createCommitteeRouters(): {
   publicApiRouter.put('/:slug/manage/events/:eventId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
     try {
       const { slug, eventId } = req.params;
+
+      // Validate UUID format
+      if (!UUID_REGEX.test(eventId)) {
+        return res.status(400).json({
+          error: 'Invalid event ID',
+          message: 'Event ID must be a valid UUID',
+        });
+      }
+
       const group = await workingGroupDb.getWorkingGroupBySlug(slug);
 
       if (!group) {
@@ -1848,6 +1893,15 @@ export function createCommitteeRouters(): {
   publicApiRouter.delete('/:slug/manage/events/:eventId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
     try {
       const { slug, eventId } = req.params;
+
+      // Validate UUID format
+      if (!UUID_REGEX.test(eventId)) {
+        return res.status(400).json({
+          error: 'Invalid event ID',
+          message: 'Event ID must be a valid UUID',
+        });
+      }
+
       const group = await workingGroupDb.getWorkingGroupBySlug(slug);
 
       if (!group) {
@@ -1874,11 +1928,23 @@ export function createCommitteeRouters(): {
         });
       }
 
-      // First unlink from all committees, then delete
-      await eventsDb.unlinkEventFromCommittee(eventId, group.id);
-      await eventsDb.deleteEvent(eventId);
+      // Check if other committees are linked to this event
+      const linkedCommittees = await eventsDb.getCommitteesForEvent(eventId);
 
-      res.json({ success: true, deleted: eventId });
+      // Always unlink from this committee
+      await eventsDb.unlinkEventFromCommittee(eventId, group.id);
+
+      // Only delete the event if this was the only linked committee
+      if (linkedCommittees.length <= 1) {
+        await eventsDb.deleteEvent(eventId);
+        res.json({ success: true, deleted: eventId });
+      } else {
+        res.json({
+          success: true,
+          unlinked: eventId,
+          message: 'Event unlinked from your committee but preserved for other linked committees',
+        });
+      }
     } catch (error) {
       logger.error({ err: error }, 'Delete committee event error');
       res.status(500).json({

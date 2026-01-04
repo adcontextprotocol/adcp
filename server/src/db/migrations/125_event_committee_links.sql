@@ -1,4 +1,4 @@
--- Migration: 109_event_committee_links.sql
+-- Migration: 125_event_committee_links.sql
 -- Add a table to link events to committees (working groups, chapters, councils, etc.)
 -- This replaces the venue_city-based linking for chapters with explicit committee relationships
 
