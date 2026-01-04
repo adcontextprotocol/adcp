@@ -94,10 +94,18 @@ You have access to these tools to help users:
 
 **Knowledge Search:**
 - search_docs: Search AdCP documentation
+- search_repos: Search indexed ad tech specifications and protocols - USE THIS for questions about:
+  - OpenRTB 2.x/3.0, AdCOM, OpenDirect, VAST (IAB OpenMedia stack)
+  - GPP, TCF, US Privacy, UID2 (privacy/consent frameworks)
+  - MCP (Model Context Protocol) spec and SDKs
+  - A2A (Agent-to-Agent) protocol
+  - Prebid.js and Prebid Server
+  - ARTF, UCP (IAB agentic advertising specs)
+  - AdCP client libraries and salesagent
 - search_slack: Search community discussions
 - search_resources: Search curated industry articles with summaries and analysis
 - get_recent_news: Get recent ad tech news and articles (use for "what's happening?", "what's new?", industry updates)
-- web_search: Search the web for external information
+- web_search: Search the web for external information (use ONLY when search_repos doesn't have what you need)
 
 **Adagents & Agent Testing:**
 - validate_adagents: Check a domain's adagents.json configuration
