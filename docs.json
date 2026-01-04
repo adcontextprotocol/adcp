@@ -103,13 +103,15 @@
                 "pages": [
                   "docs/governance/property/index",
                   "docs/governance/property/specification",
+                  "docs/governance/property/authorized-properties",
                   "docs/governance/property/adagents",
                   {
                     "group": "Tasks",
                     "pages": [
                       "docs/governance/property/tasks/index",
                       "docs/governance/property/tasks/list_property_features",
-                      "docs/governance/property/tasks/property_lists"
+                      "docs/governance/property/tasks/property_lists",
+                      "docs/governance/property/tasks/validate_property_delivery"
                     ]
                   }
                 ]
