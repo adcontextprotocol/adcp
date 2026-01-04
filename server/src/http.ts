@@ -64,6 +64,7 @@ import { queuePerspectiveLink, processPendingResources, processRssPerspectives, 
 import { sendCommunityReplies } from "./addie/services/community-articles.js";
 import { sendChannelMessage } from "./slack/client.js";
 import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
+import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -366,6 +367,7 @@ export class HTTPServer {
   private alertProcessorIntervalId: NodeJS.Timeout | null = null;
   private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
   private taskReminderIntervalId: NodeJS.Timeout | null = null;
+  private engagementScoringIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -6933,6 +6935,10 @@ Disallow: /api/admin/
     // Sends DMs to admins about overdue/upcoming tasks
     this.startTaskReminders();
 
+    // Start engagement scoring job
+    // Updates user and org engagement scores periodically
+    this.startEngagementScoring();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -7124,6 +7130,34 @@ Disallow: /api/admin/
   }
 
   /**
+   * Start periodic engagement scoring for users and organizations
+   * Updates stale scores (older than 1 day) every hour
+   */
+  private startEngagementScoring(): void {
+    const SCORING_INTERVAL_HOURS = 1;
+
+    // Run immediately on startup (with delay for DB connection)
+    setTimeout(async () => {
+      try {
+        await runEngagementScoringJob();
+      } catch (err) {
+        logger.error({ err }, 'Engagement scoring: initial batch failed');
+      }
+    }, 10000);
+
+    // Then run periodically
+    this.engagementScoringIntervalId = setInterval(async () => {
+      try {
+        await runEngagementScoringJob();
+      } catch (err) {
+        logger.error({ err }, 'Engagement scoring: job failed');
+      }
+    }, SCORING_INTERVAL_HOURS * 60 * 60 * 1000);
+
+    logger.info({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
+  }
+
+  /**
    * Setup graceful shutdown handlers for SIGTERM and SIGINT
    */
   private setupShutdownHandlers(): void {
@@ -7174,6 +7208,13 @@ Disallow: /api/admin/
       clearInterval(this.taskReminderIntervalId);
       this.taskReminderIntervalId = null;
       logger.info('Task reminder job stopped');
+    }
+
+    // Stop engagement scoring job
+    if (this.engagementScoringIntervalId) {
+      clearInterval(this.engagementScoringIntervalId);
+      this.engagementScoringIntervalId = null;
+      logger.info('Engagement scoring job stopped');
     }
 
     // Close HTTP server
