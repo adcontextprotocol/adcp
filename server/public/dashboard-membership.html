@@ -535,8 +535,22 @@
             <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'adtech')">
               <input type="radio" name="companyType" value="adtech">
               <div class="radio-option-content">
-                <div class="radio-option-title">Technology Provider</div>
-                <div class="radio-option-desc">AdTech platforms, data providers, and service providers</div>
+                <div class="radio-option-title">Ad Tech Provider</div>
+                <div class="radio-option-desc">DSPs, SSPs, ad servers, measurement, identity, and data platforms</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'data')">
+              <input type="radio" name="companyType" value="data">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Data & Measurement</div>
+                <div class="radio-option-desc">Clean rooms, CDPs, identity, measurement, and analytics</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'ai')">
+              <input type="radio" name="companyType" value="ai">
+              <div class="radio-option-content">
+                <div class="radio-option-title">AI & Tech Platforms</div>
+                <div class="radio-option-desc">LLM providers, agent builders, cloud AI, and ML platforms</div>
               </div>
             </label>
             <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'other')">
@@ -1331,7 +1345,7 @@
     }
 
     // Profile modal functions
-    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'other'];
+    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'data', 'ai', 'other'];
     const VALID_REVENUE_TIERS = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
 
     function showProfileModal() {

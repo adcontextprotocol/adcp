@@ -6,6 +6,9 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Admin - Account Management - AdCP Registry</title>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/js/company-types.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
@@ -834,6 +837,9 @@
               <option value="agency">Agency</option>
               <option value="brand">Brand</option>
               <option value="publisher">Publisher</option>
+              <option value="data">Data & Measurement</option>
+              <option value="ai">AI & Tech Platforms</option>
+              <option value="other">Other</option>
             </select>
           </div>
         </div>
@@ -893,6 +899,9 @@
               <option value="agency">Agency</option>
               <option value="brand">Brand</option>
               <option value="publisher">Publisher</option>
+              <option value="data">Data & Measurement</option>
+              <option value="ai">AI & Tech Platforms</option>
+              <option value="other">Other</option>
             </select>
           </div>
           <div class="form-group">
@@ -910,8 +919,8 @@
           <div class="form-group">
             <label>Status</label>
             <select id="prospectStatus">
-              <option value="signed_up">Signed Up</option>
               <option value="prospect">Prospect</option>
+              <option value="signed_up">Signed Up</option>
               <option value="contacted">Contacted</option>
               <option value="responded">Responded</option>
               <option value="interested">Interested</option>
@@ -985,7 +994,7 @@
     </div>
   </div>
 
-<<<<<<< HEAD
+
   <!-- Generate Invoice Modal -->
   <div id="invoiceModal" class="modal">
     <div class="modal-content" style="max-width: 600px;">
@@ -1624,8 +1633,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           if (e.employeeCountRange || e.employeeCount) parts.push(`${e.employeeCountRange || e.employeeCount + ' employees'}`);
           if (e.revenueRange) parts.push(`${e.revenueRange}`);
           if (enrichment.suggested?.companyType) {
-            const typeLabels = { adtech: 'Ad Tech', agency: 'Agency', brand: 'Brand', publisher: 'Publisher' };
-            parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${typeLabels[enrichment.suggested.companyType] || enrichment.suggested.companyType}</span>`);
+            parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${getCompanyTypeLabel(enrichment.suggested.companyType)}</span>`);
           }
           companyInfoHtml = parts.join('<br>') || '<span style="color: var(--color-text-muted);">No data</span>';
         } else if (enrichment && enrichment.error) {
@@ -2002,8 +2010,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         return;
       }
 
-      const typeLabels = { adtech: 'Ad Tech', agency: 'Agency', brand: 'Brand', publisher: 'Publisher' };
-
       tbody.innerHTML = prospectSearchResults.map(company => {
         // Company info
         const parts = [];
@@ -2011,7 +2017,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         if (company.employeeCountRange || company.employeeCount) parts.push(`${company.employeeCountRange || company.employeeCount + ' employees'}`);
         if (company.suggestedRevenueRange) parts.push(`${company.suggestedRevenueRange}`);
         if (company.suggestedCompanyType) {
-          parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${typeLabels[company.suggestedCompanyType] || company.suggestedCompanyType}</span>`);
+          parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${getCompanyTypeLabel(company.suggestedCompanyType)}</span>`);
         }
         const infoHtml = parts.join('<br>') || '<span style="color: var(--color-text-muted);">-</span>';
 
@@ -2434,7 +2440,11 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         if (accountTypeFilter === 'individual' && !prospect.is_personal) return false;
 
         if (ownerFilter && prospect.prospect_owner !== ownerFilter) return false;
-        if (typeFilter && prospect.company_type !== typeFilter) return false;
+        // Support both new array and legacy single value for type filter
+        if (typeFilter) {
+          const types = prospect.company_types || (prospect.company_type ? [prospect.company_type] : []);
+          if (!types.includes(typeFilter)) return false;
+        }
 
         // Search filter: match name, email_domain, or any linked domain
         if (searchFilter) {
@@ -2472,13 +2482,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         return;
       }
 
-      const typeLabels = {
-        adtech: 'Ad Tech',
-        agency: 'Agency',
-        brand: 'Brand',
-        publisher: 'Publisher'
-      };
-
       // Helper function to format relative time
       function formatRelativeTime(date) {
         if (!date) return null;
@@ -2510,8 +2513,15 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       tbody.innerHTML = filteredProspects.map(prospect => {
         // Company name with link and type badge
         let companyHtml = `<a href="/admin/organizations/${prospect.workos_organization_id}" class="company-link">${prospect.name}</a>`;
-        // Add type label inline
-        const typeLabel = prospect.is_personal ? 'Individual' : (typeLabels[prospect.company_type] || '');
+        // Add type label inline - support both array and legacy single value
+        let typeLabel = '';
+        if (prospect.is_personal) {
+          typeLabel = 'Individual';
+        } else {
+          const types = prospect.company_types || (prospect.company_type ? [prospect.company_type] : []);
+          typeLabel = formatCompanyTypes(types);
+          if (typeLabel === '-') typeLabel = '';
+        }
         if (typeLabel) {
           companyHtml += `<br><small style="color: var(--color-text-muted);">${typeLabel}</small>`;
         }

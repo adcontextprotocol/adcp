@@ -6,6 +6,7 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Organization Details - AdCP Registry</title>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/js/company-types.js"></script>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
@@ -384,6 +385,33 @@
       color: var(--color-text-muted);
       margin-top: var(--space-1);
     }
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-sm);
+      transition: background-color 0.15s;
+    }
+    .checkbox-label:hover {
+      background: var(--color-gray-200);
+    }
+    .checkbox-label:has(input:checked) {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .checkbox-label input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
     .modal-actions {
       display: flex;
       gap: var(--space-2.5);
@@ -613,6 +641,7 @@
           <div style="display: flex; gap: var(--space-2);">
             <button class="btn btn-secondary" onclick="openEditOrgModal()">Edit</button>
             <button class="btn btn-secondary" onclick="openLogActivityModal()">Log Activity</button>
+            <button class="btn btn-secondary" onclick="runAIEnrichment()" id="aiEnrichBtn" title="Research and enrich this prospect using AI">AI Enrich</button>
             <button class="btn btn-primary" onclick="openAddNextStepModal()">Add Next Step</button>
           </div>
         </div>
@@ -630,6 +659,10 @@
             <div class="info-row">
               <span class="info-label">Company Type</span>
               <span class="info-value" id="orgType">-</span>
+            </div>
+            <div class="info-row" id="parentOrgRow" style="display: none;">
+              <span class="info-label">Parent Org</span>
+              <span class="info-value" id="orgParent">-</span>
             </div>
             <div class="info-row">
               <span class="info-label">Owner</span>
@@ -785,12 +818,25 @@
         <button class="modal-close" onclick="closeEditOrgModal()">&times;</button>
       </div>
       <form id="editOrgForm" onsubmit="saveOrgChanges(event)">
+        <div class="form-group">
+          <label>Organization Name</label>
+          <input type="text" id="editOrgName" placeholder="e.g., LinkedIn">
+        </div>
+
+        <div class="form-group">
+          <label>Parent Organization</label>
+          <select id="editParentOrg">
+            <option value="">None (independent)</option>
+          </select>
+          <div class="form-hint">If this is a subsidiary or division, select the parent company.</div>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
             <label>Status</label>
-            <select id="editOrgStatus">
-              <option value="signed_up">Signed Up</option>
+            <select id="editOrgStatus" onchange="toggleDisqualificationReason()">
               <option value="prospect">Prospect</option>
+              <option value="signed_up">Signed Up</option>
               <option value="contacted">Contacted</option>
               <option value="responded">Responded</option>
               <option value="interested">Interested</option>
@@ -812,14 +858,31 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label>Company Type</label>
-            <select id="editOrgType">
-              <option value="">Not specified</option>
-              <option value="adtech">Ad Tech</option>
-              <option value="agency">Agency</option>
-              <option value="brand">Brand</option>
-              <option value="publisher">Publisher</option>
-            </select>
+            <label>Company Types</label>
+            <div class="checkbox-group" id="editOrgTypes">
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="brand"> Brand
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="publisher"> Publisher
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="agency"> Agency
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="adtech"> Ad Tech
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="data"> Data & Measurement
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="ai"> AI & Tech Platforms
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="other"> Other
+              </label>
+            </div>
+            <div class="form-hint">Select all that apply.</div>
           </div>
           <div class="form-group">
             <label>Source</label>
@@ -1075,10 +1138,21 @@
       // Render engagement signals
       renderEngagementSignals(orgData.engagement_signals);
 
-      // Status
-      const status = orgData.prospect_status || 'signed_up';
-      document.getElementById('orgStatus').innerHTML =
-        `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+      // Status - show "Member" prominently for paying customers
+      const status = orgData.prospect_status || 'prospect';
+      let statusHtml = '';
+      if (isPayingMember) {
+        statusHtml = `<span class="status-badge status-member">Member</span>`;
+        if (orgData.subscription_product_name) {
+          statusHtml += ` <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(orgData.subscription_product_name)}</span>`;
+        }
+      } else {
+        statusHtml = `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+        if (status === 'disqualified' && orgData.disqualification_reason) {
+          statusHtml += `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(orgData.disqualification_reason)}</span>`;
+        }
+      }
+      document.getElementById('orgStatus').innerHTML = statusHtml;
 
       // Source
       const sourceLabels = {
@@ -1091,15 +1165,22 @@
       document.getElementById('orgSource').textContent =
         sourceLabels[orgData.prospect_source] || orgData.prospect_source || '-';
 
-      // Type
-      const typeLabels = {
-        'adtech': 'Ad Tech',
-        'agency': 'Agency',
-        'brand': 'Brand',
-        'publisher': 'Publisher'
-      };
-      document.getElementById('orgType').textContent =
-        typeLabels[orgData.company_type] || orgData.company_type || '-';
+      // Type(s) - uses shared config from /js/company-types.js
+      const types = orgData.company_types || (orgData.company_type ? [orgData.company_type] : []);
+      document.getElementById('orgType').textContent = formatCompanyTypes(types);
+
+      // Parent organization
+      const parentRow = document.getElementById('parentOrgRow');
+      const parentEl = document.getElementById('orgParent');
+      if (orgData.parent_organization_id && orgData.parent_name) {
+        parentRow.style.display = '';
+        parentEl.innerHTML = `<a href="/admin/org/${orgData.parent_organization_id}">${escapeHtml(orgData.parent_name)}</a>`;
+      } else if (orgData.parent_organization_id) {
+        parentRow.style.display = '';
+        parentEl.innerHTML = `<a href="/admin/org/${orgData.parent_organization_id}">${orgData.parent_organization_id}</a>`;
+      } else {
+        parentRow.style.display = 'none';
+      }
 
       // Owner
       document.getElementById('orgOwner').textContent = orgData.prospect_owner || '-';
@@ -1353,11 +1434,11 @@
     }
 
     // Edit Organization Modal functions
-    function openEditOrgModal() {
+    async function openEditOrgModal() {
       // Populate form with current values
-      document.getElementById('editOrgStatus').value = orgData.prospect_status || 'signed_up';
+      document.getElementById('editOrgName').value = orgData.name || '';
+      document.getElementById('editOrgStatus').value = orgData.prospect_status || 'prospect';
       document.getElementById('editOrgOwner').value = orgData.prospect_owner || '';
-      document.getElementById('editOrgType').value = orgData.company_type || '';
       document.getElementById('editOrgSource').value = orgData.prospect_source || '';
       document.getElementById('editContactName').value = orgData.prospect_contact_name || '';
       document.getElementById('editContactEmail').value = orgData.prospect_contact_email || '';
@@ -1365,8 +1446,59 @@
       document.getElementById('editNextAction').value = orgData.prospect_next_action || '';
       document.getElementById('editNextActionDate').value = orgData.prospect_next_action_date ? orgData.prospect_next_action_date.split('T')[0] : '';
       document.getElementById('editOrgNotes').value = orgData.prospect_notes || '';
+      document.getElementById('editDisqualificationReason').value = orgData.disqualification_reason || '';
+
+      // Populate company types checkboxes
+      const types = orgData.company_types || (orgData.company_type ? [orgData.company_type] : []);
+      const checkboxes = document.querySelectorAll('#editOrgTypes input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = types.includes(cb.value);
+      });
+
+      // Load parent organization options
+      await loadParentOrgOptions();
+
+      // Show/hide disqualification reason based on status
+      toggleDisqualificationReason();
 
       document.getElementById('editOrgModal').style.display = 'block';
+    }
+
+    async function loadParentOrgOptions() {
+      const select = document.getElementById('editParentOrg');
+      // Keep the "None" option
+      select.innerHTML = '<option value="">None (independent)</option>';
+
+      try {
+        // Fetch organizations that could be parents (exclude current org)
+        const response = await fetch('/api/admin/prospects?limit=200');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const orgs = data.prospects || [];
+
+        // Sort by name and add as options
+        orgs
+          .filter(o => o.workos_organization_id !== orgId) // Exclude self
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .forEach(org => {
+            const option = document.createElement('option');
+            option.value = org.workos_organization_id;
+            option.textContent = org.name;
+            if (org.workos_organization_id === orgData.parent_organization_id) {
+              option.selected = true;
+            }
+            select.appendChild(option);
+          });
+      } catch (error) {
+        console.error('Error loading parent org options:', error);
+      }
+    }
+
+    function toggleDisqualificationReason() {
+      const status = document.getElementById('editOrgStatus').value;
+      const group = document.getElementById('disqualificationReasonGroup');
+      group.style.display = status === 'disqualified' ? 'block' : 'none';
     }
 
     function closeEditOrgModal() {
@@ -1376,10 +1508,18 @@
     async function saveOrgChanges(event) {
       event.preventDefault();
 
+      const status = document.getElementById('editOrgStatus').value;
+
+      // Collect selected company types from checkboxes
+      const selectedTypes = Array.from(document.querySelectorAll('#editOrgTypes input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+
       const data = {
-        prospect_status: document.getElementById('editOrgStatus').value,
+        name: document.getElementById('editOrgName').value || null,
+        parent_organization_id: document.getElementById('editParentOrg').value || null,
+        prospect_status: status,
         prospect_owner: document.getElementById('editOrgOwner').value || null,
-        company_type: document.getElementById('editOrgType').value || null,
+        company_types: selectedTypes.length > 0 ? selectedTypes : null,
         prospect_source: document.getElementById('editOrgSource').value || null,
         prospect_contact_name: document.getElementById('editContactName').value || null,
         prospect_contact_email: document.getElementById('editContactEmail').value || null,
@@ -1951,6 +2091,114 @@
     window.onclick = function(event) {
       if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
+      }
+    }
+
+    // Close modals on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeUserContextModal();
+      }
+    });
+
+    // Check for link_domain query parameter
+    async function checkLinkDomainParam() {
+      const params = new URLSearchParams(window.location.search);
+      const linkDomain = params.get('link_domain');
+
+      // Validate domain format (alphanumeric, hyphens, dots only, reasonable length)
+      const isValidDomain = linkDomain && /^[a-z0-9][a-z0-9.-]{0,252}[a-z0-9]$/i.test(linkDomain);
+
+      if (isValidDomain) {
+        // Wait for org to load
+        await loadOrganization();
+
+        // Clean up URL immediately (wrap in try/catch for edge cases)
+        try {
+          const url = new URL(window.location);
+          url.searchParams.delete('link_domain');
+          window.history.replaceState({}, '', url);
+        } catch (e) {
+          console.warn('Could not clean up URL:', e);
+        }
+
+        // Directly add the domain to the org
+        try {
+          const response = await fetch(`/api/admin/organizations/${orgId}/domains`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: linkDomain.toLowerCase(), is_primary: true })
+          });
+
+          if (!response.ok) {
+            if (response.status === 401) {
+              window.AdminNav.redirectToLogin();
+              return;
+            }
+            throw new Error(await getErrorMessage(response, 'Failed to link domain'));
+          }
+
+          // Refresh domains to show the newly added domain
+          await refreshDomains();
+        } catch (error) {
+          alert('Error linking domain: ' + error.message);
+        }
+      } else {
+        loadOrganization();
+      }
+    }
+
+    // AI Enrichment function
+    async function runAIEnrichment() {
+      const btn = document.getElementById('aiEnrichBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Researching...';
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/analyze-with-ai/${orgId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          if (response.status === 503) {
+            alert('AI enrichment is not configured. ANTHROPIC_API_KEY is required.');
+            return;
+          }
+          throw new Error(await getErrorMessage(response, 'Failed to run AI enrichment'));
+        }
+
+        const result = await response.json();
+
+        // Show results in a modal or alert
+        let message = result.analysis || 'Analysis complete.';
+        if (result.tool_calls && result.tool_calls.length > 0) {
+          const updates = result.tool_calls.filter(tc =>
+            ['update_prospect', 'enrich_prospect'].includes(tc.tool)
+          );
+          if (updates.length > 0) {
+            message += '\n\nActions taken:\n' + updates.map(u =>
+              `- ${u.tool}: ${typeof u.result === 'string' ? u.result.substring(0, 100) : JSON.stringify(u.result).substring(0, 100)}`
+            ).join('\n');
+          }
+        }
+
+        alert(message);
+
+        // Reload the organization to show any updates
+        loadOrganization();
+
+      } catch (error) {
+        console.error('AI enrichment error:', error);
+        alert('Error running AI enrichment: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     }
 

@@ -14,6 +14,7 @@ import {
   mapIndustryToCompanyType,
 } from "./lusha.js";
 import { enrichOrganization } from "./enrichment.js";
+import { COMPANY_TYPE_VALUES, getCompanyTypesDocumentation } from "../config/company-types.js";
 
 const logger = createLogger("prospect-cleanup");
 
@@ -138,11 +139,15 @@ const CLEANUP_TOOLS: Anthropic.Tool[] = [
         updates: {
           type: "object",
           description:
-            "Fields to update (company_type, email_domain, prospect_status, prospect_notes)",
+            "Fields to update (company_types, email_domain, prospect_status, prospect_notes)",
           properties: {
-            company_type: {
-              type: "string",
-              enum: ["adtech", "agency", "brand", "publisher", "other"],
+            company_types: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: COMPANY_TYPE_VALUES,
+              },
+              description: "Array of company types - can have multiple (e.g., Microsoft is both brand and ai)",
             },
             email_domain: { type: "string" },
             prospect_status: {
@@ -223,25 +228,39 @@ Your job is to analyze prospect records and help clean up data quality issues. Y
 - Research companies online
 
 ## Context about our organization types:
-- **adtech**: Companies that provide advertising technology (DSPs, SSPs, ad servers, measurement, identity, etc.)
-- **agency**: Media agencies, creative agencies, performance marketing agencies
-- **brand**: Advertisers/marketers who buy advertising
-- **publisher**: Media owners who sell advertising inventory
-- **other**: Companies that don't fit the above categories
+Organizations can have MULTIPLE types (use the company_types array field):
+${getCompanyTypesDocumentation()}
+
+Examples of multi-type companies:
+- Microsoft: ["brand", "ai"] (they advertise AND provide Azure AI/OpenAI)
+- Google: ["adtech", "ai", "publisher"] (Google Ads, Google Cloud AI, YouTube)
+- Amazon: ["brand", "ai", "adtech"] (they advertise, have AWS/Bedrock, and Amazon Ads)
+- LiveRamp: ["data"] (identity and data connectivity)
+- The Trade Desk: ["adtech"] (DSP)
+- Anthropic: ["ai"] (LLM provider)
 
 ## Data Quality Goals:
 1. Every prospect should have a domain (email_domain field)
-2. Every prospect should have a company_type assigned
+2. Every prospect should have company_types assigned (can be multiple)
 3. No duplicate organizations
 4. Stale prospects (no activity in 6+ months) should be marked inactive or cleaned up
 5. Contact information should be present when possible
 
 ## When analyzing prospects:
 1. First understand what data is missing or problematic
-2. Use enrichment when a domain exists but other data is missing
-3. Use web research when domain is missing or data needs verification
-4. Look for duplicates by searching similar names
-5. Suggest specific, actionable fixes
+2. **If domain is missing, use web_research to find it** - the company name often hints at the domain:
+   - "LinkedIn (Microsoft)" → linkedin.com (owned by Microsoft)
+   - "The Trade Desk" → thetradedesk.com
+   - "Acme Corp" → look up "Acme Corp official website"
+3. Use enrichment when a domain exists but other data is missing
+4. **Use web_research to verify company information** - especially for:
+   - Confirming the correct domain/website
+   - Checking for recent mergers, acquisitions, or company changes (e.g., LinkedIn is owned by Microsoft)
+   - Verifying company type and industry
+   - Getting current information that may not be in our database
+5. Look for duplicates by searching similar names
+6. Suggest specific, actionable fixes
+7. **Always update the prospect** with any information you discover (domain, company_type, notes)
 
 Be concise and action-oriented. Focus on fixes that can be automated when possible.`;
 
@@ -607,7 +626,8 @@ export class ProspectCleanupService {
         const pool = getPool();
 
         const allowedFields = [
-          "company_type",
+          "company_types", // New: array of types
+          "company_type",  // Legacy: single type (for backwards compatibility)
           "email_domain",
           "prospect_status",
           "prospect_notes",
@@ -618,9 +638,27 @@ export class ProspectCleanupService {
 
         for (const [key, value] of Object.entries(updates)) {
           if (allowedFields.includes(key)) {
-            setClauses.push(`${key} = $${paramIndex}`);
-            values.push(value);
-            paramIndex++;
+            if (key === "company_types") {
+              // Handle array field - validate against allowed values
+              let typesArray = Array.isArray(value) ? value as string[] : null;
+              if (typesArray) {
+                typesArray = typesArray.filter((t) => COMPANY_TYPE_VALUES.includes(t as any));
+                if (typesArray.length === 0) typesArray = null;
+              }
+              setClauses.push(`${key} = $${paramIndex}`);
+              values.push(typesArray);
+              paramIndex++;
+              // Also update legacy company_type with first value
+              if (typesArray && typesArray.length > 0) {
+                setClauses.push(`company_type = $${paramIndex}`);
+                values.push(typesArray[0]);
+                paramIndex++;
+              }
+            } else {
+              setClauses.push(`${key} = $${paramIndex}`);
+              values.push(value);
+              paramIndex++;
+            }
           }
         }
 
