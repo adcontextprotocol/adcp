@@ -405,6 +405,14 @@
           markDomainAsPersonal(btn, domain);
         });
       });
+
+      // Set up event handlers for create prospect buttons
+      document.querySelectorAll('.create-prospect-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const domain = btn.dataset.domain;
+          createProspectFromDomain(btn, domain);
+        });
+      });
     }
 
     async function markDomainAsPersonal(button, domain) {
@@ -533,6 +541,86 @@
       }
     }
 
+    async function createProspectFromDomain(button, domain) {
+      // Validate domain format
+      if (!domain || !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(domain)) {
+        console.error('Invalid domain format:', domain);
+        return;
+      }
+
+      const originalText = button.textContent;
+      const wasPrimary = button.classList.contains('btn-primary');
+      button.disabled = true;
+      button.textContent = 'Creating...';
+
+      // Generate org name from domain
+      const parts = domain.split('.');
+      let orgName = parts
+        .slice(0, -1)  // Remove TLD
+        .filter(part => part.length > 2 || parts.length <= 2)  // Filter short parts like 'co' unless simple domain
+        .map(part => {
+          // Handle hyphens and capitalize each word
+          return part.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        })
+        .join(' ')
+        .trim();
+
+      // Fallback if name generation produced empty result
+      if (!orgName) {
+        orgName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      }
+
+      try {
+        const response = await fetch('/api/admin/prospects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: orgName,
+            domain: domain.toLowerCase(),
+            prospect_source: 'domain_health',
+            prospect_notes: 'Auto-created from Domain Health page. Users with this domain are already in the system.'
+          })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed to create prospect');
+        }
+
+        const org = await response.json();
+
+        // Success - show success state and link to org
+        button.classList.remove('btn-primary', 'btn-secondary');
+        button.classList.add('btn-success');
+        button.textContent = 'Created!';
+        button.title = `Created ${org.name}. Enrichment running in background.`;
+
+        // Reload after brief delay to show the domain is now linked
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1500);
+      } catch (error) {
+        // Show error state
+        button.classList.remove('btn-primary', 'btn-secondary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+
+        // Reset after delay
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add(wasPrimary ? 'btn-primary' : 'btn-secondary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
+    }
+
     function renderSummary() {
       const { summary } = healthData;
       const totalIssues = summary.issues.orphan_domains + summary.issues.misaligned_users +
@@ -647,7 +735,7 @@
                         <button class="btn btn-secondary btn-sm merge-orgs-btn" data-org-ids="${nonPersonalOrgs.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(d.domain)}">Merge ${nonPersonalOrgs.length} orgs</button>
                       ` : ''}
                     ` : `
-                      <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-primary btn-sm">Create Prospect</a>
+                      <button class="btn btn-primary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
                     `}
                     <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
                   </div>
@@ -703,7 +791,7 @@
                 </td>
                 <td>
                   <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-secondary btn-sm">Create Org</a>
+                    <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Org</button>
                     <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
                   </div>
                 </td>
