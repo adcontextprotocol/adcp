@@ -1,6 +1,9 @@
 ---
+"adcontextprotocol": minor
 ---
 
-[DRAFT] Property Governance Protocol for AdCP 3.0
+Add Property Governance Protocol support to get_products
 
-This is a proposal/draft specification that does not yet affect the released protocol version. No version bump required.
+- Add optional `property_list` parameter to get_products request for filtering products by property list
+- Add `property_list_applied` response field to indicate whether filtering was applied
+- Enables buyers to pass property lists from governance agents to sales agents for compliant inventory discovery
