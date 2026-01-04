@@ -483,9 +483,30 @@ export class WorkingGroupDatabase {
    * Get all memberships for a working group
    */
   async getMembershipsByWorkingGroup(workingGroupId: string): Promise<WorkingGroupMembership[]> {
+    // Get memberships with user details from multiple sources:
+    // 1. working_group_memberships.user_name (cached)
+    // 2. users table (canonical from WorkOS)
+    // 3. organization_memberships (older sync)
+    // 4. Falls back to user_id if no name found
     const result = await query<WorkingGroupMembership>(
-      `SELECT * FROM working_group_memberships
-       WHERE working_group_id = $1 AND status = 'active'
+      `SELECT
+         wgm.*,
+         COALESCE(
+           NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           u.email,
+           om.email,
+           wgm.workos_user_id
+         ) AS user_name,
+         COALESCE(wgm.user_email, u.email, om.email) AS user_email,
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS user_org_name
+       FROM working_group_memberships wgm
+       LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
+       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
+       LEFT JOIN organization_memberships om ON wgm.workos_user_id = om.workos_user_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+       WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
        ORDER BY user_name, user_email`,
       [workingGroupId]
     );
@@ -527,22 +548,28 @@ export class WorkingGroupDatabase {
    * Get leaders for a working group
    */
   async getLeaders(workingGroupId: string): Promise<WorkingGroupLeader[]> {
-    // Get leaders with user details from working_group_memberships (if they're a member),
-    // falling back to organization_memberships (the canonical source from WorkOS),
-    // and finally to user_id as a last resort
+    // Get leaders with user details from multiple sources:
+    // 1. working_group_memberships (if they're a member with cached name)
+    // 2. users table (canonical user data synced from WorkOS)
+    // 3. organization_memberships (older sync table)
+    // 4. Falls back to user_id if no name found
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           u.email,
            om.email,
            wgl.user_id
          ) AS name,
-         COALESCE(wgm.user_org_name, org.name) AS org_name,
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgl.working_group_id = $1
@@ -567,14 +594,18 @@ export class WorkingGroupDatabase {
          wgl.user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           u.email,
            om.email,
            wgl.user_id
          ) AS name,
-         COALESCE(wgm.user_org_name, org.name) AS org_name,
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgl.working_group_id = ANY($1)

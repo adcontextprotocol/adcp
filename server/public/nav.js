@@ -179,10 +179,23 @@
           </div>
         </div>`;
 
-    // Build Events link
+    // Build Events dropdown
     const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
-    const eventsLink = membershipEnabled
-      ? `<a href="${eventsUrl}" class="navbar__link ${currentPath.startsWith('/events') ? 'active' : ''}">Events</a>`
+    const industryGatheringsUrl = isLocal ? '/committees?type=industry_gathering' : `${aaoBaseUrl}/committees?type=industry_gathering`;
+    const isEventsActive = currentPath.startsWith('/events');
+    const eventsDropdown = membershipEnabled
+      ? `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${isEventsActive ? 'active' : ''}">
+            Events
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${eventsUrl}" class="navbar__dropdown-item ${currentPath === '/events' ? 'active' : ''}">All Events</a>
+            <a href="${industryGatheringsUrl}" class="navbar__dropdown-item">Industry Gatherings</a>
+          </div>
+        </div>`
       : '';
 
     // Build "The Latest" dropdown
@@ -245,7 +258,7 @@
             </a>
             <div class="navbar__links-desktop">
               ${projectsDropdown}
-              ${eventsLink}
+              ${eventsDropdown}
               ${latestDropdown}
               ${committeesDropdown}
               ${aboutDropdown}
@@ -276,7 +289,9 @@
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
-          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link ${currentPath.startsWith('/events') ? 'active' : ''}">Events</a>` : ''}
+          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Events</span>` : ''}
+          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/events' ? 'active' : ''}">All Events</a>` : ''}
+          ${membershipEnabled ? `<a href="${industryGatheringsUrl}" class="navbar__link navbar__link--indent">Industry Gatherings</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/research" class="navbar__link navbar__link--indent ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
