@@ -68,7 +68,6 @@ npm install @adcp/client
 pip install adcp
 ```
 - **PyPI Package**: [adcp](https://pypi.org/project/adcp/)
-- **GitHub**: [adcp-python](https://github.com/adcontextprotocol/adcp-python)
 
 ### For Platform Providers
 
@@ -477,7 +476,7 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 - **Website**: [adcontextprotocol.org](https://adcontextprotocol.org)
 - **API Documentation**: [Task Reference](https://adcontextprotocol.org/docs/media-buy/task-reference/index)
 - **MCP Integration**: [MCP Guide](https://adcontextprotocol.org/docs/protocols/mcp-guide)
-- **Specifications**: [Signals Protocol RFC](docs/signals/specification.mdx)
+- **Specifications**: [Signals Protocol RFC](https://adcontextprotocol.org/docs/signals/specification)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
 

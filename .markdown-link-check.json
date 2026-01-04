@@ -5,20 +5,15 @@
     },
     {
       "pattern": "^#"
-    }
-  ],
-  "replacementPatterns": [
+    },
     {
-      "pattern": "^docs/",
-      "replacement": "https://adcontextprotocol.org/docs/"
-    }
-  ],
-  "httpHeaders": [
+      "pattern": "^http://localhost"
+    },
     {
-      "urls": ["https://adcontextprotocol.org"],
-      "headers": {
-        "Accept": "text/html"
-      }
+      "pattern": "https://www.npmjs.com"
+    },
+    {
+      "pattern": "https://adcontextprotocol.org/docs/"
     }
   ],
   "timeout": "10s",
