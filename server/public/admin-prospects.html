@@ -831,9 +831,6 @@
             <label>Owner</label>
             <select id="filterOwner" onchange="applyFilters()">
               <option value="">All</option>
-              <option value="Brian">Brian</option>
-              <option value="Randy">Randy</option>
-              <option value="Matt">Matt</option>
             </select>
           </div>
           <div class="filter-group">
@@ -919,9 +916,6 @@
             <label>Owner</label>
             <select id="prospectOwner">
               <option value="">Not assigned</option>
-              <option value="Brian">Brian</option>
-              <option value="Randy">Randy</option>
-              <option value="Matt">Matt</option>
             </select>
           </div>
         </div>
@@ -1237,6 +1231,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
         if (teamRes.ok) {
           teamMembers = await teamRes.json();
+          populateOwnerFilter();
         }
 
         // Check if enrichment and cleanup are configured
@@ -1312,6 +1307,31 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('count-renewals').textContent = viewCounts.renewals || 0;
       document.getElementById('count-my_accounts').textContent = viewCounts.my_accounts || 0;
       // hot_prospects and low_engagement are calculated client-side, so we don't show counts
+    }
+
+    function populateOwnerFilter() {
+      const filterOwner = document.getElementById('filterOwner');
+      const prospectOwner = document.getElementById('prospectOwner');
+
+      filterOwner.innerHTML = '<option value="">All</option>';
+      prospectOwner.innerHTML = '<option value="">Not assigned</option>';
+
+      teamMembers.forEach(member => {
+        const isMe = currentUser?.id && member.user_id === currentUser.id;
+        const displayName = isMe ? `${member.user_name} (me)` : member.user_name;
+
+        // Filter dropdown uses user_id (matches stakeholder records)
+        const filterOption = document.createElement('option');
+        filterOption.value = member.user_id;
+        filterOption.textContent = displayName;
+        filterOwner.appendChild(filterOption);
+
+        // Prospect owner dropdown uses name (legacy prospect_owner field)
+        const prospectOption = document.createElement('option');
+        prospectOption.value = member.user_name;
+        prospectOption.textContent = displayName;
+        prospectOwner.appendChild(prospectOption);
+      });
     }
 
     async function loadView(view) {
@@ -2735,7 +2755,11 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         if (accountTypeFilter === 'company' && prospect.is_personal) return false;
         if (accountTypeFilter === 'individual' && !prospect.is_personal) return false;
 
-        if (ownerFilter && prospect.prospect_owner !== ownerFilter) return false;
+        // Filter by owner stakeholder (using user_id)
+        if (ownerFilter) {
+          const ownerStakeholder = prospect.stakeholders?.find(s => s.role === 'owner');
+          if (!ownerStakeholder || ownerStakeholder.user_id !== ownerFilter) return false;
+        }
         if (typeFilter && prospect.company_type !== typeFilter) return false;
 
         // Search filter: match name, email_domain, or any linked domain
