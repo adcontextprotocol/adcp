@@ -7,7 +7,6 @@ import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
-import { getPendingInvoices } from "../../billing/stripe-client.js";
 import { createProspect } from "../../services/prospect.js";
 
 const logger = createLogger("admin-prospects");
@@ -51,6 +50,7 @@ export function setupProspectRoutes(apiRouter: Router): void {
           o.subscription_product_name,
           o.subscription_current_period_end,
           o.engagement_score,
+          o.engagement_level,
           o.org_scores_computed_at
       `;
 
@@ -210,37 +210,7 @@ export function setupProspectRoutes(apiRouter: Router): void {
 
       const result = await pool.query(query, params);
 
-      // Get working group counts for all orgs
-      const wgCountResult = await pool.query(`
-        SELECT workos_organization_id, COUNT(DISTINCT working_group_id) as wg_count
-        FROM working_group_memberships
-        WHERE status = 'active'
-        GROUP BY workos_organization_id
-      `);
-      const wgCountMap = new Map(
-        wgCountResult.rows.map((r) => [r.workos_organization_id, parseInt(r.wg_count)])
-      );
-
-      // Get recent activity counts (last 30 days)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const recentActivityCounts = await pool.query(
-        `
-        SELECT organization_id, COUNT(*) as activity_count
-        FROM org_activities
-        WHERE activity_date > $1
-        GROUP BY organization_id
-      `,
-        [thirtyDaysAgo]
-      );
-      const activityCountMap = new Map(
-        recentActivityCounts.rows.map((r) => [
-          r.organization_id,
-          parseInt(r.activity_count),
-        ])
-      );
-
-      // Get stakeholders for all orgs
+      // Get org IDs for subsequent queries
       const orgIds = result.rows.map((r) => r.workos_organization_id);
 
       // Early return if no organizations to avoid unnecessary database queries
@@ -248,17 +218,127 @@ export function setupProspectRoutes(apiRouter: Router): void {
         return res.json([]);
       }
 
-      const stakeholdersResult = await pool.query(
-        `
-        SELECT organization_id, user_id, user_name, user_email, role
-        FROM org_stakeholders
-        WHERE organization_id = ANY($1)
-        ORDER BY organization_id,
-          CASE role WHEN 'owner' THEN 1 WHEN 'interested' THEN 2 WHEN 'connected' THEN 3 END
-      `,
-        [orgIds]
+      // Run all independent queries in parallel for performance
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const [
+        wgCountResult,
+        recentActivityCounts,
+        stakeholdersResult,
+        slackUserCounts,
+        domainsResult,
+        lastActivitiesResult,
+        pendingStepsResult,
+        memberCountsResult,
+        pendingInvoicesResult,
+      ] = await Promise.all([
+        // Working group counts (filtered to just these orgs)
+        pool.query(`
+          SELECT workos_organization_id, COUNT(DISTINCT working_group_id) as wg_count
+          FROM working_group_memberships
+          WHERE workos_organization_id = ANY($1) AND status = 'active'
+          GROUP BY workos_organization_id
+        `, [orgIds]),
+
+        // Recent activity counts
+        pool.query(`
+          SELECT organization_id, COUNT(*) as activity_count
+          FROM org_activities
+          WHERE organization_id = ANY($1) AND activity_date > $2
+          GROUP BY organization_id
+        `, [orgIds, thirtyDaysAgo]),
+
+        // Stakeholders
+        pool.query(`
+          SELECT organization_id, user_id, user_name, user_email, role
+          FROM org_stakeholders
+          WHERE organization_id = ANY($1)
+          ORDER BY organization_id,
+            CASE role WHEN 'owner' THEN 1 WHEN 'interested' THEN 2 WHEN 'connected' THEN 3 END
+        `, [orgIds]),
+
+        // Slack user counts
+        pool.query(`
+          SELECT om.workos_organization_id, COUNT(DISTINCT sm.slack_user_id) as slack_user_count
+          FROM slack_user_mappings sm
+          JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+          WHERE om.workos_organization_id = ANY($1)
+            AND sm.mapping_status = 'mapped'
+          GROUP BY om.workos_organization_id
+        `, [orgIds]),
+
+        // Domains
+        pool.query(`
+          SELECT workos_organization_id, domain, is_primary, verified
+          FROM organization_domains
+          WHERE workos_organization_id = ANY($1)
+          ORDER BY workos_organization_id, is_primary DESC, domain ASC
+        `, [orgIds]),
+
+        // Last activity
+        pool.query(`
+          SELECT DISTINCT ON (organization_id)
+            organization_id,
+            activity_type,
+            activity_date,
+            description
+          FROM org_activities
+          WHERE organization_id = ANY($1)
+          ORDER BY organization_id, activity_date DESC
+        `, [orgIds]),
+
+        // Pending steps
+        pool.query(`
+          SELECT organization_id, COUNT(*) as pending_count,
+            SUM(CASE WHEN next_step_due_date < CURRENT_DATE THEN 1 ELSE 0 END) as overdue_count
+          FROM org_activities
+          WHERE organization_id = ANY($1)
+            AND is_next_step = TRUE
+            AND next_step_completed_at IS NULL
+          GROUP BY organization_id
+        `, [orgIds]),
+
+        // Member counts
+        pool.query(`
+          SELECT workos_organization_id, COUNT(*) as member_count
+          FROM organization_memberships
+          WHERE workos_organization_id = ANY($1)
+          GROUP BY workos_organization_id
+        `, [orgIds]),
+
+        // Pending invoices from local cache (synced via Stripe webhooks)
+        pool.query(`
+          SELECT
+            workos_organization_id,
+            stripe_invoice_id as id,
+            status,
+            amount_due,
+            currency,
+            created_at as created,
+            due_date,
+            hosted_invoice_url,
+            product_name,
+            customer_email
+          FROM org_invoices
+          WHERE workos_organization_id = ANY($1)
+            AND status IN ('draft', 'open')
+          ORDER BY workos_organization_id, created_at DESC
+        `, [orgIds]),
+      ]);
+
+      // Build maps from query results
+      const wgCountMap = new Map(
+        wgCountResult.rows.map((r) => [r.workos_organization_id, parseInt(r.wg_count)])
       );
-      // Build map: orgId -> array of stakeholders
+
+      const activityCountMap = new Map(
+        recentActivityCounts.rows.map((r) => [
+          r.organization_id,
+          parseInt(r.activity_count),
+        ])
+      );
+
       const stakeholdersMap = new Map<string, Array<{ user_id: string; user_name: string; user_email: string; role: string }>>();
       for (const row of stakeholdersResult.rows) {
         if (!stakeholdersMap.has(row.organization_id)) {
@@ -272,33 +352,10 @@ export function setupProspectRoutes(apiRouter: Router): void {
         });
       }
 
-      // Get Slack user counts per organization
-      // Join through organization_memberships to get the org for each mapped Slack user
-      const slackUserCounts = await pool.query(
-        `
-        SELECT om.workos_organization_id, COUNT(DISTINCT sm.slack_user_id) as slack_user_count
-        FROM slack_user_mappings sm
-        JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
-        WHERE om.workos_organization_id = ANY($1)
-          AND sm.mapping_status = 'mapped'
-        GROUP BY om.workos_organization_id
-      `,
-        [orgIds]
-      );
       const slackUserCountMap = new Map(
         slackUserCounts.rows.map((r) => [r.workos_organization_id, parseInt(r.slack_user_count)])
       );
 
-      // Get linked domains per organization
-      const domainsResult = await pool.query(
-        `
-        SELECT workos_organization_id, domain, is_primary, verified
-        FROM organization_domains
-        WHERE workos_organization_id = ANY($1)
-        ORDER BY workos_organization_id, is_primary DESC, domain ASC
-      `,
-        [orgIds]
-      );
       const domainsMap = new Map<string, Array<{ domain: string; is_primary: boolean; verified: boolean }>>();
       for (const row of domainsResult.rows) {
         if (!domainsMap.has(row.workos_organization_id)) {
@@ -311,20 +368,6 @@ export function setupProspectRoutes(apiRouter: Router): void {
         });
       }
 
-      // Get last activity info per organization
-      const lastActivitiesResult = await pool.query(
-        `
-        SELECT DISTINCT ON (organization_id)
-          organization_id,
-          activity_type,
-          activity_date,
-          description
-        FROM org_activities
-        WHERE organization_id = ANY($1)
-        ORDER BY organization_id, activity_date DESC
-      `,
-        [orgIds]
-      );
       const lastActivityMap = new Map(
         lastActivitiesResult.rows.map((r) => [r.organization_id, {
           type: r.activity_type,
@@ -333,19 +376,6 @@ export function setupProspectRoutes(apiRouter: Router): void {
         }])
       );
 
-      // Get pending next steps count per organization
-      const pendingStepsResult = await pool.query(
-        `
-        SELECT organization_id, COUNT(*) as pending_count,
-          SUM(CASE WHEN next_step_due_date < CURRENT_DATE THEN 1 ELSE 0 END) as overdue_count
-        FROM org_activities
-        WHERE organization_id = ANY($1)
-          AND is_next_step = TRUE
-          AND next_step_completed_at IS NULL
-        GROUP BY organization_id
-      `,
-        [orgIds]
-      );
       const pendingStepsMap = new Map(
         pendingStepsResult.rows.map((r) => [r.organization_id, {
           pending: parseInt(r.pending_count),
@@ -353,43 +383,37 @@ export function setupProspectRoutes(apiRouter: Router): void {
         }])
       );
 
-      // Get member counts from local organization_memberships table (avoids N+1 WorkOS API calls)
-      const memberCountsResult = await pool.query(
-        `
-        SELECT workos_organization_id, COUNT(*) as member_count
-        FROM organization_memberships
-        WHERE workos_organization_id = ANY($1)
-        GROUP BY workos_organization_id
-      `,
-        [orgIds]
-      );
       const memberCountMap = new Map(
         memberCountsResult.rows.map((r) => [r.workos_organization_id, parseInt(r.member_count)])
       );
 
-      // Batch fetch pending invoices for orgs with Stripe customers
-      const orgsWithStripe = result.rows.filter((r) => r.stripe_customer_id);
-      const pendingInvoicesMap = new Map<string, Awaited<ReturnType<typeof getPendingInvoices>>>();
-
-      // Fetch invoices in parallel (limit concurrency to avoid rate limits)
-      const BATCH_SIZE = 10;
-      for (let i = 0; i < orgsWithStripe.length; i += BATCH_SIZE) {
-        const batch = orgsWithStripe.slice(i, i + BATCH_SIZE);
-        const invoiceResults = await Promise.all(
-          batch.map(async (org) => {
-            try {
-              const invoices = await getPendingInvoices(org.stripe_customer_id);
-              return { orgId: org.workos_organization_id, invoices };
-            } catch {
-              return { orgId: org.workos_organization_id, invoices: [] };
-            }
-          })
-        );
-        for (const invoiceResult of invoiceResults) {
-          if (invoiceResult.invoices.length > 0) {
-            pendingInvoicesMap.set(invoiceResult.orgId, invoiceResult.invoices);
-          }
+      // Build map: orgId -> array of pending invoices
+      const pendingInvoicesMap = new Map<string, Array<{
+        id: string;
+        status: string;
+        amount_due: number;
+        currency: string;
+        created: Date;
+        due_date: Date | null;
+        hosted_invoice_url: string | null;
+        product_name: string | null;
+        customer_email: string | null;
+      }>>();
+      for (const row of pendingInvoicesResult.rows) {
+        if (!pendingInvoicesMap.has(row.workos_organization_id)) {
+          pendingInvoicesMap.set(row.workos_organization_id, []);
         }
+        pendingInvoicesMap.get(row.workos_organization_id)!.push({
+          id: row.id,
+          status: row.status,
+          amount_due: row.amount_due,
+          currency: row.currency,
+          created: row.created,
+          due_date: row.due_date,
+          hosted_invoice_url: row.hosted_invoice_url,
+          product_name: row.product_name,
+          customer_email: row.customer_email,
+        });
       }
 
       // Enrich with membership count and engagement data
@@ -400,20 +424,9 @@ export function setupProspectRoutes(apiRouter: Router): void {
         const pendingInvoices = pendingInvoicesMap.get(row.workos_organization_id) || [];
         const slackUserCount = slackUserCountMap.get(row.workos_organization_id) || 0;
 
-        // Use stored engagement_score (0-100) and convert to display level (1-5)
+        // Use stored engagement_level directly (matches detail page calculation)
         const engagementScore = row.engagement_score || 0;
-        let engagementLevel: number;
-        if (engagementScore >= 60) {
-          engagementLevel = 5;
-        } else if (engagementScore >= 45) {
-          engagementLevel = 4;
-        } else if (engagementScore >= 30) {
-          engagementLevel = 3;
-        } else if (engagementScore >= 15) {
-          engagementLevel = 2;
-        } else {
-          engagementLevel = 1;
-        }
+        const engagementLevel = row.engagement_level || 1;
 
         // Build engagement reasons from actual data (additive - all contributing factors)
         const engagementReasons: string[] = [];

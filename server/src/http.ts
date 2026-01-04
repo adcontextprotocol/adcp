@@ -177,6 +177,76 @@ function setCachedUser(userId: string, displayName: string): void {
 }
 
 /**
+ * Upsert invoice data to local cache (org_invoices table).
+ * Called from Stripe webhook handlers to keep invoice data in sync.
+ */
+async function upsertInvoiceCache(
+  pool: ReturnType<typeof getPool>,
+  invoice: Stripe.Invoice,
+  workosOrgId: string | null,
+  productName: string | null = null
+): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO org_invoices (
+        stripe_invoice_id,
+        stripe_customer_id,
+        workos_organization_id,
+        status,
+        amount_due,
+        amount_paid,
+        currency,
+        invoice_number,
+        hosted_invoice_url,
+        invoice_pdf,
+        product_name,
+        customer_email,
+        created_at,
+        due_date,
+        paid_at,
+        voided_at,
+        stripe_updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+      ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        amount_due = EXCLUDED.amount_due,
+        amount_paid = EXCLUDED.amount_paid,
+        invoice_number = EXCLUDED.invoice_number,
+        hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+        invoice_pdf = EXCLUDED.invoice_pdf,
+        product_name = COALESCE(EXCLUDED.product_name, org_invoices.product_name),
+        customer_email = EXCLUDED.customer_email,
+        paid_at = EXCLUDED.paid_at,
+        voided_at = EXCLUDED.voided_at,
+        stripe_updated_at = NOW()`,
+      [
+        invoice.id,
+        invoice.customer as string,
+        workosOrgId,
+        invoice.status,
+        invoice.amount_due,
+        invoice.amount_paid,
+        invoice.currency,
+        invoice.number || null,
+        invoice.hosted_invoice_url || null,
+        invoice.invoice_pdf || null,
+        productName,
+        typeof invoice.customer_email === 'string' ? invoice.customer_email : null,
+        new Date(invoice.created * 1000),
+        invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+        invoice.status === 'paid' && invoice.status_transitions?.paid_at
+          ? new Date(invoice.status_transitions.paid_at * 1000)
+          : null,
+        invoice.status === 'void' ? new Date() : null,
+      ]
+    );
+    logger.debug({ invoiceId: invoice.id, status: invoice.status }, 'Invoice cache updated');
+  } catch (err) {
+    logger.error({ err, invoiceId: invoice.id }, 'Failed to update invoice cache');
+  }
+}
+
+/**
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
@@ -1967,6 +2037,47 @@ export class HTTPServer {
             break;
           }
 
+          // Invoice lifecycle events - cache for prospects page (avoids Stripe API calls)
+          case 'invoice.created':
+          case 'invoice.updated':
+          case 'invoice.finalized':
+          case 'invoice.voided': {
+            const invoice = event.data.object as Stripe.Invoice;
+            logger.debug({
+              invoiceId: invoice.id,
+              status: invoice.status,
+              eventType: event.type,
+            }, 'Invoice lifecycle event');
+
+            // Find org by customer ID
+            const customerId = invoice.customer as string;
+            const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            // Get product name from line items if available
+            let productName: string | null = null;
+            if (invoice.lines?.data && invoice.lines.data.length > 0) {
+              const primaryLine = invoice.lines.data[0] as any;
+              const productId = primaryLine.price?.product as string;
+              if (productId && stripe) {
+                try {
+                  const product = await stripe.products.retrieve(productId);
+                  productName = product.name;
+                } catch (err) {
+                  logger.debug({ err, productId, invoiceId: invoice.id }, 'Failed to retrieve product name, using fallback');
+                  productName = primaryLine.description || null;
+                }
+              }
+            }
+
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              productName
+            );
+            break;
+          }
+
           case 'invoice.payment_succeeded':
           case 'invoice.paid': {
             const invoice = event.data.object as Stripe.Invoice;
@@ -2232,6 +2343,29 @@ export class HTTPServer {
                 );
               }
             }
+
+            // Update invoice cache (for prospects page - avoids Stripe API calls)
+            // Get product name for cache even if we didn't process revenue above
+            let cachedProductName: string | null = null;
+            if (invoice.lines?.data && invoice.lines.data.length > 0) {
+              const primaryLine = invoice.lines.data[0] as any;
+              const cachedProductId = primaryLine.price?.product as string;
+              if (cachedProductId && stripe) {
+                try {
+                  const product = await stripe.products.retrieve(cachedProductId);
+                  cachedProductName = product.name;
+                } catch (err) {
+                  logger.debug({ err, productId: cachedProductId, invoiceId: invoice.id }, 'Failed to retrieve product name for cache, using fallback');
+                  cachedProductName = primaryLine.description || null;
+                }
+              }
+            }
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              cachedProductName
+            );
             break;
           }
 
@@ -2303,6 +2437,14 @@ export class HTTPServer {
                 attemptCount: invoice.attempt_count || 1,
               }).catch(err => logger.error({ err }, 'Failed to send Slack failed payment notification'));
             }
+
+            // Update invoice cache (keeps status in sync for prospects page)
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              null
+            );
             break;
           }
 
