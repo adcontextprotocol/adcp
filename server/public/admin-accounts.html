@@ -324,35 +324,26 @@
       <button class="view-tab active" data-view="needs_attention">
         Needs Attention <span class="badge" id="count-needs_attention">-</span>
       </button>
-      <button class="view-tab" data-view="unowned">
-        Unowned <span class="badge" id="count-unowned">-</span>
-      </button>
-      <button class="view-tab" data-view="active_prospects">
-        Active Prospects <span class="badge" id="count-active_prospects">-</span>
-      </button>
-      <button class="view-tab" data-view="recently_contacted">
-        Recently Contacted <span class="badge" id="count-recently_contacted">-</span>
-      </button>
-      <button class="view-tab" data-view="needs_followup">
-        Follow-ups <span class="badge" id="count-needs_followup">-</span>
-      </button>
-      <button class="view-tab" data-view="open_invoices">
-        Open Invoices <span class="badge" id="count-open_invoices">-</span>
+      <button class="view-tab" data-view="new_insights">
+        New Insights <span class="badge" id="count-new_insights">-</span>
       </button>
       <button class="view-tab" data-view="hot">
-        Hot <span class="badge" id="count-hot">-</span>
+        Hot Prospects <span class="badge" id="count-hot">-</span>
+      </button>
+      <button class="view-tab" data-view="new_prospects">
+        New Prospects <span class="badge" id="count-new_prospects">-</span>
       </button>
       <button class="view-tab" data-view="going_cold">
         Going Cold <span class="badge" id="count-going_cold">-</span>
       </button>
-      <button class="view-tab" data-view="renewals">
-        Renewals <span class="badge" id="count-renewals">-</span>
-      </button>
       <button class="view-tab" data-view="my_accounts">
         My Accounts <span class="badge" id="count-my_accounts">-</span>
       </button>
-      <button class="view-tab" data-view="new">
-        New <span class="badge" id="count-new">-</span>
+      <button class="view-tab" data-view="renewals">
+        Renewals <span class="badge" id="count-renewals">-</span>
+      </button>
+      <button class="view-tab" data-view="members">
+        Members <span class="badge" id="count-members">-</span>
       </button>
       <button class="view-tab" data-view="all">
         All
@@ -397,18 +388,14 @@
     let searchTimeout = null;
 
     const viewDescriptions = {
-      needs_attention: 'Accounts needing action: overdue tasks, open invoices, high engagement unowned',
-      unowned: 'Accounts with activity but no owner assigned',
-      active_prospects: 'Non-members with activity in the last 30 days',
-      recently_contacted: 'Accounts you\'ve contacted in the last 14 days',
-      needs_followup: 'Accounts with pending follow-ups due soon',
-      open_invoices: 'Accounts with pending invoices',
+      needs_attention: 'Accounts needing action: overdue tasks, open invoices, unowned hot prospects',
+      new_insights: 'Prospects with recent Slack activity from their team',
       hot: 'High engagement prospects ready to convert',
-      going_cold: 'Accounts with no recent activity',
-      renewals: 'Members with subscriptions ending soon',
-      low_engagement: 'Members with low engagement',
+      new_prospects: 'Recently created prospect accounts',
+      going_cold: 'Prospects losing engagement (no activity in 30+ days)',
       my_accounts: 'Accounts you own or are watching',
-      new: 'Recently created accounts',
+      renewals: 'Members with subscriptions ending soon',
+      members: 'All paying member organizations',
       all: 'All accounts',
       disqualified: 'Accounts marked as not viable'
     };

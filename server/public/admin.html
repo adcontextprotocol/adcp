@@ -623,24 +623,14 @@
             <div class="funnel-label">Total Orgs</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/accounts?view=active_prospects'">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/accounts?view=hot'">
             <div class="funnel-value" id="prospects">-</div>
-            <div class="funnel-label">Prospects</div>
-          </div>
-          <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/accounts?view=active_prospects'">
-            <div class="funnel-value" id="engagedProspects">-</div>
-            <div class="funnel-label">Engaged</div>
-          </div>
-          <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/accounts?view=trials'">
-            <div class="funnel-value" id="trials">-</div>
-            <div class="funnel-label">Trials</div>
+            <div class="funnel-label">Hot Prospects</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
           <div class="funnel-stage active clickable" onclick="window.location.href='/admin/accounts?view=members'">
             <div class="funnel-value" id="payingOrgs">-</div>
-            <div class="funnel-label">Paying</div>
+            <div class="funnel-label">Members</div>
           </div>
         </div>
 
@@ -658,9 +648,9 @@
         <div class="insight-box clickable" id="accountsAttentionBox" onclick="window.location.href='/admin/accounts?view=needs_attention'" style="display: none;">
           <div class="insight-label">📋 Accounts Needing Attention</div>
           <div class="insight-text">
-            <span id="needsAttentionCount">-</span> accounts need attention ·
-            <span id="unownedCount">-</span> unowned with activity ·
-            <span id="recentlyContactedCount">-</span> recently contacted
+            <span id="needsAttentionCount">-</span> need attention ·
+            <span id="newInsightsCount">-</span> with new insights ·
+            <span id="goingColdCount">-</span> going cold
           </div>
         </div>
       </div>
@@ -950,13 +940,13 @@
         if (!response.ok) return;
 
         const counts = await response.json();
-        const hasAttention = counts.needs_attention > 0 || counts.unowned > 0 || counts.recently_contacted > 0;
+        const hasAttention = counts.needs_attention > 0 || counts.new_insights > 0 || counts.going_cold > 0;
 
         if (hasAttention) {
           document.getElementById('accountsAttentionBox').style.display = 'block';
           document.getElementById('needsAttentionCount').textContent = formatNumber(counts.needs_attention);
-          document.getElementById('unownedCount').textContent = formatNumber(counts.unowned);
-          document.getElementById('recentlyContactedCount').textContent = formatNumber(counts.recently_contacted);
+          document.getElementById('newInsightsCount').textContent = formatNumber(counts.new_insights);
+          document.getElementById('goingColdCount').textContent = formatNumber(counts.going_cold);
         }
       } catch (error) {
         console.error('Error loading account counts:', error);

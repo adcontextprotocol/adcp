@@ -620,60 +620,34 @@ export function setupAccountRoutes(
           orderBy = ` ORDER BY o.last_activity_at DESC`;
           break;
 
-        case "unowned":
-          // Accounts with some engagement but no stakeholder assigned
-          query = `
-            ${selectFields}
-            FROM organizations o
-            WHERE NOT EXISTS (
-              SELECT 1 FROM org_stakeholders os
-              WHERE os.organization_id = o.workos_organization_id
-            )
-            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (
-              COALESCE(o.engagement_score, 0) > 0
-              OR o.last_activity_at IS NOT NULL
-            )
-          `;
-          orderBy = ` ORDER BY o.engagement_score DESC NULLS LAST, o.last_activity_at DESC NULLS LAST`;
-          break;
-
-        case "active_prospects":
-          // Non-members with recent activity, sorted by engagement
-          query = `
-            ${selectFields}
-            FROM organizations o
-            WHERE (
-              o.subscription_status IS NULL
-              OR o.subscription_status NOT IN ('active', 'trialing')
-            )
-            AND o.last_activity_at >= NOW() - INTERVAL '30 days'
-            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `;
-          orderBy = ` ORDER BY o.engagement_score DESC NULLS LAST, o.last_activity_at DESC`;
-          break;
-
-        case "recently_contacted":
-          // Accounts with recent outreach activity (notes, emails logged)
-          // Use LATERAL join to get only the most recent activity per org
+        case "new_insights":
+          // Accounts with recent member activity/insights
+          // Joins through organization_memberships to find orgs with recent Slack activity
           query = `
             ${selectFields},
-            recent_activity.activity_date as last_contact_date,
-            recent_activity.activity_type as last_contact_type,
-            recent_activity.description as last_contact_description
+            latest_activity.latest_message_at as last_insight_at
             FROM organizations o
             INNER JOIN LATERAL (
-              SELECT activity_date, activity_type, description
-              FROM org_activities
-              WHERE organization_id = o.workos_organization_id
-                AND activity_type IN ('note', 'email_sent', 'call', 'meeting')
-                AND activity_date >= NOW() - INTERVAL '14 days'
-              ORDER BY activity_date DESC
-              LIMIT 1
-            ) recent_activity ON true
+              SELECT MAX(sm.last_message_at) as latest_message_at
+              FROM organization_memberships om
+              JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+                AND sm.last_message_at >= NOW() - INTERVAL '7 days'
+            ) latest_activity ON latest_activity.latest_message_at IS NOT NULL
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `;
-          orderBy = ` ORDER BY recent_activity.activity_date DESC`;
+          orderBy = ` ORDER BY latest_activity.latest_message_at DESC`;
+          break;
+
+        case "members":
+          // All paying members
+          query = `
+            ${selectFields}
+            FROM organizations o
+            WHERE o.subscription_status = 'active'
+          `;
+          orderBy = ` ORDER BY o.name ASC`;
           break;
 
         case "renewals":
@@ -718,12 +692,14 @@ export function setupAccountRoutes(
           break;
 
         case "new":
-          // Recently created accounts
+        case "new_prospects":
+          // Recently created non-member accounts
           query = `
             ${selectFields}
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `;
           orderBy = ` ORDER BY o.created_at DESC`;
           break;
@@ -944,106 +920,17 @@ export function setupAccountRoutes(
         const currentUserId = req.user?.id;
 
         const [
-          needsFollowup,
-          openInvoices,
-          hot,
-          goingCold,
-          renewals,
-          lowEngagement,
-          myAccounts,
-          newAccounts,
-          disqualified,
           needsAttention,
-          unowned,
-          activeProspects,
-          recentlyContacted,
+          newInsights,
+          hot,
+          newProspects,
+          goingCold,
+          myAccounts,
+          renewals,
+          members,
+          disqualified,
         ] = await Promise.all([
-          // Needs followup
-          pool.query(`
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
-              AND na.is_next_step = TRUE
-              AND na.next_step_completed_at IS NULL
-              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
-            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `),
-
-          // Open invoices
-          pool.query(`
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
-          `),
-
-          // Hot prospects
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
-              AND COALESCE(o.engagement_score, 0) >= 50
-              AND o.interest_level IN ('high', 'very_high')
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `),
-
-          // Going cold - must have had activity before (matches view query)
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.last_activity_at IS NOT NULL
-              AND o.last_activity_at < NOW() - INTERVAL '30 days'
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
-          `),
-
-          // Renewals
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.subscription_status = 'active'
-              AND o.subscription_current_period_end IS NOT NULL
-              AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
-              AND o.subscription_current_period_end > NOW()
-          `),
-
-          // Low engagement members
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.subscription_status = 'active'
-              AND COALESCE(o.engagement_score, 0) < 30
-          `),
-
-          // My accounts
-          currentUserId
-            ? pool.query(
-                `
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id AND os.user_id = $1
-            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `,
-                [currentUserId]
-              )
-            : Promise.resolve({ rows: [{ count: 0 }] }),
-
-          // New accounts
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.created_at >= NOW() - INTERVAL '14 days'
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `),
-
-          // Disqualified
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.prospect_status = 'disqualified'
-          `),
-
-          // Needs attention - all accounts needing action (not just owned)
+          // Needs attention - all accounts needing action
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
@@ -1066,57 +953,96 @@ export function setupAccountRoutes(
               )
           `),
 
-          // Unowned - accounts with engagement but no stakeholder
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE NOT EXISTS (
-              SELECT 1 FROM org_stakeholders os
-              WHERE os.organization_id = o.workos_organization_id
-            )
-            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (
-              COALESCE(o.engagement_score, 0) > 0
-              OR o.last_activity_at IS NOT NULL
-            )
-          `),
-
-          // Active prospects - non-members with recent activity
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE (
-              o.subscription_status IS NULL
-              OR o.subscription_status NOT IN ('active', 'trialing')
-            )
-            AND o.last_activity_at >= NOW() - INTERVAL '30 days'
-            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `),
-
-          // Recently contacted - accounts with recent outreach
+          // New insights - prospects with recent Slack activity
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
-            INNER JOIN org_activities oa ON oa.organization_id = o.workos_organization_id
-              AND oa.activity_type IN ('note', 'email_sent', 'call', 'meeting')
-              AND oa.activity_date >= NOW() - INTERVAL '14 days'
+            WHERE EXISTS (
+              SELECT 1 FROM organization_memberships om
+              JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
+              WHERE om.workos_organization_id = o.workos_organization_id
+                AND sm.last_message_at >= NOW() - INTERVAL '7 days'
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+            AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+          `),
+
+          // Hot prospects
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND COALESCE(o.engagement_score, 0) >= 50
+              AND o.interest_level IN ('high', 'very_high')
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `),
+
+          // New prospects - recently created non-members
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.created_at >= NOW() - INTERVAL '14 days'
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+          `),
+
+          // Going cold
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.last_activity_at IS NOT NULL
+              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+          `),
+
+          // My accounts
+          currentUserId
+            ? pool.query(
+                `
+            SELECT COUNT(DISTINCT o.workos_organization_id) as count
+            FROM organizations o
+            INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id AND os.user_id = $1
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `,
+                [currentUserId]
+              )
+            : Promise.resolve({ rows: [{ count: 0 }] }),
+
+          // Renewals
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.subscription_status = 'active'
+              AND o.subscription_current_period_end IS NOT NULL
+              AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
+              AND o.subscription_current_period_end > NOW()
+          `),
+
+          // Members
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.subscription_status = 'active'
+          `),
+
+          // Disqualified
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.prospect_status = 'disqualified'
           `),
         ]);
 
         res.json({
           needs_attention: parseInt(needsAttention.rows[0].count),
-          unowned: parseInt(unowned.rows[0].count),
-          active_prospects: parseInt(activeProspects.rows[0].count),
-          recently_contacted: parseInt(recentlyContacted.rows[0].count),
-          needs_followup: parseInt(needsFollowup.rows[0].count),
-          open_invoices: parseInt(openInvoices.rows[0].count),
+          new_insights: parseInt(newInsights.rows[0].count),
           hot: parseInt(hot.rows[0].count),
+          new_prospects: parseInt(newProspects.rows[0].count),
           going_cold: parseInt(goingCold.rows[0].count),
-          renewals: parseInt(renewals.rows[0].count),
-          low_engagement: parseInt(lowEngagement.rows[0].count),
           my_accounts: parseInt(myAccounts.rows[0].count),
-          new: parseInt(newAccounts.rows[0].count),
+          renewals: parseInt(renewals.rows[0].count),
+          members: parseInt(members.rows[0].count),
           disqualified: parseInt(disqualified.rows[0].count),
         });
       } catch (error) {
