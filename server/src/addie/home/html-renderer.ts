@@ -276,6 +276,8 @@ export const ADDIE_HOME_CSS = `
 .addie-home {
   max-width: 600px;
   margin: 0 auto;
+  padding: 0 16px;
+  box-sizing: border-box;
 }
 
 .addie-home-greeting {

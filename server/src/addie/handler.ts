@@ -28,7 +28,6 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAdmin,
-  isAdmin,
 } from './mcp/admin-tools.js';
 import {
   MEMBER_TOOLS,
@@ -192,7 +191,8 @@ async function createUserScopedTools(
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
-  const userIsAdmin = isAdmin(memberContext);
+  // Check if user is AAO admin (based on aao-admin working group membership)
+  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
 
   // Add admin tools if user is admin
   if (userIsAdmin) {
