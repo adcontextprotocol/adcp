@@ -1,4 +1,4 @@
--- Migration: 121_industry_gatherings.sql
+-- Migration: 124_industry_gatherings.sql
 -- Rename 'event' committee type to 'industry_gathering' and add logo/website fields
 -- Industry gatherings are external events like CES, Cannes Lions, etc. (not AAO-hosted events)
 

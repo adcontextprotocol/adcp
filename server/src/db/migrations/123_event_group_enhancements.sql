@@ -1,4 +1,4 @@
--- Migration: 120_event_group_enhancements.sql
+-- Migration: 123_event_group_enhancements.sql
 -- Enhancements to event groups for industry gatherings like CES
 
 -- =====================================================

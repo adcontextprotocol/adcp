@@ -1,4 +1,4 @@
--- Committee interest tracking
+-- Migration: 122_committee_interest.sql
 -- Tracks users who express interest in joining committees (especially launching councils)
 
 CREATE TABLE IF NOT EXISTS committee_interest (
