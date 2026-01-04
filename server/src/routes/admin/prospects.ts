@@ -195,6 +195,9 @@ export function setupProspectRoutes(apiRouter: Router): void {
       if (status && typeof status === "string") {
         params.push(status);
         query += ` AND COALESCE(o.prospect_status, 'signed_up') = $${params.length}`;
+      } else {
+        // Exclude disqualified orgs by default unless explicitly filtering for them
+        query += ` AND COALESCE(o.prospect_status, 'signed_up') != 'disqualified'`;
       }
 
       if (source && typeof source === "string") {
