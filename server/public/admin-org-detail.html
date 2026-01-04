@@ -1543,8 +1543,11 @@
       const isCurrentUserOwner = ownerStakeholder && currentUserId && ownerStakeholder.user_id === currentUserId;
 
       // Update owner display
+      // Fall back to legacy prospect_owner field if no stakeholder owner exists
       if (ownerStakeholder) {
         ownerDisplay.textContent = isCurrentUserOwner ? 'Me' : ownerStakeholder.user_name;
+      } else if (orgData.prospect_owner) {
+        ownerDisplay.textContent = orgData.prospect_owner;
       } else {
         ownerDisplay.textContent = 'Unassigned';
       }
