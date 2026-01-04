@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/property-list-changed-webhook.json",
+  "title": "Property List Changed Webhook",
+  "description": "Webhook notification sent when a property list's resolved properties change. Contains a summary only - recipients must call get_property_list to retrieve the updated properties. This keeps payloads small and avoids redundant data transfer.",
+  "type": "object",
+  "properties": {
+    "event": {
+      "type": "string",
+      "const": "property_list_changed",
+      "description": "The event type"
+    },
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list that changed"
+    },
+    "list_name": {
+      "type": "string",
+      "description": "Name of the property list"
+    },
+    "change_summary": {
+      "type": "object",
+      "description": "Summary of changes to the resolved list",
+      "properties": {
+        "properties_added": {
+          "type": "integer",
+          "description": "Number of properties added since last resolution"
+        },
+        "properties_removed": {
+          "type": "integer",
+          "description": "Number of properties removed since last resolution"
+        },
+        "total_properties": {
+          "type": "integer",
+          "description": "Total properties in the resolved list"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was re-resolved"
+    },
+    "cache_valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the consumer should refresh from the governance agent"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["event", "list_id", "resolved_at"],
+  "additionalProperties": false
+}

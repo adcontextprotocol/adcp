@@ -81,13 +81,6 @@
             ]
           },
           {
-            "group": "adagents.json",
-            "pages": [
-              "docs/media-buy/capability-discovery/adagents",
-              "docs/media-buy/capability-discovery/authorized-properties"
-            ]
-          },
-          {
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
@@ -97,6 +90,34 @@
                 "pages": [
                   "docs/signals/tasks/get_signals",
                   "docs/signals/tasks/activate_signal"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Governance Protocol [3.0]",
+            "pages": [
+              "docs/governance/index",
+              {
+                "group": "Property Governance",
+                "pages": [
+                  "docs/governance/property/index",
+                  "docs/governance/property/specification",
+                  "docs/governance/property/adagents",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/property/tasks/index",
+                      "docs/governance/property/tasks/list_property_features",
+                      "docs/governance/property/tasks/property_lists"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Brand Standards",
+                "pages": [
+                  "docs/governance/brand-standards/index"
                 ]
               }
             ]

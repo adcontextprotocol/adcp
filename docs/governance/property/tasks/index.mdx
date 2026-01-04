@@ -1,0 +1,143 @@
+---
+sidebar_position: 1
+title: Task Reference
+---
+
+# Property Governance Tasks
+
+<Info>
+**AdCP 3.0 Proposal** - These tasks are under development for AdCP 3.0.
+</Info>
+
+Property governance uses a **stateful** model where all evaluation happens through property list management. Create lists with filters and brand manifests, then resolve them to get compliant properties.
+
+## Discovery
+
+| Task | Purpose | Response Time |
+|------|---------|---------------|
+| [list_property_features](/docs/governance/property/tasks/list_property_features) | Discover agent capabilities | ~200ms |
+
+## Property List Management
+
+| Task | Purpose | Response Time |
+|------|---------|---------------|
+| [create_property_list](/docs/governance/property/tasks/property_lists#create_property_list) | Create a new property list | ~500ms |
+| [update_property_list](/docs/governance/property/tasks/property_lists#update_property_list) | Modify an existing list | ~500ms |
+| [get_property_list](/docs/governance/property/tasks/property_lists#get_property_list) | Retrieve list with resolved properties | ~2-5s |
+| [list_property_lists](/docs/governance/property/tasks/property_lists#list_property_lists) | List all property lists | ~500ms |
+| [delete_property_list](/docs/governance/property/tasks/property_lists#delete_property_list) | Delete a property list | ~200ms |
+
+See [Property List Management](/docs/governance/property/tasks/property_lists) for complete CRUD documentation.
+
+## Task Selection Guide
+
+### Creating a Property List
+
+Use `create_property_list` with filters and brand manifest:
+
+```json
+{
+  "tool": "create_property_list",
+  "arguments": {
+    "name": "Q1 Campaign - UK Premium",
+    "base_properties": [
+      {
+        "selection_type": "publisher_tags",
+        "publisher_domain": "raptive.com",
+        "tags": ["premium_news"]
+      }
+    ],
+    "filters": {
+      "countries_all": ["UK"],
+      "channels_any": ["display", "video"],
+      "feature_requirements": [
+        {
+          "feature_id": "consent_quality",
+          "min_value": 85,
+          "max_value": 100
+        },
+        {
+          "feature_id": "coppa_certified",
+          "allowed_values": [true]
+        }
+      ]
+    },
+    "brand_manifest": {
+      "name": "ToyBrand",
+      "industry": "toys",
+      "target_audience": "children_under_13"
+    }
+  }
+}
+```
+
+**Required filters**: At least one country in `countries_all` and one channel in `channels_any` must be provided.
+
+**Base properties**: An array of property sources to evaluate. Each entry is a discriminated union with `selection_type`:
+- **`publisher_tags`**: `{ "selection_type": "publisher_tags", "publisher_domain": "...", "tags": [...] }`
+- **`publisher_ids`**: `{ "selection_type": "publisher_ids", "publisher_domain": "...", "property_ids": [...] }`
+- **`identifiers`**: `{ "selection_type": "identifiers", "identifiers": [...] }`
+- **Omitted**: Query the agent's entire property database
+
+**Filter logic** (explicit in field names):
+- `countries_all`: Property must be compliant in ALL listed countries (different jurisdictions have different laws)
+- `channels_any`: Property must support ANY of the listed channels
+- `feature_requirements`: Property must pass ALL requirements (AND)
+
+Filters have two built-in fields (`countries_all`, `channels_any`) plus `feature_requirements` which reference features the agent provides (discovered via `list_property_features`). For quantitative features, use `min_value`/`max_value`. For binary or categorical features, use `allowed_values`.
+
+### Getting Resolved Properties
+
+Use `get_property_list` to retrieve the list. You'll receive an `auth_token` that can be shared with sellers:
+
+```json
+{
+  "tool": "get_property_list",
+  "arguments": {
+    "list_id": "pl_abc123",
+    "resolve": true
+  }
+}
+```
+
+Response includes an auth token for sharing. Note that **raw scores are not returned** - only properties that pass the filter thresholds are included:
+
+```json
+{
+  "list_id": "pl_abc123",
+  "auth_token": "eyJhbGciOiJIUzI1NiIs...",
+  "properties": [...],
+  "cache_valid_until": "2026-01-04T17:15:00Z"
+}
+```
+
+Pass the `auth_token` to sellers so they can fetch and cache the resolved list.
+
+### Multi-Agent Integration
+
+Create the same property list on multiple governance agents, then configure webhooks to aggregate results:
+
+```python
+# Create lists on specialized agents
+consent_list = consent_agent.create_property_list(
+    name="Q1 - Consent",
+    base_properties=master_list,
+    brand_manifest=brand_manifest
+)
+consent_agent.update_property_list(
+    list_id=consent_list.list_id,
+    webhook_url="https://buyer.example.com/webhooks/consent"
+)
+
+scope3_list = scope3_agent.create_property_list(
+    name="Q1 - Sustainability",
+    base_properties=master_list,
+    brand_manifest=brand_manifest
+)
+scope3_agent.update_property_list(
+    list_id=scope3_list.list_id,
+    webhook_url="https://buyer.example.com/webhooks/scope3"
+)
+
+# Buyer agent intersects results when webhooks fire
+```

@@ -168,6 +168,14 @@
         "property-tag": {
           "$ref": "/schemas/core/property-tag.json",
           "description": "Tag for categorizing publisher properties - lowercase alphanumeric with underscores only"
+        },
+        "property-list-ref": {
+          "$ref": "/schemas/core/property-list-ref.json",
+          "description": "Reference to an externally managed property list for passing large property sets"
+        },
+        "identifier": {
+          "$ref": "/schemas/core/identifier.json",
+          "description": "A property identifier with type and value"
         }
       }
     },
@@ -220,7 +228,7 @@
         },
         "task-type": {
           "$ref": "/schemas/enums/task-type.json",
-          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals)"
+          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals, list_property_features, create_property_list, get_property_list, update_property_list, delete_property_list)"
         },
         "asset-content-type": {
           "$ref": "/schemas/enums/asset-content-type.json",
@@ -280,7 +288,7 @@
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
-          "description": "AdCP protocol domains (media-buy, signals)"
+          "description": "AdCP protocol domains (media-buy, signals, governance)"
         },
         "http-method": {
           "$ref": "/schemas/enums/http-method.json",
@@ -558,6 +566,105 @@
           "response": {
             "$ref": "/schemas/signals/activate-signal-response.json",
             "description": "Response payload for activate_signal task"
+          }
+        }
+      }
+    },
+    "governance": {
+      "description": "Governance protocol for property governance, brand standards, and compliance",
+      "supporting-schemas": {
+        "property-feature-definition": {
+          "$ref": "/schemas/property/property-feature-definition.json",
+          "description": "Definition of a feature that a governance agent can evaluate"
+        },
+        "property-feature": {
+          "$ref": "/schemas/property/property-feature.json",
+          "description": "A discrete feature assessment for a property"
+        },
+        "feature-requirement": {
+          "$ref": "/schemas/property/feature-requirement.json",
+          "description": "A feature-based requirement for property filtering"
+        },
+        "property-error": {
+          "$ref": "/schemas/property/property-error.json",
+          "description": "Error information for a property that could not be evaluated"
+        },
+        "property-list": {
+          "$ref": "/schemas/property/property-list.json",
+          "description": "A managed property list with optional filters for dynamic evaluation"
+        },
+        "property-list-filters": {
+          "$ref": "/schemas/property/property-list-filters.json",
+          "description": "Filters that dynamically modify a property list when resolved"
+        },
+        "property-list-changed-webhook": {
+          "$ref": "/schemas/property/property-list-changed-webhook.json",
+          "description": "Webhook payload when a property list changes"
+        },
+        "base-property-source": {
+          "$ref": "/schemas/property/base-property-source.json",
+          "description": "A source of properties for a property list - supports publisher+tags, publisher+property_ids, or direct identifiers"
+        }
+      },
+      "tasks": {
+        "list-property-features": {
+          "request": {
+            "$ref": "/schemas/property/list-property-features-request.json",
+            "description": "Request parameters for discovering governance agent capabilities"
+          },
+          "response": {
+            "$ref": "/schemas/property/list-property-features-response.json",
+            "description": "Response payload for list_property_features task"
+          }
+        },
+        "create-property-list": {
+          "request": {
+            "$ref": "/schemas/property/create-property-list-request.json",
+            "description": "Request parameters for creating a new property list"
+          },
+          "response": {
+            "$ref": "/schemas/property/create-property-list-response.json",
+            "description": "Response payload for create_property_list task"
+          }
+        },
+        "update-property-list": {
+          "request": {
+            "$ref": "/schemas/property/update-property-list-request.json",
+            "description": "Request parameters for updating an existing property list"
+          },
+          "response": {
+            "$ref": "/schemas/property/update-property-list-response.json",
+            "description": "Response payload for update_property_list task"
+          }
+        },
+        "get-property-list": {
+          "request": {
+            "$ref": "/schemas/property/get-property-list-request.json",
+            "description": "Request parameters for retrieving a property list with resolved properties"
+          },
+          "response": {
+            "$ref": "/schemas/property/get-property-list-response.json",
+            "description": "Response payload for get_property_list task"
+          }
+        },
+        "list-property-lists": {
+          "request": {
+            "$ref": "/schemas/property/list-property-lists-request.json",
+            "description": "Request parameters for listing property lists"
+          },
+          "response": {
+            "$ref": "/schemas/property/list-property-lists-response.json",
+            "description": "Response payload for list_property_lists task"
+          }
+        },
+        "delete-property-list": {
+          "request": {
+            "$ref": "/schemas/property/delete-property-list-request.json",
+            "description": "Request parameters for deleting a property list"
+          },
+          "response": {
+            "$ref": "/schemas/property/delete-property-list-response.json",
+            "description": "Response payload for delete_property_list task"
           }
         }
       }
