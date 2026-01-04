@@ -21,7 +21,7 @@
     "include_compliant": {
       "type": "boolean",
       "default": false,
-      "description": "Include compliant records in results (default: only return non_compliant and unknown)"
+      "description": "Include compliant records in results (default: only return non_compliant, unmodeled, and unidentified)"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
