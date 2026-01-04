@@ -45,6 +45,7 @@ export function setupProspectRoutes(apiRouter: Router): void {
           o.email_domain,
           o.interest_level,
           o.stripe_customer_id,
+          o.disqualification_reason,
           p.name as parent_name,
           (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count,
           o.subscription_status,
@@ -572,6 +573,7 @@ export function setupProspectRoutes(apiRouter: Router): void {
           "prospect_next_action",
           "prospect_next_action_date",
           "parent_organization_id",
+          "disqualification_reason",
         ];
 
         const setClauses: string[] = [];

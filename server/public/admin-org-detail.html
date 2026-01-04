@@ -154,6 +154,8 @@
     .status-negotiating { background: var(--color-primary-200); color: var(--color-primary-800); }
     .status-converted { background: var(--color-success-100); color: var(--color-success-700); }
     .status-declined { background: var(--color-error-100); color: var(--color-error-700); }
+    .status-disqualified { background: var(--color-gray-300); color: var(--color-text-muted); }
+    .status-member { background: var(--color-success-600); color: white; font-weight: var(--font-bold); }
 
     /* Members list */
     .members-list {
@@ -686,12 +688,12 @@
           <!-- Engagement Signals -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-              <h2 style="margin-bottom: 0;">Engagement Signals</h2>
-              <button class="btn btn-secondary btn-sm" onclick="openInterestLevelModal()">Set Interest</button>
+              <h2 id="engagementSectionTitle" style="margin-bottom: 0;">Engagement Signals</h2>
+              <button id="setInterestBtn" class="btn btn-secondary btn-sm" onclick="openInterestLevelModal()">Set Interest</button>
             </div>
             <div id="engagementSignalsContent">
               <div class="signal-item">
-                <span class="signal-label">Interest Level</span>
+                <span class="signal-label" id="interestLevelLabel">Interest Level</span>
                 <span class="signal-value" id="signalInterestLevel">-</span>
               </div>
               <div class="signal-item">
@@ -788,7 +790,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Status</label>
-            <select id="editOrgStatus">
+            <select id="editOrgStatus" onchange="toggleDisqualificationReason()">
               <option value="signed_up">Signed Up</option>
               <option value="prospect">Prospect</option>
               <option value="contacted">Contacted</option>
@@ -797,6 +799,7 @@
               <option value="negotiating">Negotiating</option>
               <option value="converted">Converted</option>
               <option value="declined">Declined</option>
+              <option value="disqualified">Disqualified</option>
             </select>
           </div>
           <div class="form-group">
@@ -808,6 +811,12 @@
               <option value="Matt">Matt</option>
             </select>
           </div>
+        </div>
+
+        <div id="disqualificationReasonGroup" class="form-group" style="display: none;">
+          <label>Disqualification Reason</label>
+          <input type="text" id="editDisqualificationReason" placeholder="e.g., This is us, Competitor, Not in target market">
+          <div class="form-hint">Explain why this org should not be contacted.</div>
         </div>
 
         <div class="form-row">
@@ -951,12 +960,12 @@
   <div id="interestLevelModal" class="modal">
     <div class="modal-content" style="max-width: 450px;">
       <div class="modal-header">
-        <h2>Set Interest Level</h2>
+        <h2 id="interestModalTitle">Set Interest Level</h2>
         <button class="modal-close" onclick="closeInterestLevelModal()">&times;</button>
       </div>
       <form id="interestLevelForm" onsubmit="saveInterestLevel(event)">
         <div class="form-group">
-          <label>Interest Level</label>
+          <label id="interestModalLabel">Interest Level</label>
           <select id="interestLevelSelect">
             <option value="">Not set</option>
             <option value="low">Low - Not a good fit / not interested</option>
@@ -1082,19 +1091,41 @@
       document.getElementById('orgName').textContent = orgData.name;
       document.title = `${orgData.name} - AdCP Registry`;
 
-      // Engagement level (fire emojis)
-      const fires = '🔥'.repeat(orgData.engagement_level || 1);
-      document.getElementById('engagementFires').textContent = fires;
+      // Check if this is a paying member
+      const isPayingMember = orgData.subscription_status === 'active' || orgData.subscription_status === 'trialing';
+
+      // Engagement indicator - different for members vs prospects
+      const engagementLevel = orgData.engagement_level || 1;
+      let engagementIndicator;
+      if (isPayingMember) {
+        // For members: stars represent engagement/happiness
+        engagementIndicator = '⭐'.repeat(engagementLevel);
+      } else {
+        // For prospects: fires represent sales heat
+        engagementIndicator = '🔥'.repeat(engagementLevel);
+      }
+      document.getElementById('engagementFires').textContent = engagementIndicator;
       document.getElementById('engagementReasons').textContent =
-        orgData.engagement_reasons?.join(' • ') || 'Cold';
+        orgData.engagement_reasons?.join(' • ') || (isPayingMember ? 'New member' : 'Cold');
 
-      // Render engagement signals
-      renderEngagementSignals(orgData.engagement_signals);
+      // Render engagement signals with context-appropriate title
+      renderEngagementSignals(orgData.engagement_signals, isPayingMember);
 
-      // Status
+      // Status - show "Member" prominently for paying customers
       const status = orgData.prospect_status || 'signed_up';
-      document.getElementById('orgStatus').innerHTML =
-        `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+      let statusHtml = '';
+      if (isPayingMember) {
+        statusHtml = `<span class="status-badge status-member">Member</span>`;
+        if (orgData.subscription_product_name) {
+          statusHtml += ` <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(orgData.subscription_product_name)}</span>`;
+        }
+      } else {
+        statusHtml = `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+        if (status === 'disqualified' && orgData.disqualification_reason) {
+          statusHtml += `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(orgData.disqualification_reason)}</span>`;
+        }
+      }
+      document.getElementById('orgStatus').innerHTML = statusHtml;
 
       // Source
       const sourceLabels = {
@@ -1385,8 +1416,18 @@
       document.getElementById('editNextAction').value = orgData.prospect_next_action || '';
       document.getElementById('editNextActionDate').value = orgData.prospect_next_action_date ? orgData.prospect_next_action_date.split('T')[0] : '';
       document.getElementById('editOrgNotes').value = orgData.prospect_notes || '';
+      document.getElementById('editDisqualificationReason').value = orgData.disqualification_reason || '';
+
+      // Show/hide disqualification reason based on status
+      toggleDisqualificationReason();
 
       document.getElementById('editOrgModal').style.display = 'block';
+    }
+
+    function toggleDisqualificationReason() {
+      const status = document.getElementById('editOrgStatus').value;
+      const group = document.getElementById('disqualificationReasonGroup');
+      group.style.display = status === 'disqualified' ? 'block' : 'none';
     }
 
     function closeEditOrgModal() {
@@ -1396,8 +1437,9 @@
     async function saveOrgChanges(event) {
       event.preventDefault();
 
+      const status = document.getElementById('editOrgStatus').value;
       const data = {
-        prospect_status: document.getElementById('editOrgStatus').value,
+        prospect_status: status,
         prospect_owner: document.getElementById('editOrgOwner').value || null,
         company_type: document.getElementById('editOrgType').value || null,
         prospect_source: document.getElementById('editOrgSource').value || null,
@@ -1406,7 +1448,8 @@
         prospect_contact_title: document.getElementById('editContactTitle').value || null,
         prospect_next_action: document.getElementById('editNextAction').value || null,
         prospect_next_action_date: document.getElementById('editNextActionDate').value || null,
-        prospect_notes: document.getElementById('editOrgNotes').value || null
+        prospect_notes: document.getElementById('editOrgNotes').value || null,
+        disqualification_reason: status === 'disqualified' ? document.getElementById('editDisqualificationReason').value || null : null
       };
 
       const btn = document.getElementById('saveOrgBtn');
@@ -1904,10 +1947,24 @@
     // ENGAGEMENT SIGNALS
     // ========================================
 
-    function renderEngagementSignals(signals) {
+    function renderEngagementSignals(signals, isPayingMember = false) {
       if (!signals) return;
 
-      // Interest level
+      // Update section title and button text based on member status
+      const titleEl = document.getElementById('engagementSectionTitle');
+      const interestBtn = document.getElementById('setInterestBtn');
+      const interestLabel = document.getElementById('interestLevelLabel');
+      if (isPayingMember) {
+        titleEl.textContent = 'Member Engagement';
+        interestBtn.textContent = 'Set Satisfaction';
+        interestLabel.textContent = 'Satisfaction';
+      } else {
+        titleEl.textContent = 'Engagement Signals';
+        interestBtn.textContent = 'Set Interest';
+        interestLabel.textContent = 'Interest Level';
+      }
+
+      // Interest level (or Satisfaction for members)
       const interestEl = document.getElementById('signalInterestLevel');
       if (signals.interest_level) {
         const levelLabels = {
@@ -1969,6 +2026,11 @@
       const select = document.getElementById('interestLevelSelect');
       const note = document.getElementById('interestLevelNote');
 
+      // Update modal title based on member status
+      const isPayingMember = orgData.subscription_status === 'active' || orgData.subscription_status === 'trialing';
+      document.getElementById('interestModalTitle').textContent = isPayingMember ? 'Set Satisfaction Level' : 'Set Interest Level';
+      document.getElementById('interestModalLabel').textContent = isPayingMember ? 'Satisfaction Level' : 'Interest Level';
+
       // Pre-populate with current values
       if (orgData.engagement_signals) {
         select.value = orgData.engagement_signals.interest_level || '';
@@ -2013,10 +2075,14 @@
         const orgResponse = await fetch(`/api/admin/organizations/${orgId}`);
         if (orgResponse.ok) {
           orgData = await orgResponse.json();
-          const fires = '🔥'.repeat(orgData.engagement_level || 1);
-          document.getElementById('engagementFires').textContent = fires;
+          const isPayingMember = orgData.subscription_status === 'active' || orgData.subscription_status === 'trialing';
+          const engagementLevel = orgData.engagement_level || 1;
+          const indicator = isPayingMember ? '⭐'.repeat(engagementLevel) : '🔥'.repeat(engagementLevel);
+          document.getElementById('engagementFires').textContent = indicator;
           document.getElementById('engagementReasons').textContent =
-            orgData.engagement_reasons?.join(' • ') || 'Cold';
+            orgData.engagement_reasons?.join(' • ') || (isPayingMember ? 'New member' : 'Cold');
+          // Re-render engagement signals with correct context
+          renderEngagementSignals(orgData.engagement_signals, isPayingMember);
         }
 
         closeInterestLevelModal();
