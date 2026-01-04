@@ -43,7 +43,13 @@ import {
   getAllFeedsWithStats,
   addFeed,
   getFeedStats,
+  findSimilarFeeds,
+  getPendingProposals,
+  approveProposal,
+  rejectProposal,
+  getProposalStats,
   type FeedWithStats,
+  type FeedProposal,
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
 import {
@@ -608,6 +614,68 @@ For discounts: Can create a new discount or auto-apply an existing org discount.
       type: 'object',
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'list_feed_proposals',
+    description:
+      'List pending feed proposals submitted by community members. Use this to review what news sources have been proposed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of proposals to return (default 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'approve_feed_proposal',
+    description:
+      'Approve a feed proposal and create the feed. You must provide the final feed name and URL (which may differ from the proposed URL if you find the actual RSS feed).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        proposal_id: {
+          type: 'number',
+          description: 'ID of the proposal to approve',
+        },
+        feed_name: {
+          type: 'string',
+          description: 'Name for the feed (e.g., "AdExchanger")',
+        },
+        feed_url: {
+          type: 'string',
+          description: 'RSS feed URL (may differ from the proposed URL)',
+        },
+        category: {
+          type: 'string',
+          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
+          description: 'Category for the feed',
+        },
+      },
+      required: ['proposal_id', 'feed_name', 'feed_url'],
+    },
+  },
+  {
+    name: 'reject_feed_proposal',
+    description:
+      'Reject a feed proposal. Optionally provide a reason that could be shared with the proposer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        proposal_id: {
+          type: 'number',
+          description: 'ID of the proposal to reject',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for rejection (optional)',
+        },
+      },
+      required: ['proposal_id'],
     },
   },
 
@@ -2503,6 +2571,26 @@ export function createAdminToolHandlers(
       return `❌ Invalid feed URL: ${feedUrl}`;
     }
 
+    // Check for similar/duplicate feeds before adding
+    try {
+      const similarFeeds = await findSimilarFeeds(feedUrl);
+      if (similarFeeds.length > 0) {
+        let response = `⚠️ Found similar feed(s) that may be duplicates:\n\n`;
+        for (const existing of similarFeeds) {
+          const status = existing.is_active ? '✅' : '⏸️';
+          response += `${status} **${existing.name}** (ID: ${existing.id})\n`;
+          response += `   URL: ${existing.feed_url}\n`;
+          if (existing.category) response += `   Category: ${existing.category}\n`;
+          response += `\n`;
+        }
+        response += `If you still want to add "${name}", the feed URL needs to be different from existing feeds. `;
+        response += `If this is a duplicate, you can reactivate an existing feed instead.`;
+        return response;
+      }
+    } catch (error) {
+      logger.warn({ error, feedUrl }, 'Error checking for similar feeds, proceeding with add');
+    }
+
     try {
       const feed = await addFeed(name, feedUrl, category);
       logger.info({ feedId: feed.id, name, feedUrl }, 'Feed created via Addie');
@@ -2551,6 +2639,146 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error getting feed stats');
       return '❌ Failed to get feed statistics. Please try again.';
+    }
+  });
+
+  // ============================================
+  // FEED PROPOSAL REVIEW HANDLERS
+  // ============================================
+
+  // List pending proposals
+  handlers.set('list_feed_proposals', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 50);
+
+    try {
+      const proposals = await getPendingProposals(limit);
+      const stats = await getProposalStats();
+
+      if (proposals.length === 0) {
+        return `No pending feed proposals.\n\n**Stats:** ${stats.approved} approved, ${stats.rejected} rejected, ${stats.duplicate} duplicates`;
+      }
+
+      let response = `## Pending Feed Proposals\n\n`;
+      response += `**Pending:** ${stats.pending} | **Approved:** ${stats.approved} | **Rejected:** ${stats.rejected}\n\n`;
+
+      for (const proposal of proposals) {
+        response += `### Proposal #${proposal.id}\n`;
+        response += `**URL:** ${proposal.url}\n`;
+        if (proposal.name) response += `**Suggested name:** ${proposal.name}\n`;
+        if (proposal.category) response += `**Category:** ${proposal.category}\n`;
+        if (proposal.reason) response += `**Reason:** ${proposal.reason}\n`;
+        response += `**Proposed:** ${proposal.proposed_at.toLocaleDateString()}`;
+        if (proposal.proposed_by_slack_user_id) {
+          response += ` by <@${proposal.proposed_by_slack_user_id}>`;
+        }
+        response += `\n\n`;
+      }
+
+      response += `_Use \`approve_feed_proposal\` or \`reject_feed_proposal\` to review._`;
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing feed proposals');
+      return '❌ Failed to list proposals. Please try again.';
+    }
+  });
+
+  // Approve a proposal
+  handlers.set('approve_feed_proposal', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const proposalId = Number(input.proposal_id);
+    const feedName = (input.feed_name as string)?.trim();
+    const feedUrl = (input.feed_url as string)?.trim();
+    const category = input.category as string | undefined;
+
+    if (!Number.isInteger(proposalId) || proposalId <= 0) {
+      return '❌ Proposal ID must be a positive integer.';
+    }
+    if (!feedName) {
+      return '❌ Feed name is required.';
+    }
+    if (!feedUrl) {
+      return '❌ Feed URL is required.';
+    }
+
+    // Validate URL
+    try {
+      new URL(feedUrl);
+    } catch {
+      return `❌ Invalid feed URL: ${feedUrl}`;
+    }
+
+    // Check for duplicates
+    try {
+      const similarFeeds = await findSimilarFeeds(feedUrl);
+      if (similarFeeds.length > 0) {
+        let response = `⚠️ Cannot approve - similar feed already exists:\n\n`;
+        for (const existing of similarFeeds) {
+          response += `**${existing.name}** (ID: ${existing.id})\n`;
+          response += `URL: ${existing.feed_url}\n\n`;
+        }
+        response += `Consider rejecting this proposal as a duplicate.`;
+        return response;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Error checking for duplicates during proposal approval');
+    }
+
+    try {
+      const workosUserId = memberContext?.workos_user?.workos_user_id || 'unknown';
+      const { proposal, feed } = await approveProposal(
+        proposalId,
+        workosUserId,
+        feedName,
+        feedUrl,
+        category
+      );
+
+      let response = `✅ **Proposal #${proposalId} approved!**\n\n`;
+      response += `**Feed created:** ${feedName} (ID: ${feed.id})\n`;
+      response += `**URL:** ${feedUrl}\n`;
+      if (category) response += `**Category:** ${category}\n`;
+      response += `\n_The feed will be fetched on the next scheduled run._`;
+
+      logger.info({ proposalId, feedId: feed.id, feedName }, 'Feed proposal approved');
+      return response;
+    } catch (error) {
+      logger.error({ error, proposalId }, 'Error approving proposal');
+      if (error instanceof Error && error.message.includes('duplicate')) {
+        return `❌ A feed with this URL already exists.`;
+      }
+      return '❌ Failed to approve proposal. Please try again.';
+    }
+  });
+
+  // Reject a proposal
+  handlers.set('reject_feed_proposal', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const proposalId = Number(input.proposal_id);
+    const reason = input.reason as string | undefined;
+
+    if (!Number.isInteger(proposalId) || proposalId <= 0) {
+      return '❌ Proposal ID must be a positive integer.';
+    }
+
+    try {
+      const workosUserId = memberContext?.workos_user?.workos_user_id || 'unknown';
+      const proposal = await rejectProposal(proposalId, workosUserId, reason);
+
+      let response = `✅ **Proposal #${proposalId} rejected.**\n`;
+      if (reason) response += `**Reason:** ${reason}\n`;
+
+      logger.info({ proposalId, reason }, 'Feed proposal rejected');
+      return response;
+    } catch (error) {
+      logger.error({ error, proposalId }, 'Error rejecting proposal');
+      return '❌ Failed to reject proposal. Please try again.';
     }
   });
 
