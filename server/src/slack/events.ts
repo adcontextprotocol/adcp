@@ -210,11 +210,11 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Only auto-add for chapters and event groups
-    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'event') {
+    // Only auto-add for chapters and industry gathering groups
+    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'industry_gathering') {
       logger.debug(
         { workingGroupId: workingGroup.id, type: workingGroup.committee_type },
-        'Skipping auto-add: not a chapter or event group'
+        'Skipping auto-add: not a chapter or industry gathering'
       );
       return;
     }
@@ -229,8 +229,8 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Add to working group with interest tracking for event groups
-    const interestLevel = workingGroup.committee_type === 'event' ? 'interested' : undefined;
+    // Add to working group with interest tracking for industry gathering groups
+    const interestLevel = workingGroup.committee_type === 'industry_gathering' ? 'interested' : undefined;
     const interestSource = 'slack_join';
 
     await workingGroupDb.addMembershipWithInterest({

@@ -354,9 +354,9 @@ export async function syncUserToChaptersFromSlackChannels(
     // Get all chapters/events that have Slack channels configured
     const workingGroups = await workingGroupDb.listWorkingGroupsWithSlackChannel();
 
-    // Filter to only chapters and events (groups that auto-add members)
+    // Filter to only chapters and industry gatherings (groups that auto-add members)
     const autoAddGroups = workingGroups.filter(
-      wg => wg.committee_type === 'chapter' || wg.committee_type === 'event'
+      wg => wg.committee_type === 'chapter' || wg.committee_type === 'industry_gathering'
     );
 
     // Get user's Slack info for membership record
@@ -388,7 +388,7 @@ export async function syncUserToChaptersFromSlackChannels(
           workos_user_id: workosUserId,
           user_email: slackMapping?.slack_email || undefined,
           user_name: slackMapping?.slack_real_name || slackMapping?.slack_display_name || undefined,
-          interest_level: group.committee_type === 'event' ? 'interested' : undefined,
+          interest_level: group.committee_type === 'industry_gathering' ? 'interested' : undefined,
           interest_source: 'slack_join',
         });
 
