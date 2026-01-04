@@ -29,17 +29,45 @@ function injectJoinCtaStyles() {
       gap: var(--space-6);
     }
 
+    .join-cta-grid--three {
+      grid-template-columns: repeat(3, 1fr);
+      max-width: var(--container-xl);
+      margin: 0 auto;
+    }
+
     .join-cta-card {
       background: var(--color-bg-card);
       border-radius: var(--radius-lg);
       padding: var(--space-6);
       border: 3px solid var(--color-border);
       transition: var(--transition-all);
+      position: relative;
     }
 
     .join-cta-card:hover {
       border-color: var(--aao-primary);
       box-shadow: var(--shadow-lg);
+    }
+
+    .join-cta-card--featured {
+      border-color: var(--aao-primary);
+      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-bg-card) 100%);
+    }
+
+    .join-cta-featured-badge {
+      position: absolute;
+      top: calc(-1 * var(--space-3));
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--aao-primary);
+      color: white;
+      padding: var(--space-1) var(--space-4);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
     }
 
     .join-cta-card-header {
@@ -153,6 +181,18 @@ function injectJoinCtaStyles() {
       color: var(--color-warning-600);
       font-weight: var(--font-semibold);
       font-size: var(--text-sm);
+    }
+
+    .join-cta-custom-packages {
+      text-align: center;
+      margin-top: var(--space-4);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+
+    .join-cta-custom-packages a {
+      color: var(--aao-primary);
+      font-weight: var(--font-medium);
     }
 
     .join-cta-contact {
@@ -382,9 +422,20 @@ function injectJoinCtaStyles() {
       min-width: 160px;
     }
 
+    @media (max-width: 1024px) {
+      .join-cta-grid--three {
+        grid-template-columns: 1fr;
+        max-width: var(--container-sm);
+      }
+    }
+
     @media (max-width: 768px) {
       .join-cta-grid {
         grid-template-columns: 1fr;
+      }
+
+      .join-cta-grid--three {
+        max-width: 100%;
       }
 
       .join-cta-pricing-amount {
@@ -440,12 +491,14 @@ async function renderJoinCta(options = {}) {
   const products = await fetchBillingProducts();
 
   // Find specific products by lookup key (subscription versions for display)
+  const industryCouncilLeader = products.find(p => p.lookup_key === 'aao_membership_industry_council_leader_50000');
   const corporate5m = products.find(p => p.lookup_key === 'aao_membership_corporate_5m');
   const corporateUnder5m = products.find(p => p.lookup_key === 'aao_membership_corporate_under5m');
   const individual = products.find(p => p.lookup_key === 'aao_membership_individual');
   const individualDiscounted = products.find(p => p.lookup_key === 'aao_membership_individual_discounted');
 
   // Format prices (fallback to defaults if API fails)
+  const priceCouncilLeader = industryCouncilLeader ? formatCurrency(industryCouncilLeader.amount_cents, industryCouncilLeader.currency) : '$50,000';
   const price5m = corporate5m ? formatCurrency(corporate5m.amount_cents, corporate5m.currency) : '$10,000';
   const priceUnder5m = corporateUnder5m ? formatCurrency(corporateUnder5m.amount_cents, corporateUnder5m.currency) : '$2,500';
   const priceIndividual = individual ? formatCurrency(individual.amount_cents, individual.currency) : '$250';
@@ -456,6 +509,14 @@ async function renderJoinCta(options = {}) {
   const isUnder5m = userContext.revenueTier && ['under_1m', '1m_5m'].includes(userContext.revenueTier);
   const isOver5m = userContext.revenueTier && !isUnder5m;
   const showPersonalizedCompanyPrice = userContext.isLoggedIn && !userContext.isPersonal && userContext.revenueTier;
+
+  const industryCouncilBenefits = [
+    'Seat on Industry Council with strategic input on roadmap',
+    'Speaking opportunities at key industry events',
+    'Priority attendance at flagship events',
+    'Featured recognition on website and at events',
+    'All Company Membership benefits included'
+  ];
 
   const companyBenefits = [
     'Eligibility to serve on Board',
@@ -512,8 +573,36 @@ async function renderJoinCta(options = {}) {
     ? { url: '/dashboard/membership', text: 'Complete Membership' }
     : { url: '/auth/signup?return_to=/onboarding?signup=true', text: 'Join as an Individual' };
 
+  // Industry Council Leader is always a high-touch sale - always use mailto
+  const councilLeaderCta = { url: 'mailto:membership@agenticadvertising.org?subject=Industry%20Council%20Leader%20Membership', text: 'Contact Us' };
+
   container.innerHTML = `
-    <div class="join-cta-grid">
+    <div class="join-cta-grid join-cta-grid--three">
+      <!-- Industry Council Leader -->
+      <div class="join-cta-card join-cta-card--featured">
+        <div class="join-cta-featured-badge" aria-hidden="true">Industry Leadership</div>
+        <div class="join-cta-card-header">
+          <div class="join-cta-card-title">Industry Council Leader</div>
+        </div>
+        <div class="join-cta-pricing-tier" style="padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
+          <div class="join-cta-pricing-label">For industry-leading organizations</div>
+          <div class="join-cta-pricing-amount">${priceCouncilLeader}<span class="join-cta-pricing-period">/year</span></div>
+        </div>
+
+        <div class="join-cta-benefits-header">Industry Council Benefits</div>
+        <ul class="join-cta-benefits-list">
+          ${industryCouncilBenefits.map(b => `<li>${b}</li>`).join('')}
+        </ul>
+
+        <div class="join-cta-button-wrapper">
+          <a href="${councilLeaderCta.url}" class="btn btn-primary">${councilLeaderCta.text}</a>
+        </div>
+        <p class="join-cta-invoice-link">
+          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal({ customerType: 'company', selectedProduct: 'aao_membership_industry_council_leader_50000' })">Request an invoice</button>
+        </p>
+        <p class="join-cta-card-footer">For organizations shaping industry direction</p>
+      </div>
+
       <!-- Company Membership -->
       <div class="join-cta-card">
         <div class="join-cta-card-header">
@@ -566,6 +655,10 @@ async function renderJoinCta(options = {}) {
         Founding member pricing available through March 31, 2026
       </p>
     ` : ''}
+
+    <p class="join-cta-custom-packages">
+      Custom membership packages available. <a href="mailto:membership@agenticadvertising.org?subject=Custom%20Membership%20Package">Contact us</a> for more information.
+    </p>
 
     ${showContactLine ? `
       <p class="join-cta-contact">

@@ -80,7 +80,7 @@
     .badge-council { background: var(--color-purple-100, #f3e8ff); color: var(--color-purple-700, #7c3aed); }
     .badge-chapter { background: var(--color-teal-100, #ccfbf1); color: var(--color-teal-700, #0f766e); }
     .badge-governance { background: var(--color-gray-300); color: var(--color-gray-700); }
-    .badge-event { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-industry_gathering { background: var(--color-warning-100); color: var(--color-warning-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -349,7 +349,7 @@
               <option value="council">Industry Councils</option>
               <option value="chapter">Regional Chapters</option>
               <option value="governance">Governance</option>
-              <option value="event">Event Groups</option>
+              <option value="industry_gathering">Industry Gatherings</option>
             </select>
             <select id="statusFilter" onchange="renderGroupsList()">
               <option value="">All Statuses</option>
@@ -411,7 +411,7 @@
 
           <div class="form-group">
             <label>Name</label>
-            <input type="text" id="name" required placeholder="e.g., Protocol Development">
+            <input type="text" id="name" required placeholder="e.g., Protocol Development" oninput="updateGatheringSlug()">
           </div>
 
           <div class="form-row">
@@ -427,7 +427,7 @@
                 <option value="council">Industry Council</option>
                 <option value="chapter">Regional Chapter</option>
                 <option value="governance">Governance</option>
-                <option value="event">Event Group</option>
+                <option value="industry_gathering">Industry Gathering</option>
               </select>
             </div>
           </div>
@@ -445,6 +445,37 @@
               <label>Region</label>
               <input type="text" id="region" placeholder="e.g., New York, London, San Francisco">
               <small>Location for regional chapters</small>
+            </div>
+          </div>
+
+          <!-- Industry Gathering-specific fields -->
+          <div id="gatheringFieldsGroup" style="display: none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" id="gatheringStartDate" onchange="updateGatheringSlug()">
+              </div>
+              <div class="form-group">
+                <label>End Date</label>
+                <input type="date" id="gatheringEndDate">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Location</label>
+              <input type="text" id="gatheringLocation" placeholder="e.g., Las Vegas, NV">
+              <small>Where the gathering takes place</small>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Website URL</label>
+                <input type="url" id="gatheringWebsite" placeholder="e.g., https://www.ces.tech/">
+                <small>Official website for the gathering</small>
+              </div>
+              <div class="form-group">
+                <label>Logo URL</label>
+                <input type="url" id="gatheringLogo" placeholder="https://...">
+                <small>Logo image URL (can be fetched from website)</small>
+              </div>
             </div>
           </div>
 
@@ -686,7 +717,7 @@
       council: 'Industry Council',
       chapter: 'Regional Chapter',
       governance: 'Governance',
-      event: 'Event Group'
+      industry_gathering: 'Industry Gathering'
     };
 
     // Render groups list
@@ -725,7 +756,7 @@
         const regionDisplay = committeeType === 'chapter' && group.region
           ? `<span>📍 ${escapeHtml(group.region)}</span>`
           : '';
-        const eventDateDisplay = committeeType === 'event' && group.event_start_date
+        const gatheringDateDisplay = committeeType === 'industry_gathering' && group.event_start_date
           ? `<span>📅 ${new Date(group.event_start_date).toLocaleDateString()}</span>`
           : '';
 
@@ -738,9 +769,9 @@
                 ${statusBadge}
                 ${accessBadge}
                 ${regionDisplay}
-                ${eventDateDisplay}
+                ${gatheringDateDisplay}
                 <span>${group.member_count || 0} members</span>
-                ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || 'Unknown')).join(', ')}</span>` : ''}
+                ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || l.user_id)).join(', ')}</span>` : ''}
               </div>
             </div>
             <div class="group-actions">
@@ -848,10 +879,10 @@
       listDiv.innerHTML = currentLeaders.map(l => `
         <div class="selected-user" style="display: flex; margin-bottom: var(--space-2);">
           <div>
-            <span class="name">${escapeHtml(l.name || 'Unknown')}</span>
+            <span class="name">${escapeHtml(l.name || l.user_id)}</span>
             <span class="org">${l.org_name ? ` (${escapeHtml(l.org_name)})` : ''}</span>
           </div>
-          <span class="clear" onclick="removeLeader('${escapeJs(l.user_id)}')">Remove</span>
+          <button class="btn btn-danger btn-small" onclick="removeLeader('${escapeJs(l.user_id)}')">Remove</button>
         </div>
       `).join('');
     }
@@ -999,11 +1030,52 @@
       }
     }
 
-    // Show/hide region field based on committee type
+    // Show/hide region field and gathering fields based on committee type
     function updateRegionVisibility() {
       const committeeType = document.getElementById('committeeType').value;
       const regionGroup = document.getElementById('regionGroup');
+      const gatheringFieldsGroup = document.getElementById('gatheringFieldsGroup');
+      const slugInput = document.getElementById('slug');
+      const slugHelp = slugInput.nextElementSibling;
+
       regionGroup.style.display = committeeType === 'chapter' ? 'block' : 'none';
+      gatheringFieldsGroup.style.display = committeeType === 'industry_gathering' ? 'block' : 'none';
+
+      // Update slug help text based on type
+      if (committeeType === 'industry_gathering') {
+        slugHelp.textContent = 'URL path: /working-groups/industry-gatherings/{year}/{name}';
+        // Auto-update slug if name is set
+        updateGatheringSlug();
+      } else {
+        slugHelp.textContent = 'URL path: /working-groups/{slug}';
+      }
+    }
+
+    // Generate gathering slug in format industry-gatherings/YYYY/name
+    function updateGatheringSlug() {
+      const committeeType = document.getElementById('committeeType').value;
+      if (committeeType !== 'industry_gathering') return;
+
+      const name = document.getElementById('name').value.trim();
+      const startDate = document.getElementById('gatheringStartDate').value;
+
+      if (!name) return;
+
+      // Get year from start date or current year
+      let year = new Date().getFullYear();
+      if (startDate) {
+        year = new Date(startDate).getFullYear();
+      }
+
+      // Generate slug from name
+      const nameSlug = name.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      const fullSlug = `industry-gatherings/${year}/${nameSlug}`;
+      document.getElementById('slug').value = fullSlug;
     }
 
     // Show create modal
@@ -1014,9 +1086,15 @@
       document.getElementById('groupId').value = '';
       document.getElementById('committeeType').value = 'working_group';
       document.getElementById('region').value = '';
+      // Reset industry gathering fields
+      document.getElementById('gatheringStartDate').value = '';
+      document.getElementById('gatheringEndDate').value = '';
+      document.getElementById('gatheringLocation').value = '';
+      document.getElementById('gatheringWebsite').value = '';
+      document.getElementById('gatheringLogo').value = '';
       clearLeaders();
       validateSlackUrl(); // Reset status message
-      updateRegionVisibility(); // Hide region for non-chapters
+      updateRegionVisibility(); // Hide region for non-chapters, hide gathering fields for non-gatherings
       updateMembersSectionVisibility(); // Hide members section for new groups
       document.getElementById('groupModal').style.display = 'flex';
     }
@@ -1039,6 +1117,12 @@
         document.getElementById('status').value = editingGroup.status || 'active';
         document.getElementById('committeeType').value = editingGroup.committee_type || 'working_group';
         document.getElementById('region').value = editingGroup.region || '';
+        // Industry gathering fields
+        document.getElementById('gatheringStartDate').value = editingGroup.event_start_date ? editingGroup.event_start_date.split('T')[0] : '';
+        document.getElementById('gatheringEndDate').value = editingGroup.event_end_date ? editingGroup.event_end_date.split('T')[0] : '';
+        document.getElementById('gatheringLocation').value = editingGroup.event_location || '';
+        document.getElementById('gatheringWebsite').value = editingGroup.website_url || '';
+        document.getElementById('gatheringLogo').value = editingGroup.logo_url || '';
         updateRegionVisibility();
         document.getElementById('isPrivate').checked = editingGroup.is_private || false;
         document.getElementById('displayOrder').value = editingGroup.display_order || 0;
@@ -1089,6 +1173,7 @@
 
       const id = document.getElementById('groupId').value;
       const committeeType = document.getElementById('committeeType').value;
+      const isGathering = committeeType === 'industry_gathering';
       const data = {
         name: document.getElementById('name').value.trim(),
         slug: document.getElementById('slug').value.trim(),
@@ -1100,6 +1185,12 @@
         is_private: document.getElementById('isPrivate').checked,
         display_order: parseInt(document.getElementById('displayOrder').value) || 0,
         leader_user_ids: currentLeaders.map(l => l.user_id),
+        // Industry gathering-specific fields
+        event_start_date: isGathering ? (document.getElementById('gatheringStartDate').value || null) : null,
+        event_end_date: isGathering ? (document.getElementById('gatheringEndDate').value || null) : null,
+        event_location: isGathering ? (document.getElementById('gatheringLocation').value.trim() || null) : null,
+        website_url: isGathering ? (document.getElementById('gatheringWebsite').value.trim() || null) : null,
+        logo_url: isGathering ? (document.getElementById('gatheringLogo').value.trim() || null) : null,
       };
 
       const saveBtn = document.getElementById('saveBtn');

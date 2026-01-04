@@ -335,11 +335,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     async (req, res) => {
       try {
         const { orgId } = req.params;
-        const { lookup_key } = req.body;
+        const { lookup_key, coupon_id, promotion_code } = req.body;
 
         const pool = getPool();
         const orgResult = await pool.query(
-          `SELECT workos_organization_id, name, is_personal, prospect_contact_email
+          `SELECT workos_organization_id, name, is_personal, prospect_contact_email,
+                  stripe_coupon_id, stripe_promotion_code
            FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         );
@@ -360,7 +361,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         if (!lookup_key) {
           return res.json({
             needs_selection: true,
-            products: products.map(p => ({
+            products: products.map((p) => ({
               lookup_key: p.lookup_key,
               display_name: p.display_name,
               amount_cents: p.amount_cents,
@@ -370,7 +371,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const product = products.find(p => p.lookup_key === lookup_key);
+        const product = products.find((p) => p.lookup_key === lookup_key);
         if (!product) {
           return res.status(400).json({
             error: "Product not found",
@@ -378,7 +379,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        // Determine which coupon/promotion code to use
+        // Priority: explicit parameter > org's saved coupon
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        const effectivePromoCode = promotion_code || org.stripe_promotion_code;
+
+        const baseUrl =
+          process.env.BASE_URL || "https://agenticadvertising.org";
         const session = await createCheckoutSession({
           priceId: product.price_id,
           customerEmail: org.prospect_contact_email || undefined,
@@ -386,12 +393,21 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           cancelUrl: `${baseUrl}/join?payment=cancelled`,
           workosOrganizationId: orgId,
           isPersonalWorkspace: org.is_personal,
+          couponId: effectiveCouponId || undefined,
+          promotionCode: !effectiveCouponId ? effectivePromoCode : undefined,
         });
 
         if (!session) {
           return res.status(500).json({
             error: "Failed to create payment link",
-            message: "Stripe may not be configured",
+            message: "Stripe is not configured. Please contact support.",
+          });
+        }
+
+        if (!session.url) {
+          return res.status(500).json({
+            error: "Failed to create payment link",
+            message: "Stripe session created but no URL returned",
           });
         }
 
@@ -419,9 +435,14 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         });
       } catch (error) {
         logger.error({ err: error }, "Error generating payment link");
+        // Extract meaningful error message from Stripe errors
+        let errorMessage = "Unable to generate payment link";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
         res.status(500).json({
           error: "Internal server error",
-          message: "Unable to generate payment link",
+          message: errorMessage,
         });
       }
     }

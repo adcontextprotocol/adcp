@@ -145,6 +145,14 @@
       font-weight: var(--font-medium);
       color: var(--color-text-heading);
     }
+    .user-name-link {
+      color: var(--color-brand);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .user-name-link:hover {
+      text-decoration: underline;
+    }
     .user-email {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
@@ -1385,10 +1393,15 @@
         const displayEmail = user.email || user.slack_email || '';
         const displayOrg = user.org_name || '';
 
+        // Make name clickable if user has context (reuse contextUserId/contextType from above)
+        const nameHtml = contextUserId
+          ? `<a href="#" class="user-name-link" onclick="showUserContext('${escapeHtml(contextUserId)}', '${contextType}', '${escapeHtml(displayName)}', event); return false;">${escapeHtml(displayName)}</a>`
+          : escapeHtml(displayName);
+
         return `
           <tr>
             <td>
-              <div class="user-name">${escapeHtml(displayName)} ${sourceIcon} ${aaoIcon}</div>
+              <div class="user-name">${nameHtml} ${sourceIcon} ${aaoIcon}</div>
               <div class="user-email">${escapeHtml(displayEmail)}</div>
             </td>
             <td>

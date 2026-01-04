@@ -50,6 +50,10 @@ import {
   createEventToolHandlers,
   canCreateEvents,
 } from './mcp/event-tools.js';
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from './mcp/billing-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
@@ -73,6 +77,12 @@ import {
   extractArticleUrls,
   queueCommunityArticle,
 } from './services/community-articles.js';
+
+/**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
 
 /**
  * Slack attachment type for forwarded messages
@@ -460,6 +470,14 @@ async function createUserScopedTools(
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  // Add billing tools for all users (membership signup assistance)
+  const billingHandlers = createBillingToolHandlers();
+  allTools.push(...BILLING_TOOLS);
+  for (const [name, handler] of billingHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Billing tools enabled');
+
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
 
@@ -586,6 +604,12 @@ async function handleUserMessage({
   // Skip if not a user message
   if (!userId || !messageText) {
     logger.debug('Addie Bolt: Ignoring message event without user or text');
+    return;
+  }
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (userId === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: messageText?.substring(0, 50) }, 'Addie Bolt: Ignoring Slackbot system message');
     return;
   }
 
@@ -1398,6 +1422,13 @@ async function handleDirectMessage(
   }
 
   const userId = event.user;
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (userId === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: event.text?.substring(0, 50) }, 'Addie Bolt: Ignoring Slackbot system message in DM');
+    return;
+  }
+
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.ts;
 

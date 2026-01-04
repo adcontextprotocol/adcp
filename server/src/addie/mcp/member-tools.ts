@@ -57,6 +57,21 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 };
 
 /**
+ * Public test agent credentials.
+ * These are intentionally public and documented for testing purposes.
+ * See: https://adcontextprotocol.org/docs/media-buy/advanced-topics/testing
+ *
+ * The token can be overridden via PUBLIC_TEST_AGENT_TOKEN env var if needed,
+ * but defaults to the documented public token.
+ */
+const PUBLIC_TEST_AGENT = {
+  url: 'https://test-agent.adcontextprotocol.org/mcp',
+  // Default token is documented at https://adcontextprotocol.org/docs/quickstart
+  token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
+  name: 'AdCP Public Test Agent',
+};
+
+/**
  * Known error patterns that indicate bugs in the @adcp/client testing library
  * rather than in the agent being tested.
  *
@@ -1331,8 +1346,8 @@ export function createMemberToolHandlers(
     let authToken = input.auth_token as string | undefined;
 
     // Look up saved token for organization
-    // Users must save agents with save_agent before testing agents that require auth
     let usingSavedToken = false;
+    let usingPublicTestAgent = false;
     const organizationId = memberContext?.organization?.workos_organization_id;
 
     if (!authToken && organizationId) {
@@ -1350,6 +1365,14 @@ export function createMemberToolHandlers(
         // Non-fatal - continue without saved token
         logger.debug({ error, agentUrl }, 'Could not lookup saved token');
       }
+    }
+
+    // Auto-use public credentials for the public test agent.
+    // Comes after saved token lookup so explicit user saves take precedence.
+    if (!authToken && agentUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+      authToken = PUBLIC_TEST_AGENT.token;
+      usingPublicTestAgent = true;
+      logger.info({ agentUrl }, 'Using public test agent credentials');
     }
 
     // Use a realistic default brand manifest that real sales agents will accept
@@ -1416,6 +1439,8 @@ export function createMemberToolHandlers(
       let output = formatTestResults(result);
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
+      } else if (usingPublicTestAgent) {
+        output = `_Using public test agent credentials._\n\n` + output;
       }
 
       // If tests failed, offer to help file a GitHub issue
@@ -1695,37 +1720,32 @@ export function createMemberToolHandlers(
       return 'Your account is not associated with an organization. Please contact support.';
     }
 
-    // Test agent configuration
-    const testAgentUrl = 'https://test-agent.adcontextprotocol.org/mcp';
-    const testAgentToken = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
-    const testAgentName = 'AdCP Public Test Agent';
-
     try {
       // Check if already set up
-      let context = await agentContextDb.getByOrgAndUrl(setupOrgId, testAgentUrl);
+      let context = await agentContextDb.getByOrgAndUrl(setupOrgId, PUBLIC_TEST_AGENT.url);
 
       if (context && context.has_auth_token) {
-        return `✅ The test agent is already set up for your organization!\n\n**Agent:** ${testAgentName}\n**URL:** ${testAgentUrl}\n\nYou can now use \`test_adcp_agent\` to run tests against it.`;
+        return `✅ The test agent is already set up for your organization!\n\n**Agent:** ${PUBLIC_TEST_AGENT.name}\n**URL:** ${PUBLIC_TEST_AGENT.url}\n\nYou can now use \`test_adcp_agent\` to run tests against it.`;
       }
 
       if (context) {
         // Context exists but no token - add the token
-        await agentContextDb.saveAuthToken(context.id, testAgentToken);
+        await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
       } else {
         // Create new context with token
         context = await agentContextDb.create({
           organization_id: setupOrgId,
-          agent_url: testAgentUrl,
-          agent_name: testAgentName,
+          agent_url: PUBLIC_TEST_AGENT.url,
+          agent_name: PUBLIC_TEST_AGENT.name,
           protocol: 'mcp',
           created_by: memberContext.workos_user.workos_user_id,
         });
-        await agentContextDb.saveAuthToken(context.id, testAgentToken);
+        await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
       }
 
       let response = `✅ **Test agent is ready!**\n\n`;
-      response += `**Agent:** ${testAgentName}\n`;
-      response += `**URL:** ${testAgentUrl}\n\n`;
+      response += `**Agent:** ${PUBLIC_TEST_AGENT.name}\n`;
+      response += `**URL:** ${PUBLIC_TEST_AGENT.url}\n\n`;
       response += `You can now:\n`;
       response += `- Run \`test_adcp_agent\` to run the full test suite\n`;
       response += `- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\`\n\n`;

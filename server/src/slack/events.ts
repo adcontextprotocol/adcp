@@ -9,8 +9,12 @@ import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
+import { getPool } from '../db/client.js';
 import type { SlackUser } from './types.js';
 import { getSlackUser, getChannelInfo } from './client.js';
+import { syncUserToChaptersFromSlackChannels } from './sync.js';
+import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
+import { invalidateMemberContextCache } from '../addie/index.js';
 import {
   isAddieReady,
   handleAssistantThreadStarted,
@@ -111,7 +115,7 @@ export interface SlackEventPayload {
 
 /**
  * Handle team_join event - new user joined workspace
- * Auto-adds them to our database for mapping
+ * Auto-adds them to our database and auto-maps by email if they have a web account
  */
 export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
   const user = event.user;
@@ -141,11 +145,81 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
       slack_is_deleted: user.deleted || false,
     });
 
-    // Note: Auto-mapping requires WorkOS lookup which is done via the admin API.
-    // New users will appear as "suggested match" if their email matches an AAO user.
-    logger.info({ email }, 'New Slack user added, may be auto-linked if email matches');
+    // Auto-map by email if they have a web account
+    if (email) {
+      await tryAutoMapByEmail(user.id, email);
+    }
+
+    logger.info({ email }, 'New Slack user added');
   } catch (error) {
     logger.error({ error, userId: user.id }, 'Failed to process team_join event');
+  }
+}
+
+/**
+ * Try to auto-map a Slack user to a web user by email
+ * Maps them if the email matches and neither account is already mapped
+ */
+async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<void> {
+  try {
+    const pool = getPool();
+
+    // Look up the web user by email
+    const result = await pool.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM organization_memberships WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      logger.debug({ email }, 'No web account found for Slack user email');
+      return;
+    }
+
+    const workosUserId = result.rows[0].workos_user_id;
+
+    // Check if this WorkOS user is already mapped to a different Slack user
+    const existingWorkosMapping = await slackDb.getByWorkosUserId(workosUserId);
+    if (existingWorkosMapping) {
+      logger.debug(
+        { email, workosUserId, existingSlackUserId: existingWorkosMapping.slack_user_id },
+        'Web user already mapped to different Slack account'
+      );
+      return;
+    }
+
+    // Check if this Slack user is already mapped (race condition guard)
+    const existingSlackMapping = await slackDb.getBySlackUserId(slackUserId);
+    if (existingSlackMapping?.workos_user_id) {
+      logger.debug(
+        { slackUserId, existingWorkosUserId: existingSlackMapping.workos_user_id },
+        'Slack user already mapped to a web account'
+      );
+      return;
+    }
+
+    // Map the user
+    await slackDb.mapUser({
+      slack_user_id: slackUserId,
+      workos_user_id: workosUserId,
+      mapping_source: 'email_auto',
+    });
+
+    logger.info({ slackUserId, workosUserId, email }, 'Auto-mapped Slack user to web account by email');
+
+    // Sync user to chapters based on their Slack channel memberships
+    const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUserId);
+    if (chapterSyncResult.chapters_joined > 0) {
+      logger.info(
+        { workosUserId, chaptersJoined: chapterSyncResult.chapters_joined },
+        'Auto-synced user to chapters from Slack channels'
+      );
+    }
+
+    // Invalidate caches
+    invalidateUnifiedUsersCache();
+    invalidateMemberContextCache(slackUserId);
+  } catch (error) {
+    logger.error({ error, slackUserId, email }, 'Failed to auto-map Slack user by email');
   }
 }
 
@@ -210,11 +284,11 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Only auto-add for chapters and event groups
-    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'event') {
+    // Only auto-add for chapters and industry gathering groups
+    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'industry_gathering') {
       logger.debug(
         { workingGroupId: workingGroup.id, type: workingGroup.committee_type },
-        'Skipping auto-add: not a chapter or event group'
+        'Skipping auto-add: not a chapter or industry gathering'
       );
       return;
     }
@@ -229,8 +303,8 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Add to working group with interest tracking for event groups
-    const interestLevel = workingGroup.committee_type === 'event' ? 'interested' : undefined;
+    // Add to working group with interest tracking for industry gathering groups
+    const interestLevel = workingGroup.committee_type === 'industry_gathering' ? 'interested' : undefined;
     const interestSource = 'slack_join';
 
     await workingGroupDb.addMembershipWithInterest({

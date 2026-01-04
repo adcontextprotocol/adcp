@@ -218,11 +218,18 @@ export function createPublicBillingRouter(): Router {
 
       // Validate lookup key starts with our prefix
       if (!lookupKey.startsWith("aao_")) {
+        logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
         return res.status(400).json({
           error: "Invalid product",
           message: "Invalid product selection",
         });
       }
+
+      logger.info({
+        lookupKey,
+        companyName,
+        contactEmail,
+      }, 'Invoice request received');
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -374,7 +381,7 @@ export function createPublicBillingRouter(): Router {
         if (!result) {
           return res.status(500).json({
             error: "Failed to create checkout session",
-            message: "Could not create Stripe checkout session. Please try again.",
+            message: "Stripe is not configured. Please contact support.",
           });
         }
 
@@ -395,9 +402,10 @@ export function createPublicBillingRouter(): Router {
         });
       } catch (error) {
         logger.error({ err: error }, "Checkout session creation error");
+        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again.";
         res.status(500).json({
           error: "Failed to create checkout session",
-          message: "An unexpected error occurred. Please try again.",
+          message: errorMessage,
         });
       }
     }

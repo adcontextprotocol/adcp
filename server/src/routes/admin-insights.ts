@@ -37,6 +37,7 @@ import {
   type ActionPriority,
 } from '../db/account-management-db.js';
 import { runMomentumCheck, dryRunMomentumCheck, previewMomentumForUser } from '../addie/jobs/momentum-check.js';
+import { runTaskReminderJob, previewTaskReminders } from '../addie/jobs/task-reminder.js';
 
 const logger = createLogger('admin-insights-routes');
 const insightsDb = new InsightsDatabase();
@@ -854,24 +855,15 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       const userName = user.slack_display_name || user.slack_real_name || 'there';
       let previewMessage: string;
 
-      // If user doesn't need account linking, don't show linking-focused messages
-      if (!needsLinking && variant?.message_template) {
-        previewMessage = `[Account already linked - no outreach needed]\n\nThis user's Slack and AgenticAdvertising.org accounts are already connected. The current goal for Addie is: ${user.goal_name || 'Drive Engagement'}`;
-      } else {
-        previewMessage = variant?.message_template || '[No active outreach variant configured]';
-        previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
-        if (goalQuestion) {
-          previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
-        }
+      // Use the variant's message template (already filtered to exclude linking messages for linked users)
+      previewMessage = variant?.message_template || '[No active outreach variant configured]';
+      previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
+      if (goalQuestion) {
+        previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
       }
 
-      // Check eligibility
-      const baseEligibility = await canContactUser(slackUserId);
-
-      // For already-linked users, override eligibility to indicate no linking outreach needed
-      const eligibility = !needsLinking
-        ? { canContact: false, reason: 'Account already linked - Slack and AAO accounts are connected' }
-        : baseEligibility;
+      // Check eligibility - use standard checks for all users (linked or not)
+      const eligibility = await canContactUser(slackUserId);
 
       res.json({
         user: {
@@ -1122,6 +1114,33 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       if (error instanceof Error && error.message.includes('not found')) {
         return res.status(404).json({ error: error.message });
       }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/task-reminders/run - Run task reminder job
+  apiRouter.post('/task-reminders/run', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { includeTomorrow, dryRun, forceResend } = req.body;
+      const result = await runTaskReminderJob({
+        includeTomorrow: includeTomorrow === true,
+        dryRun: dryRun === true,
+        forceResend: forceResend === true,
+      });
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, 'Error running task reminder job');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/task-reminders/preview - Preview what reminders would be sent
+  apiRouter.get('/task-reminders/preview', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await previewTaskReminders();
+      res.json({ batches: result });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing task reminders');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

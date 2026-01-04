@@ -69,6 +69,7 @@
           { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Member Profile', icon: '🏢', anchor: 'profile' },
           { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
           { href: isDashboardPage ? '#working-groups' : '/dashboard#working-groups', label: 'Working Groups', icon: '🏛️', anchor: 'working-groups' },
+          { href: isDashboardPage ? '#leadership' : '/dashboard#leadership', label: 'Leadership', icon: '👔', anchor: 'leadership', hidden: true, id: 'leadershipNavItem' },
           { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
         ]
       },
@@ -443,8 +444,10 @@
                     (item.href !== '/dashboard' && currentPath.startsWith(item.href));
         }
         const activeClass = isActive ? 'active' : '';
+        const hiddenStyle = item.hidden ? ' style="display: none;"' : '';
+        const idAttr = item.id ? ` id="${item.id}"` : '';
         return `
-          <a href="${item.href}" class="dashboard-nav-item ${activeClass}" ${item.anchor ? `data-anchor="${item.anchor}"` : ''}>
+          <a href="${item.href}" class="dashboard-nav-item ${activeClass}"${idAttr} ${item.anchor ? `data-anchor="${item.anchor}"` : ''}${hiddenStyle}>
             <span class="dashboard-nav-icon">${item.icon}</span>
             <span>${item.label}</span>
           </a>
@@ -696,6 +699,14 @@
     });
   }
 
+  // Show/hide leadership nav item based on whether user leads any committees
+  function showLeadershipNav(show) {
+    const leadershipNavItem = document.getElementById('leadershipNavItem');
+    if (leadershipNavItem) {
+      leadershipNavItem.style.display = show ? 'flex' : 'none';
+    }
+  }
+
   // Export API
   window.DashboardNav = {
     config: NAV_CONFIG,
@@ -708,6 +719,7 @@
     setOrgStatus,
     setOrgOptions,
     selectOrg,
-    showAdminLink
+    showAdminLink,
+    showLeadershipNav
   };
 })();

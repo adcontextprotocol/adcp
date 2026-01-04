@@ -663,7 +663,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }
 
       // Add feedback to message using unified service
-      await threadService.addMessageFeedback(message_id, {
+      const updated = await threadService.addMessageFeedback(message_id, {
         rating,
         rating_category: rating_category || undefined,
         rating_notes: feedback_text || undefined,
@@ -672,6 +672,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         rated_by: req.user?.id || "anonymous",
         rating_source: 'user',
       });
+
+      if (!updated) {
+        logger.warn({ conversationId, message_id }, "Addie Chat: Message not found for feedback");
+        return res.status(404).json({ error: "Message not found" });
+      }
 
       logger.info(
         { conversationId, message_id, rating, rating_category },

@@ -65,6 +65,7 @@ import {
 import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
 import { workos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
+import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -1205,6 +1206,112 @@ Returns a combined list prioritizing unmapped domains (already engaged) over ext
       required: [],
     },
   },
+  {
+    name: 'set_reminder',
+    description: `Set a reminder/next step for a prospect.
+
+USE THIS when an admin says:
+- "Remind me to follow up with [company] next week"
+- "Set a reminder for [company] on Tuesday"
+- "I need to call [company] in 3 days"
+- "Schedule a follow-up with [company]"
+
+Creates an activity with a due date that will show up in my_upcoming_tasks and my_followups_needed.`,
+    usage_hints: 'Use when the admin wants to schedule a future follow-up.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: {
+          type: 'string',
+          description: 'Company name to set reminder for',
+        },
+        org_id: {
+          type: 'string',
+          description: 'Organization ID (alternative to company_name)',
+        },
+        reminder: {
+          type: 'string',
+          description: 'What needs to be done (e.g., "Follow up on membership interest", "Send pricing info")',
+        },
+        due_date: {
+          type: 'string',
+          description: 'When the reminder is due (e.g., "2024-01-15", "next Monday", "in 3 days")',
+        },
+      },
+      required: ['reminder', 'due_date'],
+    },
+  },
+  {
+    name: 'my_upcoming_tasks',
+    description: `List your upcoming tasks and reminders for the next period.
+
+USE THIS when an admin asks:
+- "What's on my plate this week?"
+- "Show me my upcoming tasks"
+- "What do I have coming up?"
+- "What reminders do I have?"
+
+Unlike my_followups_needed (which shows overdue/stale), this shows FUTURE tasks you've scheduled.`,
+    usage_hints: 'Use for planning and seeing what you have scheduled.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days_ahead: {
+          type: 'number',
+          description: 'How many days ahead to look (default: 7)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'log_conversation',
+    description: `Log a conversation or interaction with a prospect/member.
+
+USE THIS when an admin says:
+- "I just talked to [person/company]"
+- "Had a call with [company] - they said..."
+- "Spoke with [person] about membership"
+- "DMd [person] and they're interested"
+- "Just got off a call with [company]"
+
+This logs the interaction, analyzes it for learnings, and automatically:
+- Updates any pending tasks (completes them if the interaction addressed them)
+- Creates new follow-up tasks if mentioned
+- Extracts and stores learnings about the contact/company`,
+    usage_hints: 'Use when admin reports having an interaction.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: {
+          type: 'string',
+          description: 'Company name',
+        },
+        org_id: {
+          type: 'string',
+          description: 'Organization ID (alternative to company_name)',
+        },
+        contact_name: {
+          type: 'string',
+          description: 'Name of the person they spoke with (optional)',
+        },
+        channel: {
+          type: 'string',
+          enum: ['call', 'video', 'slack_dm', 'email', 'in_person', 'other'],
+          description: 'How the interaction happened',
+        },
+        summary: {
+          type: 'string',
+          description: 'Summary of what was discussed (from the admin)',
+        },
+      },
+      required: ['summary'],
+    },
+  },
 ];
 
 /**
@@ -1706,6 +1813,26 @@ export function createAdminToolHandlers(
     if (contactEmail) response += `**Email:** ${contactEmail}\n`;
     response += `**Status:** ${org.prospect_status}\n`;
     response += `**ID:** ${org.workos_organization_id}\n`;
+
+    // Auto-claim ownership for the user who added the prospect
+    const userId = memberContext?.workos_user?.workos_user_id;
+    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userEmail = memberContext?.workos_user?.email;
+
+    if (userId && userEmail) {
+      try {
+        const pool = getPool();
+        await pool.query(`
+          INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
+          VALUES ($1, $2, $3, $4, 'owner', $5)
+          ON CONFLICT (organization_id, user_id)
+          DO UPDATE SET role = 'owner', updated_at = NOW()
+        `, [org.workos_organization_id, userId, userName, userEmail, `Auto-assigned when created via Addie on ${new Date().toLocaleDateString()}`]);
+        response += `**Owner:** ${userName} (you)\n`;
+      } catch (error) {
+        logger.warn({ error, orgId: org.workos_organization_id, userId }, 'Failed to auto-claim prospect ownership');
+      }
+    }
 
     if (domain && isLushaConfigured()) {
       response += `\n_Enriching company data in background..._`;
@@ -4267,8 +4394,8 @@ export function createAdminToolHandlers(
             o.email_domain,
             o.engagement_score,
             o.prospect_status,
-            o.next_step,
-            o.next_step_due_date,
+            o.prospect_next_action,
+            o.prospect_next_action_date,
             (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
             EXTRACT(DAY FROM NOW() - COALESCE(
               (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
@@ -4283,12 +4410,12 @@ export function createAdminToolHandlers(
         )
         SELECT *,
           CASE
-            WHEN next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE THEN 1
+            WHEN prospect_next_action_date IS NOT NULL AND prospect_next_action_date < CURRENT_DATE THEN 1
             WHEN days_since_activity >= $2 THEN 2
             ELSE 3
           END as urgency
         FROM prospect_activity
-        WHERE (next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE)
+        WHERE (prospect_next_action_date IS NOT NULL AND prospect_next_action_date < CURRENT_DATE)
            OR days_since_activity >= $2
         ORDER BY urgency, days_since_activity DESC NULLS LAST
         LIMIT $3
@@ -4304,12 +4431,12 @@ export function createAdminToolHandlers(
       let staleCount = 0;
 
       for (const row of result.rows) {
-        const isOverdue = row.next_step_due_date && new Date(row.next_step_due_date) < new Date();
+        const isOverdue = row.prospect_next_action_date && new Date(row.prospect_next_action_date) < new Date();
         if (isOverdue) {
           overdueCount++;
           response += `⚠️ **${row.name}** - OVERDUE\n`;
-          response += `   Next step: ${row.next_step || 'Not set'}\n`;
-          response += `   Due: ${new Date(row.next_step_due_date).toLocaleDateString()}\n`;
+          response += `   Next step: ${row.prospect_next_action || 'Not set'}\n`;
+          response += `   Due: ${new Date(row.prospect_next_action_date).toLocaleDateString()}\n`;
         } else {
           staleCount++;
           response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
@@ -4589,6 +4716,429 @@ export function createAdminToolHandlers(
     response += `Use \`add_prospect\` to add any company to the prospect list.`;
 
     return response;
+  });
+
+  // Set reminder - create a next step/reminder for a prospect
+  handlers.set('set_reminder', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    let orgId = input.org_id as string;
+    const companyName = input.company_name as string;
+    const reminder = input.reminder as string;
+    const dueDateInput = input.due_date as string;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    if (!orgId && !companyName) {
+      return '❌ Please provide either org_id or company_name.';
+    }
+
+    if (!reminder) {
+      return '❌ Please provide a reminder description.';
+    }
+
+    if (!dueDateInput) {
+      return '❌ Please provide a due date.';
+    }
+
+    // Parse the due date
+    let dueDate: Date;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const lowerInput = dueDateInput.toLowerCase().trim();
+
+    if (lowerInput === 'today') {
+      dueDate = today;
+    } else if (lowerInput === 'tomorrow') {
+      dueDate = new Date(today);
+      dueDate.setDate(dueDate.getDate() + 1);
+    } else if (lowerInput.startsWith('next ')) {
+      const dayName = lowerInput.replace('next ', '');
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const targetDay = days.indexOf(dayName);
+      if (targetDay === -1) {
+        return `❌ Could not parse day name: "${dayName}". Try "next monday", "next tuesday", etc.`;
+      }
+      dueDate = new Date(today);
+      const currentDay = dueDate.getDay();
+      let daysUntil = targetDay - currentDay;
+      if (daysUntil <= 0) daysUntil += 7;
+      dueDate.setDate(dueDate.getDate() + daysUntil);
+    } else if (lowerInput.match(/^in (\d+) days?$/)) {
+      const match = lowerInput.match(/^in (\d+) days?$/);
+      const numDays = parseInt(match![1], 10);
+      dueDate = new Date(today);
+      dueDate.setDate(dueDate.getDate() + numDays);
+    } else if (lowerInput.match(/^in (\d+) weeks?$/)) {
+      const match = lowerInput.match(/^in (\d+) weeks?$/);
+      const numWeeks = parseInt(match![1], 10);
+      dueDate = new Date(today);
+      dueDate.setDate(dueDate.getDate() + numWeeks * 7);
+    } else {
+      // Try parsing as a date
+      dueDate = new Date(dueDateInput);
+      if (isNaN(dueDate.getTime())) {
+        return `❌ Could not parse date: "${dueDateInput}". Try "tomorrow", "next Monday", "in 3 days", or "2024-01-15".`;
+      }
+    }
+
+    try {
+      // Look up org by name if no ID provided
+      if (!orgId && companyName) {
+        // Escape LIKE pattern special characters (% and _)
+        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const searchResult = await pool.query(`
+          SELECT workos_organization_id, name
+          FROM organizations
+          WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
+            AND is_personal IS NOT TRUE
+          ORDER BY
+            CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
+            engagement_score DESC NULLS LAST
+          LIMIT 1
+        `, [`%${escapedName}%`, companyName]);
+
+        if (searchResult.rows.length === 0) {
+          return `❌ No organization found matching "${companyName}". Try adding them as a prospect first.`;
+        }
+
+        orgId = searchResult.rows[0].workos_organization_id;
+      }
+
+      // Get org name for confirmation
+      const orgResult = await pool.query(`
+        SELECT name FROM organizations WHERE workos_organization_id = $1
+      `, [orgId]);
+
+      if (orgResult.rows.length === 0) {
+        return `❌ Organization not found.`;
+      }
+
+      const orgName = orgResult.rows[0].name;
+
+      // Create the activity with next step
+      await pool.query(`
+        INSERT INTO org_activities (
+          organization_id,
+          activity_type,
+          description,
+          logged_by_user_id,
+          logged_by_name,
+          activity_date,
+          is_next_step,
+          next_step_due_date,
+          next_step_owner_user_id,
+          next_step_owner_name
+        ) VALUES ($1, 'reminder', $2, $3, $4, NOW(), true, $5, $3, $4)
+      `, [orgId, reminder, userId, userName, dueDate.toISOString().split('T')[0]]);
+
+      // Also update the org's prospect_next_action fields for quick lookup
+      await pool.query(`
+        UPDATE organizations
+        SET prospect_next_action = $2, prospect_next_action_date = $3, updated_at = NOW()
+        WHERE workos_organization_id = $1
+      `, [orgId, reminder, dueDate.toISOString().split('T')[0]]);
+
+      const formattedDate = dueDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      return `✅ Reminder set for **${orgName}**!\n\n📝 ${reminder}\n📅 Due: ${formattedDate}`;
+    } catch (error) {
+      logger.error({ error, orgId, userId }, 'Error setting reminder');
+      return '❌ Failed to set reminder. Please try again.';
+    }
+  });
+
+  // My upcoming tasks - list future scheduled tasks
+  handlers.set('my_upcoming_tasks', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 20, 50);
+    const daysAhead = (input.days_ahead as number) || 7;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      // Query upcoming tasks from org_activities
+      const result = await pool.query(`
+        SELECT
+          oa.id,
+          oa.description,
+          oa.next_step_due_date,
+          oa.activity_type,
+          o.name as org_name,
+          o.workos_organization_id as org_id,
+          o.engagement_score
+        FROM org_activities oa
+        JOIN organizations o ON o.workos_organization_id = oa.organization_id
+        WHERE oa.is_next_step = TRUE
+          AND oa.next_step_completed_at IS NULL
+          AND oa.next_step_owner_user_id = $1
+          AND oa.next_step_due_date >= CURRENT_DATE
+          AND oa.next_step_due_date <= CURRENT_DATE + $2::INTEGER
+        ORDER BY oa.next_step_due_date ASC
+        LIMIT $3
+      `, [userId, daysAhead, limit]);
+
+      // Also check for tasks based on org ownership (from prospect_next_action on organizations table)
+      const orgTasks = await pool.query(`
+        SELECT
+          o.prospect_next_action as description,
+          o.prospect_next_action_date,
+          o.name as org_name,
+          o.workos_organization_id as org_id,
+          o.engagement_score
+        FROM organizations o
+        JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+        WHERE os.user_id = $1
+          AND os.role = 'owner'
+          AND o.prospect_next_action IS NOT NULL
+          AND o.prospect_next_action_date >= CURRENT_DATE
+          AND o.prospect_next_action_date <= CURRENT_DATE + $2::INTEGER
+          AND o.is_personal IS NOT TRUE
+        ORDER BY o.prospect_next_action_date ASC
+        LIMIT $3
+      `, [userId, daysAhead, limit]);
+
+      // Combine and dedupe by org_id (prefer activity-based tasks)
+      const seenOrgs = new Set<string>();
+      const allTasks: Array<{
+        description: string;
+        due_date: Date;
+        org_name: string;
+        org_id: string;
+        engagement_score: number;
+      }> = [];
+
+      for (const row of result.rows) {
+        seenOrgs.add(row.org_id);
+        allTasks.push({
+          description: row.description,
+          due_date: new Date(row.next_step_due_date),
+          org_name: row.org_name,
+          org_id: row.org_id,
+          engagement_score: row.engagement_score || 0,
+        });
+      }
+
+      for (const row of orgTasks.rows) {
+        if (!seenOrgs.has(row.org_id)) {
+          allTasks.push({
+            description: row.description,
+            due_date: new Date(row.prospect_next_action_date),
+            org_name: row.org_name,
+            org_id: row.org_id,
+            engagement_score: row.engagement_score || 0,
+          });
+        }
+      }
+
+      // Sort by date
+      allTasks.sort((a, b) => a.due_date.getTime() - b.due_date.getTime());
+
+      if (allTasks.length === 0) {
+        return `📅 No upcoming tasks in the next ${daysAhead} day(s).\n\nUse \`set_reminder\` to schedule follow-ups for your prospects.`;
+      }
+
+      let response = `## Upcoming Tasks (Next ${daysAhead} Days)\n\n`;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      let currentDateStr = '';
+      for (const task of allTasks.slice(0, limit)) {
+        const dateStr = task.due_date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+        if (dateStr !== currentDateStr) {
+          currentDateStr = dateStr;
+          const isToday = task.due_date.getTime() === today.getTime();
+          const isTomorrow = task.due_date.getTime() === today.getTime() + 86400000;
+          let label = dateStr;
+          if (isToday) label = `📌 Today (${dateStr})`;
+          else if (isTomorrow) label = `📅 Tomorrow (${dateStr})`;
+          else label = `📅 ${dateStr}`;
+          response += `\n### ${label}\n`;
+        }
+
+        const hotEmoji = task.engagement_score >= 30 ? ' 🔥' : '';
+        response += `• **${task.org_name}**${hotEmoji}: ${task.description}\n`;
+      }
+
+      response += `\n---\n`;
+      response += `${allTasks.length} task(s) scheduled`;
+      if (allTasks.length > limit) {
+        response += ` (showing first ${limit})`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, userId }, 'Error fetching upcoming tasks');
+      return '❌ Failed to fetch upcoming tasks. Please try again.';
+    }
+  });
+
+  // Log conversation - record an interaction and analyze for task management
+  handlers.set('log_conversation', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    let orgId = input.org_id as string | undefined;
+    const companyName = input.company_name as string | undefined;
+    const contactName = input.contact_name as string | undefined;
+    const channel = (input.channel as string) || 'other';
+    const summary = input.summary as string;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    if (!summary) {
+      return '❌ Please provide a summary of the conversation.';
+    }
+
+    try {
+      // Look up org by name if no ID provided
+      let orgName: string | undefined;
+
+      if (!orgId && companyName) {
+        // Escape LIKE pattern special characters (% and _)
+        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const searchResult = await pool.query(`
+          SELECT workos_organization_id, name
+          FROM organizations
+          WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
+            AND is_personal IS NOT TRUE
+          ORDER BY
+            CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
+            engagement_score DESC NULLS LAST
+          LIMIT 1
+        `, [`%${escapedName}%`, companyName]);
+
+        if (searchResult.rows.length > 0) {
+          orgId = searchResult.rows[0].workos_organization_id;
+          orgName = searchResult.rows[0].name;
+        }
+      } else if (orgId) {
+        const orgResult = await pool.query(`
+          SELECT name FROM organizations WHERE workos_organization_id = $1
+        `, [orgId]);
+        orgName = orgResult.rows[0]?.name;
+      }
+
+      // Log the activity
+      const activityType = channel === 'call' || channel === 'video' ? 'call' :
+                          channel === 'email' ? 'email' :
+                          channel === 'in_person' ? 'meeting' : 'note';
+
+      if (orgId) {
+        await pool.query(`
+          INSERT INTO org_activities (
+            organization_id,
+            activity_type,
+            description,
+            logged_by_user_id,
+            logged_by_name,
+            activity_date,
+            metadata
+          ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+        `, [
+          orgId,
+          activityType,
+          summary,
+          userId,
+          userName,
+          JSON.stringify({ channel, contact_name: contactName }),
+        ]);
+      }
+
+      // Analyze the interaction for task management
+      const interactionContext: InteractionContext = {
+        content: summary,
+        channel: channel === 'slack_dm' ? 'slack_dm' : channel === 'email' ? 'email' : 'slack_channel',
+        direction: 'outbound',
+        organizationId: orgId,
+        organizationName: orgName,
+        contactName,
+        adminUserId: userId,
+        adminName: userName,
+      };
+
+      const analysisResult = await processInteraction(interactionContext);
+
+      // Build response
+      let response = `✅ Logged ${activityType}`;
+      if (orgName) {
+        response += ` with **${orgName}**`;
+      }
+      if (contactName) {
+        response += ` (${contactName})`;
+      }
+      response += `\n\n`;
+
+      // Report task actions
+      if (analysisResult?.actionsApplied) {
+        const { completed, rescheduled, created } = analysisResult.actionsApplied;
+
+        if (completed > 0) {
+          response += `✓ Auto-completed ${completed} task${completed > 1 ? 's' : ''}\n`;
+        }
+        if (rescheduled > 0) {
+          response += `📅 Rescheduled ${rescheduled} task${rescheduled > 1 ? 's' : ''}\n`;
+        }
+        if (created > 0) {
+          response += `📝 Created ${created} new follow-up${created > 1 ? 's' : ''}\n`;
+        }
+      }
+
+      // Report learnings if any
+      if (analysisResult?.analysis?.learnings) {
+        const learnings = analysisResult.analysis.learnings;
+        const hasLearnings = learnings.interests?.length ||
+                            learnings.concerns?.length ||
+                            learnings.decisionTimeline ||
+                            learnings.budget ||
+                            learnings.otherNotes;
+
+        if (hasLearnings) {
+          response += `\n**Learnings captured:**\n`;
+          if (learnings.interests?.length) {
+            response += `• Interests: ${learnings.interests.join(', ')}\n`;
+          }
+          if (learnings.concerns?.length) {
+            response += `• Concerns: ${learnings.concerns.join(', ')}\n`;
+          }
+          if (learnings.decisionTimeline) {
+            response += `• Timeline: ${learnings.decisionTimeline}\n`;
+          }
+          if (learnings.budget) {
+            response += `• Budget: ${learnings.budget}\n`;
+          }
+          if (learnings.otherNotes) {
+            response += `• Notes: ${learnings.otherNotes}\n`;
+          }
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, userId }, 'Error logging conversation');
+      return '❌ Failed to log conversation. Please try again.';
+    }
   });
 
   return handlers;
