@@ -566,6 +566,8 @@ export interface EmailThreadContext {
   to: string[]; // Original TO recipients
   cc?: string[]; // Original CC recipients
   replyTo?: string; // Reply-To header if present
+  originalText?: string; // Original email text for quoting
+  originalDate?: Date; // When the original was sent
 }
 
 /**
@@ -643,6 +645,48 @@ export async function sendEmailReply(data: {
     data.threadContext.messageId,
   ].filter(Boolean).join(' ');
 
+  // Build quoted original message if available
+  let quotedHtml = '';
+  let quotedText = '';
+  if (data.threadContext.originalText) {
+    const senderName = data.threadContext.from.replace(/<.*>/, '').trim() || data.threadContext.from;
+    const dateStr = data.threadContext.originalDate
+      ? data.threadContext.originalDate.toLocaleDateString('en-US', {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : '';
+
+    // Build attribution line (with or without date)
+    const attribution = dateStr ? `On ${dateStr}, ${senderName} wrote:` : `${senderName} wrote:`;
+
+    // Truncate quoted text to keep emails reasonable
+    const truncatedOriginal = data.threadContext.originalText.substring(0, 2000);
+    const escapedOriginal = truncatedOriginal
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+
+    quotedHtml = `
+  <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e5e5;">
+    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+      ${attribution}
+    </p>
+    <blockquote style="margin: 0; padding-left: 15px; border-left: 3px solid #e5e5e5; color: #666; font-size: 14px;">
+      ${escapedOriginal}
+    </blockquote>
+  </div>`;
+
+    // Build text version with > quoting
+    const quotedLines = truncatedOriginal.split('\n').map(line => `> ${line}`).join('\n');
+    quotedText = `\n\n${attribution}\n${quotedLines}`;
+  }
+
   try {
     const { data: sendData, error } = await resend.emails.send({
       from,
@@ -663,6 +707,7 @@ export async function sendEmailReply(data: {
   <p style="font-size: 12px; color: #666;">
     Addie is the AI assistant for <a href="https://agenticadvertising.org" style="color: #2563eb;">AgenticAdvertising.org</a>
   </p>
+  ${quotedHtml}
 </body>
 </html>
       `.trim(),
@@ -670,7 +715,7 @@ export async function sendEmailReply(data: {
 
 ---
 Addie is the AI assistant for AgenticAdvertising.org
-https://agenticadvertising.org`,
+https://agenticadvertising.org${quotedText}`,
       headers: {
         'In-Reply-To': data.threadContext.messageId,
         ...(references && { References: references }),
