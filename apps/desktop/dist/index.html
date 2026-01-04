@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Addie</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --color-brand: #667eea;
+      --color-brand-dark: #5a67d8;
+      --color-bg: #ffffff;
+      --color-bg-secondary: #f7fafc;
+      --color-text: #1a202c;
+      --color-text-secondary: #718096;
+      --color-border: #e2e8f0;
+      --color-success: #48bb78;
+      --color-error: #f56565;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-bg: #1a202c;
+        --color-bg-secondary: #2d3748;
+        --color-text: #f7fafc;
+        --color-text-secondary: #a0aec0;
+        --color-border: #4a5568;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+      -webkit-app-region: drag;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .header-btn {
+      background: none;
+      border: none;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .header-btn:hover {
+      background: var(--color-border);
+      color: var(--color-text);
+    }
+
+    /* Login screen */
+    .login-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .login-screen h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .login-screen p {
+      color: var(--color-text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .login-btn {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      padding: 12px 32px;
+      border-radius: var(--radius);
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .login-btn:hover {
+      background: var(--color-brand-dark);
+    }
+
+    /* Chat container */
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .message {
+      max-width: 80%;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      line-height: 1.5;
+    }
+
+    .message.user {
+      background: var(--color-brand);
+      color: white;
+      margin-left: auto;
+    }
+
+    .message.assistant {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+    }
+
+    .message pre {
+      background: rgba(0,0,0,0.1);
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+
+    .message code {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+    }
+
+    /* Input area */
+    .input-area {
+      padding: 16px;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      gap: 8px;
+    }
+
+    .input-area textarea {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      resize: none;
+      font-family: inherit;
+      font-size: 14px;
+      background: var(--color-bg);
+      color: var(--color-text);
+      min-height: 44px;
+      max-height: 120px;
+    }
+
+    .input-area textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    .send-btn {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      padding: 0 20px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .send-btn:hover {
+      background: var(--color-brand-dark);
+    }
+
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Loading indicator */
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 12px 16px;
+    }
+
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: var(--color-text-secondary);
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+
+    /* User info */
+    .user-info {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Hidden state */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 16v-4M12 8h.01"/>
+      </svg>
+      Addie
+    </h1>
+    <div class="header-actions">
+      <span id="userInfo" class="user-info"></span>
+      <button id="logoutBtn" class="header-btn hidden">Logout</button>
+    </div>
+  </div>
+
+  <!-- Login screen -->
+  <div id="loginScreen" class="login-screen">
+    <h2>Welcome to Addie</h2>
+    <p>Sign in with your AgenticAdvertising.org account to chat with Addie.</p>
+    <button id="loginBtn" class="login-btn">Sign In</button>
+  </div>
+
+  <!-- Chat interface -->
+  <div id="chatContainer" class="chat-container hidden">
+    <div id="messages" class="messages"></div>
+    <div class="input-area">
+      <textarea id="messageInput" placeholder="Ask Addie anything..." rows="1"></textarea>
+      <button id="sendBtn" class="send-btn">Send</button>
+    </div>
+  </div>
+
+  <script>
+    // Tauri 2.0 API structure
+    const { invoke } = window.__TAURI__.core;
+    const { listen } = window.__TAURI__.event;
+
+    // Configuration
+    const API_BASE = 'https://agenticadvertising.org';
+
+    // State
+    let conversationId = null;
+    let sessionToken = null;
+    let isLoading = false;
+
+    // Elements
+    const loginScreen = document.getElementById('loginScreen');
+    const chatContainer = document.getElementById('chatContainer');
+    const messages = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userInfo = document.getElementById('userInfo');
+
+    // Initialize
+    async function init() {
+      // Check authentication state
+      const authState = await invoke('get_auth_state');
+
+      if (authState.is_authenticated) {
+        showChat(authState.user);
+      } else {
+        showLogin();
+      }
+
+      // Listen for auth events from Tauri
+      await listen('auth-success', (e) => {
+        showChat(e.payload.user);
+      });
+
+      await listen('auth-error', (e) => {
+        alert('Authentication failed: ' + e.payload);
+      });
+    }
+
+    function showLogin() {
+      loginScreen.classList.remove('hidden');
+      chatContainer.classList.add('hidden');
+      logoutBtn.classList.add('hidden');
+      userInfo.textContent = '';
+    }
+
+    async function showChat(user) {
+      loginScreen.classList.add('hidden');
+      chatContainer.classList.remove('hidden');
+      logoutBtn.classList.remove('hidden');
+
+      const name = user.first_name || user.email.split('@')[0];
+      userInfo.textContent = name;
+
+      // Get session token for API calls
+      sessionToken = await invoke('get_session_token');
+
+      // Focus input
+      messageInput.focus();
+    }
+
+    // Login
+    loginBtn.addEventListener('click', async () => {
+      try {
+        console.log('Starting login...');
+        await invoke('start_login');
+        console.log('Login invoked successfully');
+      } catch (e) {
+        console.error('Login failed:', e);
+        alert('Login failed: ' + e);
+      }
+    });
+
+    // Logout
+    logoutBtn.addEventListener('click', async () => {
+      await invoke('logout');
+      sessionToken = null;
+      conversationId = null;
+      messages.innerHTML = '';
+      showLogin();
+    });
+
+    // Send message
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text || isLoading) return;
+
+      isLoading = true;
+      sendBtn.disabled = true;
+      messageInput.value = '';
+
+      // Add user message
+      addMessage(text, 'user');
+
+      // Show typing indicator
+      const typingEl = document.createElement('div');
+      typingEl.className = 'message assistant typing-indicator';
+      typingEl.innerHTML = '<span></span><span></span><span></span>';
+      messages.appendChild(typingEl);
+      messages.scrollTop = messages.scrollHeight;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/addie/chat/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {}),
+          },
+          body: JSON.stringify({
+            message: text,
+            conversation_id: conversationId,
+          }),
+        });
+
+        // Remove typing indicator
+        typingEl.remove();
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        // Handle SSE stream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let assistantText = '';
+        let assistantEl = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              const eventType = line.slice(7);
+              continue;
+            }
+            if (line.startsWith('data: ')) {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.text) {
+                assistantText += data.text;
+                if (!assistantEl) {
+                  assistantEl = document.createElement('div');
+                  assistantEl.className = 'message assistant';
+                  messages.appendChild(assistantEl);
+                }
+                assistantEl.innerHTML = marked.parse(assistantText);
+                messages.scrollTop = messages.scrollHeight;
+              }
+
+              if (data.conversation_id) {
+                conversationId = data.conversation_id;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Chat error:', error);
+        typingEl.remove();
+        addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
+      }
+
+      isLoading = false;
+      sendBtn.disabled = false;
+      messageInput.focus();
+    }
+
+    function addMessage(text, role) {
+      const el = document.createElement('div');
+      el.className = `message ${role}`;
+      el.innerHTML = role === 'user' ? escapeHtml(text) : marked.parse(text);
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Event listeners
+    sendBtn.addEventListener('click', sendMessage);
+
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Auto-resize textarea
+    messageInput.addEventListener('input', () => {
+      messageInput.style.height = 'auto';
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+    });
+
+    // Initialize app
+    init();
+  </script>
+</body>
+</html>

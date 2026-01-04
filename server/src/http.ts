@@ -4177,11 +4177,27 @@ Disallow: /api/admin/
 
         const returnTo = req.query.return_to as string;
         const slackUserId = req.query.slack_user_id as string;
+        const nativeMode = req.query.native === 'true';
+        const nativeRedirectUri = req.query.redirect_uri as string;
 
-        // Build state object with return_to and slack_user_id for auto-linking
-        const stateObj: { return_to?: string; slack_user_id?: string } = {};
+        // Validate native redirect URI to prevent open redirect attacks
+        const ALLOWED_NATIVE_SCHEMES = ['addie://'];
+        const isValidNativeRedirectUri = (uri: string): boolean => {
+          return ALLOWED_NATIVE_SCHEMES.some(scheme => uri.startsWith(scheme));
+        };
+
+        if (nativeMode && nativeRedirectUri && !isValidNativeRedirectUri(nativeRedirectUri)) {
+          return res.status(400).json({ error: 'Invalid redirect_uri - must use addie:// scheme' });
+        }
+
+        // Build state object with return_to, slack_user_id for auto-linking, and native app params
+        const stateObj: { return_to?: string; slack_user_id?: string; native?: boolean; native_redirect_uri?: string } = {};
         if (returnTo) stateObj.return_to = returnTo;
         if (slackUserId) stateObj.slack_user_id = slackUserId;
+        if (nativeMode) {
+          stateObj.native = true;
+          stateObj.native_redirect_uri = nativeRedirectUri || 'addie://auth/callback';
+        }
         const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
@@ -4433,20 +4449,39 @@ Disallow: /api/admin/
           })();
         }
 
-        // Parse return_to and slack_user_id from state
+        // Parse return_to, slack_user_id, and native mode from state
         let returnTo = '/dashboard';
         let slackUserIdToLink: string | undefined;
+        let isNativeMode = false;
+        let nativeRedirectUri = 'addie://auth/callback';
         logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
             const parsedState = JSON.parse(state);
             returnTo = parsedState.return_to || returnTo;
             slackUserIdToLink = parsedState.slack_user_id;
-            logger.debug({ parsedState, returnTo, slackUserIdToLink }, 'Parsed state successfully');
+            isNativeMode = parsedState.native === true;
+            nativeRedirectUri = parsedState.native_redirect_uri || nativeRedirectUri;
+            logger.debug({ parsedState, returnTo, slackUserIdToLink, isNativeMode }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
             logger.debug({ state, error: String(e) }, 'Failed to parse state');
           }
+        }
+
+        // For native app authentication, return JSON with sealed session and redirect to deep link
+        if (isNativeMode) {
+          logger.info({ userId: user.id, nativeRedirectUri }, 'Native app authentication - redirecting to deep link');
+
+          // Redirect to native app with sealed session as a query parameter
+          const redirectUrl = new URL(nativeRedirectUri);
+          redirectUrl.searchParams.set('sealed_session', sealedSession!);
+          redirectUrl.searchParams.set('user_id', user.id);
+          redirectUrl.searchParams.set('email', user.email);
+          if (user.firstName) redirectUrl.searchParams.set('first_name', user.firstName);
+          if (user.lastName) redirectUrl.searchParams.set('last_name', user.lastName);
+
+          return res.redirect(redirectUrl.toString());
         }
 
         // Auto-link Slack account if slack_user_id was provided during signup
@@ -4506,6 +4541,7 @@ Disallow: /api/admin/
         });
       }
     });
+
 
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
