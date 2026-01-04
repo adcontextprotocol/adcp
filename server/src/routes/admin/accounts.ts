@@ -625,19 +625,19 @@ export function setupAccountRoutes(
           // Joins through organization_memberships to find orgs with recent Slack activity
           query = `
             ${selectFields},
-            latest_activity.latest_message_at as last_insight_at
+            latest_activity.latest_activity_at as last_insight_at
             FROM organizations o
             INNER JOIN LATERAL (
-              SELECT MAX(sm.last_message_at) as latest_message_at
+              SELECT MAX(sm.last_slack_activity_at) as latest_activity_at
               FROM organization_memberships om
               JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
               WHERE om.workos_organization_id = o.workos_organization_id
-                AND sm.last_message_at >= NOW() - INTERVAL '7 days'
-            ) latest_activity ON latest_activity.latest_message_at IS NOT NULL
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
+            ) latest_activity ON latest_activity.latest_activity_at IS NOT NULL
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `;
-          orderBy = ` ORDER BY latest_activity.latest_message_at DESC`;
+          orderBy = ` ORDER BY latest_activity.latest_activity_at DESC`;
           break;
 
         case "members":
@@ -961,7 +961,7 @@ export function setupAccountRoutes(
               SELECT 1 FROM organization_memberships om
               JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
               WHERE om.workos_organization_id = o.workos_organization_id
-                AND sm.last_message_at >= NOW() - INTERVAL '7 days'
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
             AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
