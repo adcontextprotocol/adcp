@@ -776,7 +776,7 @@ export async function getMemberCapabilities(
 
     // Email preferences
     query<{ configured: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM email_preferences WHERE workos_user_id = $1) as configured`,
+      `SELECT EXISTS(SELECT 1 FROM user_email_preferences WHERE workos_user_id = $1) as configured`,
       [workosUserId]
     ),
 
