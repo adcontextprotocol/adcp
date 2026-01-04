@@ -337,14 +337,14 @@ export interface UpdateUserLocationInput {
 
 export type WorkingGroupStatus = 'active' | 'inactive' | 'archived';
 export type WorkingGroupMembershipStatus = 'active' | 'inactive';
-export type CommitteeType = 'working_group' | 'council' | 'chapter' | 'governance' | 'event';
+export type CommitteeType = 'working_group' | 'council' | 'chapter' | 'governance' | 'industry_gathering';
 
 export const VALID_COMMITTEE_TYPES: readonly CommitteeType[] = [
   'working_group',
   'council',
   'chapter',
   'governance',
-  'event',
+  'industry_gathering',
 ] as const;
 
 export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
@@ -352,7 +352,7 @@ export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
   council: 'Industry Council',
   chapter: 'Regional Chapter',
   governance: 'Governance',
-  event: 'Event Group',
+  industry_gathering: 'Industry Gathering',
 };
 
 export interface WorkingGroupLeader {
@@ -374,17 +374,20 @@ export interface WorkingGroup {
   display_order: number;
   committee_type: CommitteeType;
   region?: string;
-  // Event group fields
+  // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
   event_end_date?: Date;
+  event_location?: string;
   auto_archive_after_event?: boolean;
+  logo_url?: string;
+  website_url?: string;
   created_at: Date;
   updated_at: Date;
   leaders?: WorkingGroupLeader[];
 }
 
-export type EventInterestLevel = 'maybe' | 'interested' | 'attending' | 'attended';
+export type EventInterestLevel = 'maybe' | 'interested' | 'attending' | 'attended' | 'not_attending';
 export type EventInterestSource = 'outreach' | 'registration' | 'manual' | 'slack_join';
 
 export interface WorkingGroupMembership {
@@ -416,11 +419,14 @@ export interface CreateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
-  // Event group fields
+  // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
   event_end_date?: Date;
+  event_location?: string;
   auto_archive_after_event?: boolean;
+  logo_url?: string;
+  website_url?: string;
 }
 
 export interface UpdateWorkingGroupInput {
@@ -434,11 +440,14 @@ export interface UpdateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
-  // Event group fields
+  // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
   event_end_date?: Date;
+  event_location?: string;
   auto_archive_after_event?: boolean;
+  logo_url?: string;
+  website_url?: string;
 }
 
 export interface WorkingGroupWithMemberCount extends WorkingGroup {

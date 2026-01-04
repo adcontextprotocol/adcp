@@ -18,7 +18,7 @@ import { notifyWorkingGroupPost } from "../notifications/slack.js";
 const logger = createLogger("committee-routes");
 
 // Valid committee types
-const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'event'] as const;
+const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'industry_gathering'] as const;
 type CommitteeType = typeof VALID_COMMITTEE_TYPES[number];
 
 // Initialize WorkOS client only if authentication is enabled
@@ -268,7 +268,7 @@ export function createCommitteeRouters(): {
 
       // Auto-sync members from Slack channel if a channel was linked to a chapter or event
       let syncResult = null;
-      if (group.slack_channel_id && (group.committee_type === 'chapter' || group.committee_type === 'event')) {
+      if (group.slack_channel_id && (group.committee_type === 'chapter' || group.committee_type === 'industry_gathering')) {
         syncResult = await syncWorkingGroupMembersFromSlack(group.id);
         if (syncResult.members_added > 0) {
           logger.info(
@@ -324,7 +324,7 @@ export function createCommitteeRouters(): {
 
       // Auto-sync members from Slack channel if a new channel was linked to a chapter or event
       let syncResult = null;
-      if (isAddingChannel && group.slack_channel_id && (group.committee_type === 'chapter' || group.committee_type === 'event')) {
+      if (isAddingChannel && group.slack_channel_id && (group.committee_type === 'chapter' || group.committee_type === 'industry_gathering')) {
         syncResult = await syncWorkingGroupMembersFromSlack(id);
         if (syncResult.members_added > 0) {
           logger.info(
@@ -744,6 +744,131 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Join working group error');
       res.status(500).json({
         error: 'Failed to join working group',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/working-groups/:slug/interest - Express interest in a committee (for launching groups)
+  publicApiRouter.post('/:slug/interest', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const { interest_level: rawInterestLevel } = req.body;
+      const user = req.user!;
+      const pool = getPool();
+
+      // Validate interest level
+      const validInterestLevels = ['participant', 'leader'] as const;
+      const interest_level = validInterestLevels.includes(rawInterestLevel)
+        ? rawInterestLevel
+        : 'participant';
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      // Get user's org info if available
+      let orgId: string | undefined;
+      let orgName: string | undefined;
+      if (workos) {
+        try {
+          const memberships = await workos.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+          if (memberships.data.length > 0) {
+            const org = await workos.organizations.getOrganization(memberships.data[0].organizationId);
+            orgId = org.id;
+            orgName = org.name;
+          }
+        } catch {
+          // Ignore org fetch errors
+        }
+      }
+
+      const userName = user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : user.email;
+
+      // Upsert the interest record
+      await pool.query(
+        `INSERT INTO committee_interest (
+          working_group_id, workos_user_id, user_email, user_name,
+          workos_organization_id, user_org_name, interest_level
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (working_group_id, workos_user_id) DO UPDATE SET
+          interest_level = COALESCE(EXCLUDED.interest_level, committee_interest.interest_level),
+          user_email = EXCLUDED.user_email,
+          user_name = EXCLUDED.user_name,
+          user_org_name = EXCLUDED.user_org_name`,
+        [
+          group.id,
+          user.id,
+          user.email,
+          userName,
+          orgId || null,
+          orgName || null,
+          interest_level,
+        ]
+      );
+
+      logger.info(
+        { workingGroupId: group.id, userId: user.id, interestLevel: interest_level },
+        'User expressed interest in committee'
+      );
+
+      res.status(201).json({
+        success: true,
+        message: `Thanks for your interest in ${group.name}! We'll let you know when it launches.`,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Express committee interest error');
+      res.status(500).json({
+        error: 'Failed to record interest',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/interest - Check if user has expressed interest
+  publicApiRouter.get('/:slug/interest', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const user = req.user!;
+      const pool = getPool();
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const result = await pool.query(
+        `SELECT interest_level, created_at FROM committee_interest
+         WHERE working_group_id = $1 AND workos_user_id = $2`,
+        [group.id, user.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.json({ has_interest: false });
+      }
+
+      res.json({
+        has_interest: true,
+        interest_level: result.rows[0].interest_level,
+        registered_at: result.rows[0].created_at,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Check committee interest error');
+      res.status(500).json({
+        error: 'Failed to check interest',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

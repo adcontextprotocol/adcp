@@ -607,15 +607,15 @@
         </div>
       </section>
 
-      <!-- ========== WORKING GROUPS SECTION ========== -->
-      <section id="working-groups" class="dashboard-section">
+      <!-- ========== COMMITTEES SECTION ========== -->
+      <section id="committees" class="dashboard-section">
         <div class="section-header">
-          <h2>Working Groups</h2>
-          <p>Collaborate with other members on shared interests</p>
+          <h2>Committees</h2>
+          <p>Join working groups, industry councils, and regional chapters</p>
         </div>
-        <div class="section-card" id="workingGroupsCard">
-          <div id="workingGroupsCardContent" class="section-card-body">
-            <div style="text-align: center; color: var(--color-text-secondary);">Loading working groups...</div>
+        <div class="section-card" id="committeesCard">
+          <div id="committeesCardContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading committees...</div>
           </div>
         </div>
       </section>
@@ -996,7 +996,7 @@
 
       // ===== LOAD DATA =====
       loadTeamSection(org.id);
-      loadWorkingGroupsSection();
+      loadCommitteesSection();
 
       // ===== MEMBERSHIP SIGNUP SECTION (hidden, for modal use) =====
       const membershipSection = document.getElementById('membershipSection');
@@ -1784,75 +1784,230 @@
       }
     }
 
-    // Load working groups section content
-    async function loadWorkingGroupsSection() {
-      const container = document.getElementById('workingGroupsCardContent');
+    // Load committees section content (working groups, councils, chapters)
+    async function loadCommitteesSection() {
+      const container = document.getElementById('committeesCardContent');
       if (!container) return;
 
       try {
-        const response = await fetch('/api/me/working-groups', { credentials: 'include' });
+        // Fetch all committees and user's memberships in parallel
+        const [allResponse, myResponse] = await Promise.all([
+          fetch('/api/working-groups', { credentials: 'include' }),
+          fetch('/api/me/working-groups', { credentials: 'include' })
+        ]);
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            container.innerHTML = `
-              <div style="text-align: center; padding: 20px;">
-                <p style="color: var(--color-text-secondary); margin: 0 0 16px 0;">Log in to see your working groups.</p>
-                <a href="/working-groups" class="btn btn-primary btn-sm">Browse Groups</a>
-              </div>
-            `;
-            return;
-          }
-          throw new Error('Failed to load working groups');
+        if (!allResponse.ok) {
+          throw new Error('Failed to load committees');
         }
 
-        const data = await response.json();
-        const groups = data.working_groups || [];
+        const allData = await allResponse.json();
+        const allCommittees = allData.working_groups || [];
 
-        if (groups.length === 0) {
+        // Get user's joined committees (may fail if not logged in)
+        let myCommitteeIds = new Set();
+        if (myResponse.ok) {
+          const myData = await myResponse.json();
+          myCommitteeIds = new Set((myData.working_groups || []).map(g => g.id));
+        }
+
+        if (allCommittees.length === 0) {
           container.innerHTML = `
             <div style="text-align: center; padding: 20px;">
               <div style="font-size: 32px; margin-bottom: 12px;">🏛️</div>
-              <p style="margin: 0 0 16px 0; color: var(--color-text-secondary);">You haven't joined any working groups yet.</p>
-              <a href="/working-groups" class="btn btn-primary btn-sm">Browse Working Groups</a>
+              <p style="margin: 0 0 16px 0; color: var(--color-text-secondary);">No committees available yet.</p>
+              <a href="/committees" class="btn btn-primary btn-sm">View Committees</a>
             </div>
           `;
           return;
         }
 
-        // Render working groups list
-        const groupsHtml = groups.map(g => `
-          <a href="/working-groups/${escapeHtml(g.slug)}" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border); text-decoration: none; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-            <div style="width: 40px; height: 40px; border-radius: 8px; background: ${g.is_private ? 'var(--color-warning-100)' : 'var(--color-primary-100)'}; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">
-              ${g.is_private ? '🔒' : '🏛️'}
-            </div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-weight: 500; color: var(--color-text-heading); font-size: 14px;">${escapeHtml(g.name)}</div>
-              <div style="color: var(--color-text-secondary); font-size: 12px;">${g.is_private ? 'Private' : 'Public'} group</div>
-            </div>
-          </a>
-        `).join('');
+        // Group by type
+        const byType = {
+          working_group: allCommittees.filter(c => c.committee_type === 'working_group'),
+          council: allCommittees.filter(c => c.committee_type === 'council'),
+          chapter: allCommittees.filter(c => c.committee_type === 'chapter')
+        };
 
-        container.innerHTML = `
-          <div style="margin-bottom: 16px;">
-            ${groupsHtml}
-          </div>
-          <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">Browse All Groups</a>
-        `;
+        // Helper to get icon and colors
+        function getCommitteeStyle(committee) {
+          const isJoined = myCommitteeIds.has(committee.id);
+          const isLaunching = committee.committee_type === 'council' && (committee.member_count || 0) === 0;
 
-        // Remove border from last group item
-        const groupItems = container.querySelectorAll('a[href^="/working-groups/"]');
-        if (groupItems.length > 0) {
-          groupItems[groupItems.length - 1].style.borderBottom = 'none';
+          let icon = '🏛️';
+          let bgColor = 'var(--color-primary-100)';
+
+          if (committee.is_private) {
+            icon = '🔒';
+            bgColor = 'var(--color-warning-100)';
+          } else if (committee.committee_type === 'council') {
+            icon = '🏢';
+            bgColor = isLaunching ? 'var(--color-gray-100)' : 'var(--color-success-100)';
+          } else if (committee.committee_type === 'chapter') {
+            icon = '📍';
+            bgColor = 'var(--color-info-100)';
+          }
+
+          return { icon, bgColor, isJoined, isLaunching };
         }
 
+        // Helper to render a single committee item
+        function renderCommitteeItem(c) {
+          const { icon, bgColor, isJoined, isLaunching } = getCommitteeStyle(c);
+
+          // Determine the action button
+          let actionBtn = '';
+          if (isJoined) {
+            actionBtn = `<span style="font-size: 11px; padding: 4px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-weight: 500;">Joined</span>`;
+          } else if (isLaunching) {
+            actionBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); handleCommitteeInterest('${escapeHtml(c.slug)}', '${escapeHtml(c.name)}', this);" style="font-size: 11px; padding: 4px 10px; background: var(--color-primary-100); color: var(--color-brand); border: 1px solid var(--color-primary-200); border-radius: 4px; font-weight: 500; cursor: pointer; transition: background 0.15s;" onmouseover="this.style.background='var(--color-primary-200)'" onmouseout="this.style.background='var(--color-primary-100)'">I'm Interested</button>`;
+          } else {
+            actionBtn = `<a href="/working-groups/${escapeHtml(c.slug)}" onclick="event.stopPropagation();" style="font-size: 11px; padding: 4px 10px; background: var(--color-brand); color: white; border-radius: 4px; font-weight: 500; text-decoration: none; transition: background 0.15s;" onmouseover="this.style.background='var(--color-brand-hover)'" onmouseout="this.style.background='var(--color-brand)'">View</a>`;
+          }
+
+          // Badge for launching councils
+          const launchingBadge = isLaunching
+            ? `<span style="font-size: 10px; padding: 2px 6px; background: var(--color-primary-100); color: var(--color-brand); border-radius: 3px; margin-left: 6px;">Launching Soon</span>`
+            : '';
+
+          return `
+            <a href="/working-groups/${escapeHtml(c.slug)}" style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border-light); text-decoration: none; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: ${bgColor}; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">
+                ${icon}
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 500; color: var(--color-text-heading); font-size: 13px; display: flex; align-items: center; flex-wrap: wrap;">
+                  ${escapeHtml(c.name)}${launchingBadge}
+                </div>
+                <div style="color: var(--color-text-muted); font-size: 11px;">${c.member_count || 0} member${c.member_count !== 1 ? 's' : ''}</div>
+              </div>
+              <div style="flex-shrink: 0;">
+                ${actionBtn}
+              </div>
+            </a>
+          `;
+        }
+
+        // Render sections
+        let html = '';
+
+        // Working Groups
+        if (byType.working_group.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Working Groups</div>
+              ${byType.working_group.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Industry Councils
+        if (byType.council.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Industry Councils</div>
+              ${byType.council.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Regional Chapters
+        if (byType.chapter.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Regional Chapters</div>
+              ${byType.chapter.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Browse all link
+        html += `<a href="/committees" class="btn btn-ghost btn-sm" style="width: 100%;">Browse All Committees</a>`;
+
+        container.innerHTML = html;
+
+        // Remove border from last item in each section
+        container.querySelectorAll('div[style*="margin-bottom: 16px"]').forEach(section => {
+          const items = section.querySelectorAll('a[href^="/working-groups/"]');
+          if (items.length > 0) {
+            items[items.length - 1].style.borderBottom = 'none';
+          }
+        });
+
       } catch (error) {
-        console.error('Error loading working groups section:', error);
+        console.error('Error loading committees section:', error);
         container.innerHTML = `
           <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">
-            Unable to load working groups. <a href="/working-groups" style="color: var(--color-brand);">Browse Groups</a>
+            Unable to load committees. <a href="/committees" style="color: var(--color-brand);">Browse Committees</a>
           </div>
         `;
       }
+    }
+
+    // Handle interest click for launching committees
+    async function handleCommitteeInterest(committeeSlug, committeeName, buttonEl) {
+      try {
+        // Disable button and show loading state
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Registering...';
+
+        const response = await fetch(`/api/working-groups/${committeeSlug}/interest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ interest_level: 'participant' })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Redirect to login
+            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+          throw new Error('Failed to register interest');
+        }
+
+        const data = await response.json();
+
+        // Update button to show success
+        buttonEl.outerHTML = `<span style="font-size: 11px; padding: 4px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-weight: 500;">Interest Registered</span>`;
+
+        // Show a quick toast notification
+        showToast(data.message || `Thanks for your interest in ${committeeName}!`);
+
+      } catch (error) {
+        console.error('Error registering interest:', error);
+        buttonEl.disabled = false;
+        buttonEl.textContent = "I'm Interested";
+        showToast('Failed to register interest. Please try again.', 'error');
+      }
+    }
+
+    // Simple toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: ${type === 'error' ? 'var(--color-error-600)' : 'var(--color-success-600)'};
+        color: white;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        animation: slideUp 0.3s ease;
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
     }
 
     // Load working groups for the current user (legacy - kept for compatibility)
