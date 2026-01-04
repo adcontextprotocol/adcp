@@ -113,12 +113,58 @@ export function setupOrganizationRoutes(
           [orgId]
         );
 
-        // Get recent activities
+        // Get recent activities (combines org_activities with email activities via contacts)
         const activitiesResult = await pool.query(
           `
-          SELECT *
-          FROM org_activities
-          WHERE organization_id = $1
+          SELECT * FROM (
+            -- Direct org activities (manual logs, etc.)
+            SELECT
+              id::text as id,
+              activity_type,
+              description,
+              logged_by_user_id,
+              logged_by_name,
+              activity_date,
+              is_next_step,
+              next_step_due_date,
+              next_step_owner_user_id,
+              next_step_owner_name,
+              next_step_completed_at,
+              metadata,
+              created_at,
+              updated_at
+            FROM org_activities
+            WHERE organization_id = $1
+
+            UNION ALL
+
+            -- Email activities via linked contacts
+            SELECT
+              eca.id::text as id,
+              'email_inbound' as activity_type,
+              eca.insights as description,
+              NULL as logged_by_user_id,
+              'Addie' as logged_by_name,
+              eca.email_date as activity_date,
+              false as is_next_step,
+              NULL as next_step_due_date,
+              NULL as next_step_owner_user_id,
+              NULL as next_step_owner_name,
+              NULL as next_step_completed_at,
+              jsonb_build_object(
+                'email_id', eca.email_id,
+                'message_id', eca.message_id,
+                'subject', eca.subject,
+                'contact_email', ec.email,
+                'source', 'email_contact_activities'
+              ) as metadata,
+              eca.created_at,
+              eca.created_at as updated_at
+            FROM email_contact_activities eca
+            INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id AND eac.is_primary = true
+            INNER JOIN email_contacts ec ON ec.id = eac.contact_id
+            WHERE ec.organization_id = $1
+          ) combined
           ORDER BY activity_date DESC
           LIMIT 50
         `,

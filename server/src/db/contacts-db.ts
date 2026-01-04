@@ -300,3 +300,75 @@ export async function upsertEmailContacts(
 
   return results;
 }
+
+/**
+ * Result from linking contacts by domain
+ */
+export interface LinkContactsByDomainResult {
+  contactsLinked: number;
+  contacts: Array<{
+    contactId: string;
+    email: string;
+  }>;
+}
+
+/**
+ * Link all unmapped email contacts with a specific domain to an organization.
+ *
+ * This should be called when a verified domain is added to an organization.
+ *
+ * @param domain The email domain to match (e.g., "charter.com")
+ * @param organizationId The WorkOS organization ID to link contacts to
+ * @param mappedBy Optional user ID of who triggered the mapping
+ */
+export async function linkContactsByDomain(
+  domain: string,
+  organizationId: string,
+  mappedBy?: string
+): Promise<LinkContactsByDomainResult> {
+  const pool = getPool();
+  const normalizedDomain = domain.toLowerCase();
+
+  // Update all unmapped contacts with this domain
+  // Using 'manual_admin' as the mapping source since domain linking is an admin action
+  const updateResult = await pool.query<{
+    id: string;
+    email: string;
+  }>(
+    `UPDATE email_contacts
+     SET organization_id = $1,
+         mapping_status = 'mapped',
+         mapping_source = 'manual_admin',
+         mapped_at = NOW(),
+         mapped_by_user_id = $2,
+         updated_at = NOW()
+     WHERE LOWER(domain) = $3
+       AND mapping_status = 'unmapped'
+     RETURNING id, email`,
+    [organizationId, mappedBy || null, normalizedDomain]
+  );
+
+  const linkedContacts = updateResult.rows;
+  const contactsLinked = linkedContacts.length;
+
+  if (contactsLinked === 0) {
+    logger.info(
+      { domain: normalizedDomain, organizationId },
+      'No unmapped contacts found for domain'
+    );
+    return { contactsLinked: 0, contacts: [] };
+  }
+
+  logger.info(
+    { domain: normalizedDomain, organizationId, contactsLinked },
+    'Linked contacts to organization by domain'
+  );
+
+  return {
+    contactsLinked,
+    contacts: linkedContacts.map(c => ({
+      contactId: c.id,
+      email: c.email,
+    })),
+  };
+}

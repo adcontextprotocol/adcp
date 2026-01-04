@@ -15,6 +15,7 @@ import {
   removePersonalDomain,
   listPersonalDomains,
 } from "../../db/personal-domains-db.js";
+import { linkContactsByDomain } from "../../db/contacts-db.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -1014,11 +1015,26 @@ export function setupDomainRoutes(
 
         logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization via WorkOS");
 
+        // Link any existing unmapped email contacts with this domain to the org
+        const linkResult = await linkContactsByDomain(
+          normalizedDomain,
+          orgId,
+          req.user?.id
+        );
+
+        if (linkResult.contactsLinked > 0) {
+          logger.info(
+            { orgId, domain: normalizedDomain, contactsLinked: linkResult.contactsLinked },
+            "Linked email contacts to organization"
+          );
+        }
+
         res.json({
           success: true,
           domain: normalizedDomain,
           is_primary: is_primary || false,
           synced_to_workos: true,
+          contacts_linked: linkResult.contactsLinked,
         });
       } catch (error) {
         logger.error({ err: error }, "Error adding organization domain");

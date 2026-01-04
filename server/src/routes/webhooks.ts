@@ -682,33 +682,9 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     );
   }
 
-  // If primary contact is linked to an org, also store in org_activities
-  if (primaryContact.organizationId) {
-    await pool.query(
-      `INSERT INTO org_activities (
-        organization_id,
-        activity_type,
-        description,
-        logged_by_name,
-        activity_date,
-        metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        primaryContact.organizationId,
-        'email_inbound',
-        insights,
-        'Addie',
-        new Date(data.created_at),
-        JSON.stringify({
-          ...metadata,
-          message_id: data.message_id,
-          primary_contact_email: primaryContact.email,
-          insight_method: method,
-          tokens_used: tokensUsed,
-        }),
-      ]
-    );
-  }
+  // Note: Email activities are shown on org detail pages via a JOIN query
+  // through email_contacts.organization_id, so we don't need to duplicate
+  // the activity into org_activities here.
 
   return {
     activityId: activityResult.rows[0].id,
