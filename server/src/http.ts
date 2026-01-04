@@ -63,6 +63,7 @@ import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
 import { sendCommunityReplies } from "./addie/services/community-articles.js";
 import { sendChannelMessage } from "./slack/client.js";
+import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -364,6 +365,7 @@ export class HTTPServer {
   private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
   private alertProcessorIntervalId: NodeJS.Timeout | null = null;
   private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
+  private taskReminderIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -6927,6 +6929,10 @@ Disallow: /api/admin/
     // Fetches RSS feeds, processes articles, sends Slack alerts
     this.startIndustryMonitor();
 
+    // Start daily task reminder job
+    // Sends DMs to admins about overdue/upcoming tasks
+    this.startTaskReminders();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -7076,6 +7082,48 @@ Disallow: /api/admin/
   }
 
   /**
+   * Start daily task reminder job
+   * Sends DMs to admins about overdue/upcoming tasks at 9am ET
+   */
+  private startTaskReminders(): void {
+    const REMINDER_CHECK_INTERVAL_HOURS = 1;
+
+    // Check every hour, but only send once per day per user
+    this.taskReminderIntervalId = setInterval(async () => {
+      try {
+        // Only run during morning hours (8-10am ET) using proper timezone handling
+        const now = new Date();
+        const etHour = parseInt(now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          hour: 'numeric',
+          hour12: false,
+        }), 10);
+        if (etHour < 8 || etHour > 10) {
+          return;
+        }
+
+        // Skip weekends (using ET day of week)
+        const etDayStr = now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          weekday: 'short',
+        });
+        if (etDayStr === 'Sat' || etDayStr === 'Sun') {
+          return;
+        }
+
+        const result = await runTaskReminderJob();
+        if (result.remindersSent > 0) {
+          logger.info(result, 'Task reminders: sent daily reminders');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Task reminders: job failed');
+      }
+    }, REMINDER_CHECK_INTERVAL_HOURS * 60 * 60 * 1000);
+
+    logger.info({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
+  }
+
+  /**
    * Setup graceful shutdown handlers for SIGTERM and SIGINT
    */
   private setupShutdownHandlers(): void {
@@ -7120,6 +7168,13 @@ Disallow: /api/admin/
       this.alertProcessorIntervalId = null;
     }
     logger.info('Industry monitor stopped');
+
+    // Stop task reminder job
+    if (this.taskReminderIntervalId) {
+      clearInterval(this.taskReminderIntervalId);
+      this.taskReminderIntervalId = null;
+      logger.info('Task reminder job stopped');
+    }
 
     // Close HTTP server
     if (this.server) {

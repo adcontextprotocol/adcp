@@ -37,6 +37,7 @@ import {
   type ActionPriority,
 } from '../db/account-management-db.js';
 import { runMomentumCheck, dryRunMomentumCheck, previewMomentumForUser } from '../addie/jobs/momentum-check.js';
+import { runTaskReminderJob, previewTaskReminders } from '../addie/jobs/task-reminder.js';
 
 const logger = createLogger('admin-insights-routes');
 const insightsDb = new InsightsDatabase();
@@ -1122,6 +1123,33 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       if (error instanceof Error && error.message.includes('not found')) {
         return res.status(404).json({ error: error.message });
       }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/task-reminders/run - Run task reminder job
+  apiRouter.post('/task-reminders/run', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { includeTomorrow, dryRun, forceResend } = req.body;
+      const result = await runTaskReminderJob({
+        includeTomorrow: includeTomorrow === true,
+        dryRun: dryRun === true,
+        forceResend: forceResend === true,
+      });
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, 'Error running task reminder job');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/task-reminders/preview - Preview what reminders would be sent
+  apiRouter.get('/task-reminders/preview', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await previewTaskReminders();
+      res.json({ batches: result });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing task reminders');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
