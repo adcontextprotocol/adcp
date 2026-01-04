@@ -798,9 +798,11 @@ async function openInvoiceRequestModal(options = {}) {
   }
 
   // Generate product options HTML
+  // Filter to subscription products only (excludes legacy one-time invoice products)
   let productOptionsHtml = '<option value="">Select a product...</option>';
   if (membershipProducts.length > 0) {
-    for (const product of membershipProducts) {
+    const subscriptionProducts = membershipProducts.filter(p => p.billing_type === 'subscription');
+    for (const product of subscriptionProducts) {
       const price = formatCurrency(product.amount_cents, product.currency);
       const selected = options.selectedProduct === product.lookup_key ? ' selected' : '';
       const escapedLookupKey = escapeHtmlForInvoice(product.lookup_key);
