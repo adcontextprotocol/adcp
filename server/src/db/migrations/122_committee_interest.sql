@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS committee_interest (
   id SERIAL PRIMARY KEY,
-  working_group_id TEXT NOT NULL REFERENCES working_groups(id) ON DELETE CASCADE,
+  working_group_id UUID NOT NULL REFERENCES working_groups(id) ON DELETE CASCADE,
   workos_user_id TEXT NOT NULL,
   user_email TEXT,
   user_name TEXT,

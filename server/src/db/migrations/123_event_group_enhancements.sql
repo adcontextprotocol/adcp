@@ -29,8 +29,10 @@ COMMENT ON COLUMN working_groups.event_location IS 'Display location for event-t
 -- =====================================================
 -- UPDATE VIEW TO INCLUDE LOCATION
 -- =====================================================
+-- Need to drop and recreate because we're adding a column in the middle
 
-CREATE OR REPLACE VIEW upcoming_event_groups AS
+DROP VIEW IF EXISTS upcoming_event_groups;
+CREATE VIEW upcoming_event_groups AS
 SELECT
   wg.id,
   wg.name,
