@@ -3,7 +3,7 @@
 //! Handles OAuth flow with WorkOS via deep links and secure session storage.
 
 use keyring::Entry;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::UserSession;
@@ -84,6 +84,8 @@ pub fn handle_deep_link(app: &AppHandle, url: &str) -> Result<(), Box<dyn std::e
         return Err(format!("Failed to save session: {}", e).into());
     }
 
+    println!("Auth callback received for user: {}", email);
+
     // Notify frontend of successful login
     let _ = app.emit("auth-success", serde_json::json!({
         "user": {
@@ -93,6 +95,17 @@ pub fn handle_deep_link(app: &AppHandle, url: &str) -> Result<(), Box<dyn std::e
             "last_name": last_name,
         }
     }));
+
+    println!("auth-success event emitted");
+
+    // Bring window to foreground
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_focus();
+        let _ = window.show();
+        println!("Window focused");
+    } else {
+        eprintln!("Could not find main window to focus");
+    }
 
     Ok(())
 }

@@ -802,6 +802,20 @@
         display: block;
       }
     }
+
+    /* Native app mode - hide site nav and chat header (app provides its own) */
+    body.native-app #adcp-nav,
+    body.native-app .chat-header {
+      display: none !important;
+    }
+
+    body.native-app .chat-container {
+      padding-top: 0;
+    }
+
+    body.native-app .messages-container {
+      padding-top: 16px;
+    }
   </style>
 </head>
 <body>
@@ -920,10 +934,39 @@
       let threads = [];
       let sidebarVisible = false;
 
+      // Native app auth token (from URL hash, e.g., #token=xxx)
+      let nativeAuthToken = null;
+
+      // Extract token from URL hash for native apps (Tauri, Capacitor)
+      function extractNativeToken() {
+        const hash = window.location.hash;
+        if (hash && hash.includes('token=')) {
+          const params = new URLSearchParams(hash.slice(1));
+          const token = params.get('token');
+          if (token) {
+            nativeAuthToken = token;
+            // Mark body as native app mode to hide nav/header via CSS
+            document.body.classList.add('native-app');
+            // Clear hash from URL for cleaner appearance
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            console.log('Native auth token detected');
+          }
+        }
+      }
+
+      // Helper for authenticated API requests (works for both web cookies and native tokens)
+      function authFetch(url, options = {}) {
+        const headers = { ...options.headers };
+        if (nativeAuthToken) {
+          headers['Authorization'] = `Bearer ${nativeAuthToken}`;
+        }
+        return fetch(url, { ...options, headers, credentials: 'include' });
+      }
+
       // Check for impersonation and authentication
       async function checkImpersonation() {
         try {
-          const response = await fetch('/api/me');
+          const response = await authFetch('/api/me');
           if (!response.ok) return; // Not authenticated
 
           const data = await response.json();
@@ -959,7 +1002,7 @@
         if (!isAuthenticated) return;
 
         try {
-          const response = await fetch('/api/addie/chat/threads');
+          const response = await authFetch('/api/addie/chat/threads');
           if (!response.ok) return;
 
           const data = await response.json();
@@ -1040,7 +1083,7 @@
 
         // Load conversation history
         try {
-          const response = await fetch(`/api/addie/chat/${conversationId}`);
+          const response = await authFetch(`/api/addie/chat/${conversationId}`);
           if (!response.ok) throw new Error('Failed to load conversation');
 
           const data = await response.json();
@@ -1104,7 +1147,7 @@
         addieHomeContent.innerHTML = '';
 
         try {
-          const response = await fetch('/api/me/addie-home?format=html');
+          const response = await authFetch('/api/me/addie-home?format=html');
           if (!response.ok) {
             throw new Error('Failed to load home content');
           }
@@ -1440,7 +1483,7 @@
 
       async function submitFeedback(messageId, rating, category, tags, suggestion) {
         try {
-          await fetch(`/api/addie/chat/${conversationId}/feedback`, {
+          await authFetch(`/api/addie/chat/${conversationId}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1656,7 +1699,7 @@
         let messageId = null;
 
         try {
-          const response = await fetch('/api/addie/chat/stream', {
+          const response = await authFetch('/api/addie/chat/stream', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1804,6 +1847,7 @@
       }
 
       // Initialize
+      extractNativeToken(); // Check for native app auth token in URL hash
       checkStatus();
       checkImpersonation();
       // Check for prompt in URL after status check
