@@ -106,6 +106,12 @@ export interface UserStats {
 export interface AdminPanel {
   flaggedThreadCount: number;
   insightGoals: GoalProgress[];
+  /** Prospect pipeline stats for the admin */
+  prospectStats?: {
+    hotCount: number;
+    needsFollowupCount: number;
+    totalOwned: number;
+  };
 }
 
 /**

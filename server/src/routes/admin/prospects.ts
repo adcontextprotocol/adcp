@@ -18,7 +18,7 @@ export function setupProspectRoutes(apiRouter: Router): void {
   apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
-      const { status, source, view, owner } = req.query;
+      const { status, source, view, owner, mine } = req.query;
 
       // Base SELECT fields
       const selectFields = `
@@ -204,6 +204,20 @@ export function setupProspectRoutes(apiRouter: Router): void {
       if (owner && typeof owner === "string") {
         params.push(owner);
         query += ` AND o.prospect_owner = $${params.length}`;
+      }
+
+      // mine=true filter: only show prospects where current user is owner in org_stakeholders
+      if (mine === "true") {
+        const currentUserId = req.user?.id;
+        if (currentUserId) {
+          params.push(currentUserId);
+          query += ` AND EXISTS (
+            SELECT 1 FROM org_stakeholders os
+            WHERE os.organization_id = o.workos_organization_id
+              AND os.user_id = $${params.length}
+              AND os.role = 'owner'
+          )`;
+        }
       }
 
       query += orderBy;

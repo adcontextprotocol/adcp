@@ -281,6 +281,35 @@ function renderAdminPanel(panel: AdminPanel): SlackBlock[] {
 
   blocks.push(flaggedSection);
 
+  // Prospect stats (if available)
+  if (panel.prospectStats) {
+    const { hotCount, needsFollowupCount, totalOwned } = panel.prospectStats;
+    const prospectParts: string[] = [];
+
+    if (hotCount > 0) {
+      prospectParts.push(`:fire: ${hotCount} hot`);
+    }
+    if (needsFollowupCount > 0) {
+      prospectParts.push(`:clock3: ${needsFollowupCount} need follow-up`);
+    }
+    prospectParts.push(`:bust_in_silhouette: ${totalOwned} total`);
+
+    const prospectSection: SlackBlock = {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*My Prospects*\n${prospectParts.join(' | ')}`,
+      },
+      accessory: {
+        type: 'button',
+        text: { type: 'plain_text', text: 'View All', emoji: true },
+        url: 'https://agenticadvertising.org/admin/prospects?mine=true',
+        action_id: 'addie_home_view_prospects',
+      },
+    };
+    blocks.push(prospectSection);
+  }
+
   // Insight goals
   if (panel.insightGoals.length > 0) {
     const goalsHeader: SlackBlock = {

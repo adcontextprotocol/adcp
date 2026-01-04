@@ -27,11 +27,14 @@ export async function getWebHomeContent(workosUserId: string): Promise<HomeConte
   // Check if user is admin (based on org membership role)
   const userIsAdmin = isAdmin(memberContext);
 
+  // Get admin user ID for prospect stats (if admin)
+  const adminUserId = userIsAdmin ? workosUserId : undefined;
+
   // Build all sections in parallel for speed
   const [alerts, activity, adminPanel] = await Promise.all([
     buildAlerts(memberContext),
     buildActivityFeed(memberContext),
-    userIsAdmin ? buildAdminPanel() : Promise.resolve(null),
+    userIsAdmin ? buildAdminPanel(adminUserId) : Promise.resolve(null),
   ]);
 
   // Build synchronous sections
