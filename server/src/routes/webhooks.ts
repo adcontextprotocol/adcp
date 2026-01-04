@@ -34,6 +34,10 @@ import {
   formatEmailAddress,
   mergeAddresses,
 } from '../utils/forwarded-email-parser.js';
+import {
+  processInteraction,
+  type InteractionContext,
+} from '../addie/services/interaction-analyzer.js';
 
 const logger = createLogger('webhooks');
 
@@ -534,7 +538,7 @@ function verifyResendWebhook(req: Request, rawBody: string): boolean {
  */
 async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<{
   activityId: string;
-  contacts: Array<{ contactId: string; workosUserId: string | null; email: string; role: string; isNew: boolean }>;
+  contacts: Array<{ contactId: string; workosUserId: string | null; organizationId: string | null; email: string; role: string; isNew: boolean }>;
   insights: string;
   method: string;
   tokensUsed?: number;
@@ -691,6 +695,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     contacts: contacts.map(c => ({
       contactId: c.contactId,
       workosUserId: c.workosUserId,
+      organizationId: c.organizationId,
       email: c.email,
       role: c.role,
       isNew: c.isNew,
@@ -1133,6 +1138,40 @@ export function createWebhooksRouter(): Router {
                 })
                 .catch(err => {
                   logger.error({ err, emailId: data.email_id }, 'Error checking email invocation');
+                });
+            }
+
+            // Analyze interaction for task management (fire and forget)
+            // This looks for pending tasks to complete/reschedule and learns from the email
+            if (result.emailContent?.text) {
+              const primaryContact = result.contacts[0];
+              const interactionContext: InteractionContext = {
+                fromEmail: data.from,
+                toEmails: result.emailContent.to,
+                subject: data.subject,
+                content: result.emailContent.text,
+                channel: 'email',
+                direction: 'inbound',
+                contactId: primaryContact?.contactId,
+                organizationId: primaryContact?.organizationId || undefined,
+              };
+
+              processInteraction(interactionContext)
+                .then(interactionResult => {
+                  if (interactionResult.analyzed && interactionResult.actionsApplied) {
+                    const { completed, rescheduled, created } = interactionResult.actionsApplied;
+                    if (completed > 0 || rescheduled > 0 || created > 0) {
+                      logger.info({
+                        emailId: data.email_id,
+                        completed,
+                        rescheduled,
+                        created,
+                      }, 'Applied task actions from email interaction');
+                    }
+                  }
+                })
+                .catch(err => {
+                  logger.error({ err, emailId: data.email_id }, 'Error analyzing email interaction');
                 });
             }
 
