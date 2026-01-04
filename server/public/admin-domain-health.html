@@ -537,7 +537,17 @@
           <tbody>
             ${orphan_domains.map(d => {
               // Filter to non-personal orgs first, then personal
-              const nonPersonalOrgs = (d.existing_orgs || []).filter(o => !o.is_personal);
+              // Sort by value: Stripe customers first, then active subscriptions, then by user count
+              const scoreOrg = (o) => {
+                let score = 0;
+                if (o.has_stripe) score += 100;
+                if (o.subscription_status === 'active') score += 50;
+                score += (o.user_count || 0) * 5;
+                return score;
+              };
+              const nonPersonalOrgs = (d.existing_orgs || [])
+                .filter(o => !o.is_personal)
+                .sort((a, b) => scoreOrg(b) - scoreOrg(a));
               const personalOrgs = (d.existing_orgs || []).filter(o => o.is_personal);
               const hasExistingOrgs = nonPersonalOrgs.length > 0;
               const hasMultipleOrgs = nonPersonalOrgs.length > 1;
