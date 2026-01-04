@@ -6,6 +6,7 @@
  */
 
 import { Router } from "express";
+import Stripe from "stripe";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -563,8 +564,56 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         org_id,
       ]);
 
+      // Sync subscription data from Stripe
+      let subscriptionSynced = false;
+      let subscriptionSyncError: string | null = null;
+      if (stripe) {
+        try {
+          const customer = await stripe.customers.retrieve(customerId, {
+            expand: ["subscriptions"],
+          });
+
+          if (!customer.deleted) {
+            const subscriptions = (customer as Stripe.Customer).subscriptions;
+            if (subscriptions && subscriptions.data.length > 0) {
+              const subscription = subscriptions.data[0];
+              const priceData = subscription.items?.data?.[0]?.price;
+
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_status = $1,
+                     subscription_amount = $2,
+                     subscription_interval = $3,
+                     subscription_currency = $4,
+                     subscription_current_period_end = $5,
+                     subscription_canceled_at = $6,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $7`,
+                [
+                  subscription.status,
+                  priceData?.unit_amount || null,
+                  priceData?.recurring?.interval || null,
+                  priceData?.currency || "usd",
+                  subscription.current_period_end
+                    ? new Date(subscription.current_period_end * 1000)
+                    : null,
+                  subscription.canceled_at
+                    ? new Date(subscription.canceled_at * 1000)
+                    : null,
+                  org_id,
+                ]
+              );
+              subscriptionSynced = true;
+            }
+          }
+        } catch (syncError) {
+          subscriptionSyncError = syncError instanceof Error ? syncError.message : "Unknown error";
+          logger.warn({ err: syncError, customerId, org_id }, "Failed to sync subscription data during link");
+        }
+      }
+
       logger.info(
-        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email },
+        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email, subscriptionSynced, subscriptionSyncError },
         "Manually linked Stripe customer to org"
       );
 
@@ -574,6 +623,8 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         customer_id: customerId,
         org_id,
         org_name: org.name,
+        subscription_synced: subscriptionSynced,
+        ...(subscriptionSyncError && { subscription_sync_error: subscriptionSyncError }),
       });
     } catch (error) {
       logger.error({ err: error, customerId, org_id }, "Error linking Stripe customer");
