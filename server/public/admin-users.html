@@ -1535,6 +1535,22 @@
       return div.innerHTML;
     }
 
+    function formatInsightLabel(typeName) {
+      const labels = {
+        'plans_2026': '2026 Plans',
+        'membership_goals': 'Membership Goals',
+        'challenges': 'Challenges',
+        'feedback': 'Feedback',
+        'satisfaction': 'Satisfaction',
+        'use_case': 'Use Cases',
+        'timeline': 'Timeline',
+        'decision_role': 'Decision Role',
+        'competitors': 'Competitors',
+        'intro_interest': 'Intro Interest'
+      };
+      return labels[typeName] || typeName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
     // =========================================================================
     // Outreach Functions
     // =========================================================================
@@ -1750,8 +1766,55 @@
     function renderContext(context, userId) {
       let html = '';
 
-      // Addie's Goal Section - Most important, show first
-      if (context.addie_goal) {
+      // Planner Recommendation Section - Most important, show first
+      if (context.planner?.recommended_action) {
+        const action = context.planner.recommended_action;
+        const slackUserId = context.slack_user?.slack_user_id;
+        html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-primary-50), var(--color-gray-50)); border-left: 4px solid var(--color-brand); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="margin-bottom: var(--space-2);">Planner Recommendation</h3>';
+        html += `<div style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">${escapeHtml(action.goal_name)}</div>`;
+        html += `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2);">${escapeHtml(action.reason)}</div>`;
+        html += `<div style="font-size: var(--text-xs); color: var(--color-text-muted); display: flex; gap: var(--space-3); margin-bottom: var(--space-3);">
+          <span>Priority: ${action.priority_score}</span>
+          <span>Category: ${escapeHtml(action.category)}</span>
+          <span>Method: ${escapeHtml(action.decision_method)}</span>
+        </div>`;
+
+        // Show message preview
+        if (context.planner.message_preview) {
+          html += '<div style="margin-top: var(--space-3); border-top: 1px solid var(--color-gray-200); padding-top: var(--space-3);">';
+          html += '<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2);">Message Preview:</div>';
+          html += `<div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${escapeHtml(context.planner.message_preview)}</div>`;
+
+          // Send button
+          if (slackUserId && !context.outreach?.opted_out) {
+            html += `<div style="margin-top: var(--space-3); display: flex; gap: var(--space-2); align-items: center;">
+              <button onclick="sendOutreach('${slackUserId}')" class="btn btn-primary btn-small" id="sendOutreachBtn-${slackUserId}">Send This Message</button>
+              <span style="font-size: var(--text-xs); color: var(--color-text-muted);">via Slack DM</span>
+            </div>`;
+          }
+          html += '</div>';
+        }
+
+        if (context.planner.alternative_goals && context.planner.alternative_goals.length > 0) {
+          html += '<div style="margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--color-gray-200);">';
+          html += '<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">Alternative goals:</div>';
+          html += context.planner.alternative_goals.map(g => `<span style="display: inline-block; padding: 2px var(--space-2); background: var(--color-gray-100); border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: var(--space-1);">${escapeHtml(g.name)}</span>`).join('');
+          html += '</div>';
+        }
+        html += '</div>';
+      } else if (context.planner && !context.planner.recommended_action) {
+        html += '<div class="context-section" style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="margin-bottom: var(--space-2);">Planner Status</h3>';
+        const eligibility = context.planner.contact_eligibility;
+        if (!eligibility?.can_contact) {
+          html += `<div style="font-size: var(--text-sm); color: var(--color-warning-600);">Cannot contact: ${escapeHtml(eligibility?.reason || 'Unknown reason')}</div>`;
+        } else {
+          html += '<div style="font-size: var(--text-sm); color: var(--color-text-muted); font-style: italic;">No action recommended at this time.</div>';
+        }
+        html += '</div>';
+      } else if (context.addie_goal) {
+        // Fallback to legacy addie_goal if no planner data
         html += '<div class="context-section" style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
         html += '<h3 style="margin-bottom: var(--space-2);">Addie\'s Goal</h3>';
         html += `<div style="margin-bottom: var(--space-2);">
@@ -1763,6 +1826,42 @@
           html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">${escapeHtml(context.addie_goal.reasoning)}</p>`;
         }
         html += '</div>';
+      }
+
+      // Capabilities Section - What has this member done?
+      if (context.capabilities) {
+        const caps = context.capabilities;
+        html += '<div class="context-section">';
+        html += '<h3>Capabilities</h3>';
+        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2);">';
+
+        // Account setup capabilities
+        html += renderCapabilityItem('Account Linked', caps.account_linked);
+        html += renderCapabilityItem('Profile Complete', caps.profile_complete);
+        html += renderCapabilityItem('Offerings Set', caps.offerings_set);
+        html += renderCapabilityItem('Email Prefs', caps.email_prefs_configured);
+
+        // Team
+        html += renderCapabilityItem('Has Team', caps.has_team_members);
+        html += renderCapabilityItem('Org Admin', caps.is_org_admin);
+
+        // Participation
+        html += renderCapabilityCount('Working Groups', caps.working_group_count);
+        html += renderCapabilityCount('Councils', caps.council_count);
+        html += renderCapabilityCount('Events Registered', caps.events_registered);
+        html += renderCapabilityCount('Events Attended', caps.events_attended);
+
+        // Activity
+        html += `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+          <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Slack (30d)</span>
+          <span style="font-weight: var(--font-medium); color: ${caps.slack_message_count_30d > 0 ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${caps.slack_message_count_30d}</span>
+        </div>`;
+        html += `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+          <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Last Active</span>
+          <span style="font-weight: var(--font-medium); color: ${caps.last_active_days_ago !== null && caps.last_active_days_ago < 30 ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${caps.last_active_days_ago !== null ? caps.last_active_days_ago + 'd ago' : 'Never'}</span>
+        </div>`;
+
+        html += '</div></div>';
       }
 
       // Identity & Status Section - Compact overview
@@ -1873,17 +1972,40 @@
       }
 
       // Insights Section - From collected member insights
+      // Strategic insights are highlighted at top, others shown below
       if (context.insights && context.insights.length > 0) {
-        html += '<div class="context-section">';
-        html += '<h3>Insights</h3>';
-        html += '<div style="max-height: 200px; overflow-y: auto;">';
-        context.insights.forEach(insight => {
-          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
-            <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
-            <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
-          </div>`;
-        });
-        html += '</div></div>';
+        const strategicTypes = ['plans_2026', 'membership_goals', 'challenges', 'feedback', 'satisfaction', 'use_case'];
+        const strategicInsights = context.insights.filter(i => strategicTypes.includes(i.type_name));
+        const otherInsights = context.insights.filter(i => !strategicTypes.includes(i.type_name));
+
+        // Strategic insights get prominent display
+        if (strategicInsights.length > 0) {
+          html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-success-50), var(--color-gray-50)); border-left: 4px solid var(--color-success-600); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+          html += '<h3 style="margin-bottom: var(--space-3);">Strategic Insights</h3>';
+          html += '<div style="display: grid; gap: var(--space-3);">';
+          strategicInsights.forEach(insight => {
+            const label = formatInsightLabel(insight.type_name);
+            html += `<div style="background: white; border-radius: var(--radius-sm); padding: var(--space-3); box-shadow: var(--shadow-xs);">
+              <div style="font-weight: var(--font-semibold); font-size: var(--text-xs); color: var(--color-success-700); text-transform: uppercase; margin-bottom: var(--space-1);">${escapeHtml(label)}</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+            </div>`;
+          });
+          html += '</div></div>';
+        }
+
+        // Other insights shown in a more compact list
+        if (otherInsights.length > 0) {
+          html += '<div class="context-section">';
+          html += '<h3>Other Insights</h3>';
+          html += '<div style="max-height: 150px; overflow-y: auto;">';
+          otherInsights.forEach(insight => {
+            html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+              <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+            </div>`;
+          });
+          html += '</div></div>';
+        }
       }
 
       // Recent Conversations Section (from new threads API)
@@ -1927,42 +2049,28 @@
         html += '</div>';
       }
 
-      // Outreach Section (for Slack users)
-      if (context.outreach || context.slack_user) {
+      // Outreach History Section (for Slack users)
+      if (context.outreach) {
         html += '<div class="context-section">';
-        html += '<h3>Proactive Outreach</h3>';
+        html += '<h3>Outreach History</h3>';
         html += '<div class="context-grid">';
 
-        if (context.outreach) {
-          if (context.outreach.last_outreach_at) {
-            const lastDate = new Date(context.outreach.last_outreach_at).toLocaleDateString();
-            const daysAgo = context.outreach.days_since_outreach;
-            html += renderContextItem('Last Outreach', `${lastDate} (${daysAgo} days ago)`);
-          } else {
-            html += renderContextItem('Last Outreach', 'Never contacted');
-          }
-          html += renderContextItem('Total Outreaches', context.outreach.total_outreach_count.toString());
-          html += renderContextItem('Responses', context.outreach.responses_received.toString());
-          if (context.outreach.opted_out) {
-            html += `<div class="context-item" style="grid-column: 1 / -1;">
-              <span class="context-badge" style="background: var(--color-error-100); color: var(--color-error-700);">Opted Out</span>
-            </div>`;
-          }
+        if (context.outreach.last_outreach_at) {
+          const lastDate = new Date(context.outreach.last_outreach_at).toLocaleDateString();
+          const daysAgo = context.outreach.days_since_outreach;
+          html += renderContextItem('Last Outreach', `${lastDate} (${daysAgo} days ago)`);
+        } else {
+          html += renderContextItem('Last Outreach', 'Never contacted');
         }
-
-        html += '</div>';
-
-        // Show outreach actions if user has Slack
-        const slackUserId = context.slack_user?.slack_user_id;
-        if (slackUserId && !context.outreach?.opted_out) {
-          html += `<div style="margin-top: var(--space-3); display: flex; gap: var(--space-2);">
-            <button onclick="previewOutreach('${slackUserId}')" class="btn btn-secondary btn-small">Preview Outreach</button>
-            <button onclick="sendOutreach('${slackUserId}')" class="btn btn-primary btn-small" id="sendOutreachBtn-${slackUserId}">Send Outreach</button>
+        html += renderContextItem('Total Outreaches', context.outreach.total_outreach_count.toString());
+        html += renderContextItem('Responses', context.outreach.responses_received.toString());
+        if (context.outreach.opted_out) {
+          html += `<div class="context-item" style="grid-column: 1 / -1;">
+            <span class="context-badge" style="background: var(--color-error-100); color: var(--color-error-700);">Opted Out</span>
           </div>`;
-          html += `<div id="outreachPreview-${slackUserId}" style="display: none; margin-top: var(--space-3);"></div>`;
         }
 
-        html += '</div>';
+        html += '</div></div>';
       }
 
       // Impersonation Link (if WorkOS user exists)
@@ -2016,6 +2124,22 @@
           <div class="context-item-value ${valueClass}">${escapeHtml(value)}</div>
         </div>
       `;
+    }
+
+    function renderCapabilityItem(label, value) {
+      const done = !!value;
+      return `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+        <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(label)}</span>
+        <span style="font-weight: var(--font-medium); color: ${done ? 'var(--color-success-600)' : 'var(--color-error-600)'}; float: right;">${done ? 'Yes' : 'No'}</span>
+      </div>`;
+    }
+
+    function renderCapabilityCount(label, count) {
+      const hasAny = count > 0;
+      return `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+        <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(label)}</span>
+        <span style="font-weight: var(--font-medium); color: ${hasAny ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${count}</span>
+      </div>`;
     }
 
     // Close modal on Escape key

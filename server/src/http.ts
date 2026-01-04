@@ -43,6 +43,7 @@ import {
 } from "./notifications/billing.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
+import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
@@ -576,6 +577,11 @@ export class HTTPServer {
     const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
     this.app.use('/admin', insightsPageRouter);      // Page routes: /admin/insights, /admin/insight-types, etc.
     this.app.use('/api/admin', insightsApiRouter);   // API routes: /api/admin/insights, /api/admin/insight-types, etc.
+
+    // Mount admin outbound planner routes (goals, rehearsal)
+    const { pageRouter: outboundPageRouter, apiRouter: outboundApiRouter } = createAdminOutboundRouter();
+    this.app.use('/admin', outboundPageRouter);          // Page routes: /admin/goals, /admin/rehearsal
+    this.app.use('/api/admin/outbound', outboundApiRouter); // API routes: /api/admin/outbound/goals, /api/admin/outbound/rehearsal
 
     // Mount Addie admin routes
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
