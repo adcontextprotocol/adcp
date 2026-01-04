@@ -1241,6 +1241,8 @@ export function setupDomainRoutes(
                 'org_id', o.workos_organization_id,
                 'name', o.name,
                 'is_personal', o.is_personal,
+                'has_stripe', o.stripe_customer_id IS NOT NULL,
+                'subscription_status', o.subscription_status,
                 'user_count', (
                   SELECT COUNT(DISTINCT om2.workos_user_id)
                   FROM organization_memberships om2
