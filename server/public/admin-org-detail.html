@@ -2272,18 +2272,35 @@
         // Wait for org to load
         await loadOrganization();
 
-        // Pre-fill domain modal and show it
-        document.getElementById('domainInput').value = linkDomain;
-        document.getElementById('domainIsPrimary').checked = true;
-        openAddDomainModal();
-
-        // Clean up URL (wrap in try/catch for edge cases)
+        // Clean up URL immediately (wrap in try/catch for edge cases)
         try {
           const url = new URL(window.location);
           url.searchParams.delete('link_domain');
           window.history.replaceState({}, '', url);
         } catch (e) {
           console.warn('Could not clean up URL:', e);
+        }
+
+        // Directly add the domain to the org
+        try {
+          const response = await fetch(`/api/admin/organizations/${orgId}/domains`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: linkDomain.toLowerCase(), is_primary: true })
+          });
+
+          if (!response.ok) {
+            if (response.status === 401) {
+              window.AdminNav.redirectToLogin();
+              return;
+            }
+            throw new Error(await getErrorMessage(response, 'Failed to link domain'));
+          }
+
+          // Refresh domains to show the newly added domain
+          await refreshDomains();
+        } catch (error) {
+          alert('Error linking domain: ' + error.message);
         }
       } else {
         loadOrganization();
