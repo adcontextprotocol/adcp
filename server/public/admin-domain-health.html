@@ -699,21 +699,34 @@
               </p>
 
               <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4);">
-                ${orgs.map((org, i) => `
+                ${orgs.map((org, i) => {
+                  const memberNames = (org.members || []).slice(0, 3).map(m => {
+                    const name = m.firstName || m.lastName
+                      ? `${m.firstName || ''} ${m.lastName || ''}`.trim()
+                      : m.email;
+                    return escapeHtml(name);
+                  });
+                  const remainingMembers = Math.max(0, (org.member_count || 0) - memberNames.length);
+
+                  return `
                   <label style="display: flex; align-items: start; gap: var(--space-3); padding: var(--space-3); border: 2px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer;" class="merge-org-option" data-org-id="${org.workos_organization_id || org.id}">
                     <input type="radio" name="primaryOrg" value="${org.workos_organization_id || org.id}" ${i === 0 ? 'checked' : ''} style="margin-top: 4px;">
                     <div style="flex: 1;">
                       <div style="font-weight: var(--font-semibold);">${escapeHtml(org.name)}</div>
                       <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
                         ${org.member_count || 0} members
-                        ${org.subscription_status ? ` • ${org.subscription_status}` : ''}
-                        ${org.company_type ? ` • ${org.company_type}` : ''}
+                        ${org.subscription_status ? ` • ${escapeHtml(org.subscription_status)}` : ''}
+                        ${org.company_type ? ` • ${escapeHtml(org.company_type)}` : ''}
                       </div>
-                      ${org.email_domain ? `<div style="font-size: var(--text-xs); color: var(--color-text-secondary);">Domain: ${escapeHtml(org.email_domain)}</div>` : ''}
+                      ${memberNames.length > 0 ? `
+                        <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">
+                          ${memberNames.join(', ')}${remainingMembers > 0 ? `, +${remainingMembers} more` : ''}
+                        </div>
+                      ` : ''}
                     </div>
                     ${i === 0 ? '<span style="font-size: var(--text-xs); background: var(--color-success-100); color: var(--color-success-700); padding: 2px 8px; border-radius: var(--radius-full);">Recommended</span>' : ''}
                   </label>
-                `).join('')}
+                `}).join('')}
               </div>
 
               <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
@@ -831,15 +844,27 @@
                 <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
                   <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
                   <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.primary_org.name)}</div>
-                  ${preview.primary_org.email_domain ? `<div style="margin-top: var(--space-2);"><strong>Domain:</strong> ${escapeHtml(preview.primary_org.email_domain)}</div>` : ''}
-                  ${preview.primary_org.member_count !== undefined ? `<div><strong>Members:</strong> ${preview.primary_org.member_count}</div>` : ''}
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
+                    <div><strong>Members:</strong> ${preview.primary_org.member_count || 0}</div>
+                    ${preview.primary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.primary_org.company_type)}</div>` : ''}
+                    ${preview.primary_org.prospect_status ? `<div><strong>Status:</strong> ${escapeHtml(preview.primary_org.prospect_status)}</div>` : ''}
+                    ${preview.primary_org.created_by ? `<div><strong>Created by:</strong> ${escapeHtml(preview.primary_org.created_by)}</div>` : ''}
+                    ${preview.primary_org.has_enrichment ? `<div style="color: var(--color-success-600);">Has enrichment data</div>` : ''}
+                    ${preview.primary_org.has_notes ? `<div style="color: var(--color-brand);">Has admin notes</div>` : ''}
+                  </div>
                 </div>
 
                 <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
                   <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">SECONDARY (delete)</div>
                   <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
-                  ${preview.secondary_org.email_domain ? `<div style="margin-top: var(--space-2);"><strong>Domain:</strong> ${escapeHtml(preview.secondary_org.email_domain)}</div>` : ''}
-                  ${preview.secondary_org.member_count !== undefined ? `<div><strong>Members:</strong> ${preview.secondary_org.member_count}</div>` : ''}
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
+                    <div><strong>Members:</strong> ${preview.secondary_org.member_count || 0}</div>
+                    ${preview.secondary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.secondary_org.company_type)}</div>` : ''}
+                    ${preview.secondary_org.prospect_status ? `<div><strong>Status:</strong> ${escapeHtml(preview.secondary_org.prospect_status)}</div>` : ''}
+                    ${preview.secondary_org.created_by ? `<div><strong>Created by:</strong> ${escapeHtml(preview.secondary_org.created_by)}</div>` : ''}
+                    ${preview.secondary_org.has_enrichment ? `<div style="color: var(--color-success-600);">Has enrichment data</div>` : ''}
+                    ${preview.secondary_org.has_notes ? `<div style="color: var(--color-brand);">Has admin notes</div>` : ''}
+                  </div>
                 </div>
               </div>
 
