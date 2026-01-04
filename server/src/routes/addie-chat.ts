@@ -11,6 +11,7 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { validate as uuidValidate } from "uuid";
 import rateLimit from "express-rate-limit";
+import cors from "cors";
 import { createLogger } from "../logger.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -181,9 +182,30 @@ async function prepareRequestWithMemberTools(
   return { messageToProcess, memberContext, requestTools };
 }
 
+// CORS configuration for native apps (Tauri desktop, mobile)
+const chatCorsOptions: cors.CorsOptions = {
+  origin: [
+    // Production domains
+    'https://agenticadvertising.org',
+    'https://www.agenticadvertising.org',
+    // Tauri app origins
+    'tauri://localhost',
+    'https://tauri.localhost',
+    // Local development (only in non-production)
+    ...(process.env.NODE_ENV !== 'production' ? [/^http:\/\/localhost:\d+$/] : []),
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['X-Conversation-Id'],
+};
+
 export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
+
+  // Enable CORS for all API routes (for native app support)
+  apiRouter.use(cors(chatCorsOptions));
 
   // Initialize client on startup
   initializeChatClient().catch((err) => {
@@ -662,6 +684,48 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to submit feedback",
+      });
+    }
+  });
+
+  // GET /api/addie/chat/threads - List user's conversation threads
+  // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
+  apiRouter.get("/threads", optionalAuth, async (req, res) => {
+    const threadService = getThreadService();
+
+    try {
+      // Require authentication for thread listing
+      if (!req.user) {
+        return res.status(401).json({
+          error: "Authentication required",
+          message: "Please log in to view your conversations",
+        });
+      }
+
+      const parsedLimit = parseInt(req.query.limit as string);
+      const limit = Math.min(Math.max(parsedLimit > 0 ? parsedLimit : 20, 1), 50);
+
+      // Get user's threads
+      const threads = await threadService.getUserThreads(req.user.id, 'workos', limit);
+
+      // Map to API response format
+      const conversations = threads.map((t) => ({
+        conversation_id: t.external_id,
+        title: t.title || t.first_user_message?.slice(0, 50) || "New conversation",
+        message_count: t.message_count,
+        last_message_at: t.last_message_at,
+        preview: t.last_assistant_message?.slice(0, 100),
+      }));
+
+      res.json({
+        conversations,
+        total: conversations.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Addie Chat: Error listing threads");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to list conversations",
       });
     }
   });

@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for Addie Desktop","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","opener:default","opener:allow-open-url","deep-link:default"]}}

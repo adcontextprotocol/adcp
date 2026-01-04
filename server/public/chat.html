@@ -643,58 +643,247 @@
         font-size: 20px;
       }
     }
+
+    /* Thread Sidebar */
+    .page-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .thread-sidebar {
+      width: 280px;
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      display: none;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .thread-sidebar.visible {
+      display: flex;
+    }
+
+    .thread-sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .thread-sidebar-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin: 0;
+    }
+
+    .new-chat-btn {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .new-chat-btn:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .thread-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .thread-item {
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 4px;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+
+    .thread-item:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .thread-item.active {
+      background: var(--color-primary-50);
+      border-color: var(--color-primary-200);
+    }
+
+    .thread-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text);
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .thread-item-preview {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .thread-item-meta {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      margin-top: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .thread-toggle-btn {
+      position: fixed;
+      left: 16px;
+      bottom: 100px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      display: none;
+      align-items: center;
+      gap: 6px;
+      z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .thread-toggle-btn:hover {
+      background: var(--color-bg-subtle);
+      border-color: var(--color-brand);
+    }
+
+    .thread-toggle-btn.visible {
+      display: flex;
+    }
+
+    .thread-empty {
+      text-align: center;
+      padding: 24px 16px;
+      color: var(--color-text-muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 768px) {
+      .thread-sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 1000;
+        box-shadow: var(--shadow-lg);
+      }
+
+      .thread-sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.3);
+        z-index: 999;
+        display: none;
+      }
+
+      .thread-sidebar-overlay.visible {
+        display: block;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
   <div id="adcp-nav"></div>
 
-  <div class="chat-container">
-    <div class="chat-header">
-      <h1>
-        <span class="addie-avatar">A</span>
-        Chat with Addie
-      </h1>
-      <p>Your AI assistant for AdCP and Agentic Advertising</p>
-    </div>
+  <!-- Thread toggle button (shown for authenticated users) -->
+  <button class="thread-toggle-btn" id="threadToggleBtn" title="Show conversations">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    Chats
+  </button>
 
-    <div class="messages-container" id="messagesContainer">
-      <!-- Addie Home (shown for authenticated users) -->
-      <div class="addie-home-container" id="addieHomeContainer">
-        <div class="addie-home-loading" id="addieHomeLoading">Loading your dashboard...</div>
-        <div id="addieHomeContent"></div>
-        <style id="addieHomeStyles"></style>
-      </div>
+  <!-- Mobile overlay -->
+  <div class="thread-sidebar-overlay" id="threadOverlay"></div>
 
-      <div class="welcome-message" id="welcomeMessage">
-        <h2>Hi! I'm Addie</h2>
-        <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
-        <div class="suggested-prompts" id="suggestedPrompts">
-          <button class="suggested-prompt" data-prompt="What is AdCP?">What is AdCP?</button>
-          <button class="suggested-prompt" data-prompt="How do I get started with AdCP?">How do I get started?</button>
-          <button class="suggested-prompt" data-prompt="Try AdCP with a test agent">Try AdCP live</button>
-          <button class="suggested-prompt" data-prompt="What is agentic advertising?">What is agentic advertising?</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="chat-input-container">
-      <div class="chat-input-wrapper">
-        <textarea
-          class="chat-input"
-          id="chatInput"
-          placeholder="Ask Addie anything..."
-          rows="1"
-        ></textarea>
-        <button class="send-button" id="sendButton" disabled>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+  <div class="page-layout">
+    <!-- Thread Sidebar -->
+    <div class="thread-sidebar" id="threadSidebar">
+      <div class="thread-sidebar-header">
+        <h3>Conversations</h3>
+        <button class="new-chat-btn" id="newChatBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
+          New
         </button>
       </div>
-      <div class="status-indicator" id="statusIndicator">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Connecting...</span>
+      <div class="thread-list" id="threadList">
+        <div class="thread-empty">Loading conversations...</div>
+      </div>
+    </div>
+
+    <div class="chat-container">
+      <div class="chat-header">
+        <h1>
+          <span class="addie-avatar">A</span>
+          Chat with Addie
+        </h1>
+        <p>Your AI assistant for AdCP and Agentic Advertising</p>
+      </div>
+
+      <div class="messages-container" id="messagesContainer">
+        <!-- Addie Home (shown for authenticated users) -->
+        <div class="addie-home-container" id="addieHomeContainer">
+          <div class="addie-home-loading" id="addieHomeLoading">Loading your dashboard...</div>
+          <div id="addieHomeContent"></div>
+          <style id="addieHomeStyles"></style>
+        </div>
+
+        <div class="welcome-message" id="welcomeMessage">
+          <h2>Hi! I'm Addie</h2>
+          <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
+          <div class="suggested-prompts" id="suggestedPrompts">
+            <button class="suggested-prompt" data-prompt="What is AdCP?">What is AdCP?</button>
+            <button class="suggested-prompt" data-prompt="How do I get started with AdCP?">How do I get started?</button>
+            <button class="suggested-prompt" data-prompt="Try AdCP with a test agent">Try AdCP live</button>
+            <button class="suggested-prompt" data-prompt="What is agentic advertising?">What is agentic advertising?</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-container">
+        <div class="chat-input-wrapper">
+          <textarea
+            class="chat-input"
+            id="chatInput"
+            placeholder="Ask Addie anything..."
+            rows="1"
+          ></textarea>
+          <button class="send-button" id="sendButton" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="status-indicator" id="statusIndicator">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting...</span>
+        </div>
       </div>
     </div>
   </div>
@@ -716,6 +905,11 @@
       const addieHomeContent = document.getElementById('addieHomeContent');
       const addieHomeLoading = document.getElementById('addieHomeLoading');
       const addieHomeStyles = document.getElementById('addieHomeStyles');
+      const threadSidebar = document.getElementById('threadSidebar');
+      const threadList = document.getElementById('threadList');
+      const threadToggleBtn = document.getElementById('threadToggleBtn');
+      const threadOverlay = document.getElementById('threadOverlay');
+      const newChatBtn = document.getElementById('newChatBtn');
 
       // State
       let conversationId = null;
@@ -723,6 +917,8 @@
       let isReady = false;
       let impersonationInfo = null;
       let isAuthenticated = false;
+      let threads = [];
+      let sidebarVisible = false;
 
       // Check for impersonation and authentication
       async function checkImpersonation() {
@@ -749,9 +945,154 @@
 
           // Load Addie Home for authenticated users
           loadAddieHome();
+
+          // Show thread toggle button and load threads for authenticated users
+          threadToggleBtn.classList.add('visible');
+          loadThreads();
         } catch (error) {
           // Silently ignore - user may not be authenticated
         }
+      }
+
+      // Load user's conversation threads
+      async function loadThreads() {
+        if (!isAuthenticated) return;
+
+        try {
+          const response = await fetch('/api/addie/chat/threads');
+          if (!response.ok) return;
+
+          const data = await response.json();
+          threads = data.conversations || [];
+          renderThreadList();
+        } catch (error) {
+          console.error('Failed to load threads:', error);
+        }
+      }
+
+      // Render the thread list in sidebar
+      function renderThreadList() {
+        if (threads.length === 0) {
+          threadList.innerHTML = '<div class="thread-empty">No conversations yet.<br>Start chatting to create one!</div>';
+          return;
+        }
+
+        threadList.innerHTML = threads.map(t => `
+          <div class="thread-item ${t.conversation_id === conversationId ? 'active' : ''}"
+               data-conversation-id="${t.conversation_id}">
+            <div class="thread-item-title">${escapeHtml(t.title)}</div>
+            ${t.preview ? `<div class="thread-item-preview">${escapeHtml(t.preview)}</div>` : ''}
+            <div class="thread-item-meta">
+              <span>${t.message_count} messages</span>
+              <span>${formatRelativeTime(t.last_message_at)}</span>
+            </div>
+          </div>
+        `).join('');
+
+        // Add click handlers
+        threadList.querySelectorAll('.thread-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const id = item.dataset.conversationId;
+            switchToConversation(id);
+          });
+        });
+      }
+
+      // Format relative time (e.g., "2 hours ago")
+      function formatRelativeTime(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+      }
+
+      // Escape HTML for safe rendering
+      function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Switch to a different conversation
+      async function switchToConversation(newConversationId) {
+        if (newConversationId === conversationId) return;
+
+        conversationId = newConversationId;
+
+        // Update active state in sidebar
+        threadList.querySelectorAll('.thread-item').forEach(item => {
+          item.classList.toggle('active', item.dataset.conversationId === conversationId);
+        });
+
+        // Clear current messages
+        messagesContainer.innerHTML = '';
+        welcomeMessage.style.display = 'none';
+        addieHomeContainer.classList.remove('visible');
+
+        // Load conversation history
+        try {
+          const response = await fetch(`/api/addie/chat/${conversationId}`);
+          if (!response.ok) throw new Error('Failed to load conversation');
+
+          const data = await response.json();
+
+          // Render messages
+          data.messages.forEach(msg => {
+            addMessage(msg.content, msg.role, msg.message_id);
+          });
+        } catch (error) {
+          console.error('Failed to load conversation:', error);
+          showError('Failed to load conversation');
+        }
+
+        // Close sidebar on mobile
+        if (window.innerWidth <= 768) {
+          toggleSidebar(false);
+        }
+      }
+
+      // Start a new conversation
+      function startNewConversation() {
+        conversationId = null;
+
+        // Clear messages and show welcome
+        messagesContainer.innerHTML = '';
+
+        // Show welcome or Addie Home based on auth
+        if (isAuthenticated) {
+          addieHomeContainer.classList.add('visible');
+          loadAddieHome();
+        } else {
+          welcomeMessage.style.display = 'block';
+        }
+
+        // Update sidebar
+        threadList.querySelectorAll('.thread-item').forEach(item => {
+          item.classList.remove('active');
+        });
+
+        // Close sidebar on mobile
+        if (window.innerWidth <= 768) {
+          toggleSidebar(false);
+        }
+
+        chatInput.focus();
+      }
+
+      // Toggle sidebar visibility
+      function toggleSidebar(show) {
+        sidebarVisible = show !== undefined ? show : !sidebarVisible;
+        threadSidebar.classList.toggle('visible', sidebarVisible);
+        threadOverlay.classList.toggle('visible', sidebarVisible && window.innerWidth <= 768);
       }
 
       // Load Addie Home content
@@ -1391,6 +1732,11 @@
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
 
+          // Refresh thread list to show new/updated conversation
+          if (isAuthenticated) {
+            loadThreads();
+          }
+
         } catch (error) {
           console.error('Error sending message:', error);
           // Remove the streaming message and show error
@@ -1429,6 +1775,11 @@
           sendMessage();
         }
       });
+
+      // Thread sidebar event listeners
+      threadToggleBtn.addEventListener('click', () => toggleSidebar());
+      threadOverlay.addEventListener('click', () => toggleSidebar(false));
+      newChatBtn.addEventListener('click', startNewConversation);
 
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
       function checkQueryPrompt() {
