@@ -45,6 +45,7 @@ import { getMemberContext, formatMemberContextForPrompt, type MemberContext } fr
 import {
   extractInsights,
   checkAndMarkOutreachResponse,
+  getGoalsForSystemPrompt,
   type ExtractionContext,
 } from './services/insight-extractor.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
@@ -168,9 +169,22 @@ async function buildMessageWithMemberContext(
       baseMessage = `[ADMIN USER] ${sanitizedMessage}`;
     }
 
-    if (memberContextText) {
+    // Get insight goals to naturally work into conversation
+    const isMapped = !!memberContext?.is_mapped;
+    let insightGoalsText = '';
+    try {
+      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+      if (goalsPrompt) {
+        insightGoalsText = goalsPrompt;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
+    }
+
+    if (memberContextText || insightGoalsText) {
+      const sections = [memberContextText, insightGoalsText].filter(Boolean);
       return {
-        message: `${memberContextText}\n---\n\n${baseMessage}`,
+        message: `${sections.join('\n\n')}\n---\n\n${baseMessage}`,
         memberContext,
       };
     }

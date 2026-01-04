@@ -141,3 +141,315 @@ export interface SuggestedPrompt {
   title: string;
   message: string;
 }
+
+// ============================================================================
+// OUTBOUND PLANNER TYPES
+// ============================================================================
+
+/**
+ * Goal category - what type of action is this?
+ */
+export type GoalCategory = 'information' | 'education' | 'invitation' | 'connection' | 'admin';
+
+/**
+ * Goal status in user history
+ */
+export type GoalStatus = 'pending' | 'sent' | 'responded' | 'success' | 'declined' | 'deferred';
+
+/**
+ * Outcome trigger type - what triggers this outcome?
+ */
+export type OutcomeTriggerType = 'sentiment' | 'intent' | 'keyword' | 'timeout' | 'default';
+
+/**
+ * Outcome type - what happened?
+ */
+export type OutcomeType = 'success' | 'defer' | 'clarify' | 'decline' | 'escalate';
+
+/**
+ * Planner decision method
+ */
+export type PlannerDecisionMethod = 'rule_match' | 'llm';
+
+/**
+ * Rehearsal session status
+ */
+export type RehearsalStatus = 'active' | 'completed' | 'abandoned';
+
+/**
+ * Outreach goal definition
+ */
+export interface OutreachGoal {
+  id: number;
+  name: string;
+  category: GoalCategory;
+  description: string | null;
+  success_insight_type: string | null;
+
+  // Eligibility criteria
+  requires_mapped: boolean;
+  requires_company_type: string[];
+  requires_min_engagement: number;
+  requires_insights: Record<string, string>;  // {insight_type: "any" | pattern}
+  excludes_insights: Record<string, string>;
+
+  // Priority
+  base_priority: number;
+
+  // Messages
+  message_template: string;
+  follow_up_on_question: string | null;
+
+  // Status
+  is_enabled: boolean;
+
+  // Audit
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Goal outcome - what happens based on response
+ */
+export interface GoalOutcome {
+  id: number;
+  goal_id: number;
+
+  // Trigger
+  trigger_type: OutcomeTriggerType;
+  trigger_value: string | null;
+
+  // Result
+  outcome_type: OutcomeType;
+
+  // Actions
+  response_message: string | null;
+  next_goal_id: number | null;
+  defer_days: number | null;
+  insight_to_record: string | null;
+  insight_value: string | null;
+
+  priority: number;
+  created_at: Date;
+}
+
+/**
+ * User's history with a specific goal
+ */
+export interface UserGoalHistory {
+  id: number;
+  slack_user_id: string;
+  goal_id: number;
+
+  status: GoalStatus;
+
+  // Attempts
+  attempt_count: number;
+  last_attempt_at: Date | null;
+  next_attempt_at: Date | null;
+
+  // Response
+  outcome_id: number | null;
+  response_text: string | null;
+  response_sentiment: string | null;
+  response_intent: string | null;
+
+  // Planner context
+  planner_reason: string | null;
+  planner_score: number | null;
+  decision_method: PlannerDecisionMethod | null;
+
+  // Links
+  outreach_id: number | null;
+  thread_id: string | null;
+
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Rehearsal message in a session
+ */
+export interface RehearsalMessage {
+  role: 'addie' | 'user';
+  content: string;
+  timestamp: Date;
+  goal_id?: number;
+  analysis?: {
+    sentiment: string;
+    intent: string;
+  };
+  outcome?: {
+    type: OutcomeType;
+    next_goal_id?: number;
+  };
+}
+
+/**
+ * Rehearsal persona - simulated user context
+ */
+export interface RehearsalPersona {
+  name: string;
+  role?: string;
+  company_type?: string;
+  company_name?: string;
+  engagement_score?: number;
+  is_mapped?: boolean;
+  existing_insights?: Array<{
+    type: string;
+    value: string;
+  }>;
+}
+
+/**
+ * Rehearsal session
+ */
+export interface RehearsalSession {
+  id: number;
+  admin_user_id: string;
+
+  // Persona
+  persona_name: string | null;
+  persona_context: RehearsalPersona;
+
+  // State
+  current_goal_id: number | null;
+  status: RehearsalStatus;
+  messages: RehearsalMessage[];
+
+  // Notes
+  notes: string | null;
+  outcome_summary: string | null;
+
+  started_at: Date;
+  ended_at: Date | null;
+  created_at: Date;
+}
+
+/**
+ * Capability states - what has/hasn't the member done?
+ * Used by the planner to identify opportunities.
+ */
+export interface MemberCapabilities {
+  // Account setup
+  account_linked: boolean;
+  profile_complete: boolean;
+  offerings_set: boolean;
+  email_prefs_configured: boolean;
+
+  // Team
+  has_team_members: boolean;
+  is_org_admin: boolean;
+
+  // Participation
+  working_group_count: number;
+  council_count: number;
+  events_registered: number;
+  events_attended: number;
+
+  // Engagement
+  last_active_days_ago: number | null;
+  slack_message_count_30d: number;
+  is_committee_leader: boolean;
+}
+
+/**
+ * Context for the outbound planner
+ */
+export interface PlannerContext {
+  user: {
+    slack_user_id: string;
+    workos_user_id?: string;
+    display_name?: string;
+    is_mapped: boolean;
+    engagement_score: number;
+    insights: Array<{
+      type: string;
+      value: string;
+      confidence: string;
+    }>;
+  };
+  company?: {
+    name: string;
+    type: string;
+    size?: string;
+    offerings?: string[];
+  };
+  /** What capabilities has/hasn't this member unlocked? */
+  capabilities?: MemberCapabilities;
+  history: UserGoalHistory[];
+  contact_eligibility: {
+    can_contact: boolean;
+    reason: string;
+    next_contact_date?: Date;
+  };
+}
+
+/**
+ * Planned action from the outbound planner
+ */
+export interface PlannedAction {
+  goal: OutreachGoal;
+  reason: string;
+  priority_score: number;
+  alternative_goals: OutreachGoal[];
+  decision_method: PlannerDecisionMethod;
+}
+
+/**
+ * Input for creating a new goal
+ */
+export interface CreateGoalInput {
+  name: string;
+  category: GoalCategory;
+  description?: string;
+  success_insight_type?: string;
+  requires_mapped?: boolean;
+  requires_company_type?: string[];
+  requires_min_engagement?: number;
+  requires_insights?: Record<string, string>;
+  excludes_insights?: Record<string, string>;
+  base_priority?: number;
+  message_template: string;
+  follow_up_on_question?: string;
+  is_enabled?: boolean;
+  created_by?: string;
+}
+
+/**
+ * Input for creating a goal outcome
+ */
+export interface CreateOutcomeInput {
+  goal_id: number;
+  trigger_type: OutcomeTriggerType;
+  trigger_value?: string;
+  outcome_type: OutcomeType;
+  response_message?: string;
+  next_goal_id?: number;
+  defer_days?: number;
+  insight_to_record?: string;
+  insight_value?: string;
+  priority?: number;
+}
+
+/**
+ * Input for starting a rehearsal session
+ */
+export interface StartRehearsalInput {
+  admin_user_id: string;
+  persona: RehearsalPersona;
+}
+
+/**
+ * Result of simulating a user response in rehearsal
+ */
+export interface RehearsalResponseResult {
+  analysis: {
+    sentiment: string;
+    intent: string;
+  };
+  matched_outcome: GoalOutcome | null;
+  next_action: PlannedAction | null;
+  addie_reply?: string;
+}
