@@ -475,8 +475,8 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 ## Links
 
 - **Website**: [adcontextprotocol.org](https://adcontextprotocol.org)
-- **API Documentation**: [Advertising Automation API](https://adcontextprotocol.org/advertising-automation-api)
-- **MCP Integration**: [MCP Advertising Guide](https://adcontextprotocol.org/mcp-advertising-integration)
+- **API Documentation**: [Task Reference](https://adcontextprotocol.org/docs/media-buy/task-reference/index)
+- **MCP Integration**: [MCP Guide](https://adcontextprotocol.org/docs/protocols/mcp-guide)
 - **Specifications**: [Signals Protocol RFC](docs/signals/specification.mdx)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
