@@ -969,7 +969,8 @@ export function setupDomainRoutes(
         await pool.query(
           `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
            VALUES ($1, $2, $3, true, 'workos')
-           ON CONFLICT (workos_organization_id, domain) DO UPDATE SET
+           ON CONFLICT (domain) DO UPDATE SET
+             workos_organization_id = EXCLUDED.workos_organization_id,
              is_primary = EXCLUDED.is_primary,
              verified = true,
              source = 'workos',

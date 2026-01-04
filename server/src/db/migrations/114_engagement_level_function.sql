@@ -1,4 +1,4 @@
--- Migration: 113_engagement_level_function.sql
+-- Migration: 114_engagement_level_function.sql
 -- Adds engagement_level column and function to compute it consistently
 -- This aligns the list page with the detail page's priority-based calculation
 

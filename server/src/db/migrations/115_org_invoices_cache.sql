@@ -1,4 +1,4 @@
--- Migration: 114_org_invoices_cache.sql
+-- Migration: 115_org_invoices_cache.sql
 -- Cache Stripe invoice data locally to avoid API calls on every page load
 -- Updated via Stripe webhooks: invoice.created, invoice.updated, invoice.finalized,
 -- invoice.payment_succeeded, invoice.paid, invoice.voided

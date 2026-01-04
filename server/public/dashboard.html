@@ -718,7 +718,7 @@
         </div>
 
         <p style="text-align: center; margin-top: 16px; font-size: 14px; color: var(--color-text-secondary);">
-          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal()" style="color: var(--aao-primary); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
+          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestWithOrgInfo()" style="color: var(--aao-primary); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
         </p>
       </div>
 
@@ -763,6 +763,20 @@
     // Helper to check if the CURRENT org (not any org) has active subscription
     function currentOrgHasActiveSubscription() {
       return currentOrg?.billing?.status === 'active';
+    }
+
+    // Helper to open invoice request modal with current org info pre-filled
+    function openInvoiceRequestWithOrgInfo() {
+      const isPersonal = currentOrg?.is_personal || currentOrg?.billing?.is_personal;
+      const customerType = isPersonal ? 'individual' : 'company';
+      const revenueTier = currentOrg?.billing?.revenue_tier || '';
+
+      openInvoiceRequestModal({
+        companyName: currentOrg?.name || '',
+        selectedProduct: inlineCheckoutProduct?.lookup_key || '',
+        customerType: customerType,
+        revenueTier: revenueTier
+      });
     }
 
     // Profile modal state
@@ -1281,7 +1295,7 @@
                 Pay Now
               </button>
               <div style="font-size: 13px; color: var(--color-text-muted);">
-                Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal()" style="color: var(--color-brand); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
+                Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestWithOrgInfo()" style="color: var(--color-brand); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
               </div>
               <a href="/membership" style="font-size: 13px; color: var(--color-brand);">Learn more about membership benefits →</a>
             </div>
