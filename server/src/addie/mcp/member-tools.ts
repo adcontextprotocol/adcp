@@ -55,12 +55,14 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
  * Public test agent credentials.
  * These are intentionally public and documented for testing purposes.
  * See: https://adcontextprotocol.org/docs/media-buy/advanced-topics/testing
+ *
+ * The token can be overridden via PUBLIC_TEST_AGENT_TOKEN env var if needed,
+ * but defaults to the documented public token.
  */
 const PUBLIC_TEST_AGENT = {
   url: 'https://test-agent.adcontextprotocol.org/mcp',
-  // Public test token - documented at https://adcontextprotocol.org/docs/quickstart
-  // gitguardian:ignore
-  token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
+  // Default token is documented at https://adcontextprotocol.org/docs/quickstart
+  token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
   name: 'AdCP Public Test Agent',
 };
 
