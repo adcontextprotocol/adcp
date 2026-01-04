@@ -780,7 +780,7 @@ export function createEventsRouter(): {
           });
         }
 
-        const eventGroup = await workingGroupDb.getEventGroupByEventId(id);
+        const eventGroup = await workingGroupDb.getIndustryGatheringByEventId(id);
 
         // Get member count if event group exists
         let memberCount = 0;
@@ -829,7 +829,7 @@ export function createEventsRouter(): {
         }
 
         // Check if event group already exists
-        const existingGroup = await workingGroupDb.getEventGroupByEventId(id);
+        const existingGroup = await workingGroupDb.getIndustryGatheringByEventId(id);
         if (existingGroup) {
           return res.status(400).json({
             error: "Event group already exists",

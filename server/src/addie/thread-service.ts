@@ -196,6 +196,10 @@ export interface ThreadSummary {
   last_assistant_message: string | null;
   avg_rating: number | null;
   total_latency_ms: number | null;
+  feedback_count: number;
+  user_feedback_count: number;
+  positive_feedback_count: number;
+  negative_feedback_count: number;
 }
 
 export interface ThreadListFilters {
@@ -204,6 +208,7 @@ export interface ThreadListFilters {
   flagged_only?: boolean;
   unreviewed_only?: boolean;
   has_feedback?: boolean;
+  has_user_feedback?: boolean;
   since?: Date;
   limit?: number;
   offset?: number;
@@ -450,8 +455,8 @@ export class ThreadService {
   async addMessageFeedback(
     messageId: string,
     feedback: MessageFeedback
-  ): Promise<void> {
-    await query(
+  ): Promise<boolean> {
+    const result = await query(
       `UPDATE addie_thread_messages
        SET
          rating = $2,
@@ -474,6 +479,7 @@ export class ThreadService {
         feedback.rating_source,
       ]
     );
+    return result.rowCount !== null && result.rowCount > 0;
   }
 
   /**
@@ -531,6 +537,14 @@ export class ThreadService {
 
     if (filters.unreviewed_only) {
       conditions.push(`reviewed = FALSE`);
+    }
+
+    if (filters.has_feedback) {
+      conditions.push(`feedback_count > 0`);
+    }
+
+    if (filters.has_user_feedback) {
+      conditions.push(`user_feedback_count > 0`);
     }
 
     if (filters.since) {

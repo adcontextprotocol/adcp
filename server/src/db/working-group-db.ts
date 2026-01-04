@@ -73,8 +73,9 @@ export class WorkingGroupDatabase {
       `INSERT INTO working_groups (
         name, slug, description, slack_channel_url, slack_channel_id,
         is_private, status, display_order, committee_type, region,
-        linked_event_id, event_start_date, event_end_date, auto_archive_after_event
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        linked_event_id, event_start_date, event_end_date, event_location, auto_archive_after_event,
+        logo_url, website_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
         input.name,
@@ -90,7 +91,10 @@ export class WorkingGroupDatabase {
         input.linked_event_id || null,
         input.event_start_date || null,
         input.event_end_date || null,
+        input.event_location || null,
         input.auto_archive_after_event ?? true,
+        input.logo_url || null,
+        input.website_url || null,
       ]
     );
 
@@ -160,7 +164,10 @@ export class WorkingGroupDatabase {
       linked_event_id: 'linked_event_id',
       event_start_date: 'event_start_date',
       event_end_date: 'event_end_date',
+      event_location: 'event_location',
       auto_archive_after_event: 'auto_archive_after_event',
+      logo_url: 'logo_url',
+      website_url: 'website_url',
     };
 
     const setClauses: string[] = [];
@@ -920,19 +927,19 @@ export class WorkingGroupDatabase {
   }): Promise<WorkingGroup> {
     return this.createWorkingGroup({
       ...input,
-      committee_type: 'event',
+      committee_type: 'industry_gathering',
       is_private: false,
       auto_archive_after_event: true,
     });
   }
 
   /**
-   * Get event group by linked event ID
+   * Get industry gathering group by linked event ID
    */
-  async getEventGroupByEventId(eventId: string): Promise<WorkingGroup | null> {
+  async getIndustryGatheringByEventId(eventId: string): Promise<WorkingGroup | null> {
     const result = await query<WorkingGroup>(
       `SELECT * FROM working_groups
-       WHERE linked_event_id = $1 AND committee_type = 'event'`,
+       WHERE linked_event_id = $1 AND committee_type = 'industry_gathering'`,
       [eventId]
     );
     if (!result.rows[0]) return null;
@@ -943,14 +950,14 @@ export class WorkingGroupDatabase {
   }
 
   /**
-   * Get upcoming event groups (events that haven't ended yet)
+   * Get upcoming industry gatherings (that haven't ended yet)
    */
-  async getUpcomingEventGroups(): Promise<WorkingGroupWithMemberCount[]> {
+  async getUpcomingIndustryGatherings(): Promise<WorkingGroupWithMemberCount[]> {
     const result = await query<WorkingGroupWithMemberCount>(
       `SELECT wg.*, COUNT(wgm.id)::int AS member_count
        FROM working_groups wg
        LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
-       WHERE wg.committee_type = 'event'
+       WHERE wg.committee_type = 'industry_gathering'
          AND wg.status = 'active'
          AND (wg.event_end_date IS NULL OR wg.event_end_date >= CURRENT_DATE)
        GROUP BY wg.id
@@ -969,14 +976,14 @@ export class WorkingGroupDatabase {
   }
 
   /**
-   * Get past event groups (for archival reference)
+   * Get past industry gatherings (for archival reference)
    */
-  async getPastEventGroups(): Promise<WorkingGroupWithMemberCount[]> {
+  async getPastIndustryGatherings(): Promise<WorkingGroupWithMemberCount[]> {
     const result = await query<WorkingGroupWithMemberCount>(
       `SELECT wg.*, COUNT(wgm.id)::int AS member_count
        FROM working_groups wg
        LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
-       WHERE wg.committee_type = 'event'
+       WHERE wg.committee_type = 'industry_gathering'
          AND wg.event_end_date < CURRENT_DATE
        GROUP BY wg.id
        ORDER BY wg.event_end_date DESC`
