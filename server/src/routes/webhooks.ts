@@ -29,6 +29,11 @@ import {
   handleEmailInvocation,
   type InboundEmailContext,
 } from '../addie/email-handler.js';
+import {
+  parseForwardedEmailHeaders,
+  formatEmailAddress,
+  mergeAddresses,
+} from '../utils/forwarded-email-parser.js';
 
 const logger = createLogger('webhooks');
 
@@ -549,15 +554,41 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   const emailBody = await fetchEmailBody(data.email_id);
 
   // Use original recipients from headers if available, otherwise fall back to webhook data
-  const toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
-  const ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+  let toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
+  let ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+
+  // Check if this is a forwarded email and extract original recipients from the body
+  const forwardedInfo = parseForwardedEmailHeaders(data.subject, emailBody?.text);
+
+  if (forwardedInfo.isForwarded && forwardedInfo.confidence !== 'low') {
+    // Extract additional recipients from the forwarded email headers in the body
+    const forwardedTo = forwardedInfo.originalTo.map(formatEmailAddress);
+    const forwardedCc = forwardedInfo.originalCc.map(formatEmailAddress);
+
+    // Merge with existing addresses, avoiding duplicates
+    toAddresses = mergeAddresses(toAddresses, forwardedTo);
+    ccAddresses = mergeAddresses(ccAddresses || [], forwardedCc);
+
+    logger.info({
+      isForwarded: true,
+      confidence: forwardedInfo.confidence,
+      forwardedToCount: forwardedInfo.originalTo.length,
+      forwardedCcCount: forwardedInfo.originalCc.length,
+      forwardedTo: forwardedInfo.originalTo.map(a => a.email),
+      forwardedCc: forwardedInfo.originalCc.map(a => a.email),
+      originalSubject: forwardedInfo.originalSubject,
+    }, 'Extracted recipients from forwarded email body');
+  }
 
   logger.info({
     webhookTo: data.to,
     webhookCc: data.cc,
     originalTo: emailBody?.originalTo,
     originalCc: emailBody?.originalCc,
+    finalTo: toAddresses,
+    finalCc: ccAddresses,
     usingOriginalRecipients: !!(emailBody?.originalTo?.length || emailBody?.originalCc?.length),
+    isForwarded: forwardedInfo.isForwarded,
   }, 'Resolving email recipients');
 
   // Get all external participants using original recipients
