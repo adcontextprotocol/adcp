@@ -29,6 +29,11 @@ import {
   handleEmailInvocation,
   type InboundEmailContext,
 } from '../addie/email-handler.js';
+import {
+  parseForwardedEmailHeaders,
+  formatEmailAddress,
+  mergeAddresses,
+} from '../utils/forwarded-email-parser.js';
 
 const logger = createLogger('webhooks');
 
@@ -549,15 +554,41 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   const emailBody = await fetchEmailBody(data.email_id);
 
   // Use original recipients from headers if available, otherwise fall back to webhook data
-  const toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
-  const ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+  let toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
+  let ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+
+  // Check if this is a forwarded email and extract original recipients from the body
+  const forwardedInfo = parseForwardedEmailHeaders(data.subject, emailBody?.text);
+
+  if (forwardedInfo.isForwarded && forwardedInfo.confidence !== 'low') {
+    // Extract additional recipients from the forwarded email headers in the body
+    const forwardedTo = forwardedInfo.originalTo.map(formatEmailAddress);
+    const forwardedCc = forwardedInfo.originalCc.map(formatEmailAddress);
+
+    // Merge with existing addresses, avoiding duplicates
+    toAddresses = mergeAddresses(toAddresses, forwardedTo);
+    ccAddresses = mergeAddresses(ccAddresses || [], forwardedCc);
+
+    logger.info({
+      isForwarded: true,
+      confidence: forwardedInfo.confidence,
+      forwardedToCount: forwardedInfo.originalTo.length,
+      forwardedCcCount: forwardedInfo.originalCc.length,
+      forwardedTo: forwardedInfo.originalTo.map(a => a.email),
+      forwardedCc: forwardedInfo.originalCc.map(a => a.email),
+      originalSubject: forwardedInfo.originalSubject,
+    }, 'Extracted recipients from forwarded email body');
+  }
 
   logger.info({
     webhookTo: data.to,
     webhookCc: data.cc,
     originalTo: emailBody?.originalTo,
     originalCc: emailBody?.originalCc,
+    finalTo: toAddresses,
+    finalCc: ccAddresses,
     usingOriginalRecipients: !!(emailBody?.originalTo?.length || emailBody?.originalCc?.length),
+    isForwarded: forwardedInfo.isForwarded,
   }, 'Resolving email recipients');
 
   // Get all external participants using original recipients
@@ -651,33 +682,9 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     );
   }
 
-  // If primary contact is linked to an org, also store in org_activities
-  if (primaryContact.organizationId) {
-    await pool.query(
-      `INSERT INTO org_activities (
-        organization_id,
-        activity_type,
-        description,
-        logged_by_name,
-        activity_date,
-        metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        primaryContact.organizationId,
-        'email_inbound',
-        insights,
-        'Addie',
-        new Date(data.created_at),
-        JSON.stringify({
-          ...metadata,
-          message_id: data.message_id,
-          primary_contact_email: primaryContact.email,
-          insight_method: method,
-          tokens_used: tokensUsed,
-        }),
-      ]
-    );
-  }
+  // Note: Email activities are shown on org detail pages via a JOIN query
+  // through email_contacts.organization_id, so we don't need to duplicate
+  // the activity into org_activities here.
 
   return {
     activityId: activityResult.rows[0].id,

@@ -10,6 +10,12 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { enrichOrganization } from "../../services/enrichment.js";
+import {
+  addPersonalDomain,
+  removePersonalDomain,
+  listPersonalDomains,
+} from "../../db/personal-domains-db.js";
+import { linkContactsByDomain } from "../../db/contacts-db.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -869,6 +875,7 @@ export function setupDomainRoutes(
   );
 
   // POST /api/admin/organizations/:orgId/domains - Add a domain to an organization
+  // Writes to WorkOS first, then local DB is updated via webhook (or immediately for consistency)
   apiRouter.post(
     "/organizations/:orgId/domains",
     requireAuth,
@@ -876,13 +883,27 @@ export function setupDomainRoutes(
     async (req, res) => {
       try {
         const { orgId } = req.params;
-        const { domain, is_primary, sync_to_workos } = req.body;
+        const { domain, is_primary } = req.body;
 
         if (!domain) {
           return res.status(400).json({ error: "domain is required" });
         }
 
-        const normalizedDomain = domain.toLowerCase().trim();
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
+
+        const normalizedDomain = domain.toLowerCase().trim().replace(/^www\./, '');
+
+        // Validate domain format
+        const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
+        if (!domainRegex.test(normalizedDomain)) {
+          return res.status(400).json({
+            error: "Invalid domain format",
+            message: `"${normalizedDomain}" is not a valid domain. Expected format: "example.com" or "sub.example.com"`,
+          });
+        }
+
         const pool = getPool();
 
         // Verify org exists
@@ -895,7 +916,7 @@ export function setupDomainRoutes(
           return res.status(404).json({ error: "Organization not found" });
         }
 
-        // Check if domain is already claimed by another org
+        // Check if domain is already claimed by another org locally
         const existingResult = await pool.query(
           `SELECT od.workos_organization_id, o.name as org_name
            FROM organization_domains od
@@ -921,6 +942,46 @@ export function setupDomainRoutes(
           });
         }
 
+        // Add to WorkOS first - this is the source of truth
+        try {
+          const workosOrg = await workos.organizations.getOrganization(orgId);
+
+          // Check if domain already exists in WorkOS for this org
+          const existingDomain = workosOrg.domains.find(d => d.domain.toLowerCase() === normalizedDomain);
+
+          if (existingDomain) {
+            // Domain already exists - just verify it if not already verified
+            if (existingDomain.state !== 'verified') {
+              const updatedDomains = workosOrg.domains.map(d => ({
+                domain: d.domain,
+                state: d.domain.toLowerCase() === normalizedDomain ? DomainDataState.Verified : (d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending)
+              }));
+              await workos.organizations.updateOrganization({
+                organization: orgId,
+                domainData: updatedDomains,
+              });
+            }
+            // If already verified, no WorkOS update needed
+          } else {
+            // Domain doesn't exist - add it
+            const existingDomains = workosOrg.domains.map(d => ({
+              domain: d.domain,
+              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+            }));
+
+            await workos.organizations.updateOrganization({
+              organization: orgId,
+              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+            });
+          }
+        } catch (workosErr) {
+          logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to add domain to WorkOS");
+          return res.status(500).json({
+            error: "WorkOS error",
+            message: `Failed to add domain to WorkOS: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`,
+          });
+        }
+
         // If setting as primary, clear existing primary first
         if (is_primary) {
           await pool.query(
@@ -930,10 +991,16 @@ export function setupDomainRoutes(
           );
         }
 
-        // Insert the domain
+        // Insert/update local DB immediately (webhook will also do this, but for immediate consistency)
         await pool.query(
           `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-           VALUES ($1, $2, $3, false, 'manual')`,
+           VALUES ($1, $2, $3, true, 'workos')
+           ON CONFLICT (domain) DO UPDATE SET
+             workos_organization_id = EXCLUDED.workos_organization_id,
+             is_primary = EXCLUDED.is_primary,
+             verified = true,
+             source = 'workos',
+             updated_at = NOW()`,
           [orgId, normalizedDomain, is_primary || false]
         );
 
@@ -946,30 +1013,28 @@ export function setupDomainRoutes(
           );
         }
 
-        // Optionally sync to WorkOS
-        if (sync_to_workos && workos) {
-          try {
-            await workos.organizations.updateOrganization({
-              organization: orgId,
-              domainData: [{ domain: normalizedDomain, state: DomainDataState.Verified }],
-            });
-            // Mark as verified since we added it to WorkOS
-            await pool.query(
-              `UPDATE organization_domains SET verified = true, source = 'workos', updated_at = NOW()
-               WHERE workos_organization_id = $1 AND domain = $2`,
-              [orgId, normalizedDomain]
-            );
-          } catch (workosErr) {
-            logger.warn({ err: workosErr, domain: normalizedDomain }, "Failed to sync domain to WorkOS");
-          }
-        }
+        logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization via WorkOS");
 
-        logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization");
+        // Link any existing unmapped email contacts with this domain to the org
+        const linkResult = await linkContactsByDomain(
+          normalizedDomain,
+          orgId,
+          req.user?.id
+        );
+
+        if (linkResult.contactsLinked > 0) {
+          logger.info(
+            { orgId, domain: normalizedDomain, contactsLinked: linkResult.contactsLinked },
+            "Linked email contacts to organization"
+          );
+        }
 
         res.json({
           success: true,
           domain: normalizedDomain,
           is_primary: is_primary || false,
+          synced_to_workos: true,
+          contacts_linked: linkResult.contactsLinked,
         });
       } catch (error) {
         logger.error({ err: error }, "Error adding organization domain");
@@ -982,6 +1047,7 @@ export function setupDomainRoutes(
   );
 
   // DELETE /api/admin/organizations/:orgId/domains/:domain - Remove a domain from an organization
+  // Removes from WorkOS first, then local DB is updated via webhook (or immediately for consistency)
   apiRouter.delete(
     "/organizations/:orgId/domains/:domain",
     requireAuth,
@@ -991,6 +1057,10 @@ export function setupDomainRoutes(
         const { orgId, domain } = req.params;
         const normalizedDomain = domain.toLowerCase().trim();
         const pool = getPool();
+
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
 
         // Get domain info before deletion
         const domainResult = await pool.query(
@@ -1005,13 +1075,36 @@ export function setupDomainRoutes(
 
         const wasPrimary = domainResult.rows[0].is_primary;
 
-        // Delete the domain
+        // Remove from WorkOS first - this is the source of truth
+        try {
+          const workosOrg = await workos.organizations.getOrganization(orgId);
+          const remainingDomains = workosOrg.domains
+            .filter(d => d.domain.toLowerCase() !== normalizedDomain)
+            .map(d => ({
+              domain: d.domain,
+              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+            }));
+
+          await workos.organizations.updateOrganization({
+            organization: orgId,
+            domainData: remainingDomains,
+          });
+        } catch (workosErr) {
+          logger.error({ err: workosErr, domain: normalizedDomain, orgId }, "Failed to remove domain from WorkOS");
+          return res.status(500).json({
+            error: "WorkOS error",
+            message: `Failed to remove domain from WorkOS: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`,
+          });
+        }
+
+        // Delete from local DB
         await pool.query(
           `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
           [orgId, normalizedDomain]
         );
 
         // If we deleted the primary domain, pick a new one
+        let newPrimary: string | null = null;
         if (wasPrimary) {
           const remaining = await pool.query(
             `SELECT domain FROM organization_domains
@@ -1021,7 +1114,7 @@ export function setupDomainRoutes(
             [orgId]
           );
 
-          const newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+          newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
 
           if (newPrimary) {
             await pool.query(
@@ -1038,12 +1131,13 @@ export function setupDomainRoutes(
           );
         }
 
-        logger.info({ orgId, domain: normalizedDomain, wasPrimary }, "Removed domain from organization");
+        logger.info({ orgId, domain: normalizedDomain, wasPrimary, newPrimary }, "Removed domain from organization via WorkOS");
 
         res.json({
           success: true,
           domain: normalizedDomain,
           was_primary: wasPrimary,
+          new_primary: newPrimary,
         });
       } catch (error) {
         logger.error({ err: error }, "Error removing organization domain");
@@ -1135,10 +1229,17 @@ export function setupDomainRoutes(
         const pool = getPool();
         const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
 
-        // Build parameterized query for free email exclusion
-        const freeEmailPlaceholders = freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ');
+        // Fetch admin-managed personal domains and combine with hardcoded list
+        const personalDomains = await listPersonalDomains();
+        const allExcludedDomains = [
+          ...freeEmailDomains,
+          ...personalDomains.map(d => d.domain),
+        ];
 
-        // 1. Orphan corporate domains
+        // Build parameterized query for free email exclusion
+        const freeEmailPlaceholders = allExcludedDomains.map((_, i) => `$${i + 1}`).join(', ');
+
+        // 1. Orphan corporate domains - domains not linked to any org, but users may already be members
         const orphanResult = await pool.query(`
           WITH user_domains AS (
             SELECT
@@ -1156,17 +1257,41 @@ export function setupDomainRoutes(
             GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
           ),
           claimed_domains AS (
-            SELECT LOWER(domain) as domain FROM organization_domains
+            SELECT REGEXP_REPLACE(LOWER(domain), '^www\\.', '') as domain FROM organization_domains
             UNION
-            SELECT LOWER(email_domain) FROM organizations WHERE email_domain IS NOT NULL
+            SELECT REGEXP_REPLACE(LOWER(email_domain), '^www\\.', '') FROM organizations WHERE email_domain IS NOT NULL
+          ),
+          domain_orgs AS (
+            -- Find which orgs users with each domain actually belong to
+            SELECT
+              LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
+              array_agg(DISTINCT jsonb_build_object(
+                'org_id', o.workos_organization_id,
+                'name', o.name,
+                'is_personal', o.is_personal,
+                'has_stripe', o.stripe_customer_id IS NOT NULL,
+                'subscription_status', o.subscription_status,
+                'user_count', (
+                  SELECT COUNT(DISTINCT om2.workos_user_id)
+                  FROM organization_memberships om2
+                  WHERE om2.workos_organization_id = o.workos_organization_id
+                    AND LOWER(SPLIT_PART(om2.email, '@', 2)) = LOWER(SPLIT_PART(om.email, '@', 2))
+                )
+              )) as existing_orgs
+            FROM organization_memberships om
+            JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+            WHERE om.email IS NOT NULL
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
+            GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
           )
-          SELECT ud.domain, ud.user_count, ud.users
+          SELECT ud.domain, ud.user_count, ud.users, dorgs.existing_orgs
           FROM user_domains ud
           LEFT JOIN claimed_domains cd ON cd.domain = ud.domain
+          LEFT JOIN domain_orgs dorgs ON dorgs.domain = ud.domain
           WHERE cd.domain IS NULL
           ORDER BY ud.user_count DESC
-          LIMIT $${freeEmailDomains.length + 1}
-        `, [...freeEmailDomains, limit]);
+          LIMIT $${allExcludedDomains.length + 1}
+        `, [...allExcludedDomains, limit]);
 
         // 2. Misaligned users (corporate emails in personal workspaces)
         const misalignedResult = await pool.query(`
@@ -1184,8 +1309,8 @@ export function setupDomainRoutes(
             AND om.email IS NOT NULL
             AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
           ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
-          LIMIT $${freeEmailDomains.length + 1}
-        `, [...freeEmailDomains, limit]);
+          LIMIT $${allExcludedDomains.length + 1}
+        `, [...allExcludedDomains, limit]);
 
         // 3. Orgs without verified domains
         const unverifiedResult = await pool.query(`
@@ -1260,6 +1385,7 @@ export function setupDomainRoutes(
             domain: row.domain,
             user_count: parseInt(row.user_count, 10),
             users: row.users.slice(0, 10), // Limit to 10 users per domain
+            existing_orgs: row.existing_orgs || [], // Orgs users already belong to
           })),
           misaligned_users: Object.entries(misalignedByDomain).map(([domain, users]) => ({
             domain,
@@ -1292,6 +1418,91 @@ export function setupDomainRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch domain health data",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // PERSONAL DOMAINS API
+  // =========================================================================
+
+  // GET /api/admin/personal-domains - List all personal domains
+  apiRouter.get(
+    "/personal-domains",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const domains = await listPersonalDomains();
+        res.json({ domains });
+      } catch (error) {
+        logger.error({ err: error }, "Error listing personal domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to list personal domains",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/personal-domains - Add a personal domain
+  apiRouter.post(
+    "/personal-domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain, reason } = req.body;
+
+        if (!domain || typeof domain !== 'string') {
+          return res.status(400).json({
+            error: "Bad request",
+            message: "Domain is required",
+          });
+        }
+
+        const result = await addPersonalDomain({
+          domain,
+          reason,
+          created_by: req.user?.id,
+        });
+
+        res.status(201).json({ domain: result });
+      } catch (error) {
+        logger.error({ err: error }, "Error adding personal domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add personal domain",
+        });
+      }
+    }
+  );
+
+  // DELETE /api/admin/personal-domains/:domain - Remove a personal domain
+  apiRouter.delete(
+    "/personal-domains/:domain",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain } = req.params;
+
+        const removed = await removePersonalDomain(domain);
+
+        if (!removed) {
+          return res.status(404).json({
+            error: "Not found",
+            message: "Domain not found in personal domains list",
+          });
+        }
+
+        res.status(204).send();
+      } catch (error) {
+        logger.error({ err: error }, "Error removing personal domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to remove personal domain",
         });
       }
     }

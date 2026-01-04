@@ -556,3 +556,169 @@ export async function testSlackConnection(): Promise<{
     return { ok: false, error: errorMessage };
   }
 }
+
+/**
+ * Create a new public channel
+ *
+ * @param name - Channel name (lowercase, no spaces, max 80 chars)
+ * @returns The created channel info, or null on error
+ */
+export async function createChannel(
+  name: string
+): Promise<{ channel: SlackChannel; url: string } | null> {
+  try {
+    // Normalize name: lowercase, replace spaces with hyphens, remove invalid chars
+    const normalizedName = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-_]/g, '')
+      .slice(0, 80);
+
+    const response = await slackPostRequest<{ channel: SlackChannel }>('conversations.create', {
+      name: normalizedName,
+      is_private: false,
+    });
+
+    // Get workspace info for URL
+    const authInfo = await testSlackConnection();
+    const workspaceUrl = authInfo.team_id
+      ? `https://app.slack.com/client/${authInfo.team_id}/${response.channel.id}`
+      : `https://agenticads.slack.com/archives/${response.channel.id}`;
+
+    logger.info(
+      { channelId: response.channel.id, name: normalizedName },
+      'Created Slack channel'
+    );
+
+    return {
+      channel: response.channel,
+      url: workspaceUrl,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // Handle "name_taken" error specifically
+    if (errorMessage.includes('name_taken')) {
+      logger.warn({ name }, 'Channel name already taken');
+    } else {
+      logger.error({ error: errorMessage, name }, 'Failed to create Slack channel');
+    }
+
+    return null;
+  }
+}
+
+/**
+ * Invite users to a channel
+ *
+ * @param channelId - The channel to invite to
+ * @param userIds - Array of Slack user IDs to invite
+ */
+export async function inviteToChannel(
+  channelId: string,
+  userIds: string[]
+): Promise<{ ok: boolean; error?: string }> {
+  if (userIds.length === 0) {
+    return { ok: true };
+  }
+
+  try {
+    await slackPostRequest<{ ok: boolean }>('conversations.invite', {
+      channel: channelId,
+      users: userIds.join(','),
+    });
+
+    logger.info({ channelId, userCount: userIds.length }, 'Invited users to channel');
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // "already_in_channel" is not really an error
+    if (errorMessage.includes('already_in_channel')) {
+      return { ok: true };
+    }
+
+    logger.error({ error: errorMessage, channelId }, 'Failed to invite users to channel');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
+ * Set the channel topic
+ */
+export async function setChannelTopic(
+  channelId: string,
+  topic: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<{ ok: boolean }>('conversations.setTopic', {
+      channel: channelId,
+      topic: topic.slice(0, 250), // Max 250 chars
+    });
+
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error: errorMessage, channelId }, 'Failed to set channel topic');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
+ * Set the channel purpose/description
+ */
+export async function setChannelPurpose(
+  channelId: string,
+  purpose: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<{ ok: boolean }>('conversations.setPurpose', {
+      channel: channelId,
+      purpose: purpose.slice(0, 250), // Max 250 chars
+    });
+
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error: errorMessage, channelId }, 'Failed to set channel purpose');
+    return { ok: false, error: errorMessage };
+  }
+}
+
+/**
+ * Get channels that a specific user is a member of
+ * Uses users.conversations API to list user's channel memberships
+ *
+ * @param userId - The Slack user ID to query
+ * @returns Array of channel IDs the user is a member of
+ */
+export async function getUserChannels(userId: string): Promise<string[]> {
+  const channelIds: string[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const response = await slackRequest<{
+      channels: Array<{ id: string; name: string }>;
+      response_metadata?: { next_cursor?: string };
+    }>('users.conversations', {
+      user: userId,
+      types: 'public_channel',
+      exclude_archived: true,
+      limit: 200,
+      cursor,
+    });
+
+    if (response.channels) {
+      channelIds.push(...response.channels.map(c => c.id));
+    }
+
+    cursor = response.response_metadata?.next_cursor;
+
+    if (cursor) {
+      await sleep(RATE_LIMIT_DELAY_MS);
+    }
+  } while (cursor);
+
+  logger.debug({ userId, channelCount: channelIds.length }, 'Fetched user channel memberships');
+  return channelIds;
+}

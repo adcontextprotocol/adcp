@@ -177,6 +177,55 @@
       color: white;
     }
 
+    /* Image support */
+    .message-content img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 8px 0;
+      display: block;
+    }
+
+    .message-content img:hover {
+      cursor: pointer;
+    }
+
+    /* iframe support for creative previews */
+    .message-content .creative-preview-container {
+      position: relative;
+      width: 100%;
+      margin: 12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .message-content .creative-preview-container iframe {
+      width: 100%;
+      min-height: 200px;
+      border: none;
+      display: block;
+    }
+
+    .message-content .creative-preview-label {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      padding: 4px 8px;
+      background: var(--color-bg-card);
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* Inline HTML creative container */
+    .message-content .creative-html-container {
+      margin: 12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: white;
+      padding: 16px;
+    }
+
     .message-content ul, .message-content ol {
       margin: 8px 0;
       padding-left: 20px;
@@ -621,10 +670,10 @@
         <h2>Hi! I'm Addie</h2>
         <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
         <div class="suggested-prompts" id="suggestedPrompts">
-          <button class="suggested-prompt" data-prompt="What is AdCP?">What is AdCP?</button>
-          <button class="suggested-prompt" data-prompt="How do I get started with AdCP?">How do I get started?</button>
-          <button class="suggested-prompt" data-prompt="What is agentic advertising?">What is agentic advertising?</button>
-          <button class="suggested-prompt" data-prompt="How do I become an AAO member?">Become a member</button>
+          <button class="suggested-prompt" data-prompt="What can you do? What kinds of things can I ask you about?">What can you help me with?</button>
+          <button class="suggested-prompt" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
+          <button class="suggested-prompt" data-prompt="How do I set up a sales agent with AdCP?">Get started building</button>
+          <button class="suggested-prompt" data-prompt="How is agentic advertising different from programmatic, and why is it better for sustainability?">AdCP vs programmatic</button>
         </div>
       </div>
     </div>
@@ -856,7 +905,14 @@
           gfm: true, // GitHub flavored markdown
         });
 
-        // Use marked's built-in renderer with custom link handling
+        // Helper to escape HTML attribute values
+        const escapeAttr = (str) => str
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        // Use marked's built-in renderer with custom link and image handling
         const renderer = new marked.Renderer();
         renderer.link = function(href, title, text) {
           // Handle marked v17+ which passes an object
@@ -866,11 +922,50 @@
             title = link.title;
             text = link.text;
           }
+          // Validate URL scheme - only allow safe protocols
+          const safeHref = /^(https?:\/\/|mailto:|#)/i.test(href) ? href : '#';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+        };
+
+        // Custom image renderer
+        renderer.image = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (typeof href === 'object') {
+            const img = href;
+            href = img.href;
+            title = img.title;
+            text = img.text;
+          }
           const titleAttr = title ? ` title="${title}"` : '';
-          return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+          const altAttr = text ? ` alt="${text}"` : ' alt="Image"';
+          // Make images clickable to open in new tab
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer"><img src="${href}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
         return marked.parse(text, { renderer });
+      }
+
+      // Render creative preview (iframe or HTML)
+      function renderCreativePreview(previewUrl, label) {
+        if (!previewUrl) return '';
+        const safeLabel = label ? label.replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Creative Preview';
+        return `
+          <div class="creative-preview-container">
+            <iframe src="${previewUrl}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
+            <div class="creative-preview-label">${safeLabel}</div>
+          </div>
+        `;
+      }
+
+      // Render inline HTML creative
+      function renderCreativeHtml(html, label) {
+        if (!html) return '';
+        return `
+          <div class="creative-html-container">
+            ${html}
+          </div>
+        `;
       }
 
       // Add message to chat
@@ -1091,53 +1186,82 @@
         const allBackticks = (text.match(/`/g) || []).length;
         const inlineCodeCount = allBackticks - (codeBlockCount * 3);
 
+        // Count link brackets - check for unmatched link syntax
+        const openBrackets = (text.match(/\[/g) || []).length;
+        const closeBrackets = (text.match(/\]/g) || []).length;
+        // Count ]( which indicates a complete link opening
+        const linkOpens = (text.match(/\]\(/g) || []).length;
+
         return boldCount % 2 === 0 &&
                italicCount % 2 === 0 &&
                inlineCodeCount % 2 === 0 &&
-               codeBlockCount % 2 === 0;
+               codeBlockCount % 2 === 0 &&
+               openBrackets === closeBrackets;
+      }
+
+      // Strip markdown markers for plain text display during streaming
+      function stripMarkdownMarkers(text) {
+        return text
+          .replace(/\*\*/g, '')      // Bold **
+          .replace(/\*/g, '')        // Italic *
+          .replace(/`{3}[^\n]*\n?/g, '') // Code blocks ```
+          .replace(/`/g, '')         // Inline code `
+          .replace(/^#{1,6}\s*/gm, '') // Headers #
+          .replace(/^\s*[-*+]\s+/gm, '• ') // List items
+          .replace(/^\s*\d+\.\s+/gm, '• ') // Numbered lists
+          .replace(/~~([^~]+)~~/g, '$1') // Strikethrough
+          .replace(/^\s*>\s*/gm, '')  // Blockquotes
+          .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // Links and images - keep text
+          .replace(/^[-*_]{3,}\s*$/gm, ''); // Horizontal rules
       }
 
       // Append text to streaming message
-      // Render complete paragraphs as markdown, show incomplete paragraph as plain text
+      // Strategy: Split into paragraphs, render complete ones with balanced markdown,
+      // show the incomplete trailing paragraph as plain text (with markers stripped)
       function appendToStreamingMessage(contentDiv, text, fullContent) {
         // Split on paragraph breaks (double newline)
-        const lastParagraphBreak = fullContent.lastIndexOf('\n\n');
+        const paragraphs = fullContent.split(/\n\n/);
 
-        if (lastParagraphBreak === -1) {
-          // No complete paragraphs yet - show as plain text
-          const escaped = fullContent
+        if (paragraphs.length === 1) {
+          // No complete paragraphs yet - show as plain text with markers stripped
+          const stripped = stripMarkdownMarkers(fullContent);
+          const escaped = stripped
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
           contentDiv.innerHTML = escaped + '<span class="streaming-cursor">|</span>';
         } else {
-          // Check if the "complete" paragraphs actually have balanced markdown
-          const completeParagraphs = fullContent.substring(0, lastParagraphBreak);
-          const remainder = fullContent.substring(lastParagraphBreak + 2);
+          // Process each paragraph individually
+          const completeParagraphs = paragraphs.slice(0, -1);
+          const remainder = paragraphs[paragraphs.length - 1];
 
-          // Only render as markdown if markers are balanced, otherwise show as plain text
-          let renderedComplete;
-          if (hasBalancedMarkdown(completeParagraphs)) {
-            renderedComplete = renderMessage(completeParagraphs);
-          } else {
-            // Fall back to plain text if markdown is unbalanced
-            renderedComplete = completeParagraphs
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/\n\n/g, '</p><p>')
-              .replace(/\n/g, '<br>');
-            renderedComplete = '<p>' + renderedComplete + '</p>';
-          }
+          // Render each complete paragraph - if it has balanced markdown, render it;
+          // otherwise show as plain text with markers stripped
+          const renderedParagraphs = completeParagraphs.map(para => {
+            if (hasBalancedMarkdown(para)) {
+              return renderMessage(para);
+            } else {
+              // Unbalanced - strip markers and escape
+              const stripped = stripMarkdownMarkers(para);
+              const escaped = stripped
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+              return '<p>' + escaped + '</p>';
+            }
+          });
 
-          const escapedRemainder = remainder
+          // Strip markers from remainder (incomplete paragraph)
+          const strippedRemainder = stripMarkdownMarkers(remainder);
+          const escapedRemainder = strippedRemainder
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
 
-          contentDiv.innerHTML = renderedComplete +
+          contentDiv.innerHTML = renderedParagraphs.join('') +
             (escapedRemainder ? '<p>' + escapedRemainder + '<span class="streaming-cursor">|</span></p>' : '<span class="streaming-cursor">|</span>');
         }
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -1210,10 +1334,50 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          let currentEventType = '';
+
+          // Helper to process SSE lines (uses closure for currentEventType)
+          const processLines = (lines) => {
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEventType = line.slice(7);
+              } else if (line.startsWith('data: ') && currentEventType) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+
+                  if (currentEventType === 'text') {
+                    fullContent += data.text;
+                    appendToStreamingMessage(contentDiv, data.text, fullContent);
+                  } else if (currentEventType === 'meta') {
+                    conversationId = data.conversation_id;
+                  } else if (currentEventType === 'done') {
+                    messageId = data.message_id;
+                    conversationId = data.conversation_id;
+                  } else if (currentEventType === 'error') {
+                    throw new Error(data.error || 'Unknown error');
+                  }
+                  // tool_start and tool_end events are informational, could show status
+                } catch (parseError) {
+                  console.warn('Failed to parse SSE data:', parseError);
+                }
+                currentEventType = '';
+              }
+            }
+          };
 
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+
+            if (done) {
+              // Flush the decoder to handle any remaining multi-byte characters
+              buffer += decoder.decode();
+              // Process any remaining complete events
+              if (buffer.trim()) {
+                const lines = buffer.split('\n');
+                processLines(lines);
+              }
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
 
@@ -1221,32 +1385,7 @@
             const lines = buffer.split('\n');
             buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-            let eventType = '';
-            for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                eventType = line.slice(7);
-              } else if (line.startsWith('data: ') && eventType) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-
-                  if (eventType === 'text') {
-                    fullContent += data.text;
-                    appendToStreamingMessage(contentDiv, data.text, fullContent);
-                  } else if (eventType === 'meta') {
-                    conversationId = data.conversation_id;
-                  } else if (eventType === 'done') {
-                    messageId = data.message_id;
-                    conversationId = data.conversation_id;
-                  } else if (eventType === 'error') {
-                    throw new Error(data.error || 'Unknown error');
-                  }
-                  // tool_start and tool_end events are informational, could show status
-                } catch (parseError) {
-                  console.warn('Failed to parse SSE data:', parseError);
-                }
-                eventType = '';
-              }
-            }
+            processLines(lines);
           }
 
           // Finalize the message with feedback UI
@@ -1291,9 +1430,33 @@
         }
       });
 
+      // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
+      function checkQueryPrompt() {
+        const params = new URLSearchParams(window.location.search);
+        const prompt = params.get('prompt');
+        if (prompt && prompt.trim()) {
+          // Wait for Addie to be ready before sending
+          const waitForReady = setInterval(() => {
+            if (isReady) {
+              clearInterval(waitForReady);
+              chatInput.value = prompt.trim();
+              autoResize();
+              updateSendButton();
+              sendMessage();
+              // Clean URL without reloading
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          }, 100);
+          // Timeout after 10 seconds
+          setTimeout(() => clearInterval(waitForReady), 10000);
+        }
+      }
+
       // Initialize
       checkStatus();
       checkImpersonation();
+      // Check for prompt in URL after status check
+      setTimeout(checkQueryPrompt, 500);
       // Check status periodically
       setInterval(checkStatus, 30000);
 

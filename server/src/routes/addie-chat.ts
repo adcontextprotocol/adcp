@@ -13,7 +13,8 @@ import { validate as uuidValidate } from "uuid";
 import rateLimit from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { optionalAuth } from "../middleware/auth.js";
-import { AddieClaudeClient } from "../addie/claude-client.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
+import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
 import {
   sanitizeInput,
   validateOutput,
@@ -86,15 +87,8 @@ async function initializeChatClient(): Promise<void> {
     }
   }
 
-  // Register member tools with null context (for web chat, user-scoped tools will fail gracefully)
-  // This allows tools like draft_github_issue to work without user auth
-  const memberHandlers = createMemberToolHandlers(null);
-  for (const tool of MEMBER_TOOLS) {
-    const handler = memberHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Note: Member tools are registered per-request with user's actual context
+  // This allows user-scoped tools to work correctly for authenticated users
 
   initialized = true;
   logger.info("Addie Chat: Initialized");
@@ -103,6 +97,12 @@ async function initializeChatClient(): Promise<void> {
 interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
+  message_id?: string;
+  rating?: number | null;
+  rating_category?: string | null;
+  rating_notes?: string | null;
+  feedback_tags?: string[] | null;
+  improvement_suggestion?: string | null;
 }
 
 /**
@@ -132,6 +132,55 @@ function hashIp(ip: string | undefined): string {
   return crypto.createHash("sha256").update(ip).digest("hex").substring(0, 16);
 }
 
+interface PreparedRequest {
+  messageToProcess: string;
+  memberContext: MemberContext | null;
+  requestTools: RequestTools;
+}
+
+/**
+ * Prepare a request with member context and per-request tools
+ * Creates member tools with the user's actual context for authenticated users
+ */
+async function prepareRequestWithMemberTools(
+  sanitizedInput: string,
+  userId: string | undefined
+): Promise<PreparedRequest> {
+  let messageToProcess = sanitizedInput;
+  let memberContext: MemberContext | null = null;
+
+  try {
+    if (userId) {
+      memberContext = await getWebMemberContext(userId);
+      const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
+      if (memberContextText) {
+        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+        logger.debug(
+          { userId, hasContext: true, orgName: memberContext.organization?.name },
+          "Addie Chat: Added member context to message"
+        );
+      }
+    } else {
+      const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
+      const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
+      if (memberContextText) {
+        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+        logger.debug("Addie Chat: Added anonymous web context to message");
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+  }
+
+  const memberHandlers = createMemberToolHandlers(memberContext);
+  const requestTools: RequestTools = {
+    tools: MEMBER_TOOLS,
+    handlers: memberHandlers,
+  };
+
+  return { messageToProcess, memberContext, requestTools };
+}
+
 export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
@@ -145,9 +194,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // PAGE ROUTES (mounted at /chat)
   // =========================================================================
 
-  // Note: The chat page (/chat -> chat.html) is served by the global middleware
-  // in http.ts that handles extensionless paths. This middleware injects the
-  // user config needed for the navigation bar. No explicit route needed here.
+  // GET / - Serve the chat page (mounted at /chat, so this serves /chat)
+  pageRouter.get("/", optionalAuth, (req, res) => {
+    serveHtmlWithConfig(req, res, "chat.html").catch((err) => {
+      logger.error({ err }, "Error serving chat page");
+      res.status(500).send("Internal server error");
+    });
+  });
 
   // =========================================================================
   // API ROUTES (mounted at /api/addie/chat)
@@ -253,39 +306,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         text: m.content,
       }));
 
-      // Build message with member context
-      // For web chat, always include channel context (even for anonymous users)
-      let messageToProcess = inputValidation.sanitized;
-      try {
-        if (req.user?.id) {
-          // Authenticated user
-          const memberContext = await getWebMemberContext(req.user.id);
-          const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-            logger.debug(
-              { userId: req.user.id, hasContext: true, orgName: memberContext.organization?.name },
-              "Addie Chat: Added member context to message"
-            );
-          }
-        } else {
-          // Anonymous user - still provide channel context
-          const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
-          const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-            logger.debug("Addie Chat: Added anonymous web context to message");
-          }
-        }
-      } catch (error) {
-        logger.warn({ error, userId: req.user?.id }, "Addie Chat: Failed to get member context");
-        // Continue without context - don't fail the request
-      }
+      // Prepare message with member context and per-request tools
+      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+        inputValidation.sanitized,
+        req.user?.id
+      );
 
       // Process with Claude
       let response;
       try {
-        response = await claudeClient.processMessage(messageToProcess, contextMessages);
+        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools);
       } catch (error) {
         logger.error({ error }, "Addie Chat: Error processing message");
         response = {
@@ -485,32 +515,18 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         text: m.content,
       }));
 
-      // Build message with member context
-      let messageToProcess = inputValidation.sanitized;
-      try {
-        if (req.user?.id) {
-          const memberContext = await getWebMemberContext(req.user.id);
-          const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-          }
-        } else {
-          const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
-          const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-          }
-        }
-      } catch (error) {
-        logger.warn({ error }, "Addie Chat Stream: Failed to get member context");
-      }
+      // Prepare message with member context and per-request tools
+      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+        inputValidation.sanitized,
+        req.user?.id
+      );
 
       // Stream the response
       let fullText = '';
       let response;
       const toolsUsed: string[] = [];
 
-      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages)) {
+      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools)) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
           logger.info("Addie Chat Stream: Breaking loop due to client disconnect");
@@ -675,6 +691,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
+          message_id: m.message_id,
+          rating: m.rating,
+          rating_category: m.rating_category,
+          rating_notes: m.rating_notes,
+          feedback_tags: m.feedback_tags,
+          improvement_suggestion: m.improvement_suggestion,
         }));
 
       res.json({

@@ -558,10 +558,12 @@ export async function fetchAllPaidInvoices(
 
   try {
     // Fetch all paid invoices
+    // Note: We can't expand data.lines.data.price.product (5 levels) due to Stripe's 4-level limit
+    // The code below handles fetching product info separately when needed
     for await (const invoice of stripe.invoices.list({
       status: 'paid',
       limit: 100,
-      expand: ['data.subscription', 'data.charge', 'data.lines.data.price.product'],
+      expand: ['data.subscription', 'data.charge'],
     })) {
       const customerId = typeof invoice.customer === 'string'
         ? invoice.customer
@@ -1184,13 +1186,15 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
 
   try {
     const pendingInvoices: PendingInvoice[] = [];
+    // Cache product info to avoid N+1 API calls
+    const productCache = new Map<string, string>();
 
     // Fetch open invoices (sent to customer, waiting for payment)
+    // Note: We can't expand data.lines.data.price.product (5 levels) due to Stripe's 4-level limit
     const openInvoices = await stripe.invoices.list({
       customer: customerId,
       status: 'open',
       limit: 10,
-      expand: ['data.lines.data.price.product'],
     });
 
     // Fetch draft invoices (not yet sent)
@@ -1198,7 +1202,6 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       customer: customerId,
       status: 'draft',
       limit: 10,
-      expand: ['data.lines.data.price.product'],
     });
 
     const allInvoices = [...openInvoices.data, ...draftInvoices.data];
@@ -1211,6 +1214,21 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
         const product = firstLine.price.product;
         if (typeof product === 'object' && 'name' in product) {
           productName = product.name;
+        } else if (typeof product === 'string') {
+          // Product is a string ID, fetch it (with caching)
+          let cachedName = productCache.get(product);
+          if (cachedName === undefined) {
+            try {
+              const productObj = await stripe.products.retrieve(product);
+              cachedName = productObj.name;
+              productCache.set(product, cachedName);
+            } catch {
+              // Use line description as fallback
+              cachedName = firstLine.description || '';
+              productCache.set(product, cachedName);
+            }
+          }
+          productName = cachedName || null;
         }
       }
 

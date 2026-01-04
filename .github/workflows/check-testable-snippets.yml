@@ -26,7 +26,7 @@ jobs:
 
           if [ -s changed_files.txt ]; then
             echo "📋 Checking documentation changes for testable snippets..."
-            node scripts/check-testable-snippets.js
+            node scripts/check-testable-snippets.cjs
           else
             echo "✓ No documentation files changed"
           fi

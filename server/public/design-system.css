@@ -212,6 +212,20 @@
   --space-16:  4rem;       /* 64px */
   --space-20:  5rem;       /* 80px */
   --space-24:  6rem;       /* 96px */
+
+  /* Mobile-specific spacing */
+  --mobile-padding-x: var(--space-4);
+  --mobile-padding-x-sm: var(--space-3);
+
+  /* Safe area insets - populated by env() on supported devices */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+
+  /* Touch target sizes (Apple HIG: 44pt, Material: 48dp) */
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 48px;
 }
 
 /* =============================================================================
@@ -1507,4 +1521,536 @@ a.btn-success:hover {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* =============================================================================
+   13. MOBILE APP-LIKE EXPERIENCE
+
+   Comprehensive mobile styling to make the site feel like a native app.
+   Includes safe area handling, touch-optimized targets, and smooth interactions.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   13.1 Safe Area & Viewport Handling
+   Handles notches, rounded corners, and safe area insets on modern devices
+   Note: CSS variables for safe areas and touch targets defined in Section 3.
+   ----------------------------------------------------------------------------- */
+
+/* Prevent horizontal scroll on mobile */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Smooth scrolling for native-like feel */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent text size adjustment on orientation change */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Disable tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Better touch scrolling in containers */
+.mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* -----------------------------------------------------------------------------
+   13.2 Mobile Breakpoints & Media Queries
+   Multiple breakpoints for precise mobile control
+   ----------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  :root {
+    /* Tighter spacing on small phones */
+    --mobile-padding-x: var(--space-3);
+    --mobile-padding-x-sm: var(--space-2);
+  }
+
+  /* Container adjustments */
+  .ds-container,
+  .container {
+    padding-left: var(--mobile-padding-x);
+    padding-right: var(--mobile-padding-x);
+  }
+
+  /* Typography scaling for small screens */
+  .hero h1 {
+    font-size: var(--text-xl);
+    line-height: var(--leading-tight);
+  }
+
+  .hero-subtitle {
+    font-size: var(--text-sm);
+  }
+
+  /* Stack hero buttons vertically */
+  .hero-buttons {
+    flex-direction: column;
+    width: 100%;
+    gap: var(--space-3);
+  }
+
+  .hero-buttons .btn,
+  .hero-buttons .ds-btn,
+  .hero-buttons a.button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Tablet and small desktop - 4-col grid becomes 2-col */
+@media (max-width: 1024px) {
+  .ds-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Medium mobile (most common phones) */
+@media (max-width: 640px) {
+  /* Typography adjustments */
+  h1, .text-5xl { font-size: var(--text-3xl); }
+  h2, .text-4xl { font-size: var(--text-2xl); }
+  h3, .text-3xl { font-size: var(--text-xl); }
+
+  /* Card adjustments */
+  .ds-card,
+  .card {
+    padding: var(--space-4);
+  }
+
+  /* Section spacing */
+  section {
+    padding-top: var(--space-10);
+    padding-bottom: var(--space-10);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.3 Touch-Optimized Targets
+   Ensures all interactive elements meet minimum touch target size
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Buttons - ensure minimum touch target */
+  .btn,
+  .ds-btn,
+  button,
+  [role="button"],
+  .button {
+    min-height: var(--touch-target-min);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+
+  /* Small buttons get slightly larger on mobile */
+  .btn-sm,
+  .ds-btn-sm {
+    min-height: 40px;
+    padding: var(--space-2.5) var(--space-4);
+    font-size: var(--text-sm);
+  }
+
+  /* Links in navigation/menus */
+  .navbar__link,
+  .footer-links a,
+  .aao-footer__list a {
+    min-height: var(--touch-target-min);
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Form inputs */
+  .ds-input,
+  .ds-select,
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  select,
+  textarea {
+    min-height: var(--touch-target-min);
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+
+  /* Dropdown items */
+  .navbar__dropdown-item {
+    min-height: var(--touch-target-min);
+    display: flex;
+    align-items: center;
+  }
+
+  /* Card links - increase tap area */
+  .article-card,
+  .ds-card-interactive {
+    /* Add subtle touch feedback */
+    transition: transform 0.1s ease, box-shadow 0.2s ease;
+  }
+
+  .article-card:active,
+  .ds-card-interactive:active {
+    transform: scale(0.98);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.4 Mobile Navigation Enhancements
+   Improved mobile menu and header behavior
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Full-screen mobile menu for app-like feel */
+  .navbar__mobile-menu {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(var(--safe-area-inset-bottom) + var(--space-4));
+    background: var(--color-bg-card);
+    z-index: 999;
+  }
+
+  /* Add safe area padding to nav */
+  .navbar {
+    padding-left: max(var(--space-4), var(--safe-area-inset-left));
+    padding-right: max(var(--space-4), var(--safe-area-inset-right));
+  }
+
+  /* Mobile menu links - larger touch targets */
+  .navbar__mobile-menu .navbar__link {
+    padding: var(--space-4);
+    font-size: var(--text-base);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .navbar__mobile-menu .navbar__link--indent {
+    padding-left: var(--space-8);
+  }
+
+  /* Smooth menu transition */
+  .navbar__mobile-menu {
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+  }
+
+  .navbar__mobile-menu.open {
+    transform: translateX(0);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.5 Mobile-Friendly Footer
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .footer,
+  .aao-footer {
+    padding-bottom: calc(var(--safe-area-inset-bottom) + var(--space-6));
+  }
+
+  .footer-container {
+    gap: var(--space-8);
+  }
+
+  .footer-links {
+    flex-direction: column;
+    gap: var(--space-4);
+    text-align: center;
+  }
+
+  .aao-footer__columns {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-6);
+  }
+}
+
+@media (max-width: 480px) {
+  .aao-footer__columns {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .aao-footer__list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3);
+  }
+
+  .aao-footer__list li {
+    margin-bottom: 0;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.6 Mobile Hero & CTA Sections
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--space-10) var(--mobile-padding-x) var(--space-8);
+    padding-top: calc(var(--space-10) + var(--safe-area-inset-top));
+  }
+
+  .hero--article {
+    padding: var(--space-8) var(--mobile-padding-x) var(--space-6);
+  }
+
+  .hero-container {
+    max-width: 100%;
+  }
+
+  .cta {
+    padding: var(--space-10) var(--mobile-padding-x);
+  }
+
+  .cta h2 {
+    font-size: var(--text-2xl);
+  }
+
+  .cta p {
+    font-size: var(--text-base);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.7 Mobile Cards & Article Grid
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .articles-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .article-card {
+    border-radius: var(--radius-lg);
+  }
+
+  .article-card-content {
+    padding: var(--space-4);
+  }
+
+  .article-card h2 {
+    font-size: var(--text-lg);
+  }
+
+  /* Card touch feedback */
+  .card,
+  .ds-card,
+  .article-card {
+    transition: transform 0.15s ease;
+  }
+
+  .card:active,
+  .ds-card:active,
+  .article-card:active {
+    transform: scale(0.98);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.8 Mobile Modals
+   Full-screen modal on mobile for app-like feel
+   ----------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end; /* Slide up from bottom */
+  }
+
+  .modal {
+    max-width: 100%;
+    width: 100%;
+    max-height: 90vh;
+    margin: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding: var(--space-6);
+    padding-bottom: calc(var(--safe-area-inset-bottom) + var(--space-6));
+  }
+
+  /* Modal drag handle indicator */
+  .modal::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: var(--color-gray-300);
+    border-radius: var(--radius-full);
+    margin: 0 auto var(--space-4);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.9 Mobile Form Improvements
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Stack form elements */
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-bar select {
+    width: 100%;
+    min-height: var(--touch-target-min);
+  }
+
+  /* Full-width inputs */
+  .ds-input,
+  .ds-select,
+  input,
+  select,
+  textarea {
+    width: 100%;
+  }
+
+  /* Form groups stack vertically */
+  .form-row,
+  .ds-flex:has(> .ds-input) {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.10 Pull-to-Refresh & Overscroll Behavior
+   ----------------------------------------------------------------------------- */
+html {
+  overscroll-behavior-y: none;
+}
+
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Allow pull-to-refresh on specific scrollable areas if needed */
+.allow-overscroll {
+  overscroll-behavior-y: auto;
+}
+
+/* -----------------------------------------------------------------------------
+   13.11 Mobile Utilities
+   Helper classes for mobile-specific behavior
+   ----------------------------------------------------------------------------- */
+
+/* Hide on mobile */
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+/* Show only on mobile */
+@media (min-width: 769px) {
+  .show-mobile-only {
+    display: none !important;
+  }
+}
+
+/* Full width on mobile */
+@media (max-width: 768px) {
+  .full-width-mobile {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Stack on mobile (for flex containers) */
+@media (max-width: 768px) {
+  .stack-mobile {
+    flex-direction: column !important;
+  }
+
+  .stack-mobile > * {
+    width: 100%;
+  }
+}
+
+/* Center on mobile */
+@media (max-width: 768px) {
+  .center-mobile {
+    text-align: center !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+}
+
+/* No gap on mobile (useful for tight layouts) */
+@media (max-width: 768px) {
+  .no-gap-mobile {
+    gap: 0 !important;
+  }
+}
+
+/* Reduced padding on mobile */
+@media (max-width: 768px) {
+  .compact-mobile {
+    padding: var(--space-3) !important;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.12 Reduced Motion Support
+   Respects user preferences for reduced motion
+   ----------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  /* Disable smooth scrolling */
+  html {
+    scroll-behavior: auto;
+  }
+
+  /* Remove all transitions and animations */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Disable transform-based feedback */
+  .article-card:active,
+  .ds-card-interactive:active,
+  .card:active,
+  .ds-card:active {
+    transform: none;
+  }
+
+  /* Disable button hover transforms */
+  .btn:hover,
+  .ds-btn:hover,
+  .ds-btn-primary:hover,
+  .ds-card-interactive:hover,
+  .article-card:hover {
+    transform: none;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   13.13 Standalone/PWA Mode Adjustments
+   Handles when site is added to home screen
+   ----------------------------------------------------------------------------- */
+@media (display-mode: standalone) {
+  /* Hide browser-specific UI elements */
+  .browser-only {
+    display: none !important;
+  }
+
+  /* Adjust for no browser chrome */
+  body {
+    padding-top: calc(60px + var(--safe-area-inset-top));
+  }
+
+  .navbar {
+    padding-top: var(--safe-area-inset-top);
+    height: calc(60px + var(--safe-area-inset-top));
+  }
 }

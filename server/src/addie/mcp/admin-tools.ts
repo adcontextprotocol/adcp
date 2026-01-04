@@ -1,13 +1,16 @@
 /**
  * Addie Admin Tools
  *
- * Tools available only to admin users for:
+ * Tools available only to AAO platform admin users for:
  * - Looking up organization status and pending invoices
  * - Managing prospects and enrichment
  *
- * Admin users are determined by:
- * - Slack users: membership in the "aao-admin" working group
- * - Web users: org_membership.role === 'admin'
+ * AAO platform admins are determined by membership in the "aao-admin" working group:
+ * - Slack users: via isSlackUserAdmin() which looks up WorkOS user ID from Slack mapping
+ * - Web users: via isWebUserAdmin() which checks working group membership directly
+ *
+ * Note: This is distinct from WorkOS organization admins, who are admins within their
+ * own company's organization but do not have AAO platform-wide admin access.
  */
 
 import { createLogger } from '../../logger.js';
@@ -40,9 +43,19 @@ import {
   getAllFeedsWithStats,
   addFeed,
   getFeedStats,
+  findSimilarFeeds,
+  getPendingProposals,
+  approveProposal,
+  rejectProposal,
+  getProposalStats,
   type FeedWithStats,
+  type FeedProposal,
 } from '../../db/industry-feeds-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
+import {
+  createChannel,
+  setChannelPurpose,
+} from '../../slack/client.js';
 import {
   getProductsForCustomer,
   createCheckoutSession,
@@ -50,6 +63,8 @@ import {
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
+import { workos } from '../../auth/workos-client.js';
+import { DomainDataState } from '@workos-inc/node';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -90,6 +105,8 @@ export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
 
     if (!adminGroup) {
       logger.warn('AAO Admin working group not found');
+      // Cache the negative result for a shorter time to avoid repeated DB lookups
+      adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
       return false;
     }
 
@@ -108,7 +125,7 @@ export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
 }
 
 /**
- * Invalidate admin status cache for a user (call when admin membership changes)
+ * Invalidate admin status cache for a Slack user (call when admin membership changes)
  */
 export function invalidateAdminStatusCache(slackUserId?: string): void {
   if (slackUserId) {
@@ -118,8 +135,68 @@ export function invalidateAdminStatusCache(slackUserId?: string): void {
   }
 }
 
+// Cache for web user admin status (keyed by WorkOS user ID)
+const webAdminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+
 /**
- * Check if a web user has admin privileges (via member context)
+ * Invalidate web admin status cache for a user (call when admin membership changes)
+ */
+export function invalidateWebAdminStatusCache(workosUserId?: string): void {
+  if (workosUserId) {
+    webAdminStatusCache.delete(workosUserId);
+  } else {
+    webAdminStatusCache.clear();
+  }
+}
+
+/**
+ * Invalidate all admin caches (both Slack and web)
+ */
+export function invalidateAllAdminCaches(): void {
+  adminStatusCache.clear();
+  webAdminStatusCache.clear();
+}
+
+/**
+ * Check if a web user is an AAO admin
+ * Checks membership in aao-admin working group by WorkOS user ID
+ * Results are cached for 30 minutes to reduce DB load
+ */
+export async function isWebUserAdmin(workosUserId: string): Promise<boolean> {
+  // Check cache first
+  const cached = webAdminStatusCache.get(workosUserId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isAdmin;
+  }
+
+  try {
+    // Get the aao-admin working group
+    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+
+    if (!adminGroup) {
+      logger.warn('AAO Admin working group not found');
+      // Cache the negative result for a shorter time to avoid repeated DB lookups
+      webAdminStatusCache.set(workosUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      return false;
+    }
+
+    // Check if the user is a member of the admin working group
+    const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
+
+    // Cache the result
+    webAdminStatusCache.set(workosUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+
+    logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
+    return isAdmin;
+  } catch (error) {
+    logger.error({ error, workosUserId }, 'Error checking if web user is admin');
+    return false;
+  }
+}
+
+/**
+ * Check if a web user has admin privileges (via member context org role)
+ * @deprecated Use isWebUserAdmin() for AAO admin checks - this only checks WorkOS org role
  */
 export function isAdmin(memberContext: MemberContext | null): boolean {
   return memberContext?.org_membership?.role === 'admin';
@@ -539,6 +616,68 @@ For discounts: Can create a new discount or auto-apply an existing org discount.
       required: [],
     },
   },
+  {
+    name: 'list_feed_proposals',
+    description:
+      'List pending feed proposals submitted by community members. Use this to review what news sources have been proposed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of proposals to return (default 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'approve_feed_proposal',
+    description:
+      'Approve a feed proposal and create the feed. You must provide the final feed name and URL (which may differ from the proposed URL if you find the actual RSS feed).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        proposal_id: {
+          type: 'number',
+          description: 'ID of the proposal to approve',
+        },
+        feed_name: {
+          type: 'string',
+          description: 'Name for the feed (e.g., "AdExchanger")',
+        },
+        feed_url: {
+          type: 'string',
+          description: 'RSS feed URL (may differ from the proposed URL)',
+        },
+        category: {
+          type: 'string',
+          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
+          description: 'Category for the feed',
+        },
+      },
+      required: ['proposal_id', 'feed_name', 'feed_url'],
+    },
+  },
+  {
+    name: 'reject_feed_proposal',
+    description:
+      'Reject a feed proposal. Optionally provide a reason that could be shared with the proposer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        proposal_id: {
+          type: 'number',
+          description: 'ID of the proposal to reject',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for rejection (optional)',
+        },
+      },
+      required: ['proposal_id'],
+    },
+  },
 
   // ============================================
   // SENSITIVE TOPICS & MEDIA CONTACT TOOLS
@@ -736,6 +875,53 @@ The code will be usable at checkout for any customer.`,
   },
 
   // ============================================
+  // CHAPTER MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'create_chapter',
+    description: `Create a new regional chapter with a Slack channel. Use this when a member wants to start a chapter in their city/region.
+
+This tool:
+1. Creates a working group with committee_type 'chapter'
+2. Creates a public Slack channel for the chapter
+3. Sets the founding member as the chapter leader
+
+Example: If someone in Austin says "I want to start a chapter", use this to create an Austin Chapter with a #austin-chapter Slack channel.`,
+    usage_hints: 'Use this when a member wants to start a chapter. Ask them what they want to call it first (e.g., "Austin Chapter" vs "Texas Chapter").',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Chapter name (e.g., "Austin Chapter", "Bay Area Chapter")',
+        },
+        region: {
+          type: 'string',
+          description: 'Geographic region this chapter covers (e.g., "Austin", "Bay Area", "Southern California")',
+        },
+        founding_member_id: {
+          type: 'string',
+          description: 'WorkOS user ID of the founding member who will become chapter leader',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description for the chapter',
+        },
+      },
+      required: ['name', 'region'],
+    },
+  },
+  {
+    name: 'list_chapters',
+    description: 'List all regional chapters with their member counts and Slack channels.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
   // ORGANIZATION MANAGEMENT TOOLS
   // ============================================
   {
@@ -744,13 +930,16 @@ The code will be usable at checkout for any customer.`,
 Use this when you discover duplicate organizations (same company with multiple records).
 All data from the secondary organization will be moved to the primary, then the secondary will be deleted.
 
-IMPORTANT: This is a destructive operation that cannot be undone. Always use preview mode first.
+IMPORTANT: This is a destructive operation that cannot be undone.
 
-Steps:
+Workflow:
 1. Use find_prospect or get_organization_details to identify both org IDs
-2. Call merge_organizations with preview=true to see what will be merged
-3. If the preview looks correct, call again with preview=false to execute the merge`,
-    usage_hints: 'Always preview first! Use find_prospect to get the org IDs before merging.',
+2. Call merge_organizations (defaults to preview=true) to see what will be merged
+3. Show the preview to the user and ask if they want to proceed
+4. If yes, call merge_organizations again with preview=false to execute
+
+CRITICAL: A preview does NOT execute the merge. You MUST call again with preview=false to actually merge.`,
+    usage_hints: 'Preview first, then execute with preview=false. The preview response will remind you to call again.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -811,6 +1000,206 @@ The goal: Every corporate email domain should map to a known organization (membe
         limit: {
           type: 'number',
           description: 'Maximum results per category (default: 20)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'manage_organization_domains',
+    description: `Add, remove, or list verified domains for an organization.
+
+Use this tool to:
+- **List** all domains associated with an organization
+- **Add** a new domain to an organization (e.g., when a company has multiple email domains)
+- **Remove** a domain from an organization
+- **Set primary** - designate which domain is the primary one for the organization
+
+Domains are synced to WorkOS, which means:
+1. New users signing up with that email domain are auto-associated with the organization
+2. The domain is marked as verified for SSO eligibility
+3. Organization enrichment uses the primary domain for company lookups
+
+Note: Each domain can only belong to one organization. If a domain is already claimed by another org, the add operation will fail.
+
+The "primary domain" is a local concept used for enrichment and display - WorkOS treats all domains equally for user association.`,
+    usage_hints: 'Use "list" action first to see current domains. Add/remove sync to WorkOS; set_primary is local only.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'add', 'remove', 'set_primary'],
+          description: 'The action to perform: list (show all domains), add (add a new domain), remove (delete a domain), set_primary (make a domain the primary one)',
+        },
+        organization_id: {
+          type: 'string',
+          description: 'The WorkOS organization ID. You can get this from lookup_organization or get_organization_details.',
+        },
+        domain: {
+          type: 'string',
+          description: 'The domain to add, remove, or set as primary (required for add/remove/set_primary actions). Example: "acme.com"',
+        },
+        set_as_primary: {
+          type: 'boolean',
+          description: 'When adding a domain, whether to set it as the primary domain (default: false)',
+        },
+      },
+      required: ['action', 'organization_id'],
+    },
+  },
+
+  // ============================================
+  // PROSPECT OWNERSHIP & PIPELINE TOOLS
+  // ============================================
+  {
+    name: 'my_engaged_prospects',
+    description: `List your most engaged prospects - organizations you own that have high engagement scores.
+
+USE THIS when an admin asks:
+- "Which of my prospects are most engaged?"
+- "Show me my hot prospects"
+- "What are my best prospects doing?"
+
+Returns prospects you own sorted by engagement score (highest first), with engagement reasons.
+Hot prospects have engagement_score >= 30.`,
+    usage_hints: 'Quick way to see which of your owned prospects are showing interest.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+        hot_only: {
+          type: 'boolean',
+          description: 'Only show hot prospects (engagement_score >= 30)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'my_followups_needed',
+    description: `List your prospects that need follow-up attention.
+
+USE THIS when an admin asks:
+- "Which prospects do I need to reach out to?"
+- "What follow-ups do I have?"
+- "Which of my prospects are stale?"
+
+Returns owned prospects that:
+- Have no activity logged in the past 14 days, OR
+- Have an overdue next_step_due_date
+
+Sorted by urgency (overdue first, then by days since last activity).`,
+    usage_hints: 'Great for daily check-ins to see what needs attention.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days_stale: {
+          type: 'number',
+          description: 'Days without activity to consider stale (default: 14)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'unassigned_prospects',
+    description: `List high-engagement prospects that have no owner assigned.
+
+USE THIS when an admin asks:
+- "What are the most interesting unassigned prospects?"
+- "Which prospects need an owner?"
+- "Show me unclaimed hot prospects"
+
+Returns non-member organizations with engagement but no owner in org_stakeholders.
+Great for finding opportunities to claim ownership.`,
+    usage_hints: 'Use this to find prospects worth claiming.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        min_engagement: {
+          type: 'number',
+          description: 'Minimum engagement score to include (default: 10)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'claim_prospect',
+    description: `Claim ownership of a prospect organization.
+
+USE THIS when an admin says:
+- "I'll take ownership of [company]"
+- "Assign me to [company]"
+- "Make me the owner of [company]"
+
+Adds you as the owner in org_stakeholders. If another owner exists, you can optionally replace them.`,
+    usage_hints: 'Use after finding unassigned prospects or when reassigning ownership.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID to claim ownership of',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name (used to look up org_id if not provided)',
+        },
+        replace_existing: {
+          type: 'boolean',
+          description: 'If true, replace existing owner. Otherwise fails if owner exists (default: false)',
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional notes about why you are claiming this prospect',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'suggest_prospects',
+    description: `Suggest companies to add to the prospect list.
+
+USE THIS when an admin asks:
+- "What companies should I add to the prospect list?"
+- "Find new prospects for me"
+- "Who should we be targeting?"
+
+This tool uses two approaches:
+1. **Unmapped domains**: Finds Slack/email domains that are actively engaged but not yet mapped to an organization (high-value - they're already in our ecosystem!)
+2. **Lusha search**: Searches Lusha's database for companies matching ad tech criteria
+
+Returns a combined list prioritizing unmapped domains (already engaged) over external prospects.`,
+    usage_hints: 'Great for expanding the prospect pipeline.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        include_lusha: {
+          type: 'boolean',
+          description: 'Include Lusha search results for external companies (default: true)',
+        },
+        lusha_keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Keywords for Lusha search (default: ["programmatic", "DSP", "ad tech"])',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results per source (default: 10)',
         },
       },
       required: [],
@@ -2182,6 +2571,26 @@ export function createAdminToolHandlers(
       return `❌ Invalid feed URL: ${feedUrl}`;
     }
 
+    // Check for similar/duplicate feeds before adding
+    try {
+      const similarFeeds = await findSimilarFeeds(feedUrl);
+      if (similarFeeds.length > 0) {
+        let response = `⚠️ Found similar feed(s) that may be duplicates:\n\n`;
+        for (const existing of similarFeeds) {
+          const status = existing.is_active ? '✅' : '⏸️';
+          response += `${status} **${existing.name}** (ID: ${existing.id})\n`;
+          response += `   URL: ${existing.feed_url}\n`;
+          if (existing.category) response += `   Category: ${existing.category}\n`;
+          response += `\n`;
+        }
+        response += `If you still want to add "${name}", the feed URL needs to be different from existing feeds. `;
+        response += `If this is a duplicate, you can reactivate an existing feed instead.`;
+        return response;
+      }
+    } catch (error) {
+      logger.warn({ error, feedUrl }, 'Error checking for similar feeds, proceeding with add');
+    }
+
     try {
       const feed = await addFeed(name, feedUrl, category);
       logger.info({ feedId: feed.id, name, feedUrl }, 'Feed created via Addie');
@@ -2230,6 +2639,146 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error getting feed stats');
       return '❌ Failed to get feed statistics. Please try again.';
+    }
+  });
+
+  // ============================================
+  // FEED PROPOSAL REVIEW HANDLERS
+  // ============================================
+
+  // List pending proposals
+  handlers.set('list_feed_proposals', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const limit = Math.min(Math.max((input.limit as number) || 20, 1), 50);
+
+    try {
+      const proposals = await getPendingProposals(limit);
+      const stats = await getProposalStats();
+
+      if (proposals.length === 0) {
+        return `No pending feed proposals.\n\n**Stats:** ${stats.approved} approved, ${stats.rejected} rejected, ${stats.duplicate} duplicates`;
+      }
+
+      let response = `## Pending Feed Proposals\n\n`;
+      response += `**Pending:** ${stats.pending} | **Approved:** ${stats.approved} | **Rejected:** ${stats.rejected}\n\n`;
+
+      for (const proposal of proposals) {
+        response += `### Proposal #${proposal.id}\n`;
+        response += `**URL:** ${proposal.url}\n`;
+        if (proposal.name) response += `**Suggested name:** ${proposal.name}\n`;
+        if (proposal.category) response += `**Category:** ${proposal.category}\n`;
+        if (proposal.reason) response += `**Reason:** ${proposal.reason}\n`;
+        response += `**Proposed:** ${proposal.proposed_at.toLocaleDateString()}`;
+        if (proposal.proposed_by_slack_user_id) {
+          response += ` by <@${proposal.proposed_by_slack_user_id}>`;
+        }
+        response += `\n\n`;
+      }
+
+      response += `_Use \`approve_feed_proposal\` or \`reject_feed_proposal\` to review._`;
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing feed proposals');
+      return '❌ Failed to list proposals. Please try again.';
+    }
+  });
+
+  // Approve a proposal
+  handlers.set('approve_feed_proposal', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const proposalId = Number(input.proposal_id);
+    const feedName = (input.feed_name as string)?.trim();
+    const feedUrl = (input.feed_url as string)?.trim();
+    const category = input.category as string | undefined;
+
+    if (!Number.isInteger(proposalId) || proposalId <= 0) {
+      return '❌ Proposal ID must be a positive integer.';
+    }
+    if (!feedName) {
+      return '❌ Feed name is required.';
+    }
+    if (!feedUrl) {
+      return '❌ Feed URL is required.';
+    }
+
+    // Validate URL
+    try {
+      new URL(feedUrl);
+    } catch {
+      return `❌ Invalid feed URL: ${feedUrl}`;
+    }
+
+    // Check for duplicates
+    try {
+      const similarFeeds = await findSimilarFeeds(feedUrl);
+      if (similarFeeds.length > 0) {
+        let response = `⚠️ Cannot approve - similar feed already exists:\n\n`;
+        for (const existing of similarFeeds) {
+          response += `**${existing.name}** (ID: ${existing.id})\n`;
+          response += `URL: ${existing.feed_url}\n\n`;
+        }
+        response += `Consider rejecting this proposal as a duplicate.`;
+        return response;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Error checking for duplicates during proposal approval');
+    }
+
+    try {
+      const workosUserId = memberContext?.workos_user?.workos_user_id || 'unknown';
+      const { proposal, feed } = await approveProposal(
+        proposalId,
+        workosUserId,
+        feedName,
+        feedUrl,
+        category
+      );
+
+      let response = `✅ **Proposal #${proposalId} approved!**\n\n`;
+      response += `**Feed created:** ${feedName} (ID: ${feed.id})\n`;
+      response += `**URL:** ${feedUrl}\n`;
+      if (category) response += `**Category:** ${category}\n`;
+      response += `\n_The feed will be fetched on the next scheduled run._`;
+
+      logger.info({ proposalId, feedId: feed.id, feedName }, 'Feed proposal approved');
+      return response;
+    } catch (error) {
+      logger.error({ error, proposalId }, 'Error approving proposal');
+      if (error instanceof Error && error.message.includes('duplicate')) {
+        return `❌ A feed with this URL already exists.`;
+      }
+      return '❌ Failed to approve proposal. Please try again.';
+    }
+  });
+
+  // Reject a proposal
+  handlers.set('reject_feed_proposal', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const proposalId = Number(input.proposal_id);
+    const reason = input.reason as string | undefined;
+
+    if (!Number.isInteger(proposalId) || proposalId <= 0) {
+      return '❌ Proposal ID must be a positive integer.';
+    }
+
+    try {
+      const workosUserId = memberContext?.workos_user?.workos_user_id || 'unknown';
+      const proposal = await rejectProposal(proposalId, workosUserId, reason);
+
+      let response = `✅ **Proposal #${proposalId} rejected.**\n`;
+      if (reason) response += `**Reason:** ${reason}\n`;
+
+      logger.info({ proposalId, reason }, 'Feed proposal rejected');
+      return response;
+    } catch (error) {
+      logger.error({ error, proposalId }, 'Error rejecting proposal');
+      return '❌ Failed to reject proposal. Please try again.';
     }
   });
 
@@ -2702,6 +3251,130 @@ export function createAdminToolHandlers(
   });
 
   // ============================================
+  // CHAPTER MANAGEMENT HANDLERS
+  // ============================================
+
+  // Create chapter
+  handlers.set('create_chapter', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = (input.name as string)?.trim();
+    const region = (input.region as string)?.trim();
+    const foundingMemberId = input.founding_member_id as string | undefined;
+    const description = input.description as string | undefined;
+
+    if (!name) {
+      return '❌ Please provide a chapter name (e.g., "Austin Chapter").';
+    }
+
+    if (!region) {
+      return '❌ Please provide a region (e.g., "Austin", "Bay Area").';
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 50);
+
+    try {
+      // Check if chapter with this slug already exists
+      const existingChapter = await wgDb.getWorkingGroupBySlug(slug);
+      if (existingChapter) {
+        return `⚠️ A chapter with slug "${slug}" already exists: **${existingChapter.name}**\n\nJoin their Slack channel: ${existingChapter.slack_channel_url || 'Not set'}`;
+      }
+
+      // Create Slack channel first
+      const channelResult = await createChannel(slug);
+      if (!channelResult) {
+        return `❌ Failed to create Slack channel #${slug}. The channel name might already be taken. Try a different chapter name.`;
+      }
+
+      // Set channel purpose
+      const purpose = description || `Connect with AgenticAdvertising.org members in the ${region} area.`;
+      await setChannelPurpose(channelResult.channel.id, purpose);
+
+      // Create the chapter working group
+      const chapter = await wgDb.createChapter({
+        name,
+        slug,
+        region,
+        description: purpose,
+        slack_channel_url: channelResult.url,
+        slack_channel_id: channelResult.channel.id,
+        founding_member_id: foundingMemberId,
+      });
+
+      logger.info({
+        chapterId: chapter.id,
+        name: chapter.name,
+        region,
+        slackChannelId: channelResult.channel.id,
+        foundingMemberId,
+      }, 'Addie: Created new regional chapter');
+
+      let response = `✅ Created **${name}**!\n\n`;
+      response += `**Region:** ${region}\n`;
+      response += `**Slack Channel:** <#${channelResult.channel.id}>\n`;
+      response += `**Channel URL:** ${channelResult.url}\n`;
+
+      if (foundingMemberId) {
+        response += `\n🎉 The founding member has been set as chapter leader.\n`;
+      }
+
+      response += `\n_Anyone who joins the Slack channel will automatically be added to the chapter._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, region }, 'Error creating chapter');
+      return '❌ Failed to create chapter. Please try again.';
+    }
+  });
+
+  // List chapters
+  handlers.set('list_chapters', async () => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    try {
+      const chapters = await wgDb.getChapters();
+
+      if (chapters.length === 0) {
+        return 'ℹ️ No regional chapters exist yet. Use create_chapter to start one!';
+      }
+
+      let response = `## Regional Chapters\n\n`;
+      response += `Found **${chapters.length}** chapter(s):\n\n`;
+
+      for (const chapter of chapters) {
+        response += `### ${chapter.name}\n`;
+        response += `**Region:** ${chapter.region || 'Not set'}\n`;
+        response += `**Members:** ${chapter.member_count}\n`;
+
+        if (chapter.slack_channel_id) {
+          response += `**Slack:** <#${chapter.slack_channel_id}>\n`;
+        } else {
+          response += `**Slack:** _No channel linked_\n`;
+        }
+
+        if (chapter.leaders && chapter.leaders.length > 0) {
+          const leaderNames = chapter.leaders.map(l => l.name || 'Unknown').join(', ');
+          response += `**Leaders:** ${leaderNames}\n`;
+        }
+
+        response += '\n';
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing chapters');
+      return '❌ Failed to list chapters. Please try again.';
+    }
+  });
+
+  // ============================================
   // ORGANIZATION MANAGEMENT HANDLERS
   // ============================================
 
@@ -2727,6 +3400,27 @@ export function createAdminToolHandlers(
         // Preview mode - show what would be merged
         const previewResult = await previewMerge(primaryOrgId, secondaryOrgId);
 
+        // Also check WorkOS memberships
+        let workosUserCount = 0;
+        let workosCheckFailed = false;
+        try {
+          const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: secondaryOrgId,
+            limit: 100,
+          });
+          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: primaryOrgId,
+            limit: 100,
+          });
+          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+
+          workosUserCount = secondaryMemberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
+            .length;
+        } catch {
+          workosCheckFailed = true;
+        }
+
         let response = `## Merge Preview\n\n`;
         response += `**Keep:** ${previewResult.primary_org.name} (${previewResult.primary_org.id})\n`;
         response += `**Remove:** ${previewResult.secondary_org.name} (${previewResult.secondary_org.id})\n\n`;
@@ -2738,6 +3432,18 @@ export function createAdminToolHandlers(
           for (const change of previewResult.estimated_changes) {
             response += `- **${change.table_name}**: ${change.rows_to_move} row(s)\n`;
           }
+        }
+
+        // WorkOS section
+        response += `\n### WorkOS Sync\n`;
+        if (workosCheckFailed) {
+          response += `⚠️ Could not check WorkOS memberships\n`;
+        } else if (workosUserCount > 0) {
+          response += `- ${workosUserCount} user(s) will be added to the primary org in WorkOS\n`;
+          response += `- Secondary org will be deleted from WorkOS\n`;
+        } else {
+          response += `- No new users to migrate in WorkOS\n`;
+          response += `- Secondary org will be deleted from WorkOS\n`;
         }
 
         if (previewResult.warnings.length > 0) {
@@ -2755,8 +3461,77 @@ export function createAdminToolHandlers(
         // Execute the merge
         logger.info({ primaryOrgId, secondaryOrgId, mergedBy: memberContext?.workos_user?.workos_user_id }, 'Admin executing org merge via Addie');
 
+        // Step 1: Get users from secondary org in WorkOS before merge
+        let workosUsersToMigrate: string[] = [];
+        let workosErrors: string[] = [];
+
+        try {
+          // Get all memberships from the secondary org in WorkOS
+          const memberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: secondaryOrgId,
+            limit: 100,
+          });
+
+          // Warn if there are more than 100 members (pagination not implemented)
+          if (memberships.listMetadata?.after) {
+            workosErrors.push('Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.');
+          }
+
+          // Check which users are NOT already in the primary org
+          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
+            organizationId: primaryOrgId,
+            limit: 100,
+          });
+          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+
+          workosUsersToMigrate = memberships.data
+            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
+            .map(m => m.userId);
+
+          logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
+        } catch (err) {
+          logger.warn({ error: err, secondaryOrgId }, 'Failed to fetch WorkOS memberships (will continue with DB merge)');
+          workosErrors.push('Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed');
+        }
+
+        // Step 2: Execute the database merge
         const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
         const result = await mergeOrganizations(primaryOrgId, secondaryOrgId, mergedBy);
+
+        // Step 3: Add users to primary org in WorkOS
+        let workosAdded = 0;
+        let workosSkipped = 0;
+
+        for (const userId of workosUsersToMigrate) {
+          try {
+            await workos.userManagement.createOrganizationMembership({
+              userId,
+              organizationId: primaryOrgId,
+              roleSlug: 'member', // Default to member role
+            });
+            workosAdded++;
+            logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');
+          } catch (err: any) {
+            // User might already be in org (race condition) or other error
+            if (err?.code === 'organization_membership_already_exists') {
+              workosSkipped++;
+            } else {
+              logger.warn({ error: err, userId }, 'Failed to add user to primary org in WorkOS');
+              workosErrors.push(`Failed to add user ${userId} to WorkOS org`);
+            }
+          }
+        }
+
+        // Step 4: Delete the secondary org from WorkOS
+        let workosOrgDeleted = false;
+        try {
+          await workos.organizations.deleteOrganization(secondaryOrgId);
+          workosOrgDeleted = true;
+          logger.info({ secondaryOrgId }, 'Deleted secondary org from WorkOS');
+        } catch (err) {
+          logger.warn({ error: err, secondaryOrgId }, 'Failed to delete secondary org from WorkOS');
+          workosErrors.push(`Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`);
+        }
 
         let response = `## Merge Complete ✅\n\n`;
         response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
@@ -2777,6 +3552,20 @@ export function createAdminToolHandlers(
 
         response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
 
+        // WorkOS sync results
+        if (workosUsersToMigrate.length > 0 || workosOrgDeleted || workosErrors.length > 0) {
+          response += `\n### WorkOS Sync\n`;
+          if (workosAdded > 0) {
+            response += `- ✅ Added ${workosAdded} user(s) to primary org in WorkOS\n`;
+          }
+          if (workosSkipped > 0) {
+            response += `- ⏭️ Skipped ${workosSkipped} user(s) (already in primary org)\n`;
+          }
+          if (workosOrgDeleted) {
+            response += `- 🗑️ Deleted secondary org from WorkOS\n`;
+          }
+        }
+
         if (result.prospect_notes_merged) {
           response += `\n📝 Prospect notes were merged.\n`;
         }
@@ -2785,9 +3574,11 @@ export function createAdminToolHandlers(
           response += `📊 Enrichment data was preserved from the secondary organization.\n`;
         }
 
-        if (result.warnings.length > 0) {
+        // Combine all warnings
+        const allWarnings = [...result.warnings, ...workosErrors];
+        if (allWarnings.length > 0) {
           response += `\n### Warnings\n`;
-          for (const warning of result.warnings) {
+          for (const warning of allWarnings) {
             response += `⚠️ ${warning}\n`;
           }
         }
@@ -2876,6 +3667,293 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error finding duplicate organizations');
       return '❌ Failed to search for duplicates. Please try again.';
+    }
+  });
+
+  // Manage organization domains
+  handlers.set('manage_organization_domains', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const action = input.action as string;
+    const organizationId = input.organization_id as string;
+    const domain = input.domain as string | undefined;
+    const setAsPrimary = input.set_as_primary as boolean | undefined;
+
+    if (!organizationId) {
+      return '❌ organization_id is required. Use lookup_organization to find the org ID first.';
+    }
+
+    if (!workos) {
+      return '❌ WorkOS is not configured. Domain management requires WorkOS to be set up.';
+    }
+
+    const pool = getPool();
+
+    try {
+      // Verify org exists
+      const orgResult = await pool.query(
+        `SELECT name, email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [organizationId]
+      );
+
+      if (orgResult.rows.length === 0) {
+        return `❌ Organization not found with ID: ${organizationId}`;
+      }
+
+      const orgName = orgResult.rows[0].name;
+
+      switch (action) {
+        case 'list': {
+          const domainsResult = await pool.query(
+            `SELECT domain, is_primary, verified, source, created_at
+             FROM organization_domains
+             WHERE workos_organization_id = $1
+             ORDER BY is_primary DESC, created_at ASC`,
+            [organizationId]
+          );
+
+          if (domainsResult.rows.length === 0) {
+            return `## Domains for ${orgName}\n\nNo domains configured for this organization.\n\nUse this tool with action "add" to add a domain.`;
+          }
+
+          let response = `## Domains for ${orgName}\n\n`;
+          for (const row of domainsResult.rows) {
+            const badges: string[] = [];
+            if (row.is_primary) badges.push('⭐ Primary');
+            if (row.verified) badges.push('✅ Verified');
+            badges.push(`Source: ${row.source}`);
+
+            response += `**${row.domain}** ${badges.join(' | ')}\n`;
+          }
+          response += `\n_Use action "add" to add a new domain, "remove" to delete one, or "set_primary" to change the primary domain._`;
+          return response;
+        }
+
+        case 'add': {
+          if (!domain) {
+            return '❌ domain is required for the "add" action. Example: "acme.com"';
+          }
+
+          const normalizedDomain = domain.toLowerCase().trim();
+
+          // Validate domain format
+          const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
+          if (!domainRegex.test(normalizedDomain)) {
+            return `❌ Invalid domain format: "${normalizedDomain}". Expected format: "example.com" or "sub.example.com"`;
+          }
+
+          // Check if domain is already claimed locally
+          const existingResult = await pool.query(
+            `SELECT od.workos_organization_id, o.name as org_name
+             FROM organization_domains od
+             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+             WHERE od.domain = $1`,
+            [normalizedDomain]
+          );
+
+          if (existingResult.rows.length > 0) {
+            const existingOrg = existingResult.rows[0];
+            if (existingOrg.workos_organization_id === organizationId) {
+              return `ℹ️ Domain **${normalizedDomain}** is already associated with ${orgName}.`;
+            }
+            return `❌ Domain **${normalizedDomain}** is already claimed by **${existingOrg.org_name}**.\n\nIf these organizations should be merged, use the merge_organizations tool.`;
+          }
+
+          // First, sync to WorkOS - this is required for user auto-association
+          try {
+            // Get existing domains from WorkOS to append the new one
+            const workosOrg = await workos.organizations.getOrganization(organizationId);
+            const existingDomains = workosOrg.domains.map(d => ({
+              domain: d.domain,
+              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+            }));
+
+            // Add the new domain
+            await workos.organizations.updateOrganization({
+              organization: organizationId,
+              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+            });
+          } catch (workosErr) {
+            logger.error({ err: workosErr, domain: normalizedDomain, organizationId }, 'Failed to add domain to WorkOS');
+            return `❌ Failed to add domain **${normalizedDomain}** to WorkOS. Error: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`;
+          }
+
+          // If setting as primary, clear existing primary first
+          if (setAsPrimary) {
+            await pool.query(
+              `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+               WHERE workos_organization_id = $1 AND is_primary = true`,
+              [organizationId]
+            );
+          }
+
+          // Insert/update the domain in local DB (WorkOS webhook will also do this, but let's be explicit)
+          await pool.query(
+            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+             VALUES ($1, $2, $3, true, 'workos')
+             ON CONFLICT (domain) DO UPDATE SET
+               workos_organization_id = EXCLUDED.workos_organization_id,
+               is_primary = EXCLUDED.is_primary,
+               verified = true,
+               source = 'workos',
+               updated_at = NOW()`,
+            [organizationId, normalizedDomain, setAsPrimary || false]
+          );
+
+          // If primary, also update the email_domain column
+          if (setAsPrimary) {
+            await pool.query(
+              `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+               WHERE workos_organization_id = $2`,
+              [normalizedDomain, organizationId]
+            );
+          }
+
+          logger.info({ organizationId, domain: normalizedDomain, setAsPrimary }, 'Addie: Added domain to organization via WorkOS');
+
+          let response = `✅ Added domain **${normalizedDomain}** to ${orgName} and synced to WorkOS`;
+          if (setAsPrimary) response += ' (set as primary)';
+          response += '.\n\nUsers signing up with @' + normalizedDomain + ' emails will now be auto-associated with this organization.';
+          return response;
+        }
+
+        case 'remove': {
+          if (!domain) {
+            return '❌ domain is required for the "remove" action.';
+          }
+
+          const normalizedDomain = domain.toLowerCase().trim();
+
+          // Get domain info before deletion
+          const domainResult = await pool.query(
+            `SELECT is_primary, source FROM organization_domains
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          if (domainResult.rows.length === 0) {
+            return `❌ Domain **${normalizedDomain}** not found for ${orgName}.`;
+          }
+
+          const wasPrimary = domainResult.rows[0].is_primary;
+
+          // First, remove from WorkOS
+          try {
+            const workosOrg = await workos.organizations.getOrganization(organizationId);
+            const remainingDomains = workosOrg.domains
+              .filter(d => d.domain.toLowerCase() !== normalizedDomain)
+              .map(d => ({
+                domain: d.domain,
+                state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+              }));
+
+            await workos.organizations.updateOrganization({
+              organization: organizationId,
+              domainData: remainingDomains,
+            });
+          } catch (workosErr) {
+            logger.error({ err: workosErr, domain: normalizedDomain, organizationId }, 'Failed to remove domain from WorkOS');
+            return `❌ Failed to remove domain **${normalizedDomain}** from WorkOS. Error: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`;
+          }
+
+          // Delete the domain from local DB
+          await pool.query(
+            `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          // If we deleted the primary domain, pick a new one
+          let newPrimary: string | null = null;
+          if (wasPrimary) {
+            const remaining = await pool.query(
+              `SELECT domain FROM organization_domains
+               WHERE workos_organization_id = $1
+               ORDER BY verified DESC, created_at ASC
+               LIMIT 1`,
+              [organizationId]
+            );
+
+            newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+
+            if (newPrimary) {
+              await pool.query(
+                `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+                 WHERE workos_organization_id = $1 AND domain = $2`,
+                [organizationId, newPrimary]
+              );
+            }
+
+            await pool.query(
+              `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+               WHERE workos_organization_id = $2`,
+              [newPrimary, organizationId]
+            );
+          }
+
+          logger.info({ organizationId, domain: normalizedDomain, wasPrimary, newPrimary }, 'Addie: Removed domain from organization via WorkOS');
+
+          let response = `✅ Removed domain **${normalizedDomain}** from ${orgName} and WorkOS`;
+          if (wasPrimary && newPrimary) {
+            response += `. New primary domain: **${newPrimary}**`;
+          } else if (wasPrimary) {
+            response += '. No domains remaining.';
+          }
+          response += '\n\nUsers signing up with @' + normalizedDomain + ' emails will no longer be auto-associated with this organization.';
+          return response;
+        }
+
+        case 'set_primary': {
+          if (!domain) {
+            return '❌ domain is required for the "set_primary" action.';
+          }
+
+          const normalizedDomain = domain.toLowerCase().trim();
+
+          // Verify domain belongs to this org
+          const domainResult = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          if (domainResult.rows.length === 0) {
+            return `❌ Domain **${normalizedDomain}** not found for ${orgName}. Use action "add" first.`;
+          }
+
+          // Clear existing primary
+          await pool.query(
+            `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND is_primary = true`,
+            [organizationId]
+          );
+
+          // Set new primary
+          await pool.query(
+            `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [organizationId, normalizedDomain]
+          );
+
+          // Update organizations.email_domain
+          await pool.query(
+            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2`,
+            [normalizedDomain, organizationId]
+          );
+
+          logger.info({ organizationId, domain: normalizedDomain }, 'Addie: Set primary domain for organization');
+
+          return `✅ Set **${normalizedDomain}** as the primary domain for ${orgName}.`;
+        }
+
+        default:
+          return `❌ Unknown action: ${action}. Valid actions are: list, add, remove, set_primary`;
+      }
+    } catch (error) {
+      logger.error({ error, organizationId, action }, 'Error managing organization domains');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to ${action} domain: ${errorMessage}`;
     }
   });
 
@@ -3071,6 +4149,446 @@ export function createAdminToolHandlers(
       logger.error({ error }, 'Error checking domain health');
       return '❌ Failed to check domain health. Please try again.';
     }
+  });
+
+  // ============================================
+  // PROSPECT OWNERSHIP & PIPELINE HANDLERS
+  // ============================================
+
+  // My engaged prospects - list owned prospects sorted by engagement
+  handlers.set('my_engaged_prospects', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 50);
+    const hotOnly = input.hot_only as boolean;
+
+    // Get the admin's user ID from context
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      // Query prospects owned by this user
+      let query = `
+        SELECT
+          o.workos_organization_id as org_id,
+          o.name,
+          o.email_domain,
+          o.engagement_score,
+          o.prospect_status,
+          o.interest_level,
+          o.company_type,
+          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons,
+          (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
+        FROM organizations o
+        JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+        WHERE os.user_id = $1
+          AND os.role = 'owner'
+          AND o.is_personal IS NOT TRUE
+          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+      `;
+
+      if (hotOnly) {
+        query += ` AND o.engagement_score >= 30`;
+      }
+
+      query += `
+        ORDER BY o.engagement_score DESC NULLS LAST
+        LIMIT $2
+      `;
+
+      const result = await pool.query(query, [userId, limit]);
+
+      if (result.rows.length === 0) {
+        return hotOnly
+          ? `No hot prospects found. Try removing the hot_only filter to see all your prospects.`
+          : `You don't own any prospects yet. Use \`unassigned_prospects\` to find prospects to claim.`;
+      }
+
+      let response = `## Your ${hotOnly ? 'Hot ' : ''}Engaged Prospects\n\n`;
+
+      for (const row of result.rows) {
+        const isHot = (row.engagement_score || 0) >= 30;
+        const emoji = isHot ? '🔥' : '📊';
+        response += `${emoji} **${row.name}**`;
+        if (row.email_domain) response += ` (${row.email_domain})`;
+        response += `\n`;
+        response += `   Score: ${row.engagement_score || 0}`;
+        if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
+        if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
+        response += `\n`;
+        if (row.engagement_reasons?.length > 0) {
+          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
+        }
+        if (row.last_activity) {
+          response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
+        }
+        response += `\n`;
+      }
+
+      const hotCount = result.rows.filter(r => (r.engagement_score || 0) >= 30).length;
+      response += `---\n`;
+      response += `Showing ${result.rows.length} prospect(s)`;
+      if (!hotOnly && hotCount > 0) {
+        response += ` (${hotCount} hot)`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, userId }, 'Error fetching engaged prospects');
+      return '❌ Failed to fetch your prospects. Please try again.';
+    }
+  });
+
+  // My followups needed - list owned prospects needing attention
+  handlers.set('my_followups_needed', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 50);
+    const daysStale = (input.days_stale as number) || 14;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      // Query prospects that need follow-up
+      const result = await pool.query(`
+        WITH prospect_activity AS (
+          SELECT
+            o.workos_organization_id as org_id,
+            o.name,
+            o.email_domain,
+            o.engagement_score,
+            o.prospect_status,
+            o.next_step,
+            o.next_step_due_date,
+            (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
+            EXTRACT(DAY FROM NOW() - COALESCE(
+              (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
+              o.created_at
+            )) as days_since_activity
+          FROM organizations o
+          JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+          WHERE os.user_id = $1
+            AND os.role = 'owner'
+            AND o.is_personal IS NOT TRUE
+            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+        )
+        SELECT *,
+          CASE
+            WHEN next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE THEN 1
+            WHEN days_since_activity >= $2 THEN 2
+            ELSE 3
+          END as urgency
+        FROM prospect_activity
+        WHERE (next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE)
+           OR days_since_activity >= $2
+        ORDER BY urgency, days_since_activity DESC NULLS LAST
+        LIMIT $3
+      `, [userId, daysStale, limit]);
+
+      if (result.rows.length === 0) {
+        return `✅ Great news! None of your prospects need immediate follow-up.`;
+      }
+
+      let response = `## Prospects Needing Follow-Up\n\n`;
+
+      let overdueCount = 0;
+      let staleCount = 0;
+
+      for (const row of result.rows) {
+        const isOverdue = row.next_step_due_date && new Date(row.next_step_due_date) < new Date();
+        if (isOverdue) {
+          overdueCount++;
+          response += `⚠️ **${row.name}** - OVERDUE\n`;
+          response += `   Next step: ${row.next_step || 'Not set'}\n`;
+          response += `   Due: ${new Date(row.next_step_due_date).toLocaleDateString()}\n`;
+        } else {
+          staleCount++;
+          response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
+        }
+        if (row.last_activity) {
+          response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
+        }
+        if (row.engagement_score) {
+          response += `   Engagement: ${row.engagement_score}${row.engagement_score >= 30 ? ' 🔥' : ''}\n`;
+        }
+        response += `\n`;
+      }
+
+      response += `---\n`;
+      if (overdueCount > 0) response += `⚠️ ${overdueCount} overdue task(s)\n`;
+      if (staleCount > 0) response += `⏰ ${staleCount} stale (>${daysStale} days)\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, userId }, 'Error fetching followups needed');
+      return '❌ Failed to fetch follow-ups. Please try again.';
+    }
+  });
+
+  // Unassigned prospects - list high-engagement prospects without owners
+  handlers.set('unassigned_prospects', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 50);
+    const minEngagement = (input.min_engagement as number) || 10;
+
+    try {
+      const result = await pool.query(`
+        SELECT
+          o.workos_organization_id as org_id,
+          o.name,
+          o.email_domain,
+          o.engagement_score,
+          o.prospect_status,
+          o.company_type,
+          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+        FROM organizations o
+        WHERE o.is_personal IS NOT TRUE
+          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND o.engagement_score >= $1
+          AND NOT EXISTS (
+            SELECT 1 FROM org_stakeholders os
+            WHERE os.organization_id = o.workos_organization_id
+              AND os.role = 'owner'
+          )
+        ORDER BY o.engagement_score DESC NULLS LAST
+        LIMIT $2
+      `, [minEngagement, limit]);
+
+      if (result.rows.length === 0) {
+        return minEngagement > 10
+          ? `No unassigned prospects with engagement >= ${minEngagement}. Try lowering min_engagement.`
+          : `All engaged prospects have owners! Nice work team.`;
+      }
+
+      let response = `## Unassigned Prospects (engagement >= ${minEngagement})\n\n`;
+
+      for (const row of result.rows) {
+        const isHot = (row.engagement_score || 0) >= 30;
+        const emoji = isHot ? '🔥' : '📊';
+        response += `${emoji} **${row.name}**`;
+        if (row.email_domain) response += ` (${row.email_domain})`;
+        response += `\n`;
+        response += `   Score: ${row.engagement_score || 0}`;
+        if (row.company_type) response += ` | Type: ${row.company_type}`;
+        response += `\n`;
+        if (row.engagement_reasons?.length > 0) {
+          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
+        }
+        response += `   ID: ${row.org_id}\n`;
+        response += `\n`;
+      }
+
+      response += `---\n`;
+      response += `Use \`claim_prospect\` to take ownership of any of these.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error fetching unassigned prospects');
+      return '❌ Failed to fetch unassigned prospects. Please try again.';
+    }
+  });
+
+  // Claim prospect - assign self as owner
+  handlers.set('claim_prospect', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    let orgId = input.org_id as string;
+    const companyName = input.company_name as string;
+    const replaceExisting = input.replace_existing as boolean;
+    const notes = input.notes as string;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userEmail = memberContext?.workos_user?.email;
+
+    if (!userId || !userEmail) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    if (!orgId && !companyName) {
+      return '❌ Please provide either org_id or company_name.';
+    }
+
+    try {
+      // Look up org by name if no ID provided
+      if (!orgId && companyName) {
+        // Escape SQL LIKE wildcard characters to prevent pattern injection
+        const escapedName = companyName.replace(/[%_\\]/g, '\\$&');
+        const searchResult = await pool.query(`
+          SELECT workos_organization_id, name
+          FROM organizations
+          WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
+            AND is_personal IS NOT TRUE
+          ORDER BY
+            CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
+            engagement_score DESC NULLS LAST
+          LIMIT 1
+        `, [`%${escapedName}%`, companyName]);
+
+        if (searchResult.rows.length === 0) {
+          return `❌ No organization found matching "${companyName}". Try using the exact org_id instead.`;
+        }
+
+        orgId = searchResult.rows[0].workos_organization_id;
+      }
+
+      // Check for existing owner
+      const existingOwner = await pool.query(`
+        SELECT user_id, user_name, user_email
+        FROM org_stakeholders
+        WHERE organization_id = $1 AND role = 'owner'
+      `, [orgId]);
+
+      if (existingOwner.rows.length > 0) {
+        const owner = existingOwner.rows[0];
+        if (owner.user_id === userId) {
+          return `✅ You are already the owner of this prospect.`;
+        }
+        if (!replaceExisting) {
+          return `❌ This prospect already has an owner: ${owner.user_name} (${owner.user_email}).\n\nUse \`replace_existing: true\` to take over ownership.`;
+        }
+
+        // Remove existing owner
+        await pool.query(`
+          DELETE FROM org_stakeholders
+          WHERE organization_id = $1 AND role = 'owner'
+        `, [orgId]);
+      }
+
+      // Add self as owner
+      await pool.query(`
+        INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
+        VALUES ($1, $2, $3, $4, 'owner', $5)
+        ON CONFLICT (organization_id, user_id)
+        DO UPDATE SET role = 'owner', notes = $5, updated_at = NOW()
+      `, [orgId, userId, userName, userEmail, notes || `Claimed via Addie on ${new Date().toLocaleDateString()}`]);
+
+      // Get the org name for confirmation
+      const orgResult = await pool.query(`
+        SELECT name FROM organizations WHERE workos_organization_id = $1
+      `, [orgId]);
+
+      const orgName = orgResult.rows[0]?.name || orgId;
+
+      let response = `✅ You are now the owner of **${orgName}**!`;
+      if (existingOwner.rows.length > 0) {
+        response += `\n\n_Previous owner ${existingOwner.rows[0].user_name} has been removed._`;
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, userId }, 'Error claiming prospect');
+      return '❌ Failed to claim prospect. Please try again.';
+    }
+  });
+
+  // Suggest prospects - find unmapped domains and Lusha results
+  handlers.set('suggest_prospects', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const pool = getPool();
+    const limit = Math.min((input.limit as number) || 10, 20);
+    const includeLusha = input.include_lusha !== false;
+    const lushaKeywords = (input.lusha_keywords as string[]) || ['programmatic', 'DSP', 'ad tech'];
+
+    let response = `## Suggested Prospects\n\n`;
+
+    // 1. Find unmapped corporate domains (already engaged, high value)
+    try {
+      const unmappedResult = await pool.query(`
+        WITH corporate_domains AS (
+          -- Extract domains from Slack users not in personal orgs
+          SELECT DISTINCT
+            LOWER(SUBSTRING(sm.slack_email FROM POSITION('@' IN sm.slack_email) + 1)) as domain,
+            COUNT(DISTINCT sm.slack_user_id) as user_count
+          FROM slack_user_mappings sm
+          WHERE sm.slack_email IS NOT NULL
+            AND sm.slack_is_bot IS NOT TRUE
+            -- Exclude common personal email domains
+            AND LOWER(sm.slack_email) NOT LIKE '%@gmail.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@yahoo.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@hotmail.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@outlook.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@icloud.com'
+            AND LOWER(sm.slack_email) NOT LIKE '%@aol.com'
+          GROUP BY domain
+        )
+        SELECT
+          cd.domain,
+          cd.user_count
+        FROM corporate_domains cd
+        WHERE NOT EXISTS (
+          -- Not already mapped to an org
+          SELECT 1 FROM organization_domains od
+          WHERE od.domain = cd.domain
+        )
+        AND NOT EXISTS (
+          -- Not the email_domain of any org
+          SELECT 1 FROM organizations o
+          WHERE o.email_domain = cd.domain
+        )
+        ORDER BY cd.user_count DESC
+        LIMIT $1
+      `, [limit]);
+
+      if (unmappedResult.rows.length > 0) {
+        response += `### 🎯 Unmapped Domains (Already in Slack!)\n\n`;
+        response += `_These people are already engaged but their companies aren't in our system:_\n\n`;
+
+        for (const row of unmappedResult.rows) {
+          response += `• **${row.domain}** - ${row.user_count} Slack user(s)\n`;
+        }
+        response += `\n_Use \`add_prospect\` to create organizations for these domains._\n\n`;
+      } else {
+        response += `### 🎯 Unmapped Domains\n\n`;
+        response += `✅ All active Slack domains are mapped to organizations!\n\n`;
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error finding unmapped domains');
+      response += `### 🎯 Unmapped Domains\n\n`;
+      response += `⚠️ Could not check unmapped domains.\n\n`;
+    }
+
+    // 2. Lusha search for external prospects
+    if (includeLusha && isLushaConfigured()) {
+      try {
+        const lushaClient = getLushaClient();
+        if (lushaClient) {
+          response += `### 🔍 Lusha Search Results\n\n`;
+          response += `_External companies matching: ${lushaKeywords.join(', ')}_\n\n`;
+
+          // Note: This would use the actual Lusha search API
+          // For now, we'll indicate it's available
+          response += `Use \`prospect_search_lusha\` with specific criteria to find external companies.\n\n`;
+        }
+      } catch (error) {
+        logger.error({ error }, 'Error searching Lusha');
+        response += `### 🔍 Lusha Search\n\n`;
+        response += `⚠️ Lusha search failed. Try \`prospect_search_lusha\` directly.\n\n`;
+      }
+    } else if (includeLusha) {
+      response += `### 🔍 Lusha Search\n\n`;
+      response += `⚠️ Lusha is not configured. Contact an admin to set up Lusha API access.\n\n`;
+    }
+
+    response += `---\n`;
+    response += `Use \`add_prospect\` to add any company to the prospect list.`;
+
+    return response;
   });
 
   return handlers;

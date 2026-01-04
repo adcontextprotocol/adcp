@@ -112,6 +112,15 @@
     .members-table tr:hover {
       background: var(--color-gray-50);
     }
+    .company-link {
+      color: var(--color-text-heading);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+    }
+    .company-link:hover {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
     .status-badge {
       display: inline-block;
       padding: var(--space-1) var(--space-2);
@@ -601,7 +610,7 @@
 
         return `
           <tr id="row-${member.company_id}">
-            <td><strong>${member.company_name || 'Unknown'}</strong></td>
+            <td><a href="/admin/organizations/${member.company_id}" class="company-link">${member.company_name || 'Unknown'}</a></td>
             <td>${companyTypeText}</td>
             <td>${revenueTierText}</td>
             <td>${member.owner_email || 'No email'}</td>

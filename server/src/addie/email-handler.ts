@@ -13,7 +13,7 @@ import {
   generateInteractionId,
 } from './security.js';
 import { getWebMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
-import { isAdmin, ADMIN_TOOLS, createAdminToolHandlers } from './mcp/admin-tools.js';
+import { isWebUserAdmin, ADMIN_TOOLS, createAdminToolHandlers } from './mcp/admin-tools.js';
 import { MEMBER_TOOLS, createMemberToolHandlers } from './mcp/member-tools.js';
 import { BILLING_TOOLS, createBillingToolHandlers } from './mcp/billing-tools.js';
 import { sendEmailReply, type EmailThreadContext } from '../notifications/email.js';
@@ -213,7 +213,8 @@ export async function handleEmailInvocation(
 
     if (senderWorkosUserId) {
       memberContext = await getWebMemberContext(senderWorkosUserId);
-      isUserAdmin = isAdmin(memberContext);
+      // Check if user is AAO admin (based on aao-admin working group membership)
+      isUserAdmin = await isWebUserAdmin(senderWorkosUserId);
     }
 
     // Sanitize input

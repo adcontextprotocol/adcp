@@ -367,4 +367,133 @@ export function setupStatsRoutes(apiRouter: Router): void {
       });
     }
   });
+
+  // GET /api/admin/my-prospects - Get prospects owned by current user
+  apiRouter.get("/my-prospects", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pool = getPool();
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Get all stats in parallel
+      const [hotProspects, needsFollowup, recentActivity, counts] = await Promise.all([
+        // Hot prospects (engagement >= 30)
+        pool.query(`
+          SELECT
+            o.workos_organization_id as org_id,
+            o.name,
+            o.email_domain,
+            o.engagement_score,
+            o.prospect_status,
+            o.interest_level,
+            (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+          FROM organizations o
+          JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+          WHERE os.user_id = $1
+            AND os.role = 'owner'
+            AND o.is_personal IS NOT TRUE
+            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND o.engagement_score >= 30
+          ORDER BY o.engagement_score DESC
+          LIMIT 5
+        `, [userId]),
+
+        // Needs follow-up (stale or overdue)
+        pool.query(`
+          WITH prospect_activity AS (
+            SELECT
+              o.workos_organization_id as org_id,
+              o.name,
+              o.email_domain,
+              o.engagement_score,
+              o.next_step,
+              o.next_step_due_date,
+              (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
+              EXTRACT(DAY FROM NOW() - COALESCE(
+                (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
+                o.created_at
+              )) as days_since_activity
+            FROM organizations o
+            JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+            WHERE os.user_id = $1
+              AND os.role = 'owner'
+              AND o.is_personal IS NOT TRUE
+              AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          )
+          SELECT *,
+            CASE
+              WHEN next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE THEN 'overdue'
+              WHEN days_since_activity >= 14 THEN 'stale'
+            END as reason
+          FROM prospect_activity
+          WHERE (next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE)
+             OR days_since_activity >= 14
+          ORDER BY
+            CASE WHEN next_step_due_date IS NOT NULL AND next_step_due_date < CURRENT_DATE THEN 0 ELSE 1 END,
+            days_since_activity DESC NULLS LAST
+          LIMIT 5
+        `, [userId]),
+
+        // Recent activity on owned prospects
+        pool.query(`
+          SELECT
+            oa.id,
+            oa.organization_id as org_id,
+            o.name as org_name,
+            oa.activity_type,
+            oa.description,
+            oa.activity_date
+          FROM org_activities oa
+          JOIN organizations o ON o.workos_organization_id = oa.organization_id
+          JOIN org_stakeholders os ON os.organization_id = oa.organization_id
+          WHERE os.user_id = $1
+            AND os.role = 'owner'
+            AND oa.activity_date >= CURRENT_DATE - INTERVAL '30 days'
+          ORDER BY oa.activity_date DESC
+          LIMIT 5
+        `, [userId]),
+
+        // Counts
+        pool.query(`
+          SELECT
+            COUNT(*) as total,
+            COUNT(CASE WHEN o.engagement_score >= 30 THEN 1 END) as hot,
+            COUNT(CASE
+              WHEN (o.next_step_due_date IS NOT NULL AND o.next_step_due_date < CURRENT_DATE)
+                OR EXTRACT(DAY FROM NOW() - COALESCE(
+                  (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
+                  o.created_at
+                )) >= 14
+              THEN 1
+            END) as needs_followup
+          FROM organizations o
+          JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+          WHERE os.user_id = $1
+            AND os.role = 'owner'
+            AND o.is_personal IS NOT TRUE
+            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+        `, [userId]),
+      ]);
+
+      res.json({
+        hot_prospects: hotProspects.rows,
+        needs_followup: needsFollowup.rows,
+        recent_activity: recentActivity.rows,
+        counts: {
+          total: parseInt(counts.rows[0]?.total) || 0,
+          hot: parseInt(counts.rows[0]?.hot) || 0,
+          followup: parseInt(counts.rows[0]?.needs_followup) || 0,
+        },
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching my prospects");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch prospect data",
+      });
+    }
+  });
 }

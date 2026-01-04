@@ -253,19 +253,20 @@
           </div>
           <div class="navbar__items navbar__items--right">
             <div class="navbar__links-desktop">
-              ${user?.isAdmin ? `<a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>` : ''}
+              <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
               <a href="${docsUrl}" class="navbar__link">Docs</a>
               <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
             </div>
             ${authSection}
-            <button class="navbar__hamburger" id="mobileMenuBtn" aria-label="Toggle menu">
+            <button class="navbar__hamburger" id="mobileMenuBtn" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
               <span class="navbar__hamburger-line"></span>
               <span class="navbar__hamburger-line"></span>
               <span class="navbar__hamburger-line"></span>
             </button>
           </div>
         </div>
-        <div class="navbar__mobile-menu" id="mobileMenu">
+        <div class="navbar__backdrop" id="mobileBackdrop" aria-hidden="true" role="presentation"></div>
+        <div class="navbar__mobile-menu" id="mobileMenu" role="navigation" aria-label="Mobile navigation">
           <span class="navbar__link navbar__link--header">Projects</span>
           <a href="https://adcontextprotocol.org" class="navbar__link navbar__link--indent">AdCP</a>
           <a href="${adagentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
@@ -289,7 +290,7 @@
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
-          ${user?.isAdmin ? `<a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>` : ''}
+          <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
           <a href="${docsUrl}" class="navbar__link">Docs</a>
           <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
         </div>
@@ -710,58 +711,109 @@
         transform: rotate(-45deg) translate(5px, -5px);
       }
 
-      /* Mobile menu */
+      /* Mobile menu - full screen slide-in for app-like feel */
       .navbar__mobile-menu {
-        display: none;
-        position: absolute;
+        display: flex;
+        flex-direction: column;
+        position: fixed;
         top: 60px;
         left: 0;
         right: 0;
+        bottom: 0;
         background: #fff;
         border-top: 1px solid #e5e7eb;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        padding: 1rem;
-        flex-direction: column;
-        gap: 0.5rem;
+        padding: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 999;
+        visibility: hidden;
       }
 
       .navbar__mobile-menu.open {
-        display: flex;
+        transform: translateX(0);
+        visibility: visible;
+      }
+
+      /* Backdrop overlay when menu is open */
+      .navbar__backdrop {
+        display: none;
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.3);
+        z-index: 998;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .navbar__backdrop.open {
+        display: block;
+        opacity: 1;
       }
 
       .navbar__mobile-menu .navbar__link {
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        display: block;
+        padding: 1rem 1.25rem;
+        border-radius: 0;
+        display: flex;
+        align-items: center;
+        min-height: 48px;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 1rem;
+        transition: background-color 0.15s ease;
       }
 
-      .navbar__mobile-menu .navbar__link:hover {
+      .navbar__mobile-menu .navbar__link:hover,
+      .navbar__mobile-menu .navbar__link:active {
         background: #f3f4f6;
       }
 
       .navbar__mobile-menu .navbar__link--indent {
-        padding-left: 2rem;
-        font-size: 0.9rem;
+        padding-left: 2.5rem;
+        font-size: 0.9375rem;
+        background: #fafafa;
       }
 
       .navbar__mobile-menu .navbar__link--header {
-        padding: 0.75rem 1rem;
+        padding: 1rem 1.25rem 0.5rem;
         color: #6b7280;
         font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         cursor: default;
+        min-height: auto;
+        border-bottom: none;
+        background: #f9fafb;
+        margin-top: 0.5rem;
+      }
+
+      .navbar__mobile-menu .navbar__link--header:first-child {
+        margin-top: 0;
       }
 
       .navbar__mobile-menu .navbar__link--subheader {
-        padding: 0.5rem 1rem;
+        padding: 0.75rem 1.25rem 0.25rem;
         color: #9ca3af;
-        font-size: 0.7rem;
+        font-size: 0.6875rem;
         font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         cursor: default;
+        min-height: auto;
+        border-bottom: none;
+        background: #fafafa;
+      }
+
+      /* Safe area padding at bottom of mobile menu */
+      .navbar__mobile-menu::after {
+        content: '';
+        display: block;
+        padding-bottom: env(safe-area-inset-bottom, 1rem);
       }
 
       /* Desktop-only links wrapper */
@@ -797,8 +849,29 @@
           border-top-color: #374151;
         }
 
-        .navbar__mobile-menu .navbar__link:hover {
+        .navbar__mobile-menu .navbar__link {
+          border-bottom-color: #374151;
+        }
+
+        .navbar__mobile-menu .navbar__link:hover,
+        .navbar__mobile-menu .navbar__link:active {
           background: rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar__mobile-menu .navbar__link--indent {
+          background: #141414;
+        }
+
+        .navbar__mobile-menu .navbar__link--header {
+          background: #111;
+        }
+
+        .navbar__mobile-menu .navbar__link--subheader {
+          background: #141414;
+        }
+
+        .navbar__backdrop {
+          background: rgba(0, 0, 0, 0.5);
         }
       }
 
@@ -811,8 +884,42 @@
         border-top-color: #374151;
       }
 
-      [data-theme="dark"] .navbar__mobile-menu .navbar__link:hover {
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link {
+        border-bottom-color: #374151;
+      }
+
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link:hover,
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link:active {
         background: rgba(255, 255, 255, 0.1);
+      }
+
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link--indent {
+        background: #141414;
+      }
+
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link--header {
+        background: #111;
+      }
+
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link--subheader {
+        background: #141414;
+      }
+
+      [data-theme="dark"] .navbar__backdrop {
+        background: rgba(0, 0, 0, 0.5);
+      }
+
+      /* Respect reduced motion preferences */
+      @media (prefers-reduced-motion: reduce) {
+        .navbar__mobile-menu {
+          transition: none;
+        }
+        .navbar__backdrop {
+          transition: none;
+        }
+        .navbar__hamburger-line {
+          transition: none;
+        }
       }
     </style>
   `;
@@ -983,6 +1090,34 @@
     const accountDropdown = document.getElementById('accountDropdown');
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const mobileMenu = document.getElementById('mobileMenu');
+    const mobileBackdrop = document.getElementById('mobileBackdrop');
+
+    // Helper to toggle mobile menu state
+    function toggleMobileMenu(open) {
+      const isOpen = open !== undefined ? open : !mobileMenu.classList.contains('open');
+
+      // Update aria-expanded for accessibility
+      mobileMenuBtn.setAttribute('aria-expanded', String(isOpen));
+
+      if (isOpen) {
+        mobileMenuBtn.classList.add('open');
+        mobileMenu.classList.add('open');
+        if (mobileBackdrop) mobileBackdrop.classList.add('open');
+        // Prevent body scroll when menu is open
+        document.body.style.overflow = 'hidden';
+        // Focus first interactive element in menu for accessibility
+        const firstLink = mobileMenu.querySelector('a.navbar__link');
+        if (firstLink) firstLink.focus();
+      } else {
+        mobileMenuBtn.classList.remove('open');
+        mobileMenu.classList.remove('open');
+        if (mobileBackdrop) mobileBackdrop.classList.remove('open');
+        // Restore body scroll
+        document.body.style.overflow = '';
+        // Return focus to hamburger button
+        mobileMenuBtn.focus();
+      }
+    }
 
     // Account dropdown toggle
     if (accountBtn && accountDropdown) {
@@ -990,8 +1125,9 @@
         e.stopPropagation();
         accountDropdown.classList.toggle('open');
         // Close mobile menu if open
-        if (mobileMenu) mobileMenu.classList.remove('open');
-        if (mobileMenuBtn) mobileMenuBtn.classList.remove('open');
+        if (mobileMenu && mobileMenu.classList.contains('open')) {
+          toggleMobileMenu(false);
+        }
       });
 
       // Prevent dropdown from closing when clicking inside it
@@ -1004,26 +1140,42 @@
     if (mobileMenuBtn && mobileMenu) {
       mobileMenuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        mobileMenuBtn.classList.toggle('open');
-        mobileMenu.classList.toggle('open');
+        toggleMobileMenu();
         // Close account dropdown if open
         if (accountDropdown) accountDropdown.classList.remove('open');
       });
 
       // Close mobile menu when clicking a link
-      mobileMenu.querySelectorAll('.navbar__link').forEach(link => {
+      mobileMenu.querySelectorAll('.navbar__link:not(.navbar__link--header):not(.navbar__link--subheader)').forEach(link => {
         link.addEventListener('click', () => {
-          mobileMenuBtn.classList.remove('open');
-          mobileMenu.classList.remove('open');
+          toggleMobileMenu(false);
         });
       });
+
+      // Close mobile menu when clicking backdrop
+      if (mobileBackdrop) {
+        mobileBackdrop.addEventListener('click', () => {
+          toggleMobileMenu(false);
+        });
+      }
     }
 
     // Close all menus when clicking outside
     document.addEventListener('click', () => {
       if (accountDropdown) accountDropdown.classList.remove('open');
-      if (mobileMenu) mobileMenu.classList.remove('open');
-      if (mobileMenuBtn) mobileMenuBtn.classList.remove('open');
+      if (mobileMenu && mobileMenu.classList.contains('open')) {
+        toggleMobileMenu(false);
+      }
+    });
+
+    // Close menu on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (accountDropdown) accountDropdown.classList.remove('open');
+        if (mobileMenu && mobileMenu.classList.contains('open')) {
+          toggleMobileMenu(false);
+        }
+      }
     });
   }
 

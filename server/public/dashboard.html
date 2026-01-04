@@ -686,13 +686,9 @@
               <p style="margin: 4px 0 0 0; color: var(--color-text-secondary); font-size: 14px;">Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.</p>
             </div>
           </div>
-          <div class="section-card-body" style="text-align: center; padding: 32px 20px;">
-            <p style="margin: 0 0 20px 0; color: var(--color-text-secondary); font-size: 15px; max-width: 400px; margin-left: auto; margin-right: auto;">
-              Join AgenticAdvertising.org to help shape the future of agentic advertising. Founding member rates available through March 31, 2026.
-            </p>
-            <a href="/dashboard/membership" class="btn btn-primary btn-lg" style="font-size: 16px; padding: 14px 32px;">
-              View Membership Options
-            </a>
+          <div id="inlinePricingContent" class="section-card-body" style="padding: 24px;">
+            <!-- Will be dynamically populated with price, agreement, and checkout button -->
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading membership options...</div>
           </div>
         </div>
       </section>
@@ -736,7 +732,7 @@
         </div>
 
         <p style="text-align: center; margin-top: 16px; font-size: 14px; color: var(--color-text-secondary);">
-          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal()" style="color: var(--aao-primary); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
+          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestWithOrgInfo()" style="color: var(--aao-primary); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
         </p>
       </div>
 
@@ -781,6 +777,20 @@
     // Helper to check if the CURRENT org (not any org) has active subscription
     function currentOrgHasActiveSubscription() {
       return currentOrg?.billing?.status === 'active';
+    }
+
+    // Helper to open invoice request modal with current org info pre-filled
+    function openInvoiceRequestWithOrgInfo() {
+      const isPersonal = currentOrg?.is_personal || currentOrg?.billing?.is_personal;
+      const customerType = isPersonal ? 'individual' : 'company';
+      const revenueTier = currentOrg?.billing?.revenue_tier || '';
+
+      openInvoiceRequestModal({
+        companyName: currentOrg?.name || '',
+        selectedProduct: inlineCheckoutProduct?.lookup_key || '',
+        customerType: customerType,
+        revenueTier: revenueTier
+      });
     }
 
     // Profile modal state
@@ -1186,29 +1196,242 @@
         membershipCard.style.display = 'none';
         inlinePricingSection.style.display = 'block';
 
+        // Populate inline pricing with agreement checkbox and pay button
+        renderInlineMembershipCheckout(org);
+
         // Show promo banner for non-subscribers
         renderJoinPromoBanner(org);
       }
     }
 
+    // Cache for inline checkout state
+    let inlineCheckoutProduct = null;
+    let inlineAgreementAccepted = false;
+
+    // Render inline membership checkout with agreement checkbox
+    async function renderInlineMembershipCheckout(org) {
+      const container = document.getElementById('inlinePricingContent');
+      if (!container) return;
+
+      const isPersonal = org.is_personal || org.billing?.is_personal;
+      const customerType = isPersonal ? 'individual' : 'company';
+      const revenueTier = org.billing?.revenue_tier || '';
+
+      // Show loading state
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">
+          Loading membership options...
+        </div>
+      `;
+
+      try {
+        // Fetch products
+        const url = new URL('/api/billing-products', window.location.origin);
+        url.searchParams.set('customer_type', customerType);
+        url.searchParams.set('category', 'membership');
+        if (revenueTier) {
+          url.searchParams.set('revenue_tier', revenueTier);
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        const products = data.products || [];
+
+        if (products.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+              <p style="color: var(--color-text-secondary); margin-bottom: 16px;">No membership options available for your account type.</p>
+              <p style="font-size: 14px; color: var(--color-text-muted);">Please contact <a href="mailto:membership@agenticadvertising.org">membership@agenticadvertising.org</a></p>
+            </div>
+          `;
+          return;
+        }
+
+        // Take the first matching product (should be the correct tier-specific one)
+        const product = products[0];
+        if (!product || typeof product.amount_cents !== 'number') {
+          throw new Error('Invalid product data received');
+        }
+        inlineCheckoutProduct = product;
+        const price = escapeHtml(formatCurrency(product.amount_cents, product.currency));
+
+        // Load agreement content
+        let agreementHtml = 'Loading agreement...';
+        try {
+          const agreementResponse = await fetch('/api/agreement/current?type=membership');
+          if (agreementResponse.ok) {
+            const agreementData = await agreementResponse.json();
+            agreementHtml = DOMPurify.sanitize(marked.parse(agreementData.text || 'Agreement not available.'));
+          }
+        } catch (e) {
+          console.error('Error loading agreement:', e);
+          agreementHtml = 'Unable to load agreement. Please refresh.';
+        }
+
+        // Render the checkout section with agreement
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <!-- Price display -->
+            <div style="text-align: center; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
+              <div style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 4px;">Your membership</div>
+              <div style="font-size: 36px; font-weight: 700; color: var(--color-brand);">${price}<span style="font-size: 16px; font-weight: 400; color: var(--color-text-muted);">/year</span></div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 4px;">Founding member rate through March 31, 2026</div>
+            </div>
+
+            <!-- Benefits summary -->
+            <div style="padding: 0 16px;">
+              <div style="font-size: 14px; font-weight: 600; color: var(--color-text-heading); margin-bottom: 12px;">Membership includes:</div>
+              <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--color-text-secondary); line-height: 1.8;">
+                <li>Listed in the member directory</li>
+                <li>Participate in working groups</li>
+                <li>Vote on standards and governance</li>
+                <li>Shape the future of agentic advertising</li>
+              </ul>
+            </div>
+
+            <!-- Agreement section -->
+            <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; background: var(--color-bg-subtle);">
+              <div style="font-size: 14px; font-weight: 600; color: var(--color-text-heading); margin-bottom: 12px;">Membership Agreement</div>
+              <div id="inlineAgreementContent" style="max-height: 150px; overflow-y: auto; padding: 12px; background: white; border: 1px solid var(--color-border); border-radius: 6px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
+                ${agreementHtml}
+              </div>
+              <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="inlineAgreementCheckbox" onchange="updateInlineCheckoutButton()" style="margin-top: 3px; cursor: pointer; width: 18px; height: 18px;" />
+                <span style="font-size: 14px; color: var(--color-text-heading);">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+              </label>
+            </div>
+
+            <!-- Action buttons -->
+            <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
+              <button id="inlinePayNowBtn" class="btn btn-primary btn-lg" onclick="startInlineCheckout()" disabled style="width: 100%; max-width: 300px; padding: 14px 32px; font-size: 16px;">
+                Pay Now
+              </button>
+              <div style="font-size: 13px; color: var(--color-text-muted);">
+                Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestWithOrgInfo()" style="color: var(--color-brand); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
+              </div>
+              <a href="/membership" style="font-size: 13px; color: var(--color-brand);">Learn more about membership benefits →</a>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error('Error rendering inline checkout:', error);
+        inlineCheckoutProduct = null; // Clear stale state on error
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px;">
+            <p style="color: var(--color-error-600); margin-bottom: 16px;">Unable to load membership options.</p>
+            <button onclick="renderInlineMembershipCheckout(currentOrg)" class="btn btn-secondary">Try Again</button>
+          </div>
+        `;
+      }
+    }
+
+    // Update inline checkout button state based on agreement checkbox
+    function updateInlineCheckoutButton() {
+      const checkbox = document.getElementById('inlineAgreementCheckbox');
+      const btn = document.getElementById('inlinePayNowBtn');
+      if (checkbox && btn) {
+        inlineAgreementAccepted = checkbox.checked;
+        btn.disabled = !checkbox.checked;
+      }
+    }
+
+    // Prevent double-click on checkout
+    let checkoutInProgress = false;
+
+    // Start checkout from inline section
+    async function startInlineCheckout() {
+      if (!inlineCheckoutProduct || !currentOrg || !inlineAgreementAccepted) return;
+      if (checkoutInProgress) return;
+      checkoutInProgress = true;
+
+      const btn = document.getElementById('inlinePayNowBtn');
+      if (!btn) {
+        checkoutInProgress = false;
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Redirecting to checkout...';
+
+      try {
+        const response = await fetch('/api/checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            priceId: inlineCheckoutProduct.price_id,
+            orgId: currentOrg.id,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create checkout session');
+        }
+
+        const data = await response.json();
+
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error('No checkout URL returned');
+        }
+      } catch (error) {
+        console.error('Checkout error:', error);
+        showToast(error.message || 'Unable to start checkout', true);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Pay Now';
+        }
+        checkoutInProgress = false;
+      }
+    }
+
     // Render promo banner for non-members (founding member pricing)
-    function renderJoinPromoBanner(org) {
+    // Shows exact price when revenue tier is known, otherwise shows range
+    async function renderJoinPromoBanner(org) {
       const promoBanner = document.getElementById('promoBanner');
       if (!promoBanner) return;
 
-      // Determine pricing message based on org type
       const isPersonal = org.is_personal || org.billing?.is_personal;
+      const revenueTier = org.billing?.revenue_tier;
 
-      // Show the founding member pricing range:
-      // - Companies: $2,500 - $10,000/year depending on revenue tier
-      // - Individuals: $50 - $250/year ($50 discounted for students/academics/between jobs)
-      const priceMessage = isPersonal
-        ? '<span class="promo-banner-price">$50 - $250</span><span style="font-size: 14px; font-weight: normal;">/year</span>'
-        : '<span class="promo-banner-price">$2,500 - $10,000</span><span style="font-size: 14px; font-weight: normal;">/year</span>';
+      let priceMessage, subtext;
 
-      const subtext = isPersonal
-        ? 'Standard or discounted rates available'
-        : 'Based on company revenue tier';
+      // If we know the revenue tier, fetch the exact price from API
+      if (!isPersonal && revenueTier) {
+        try {
+          const url = new URL('/api/billing-products', window.location.origin);
+          url.searchParams.set('customer_type', 'company');
+          url.searchParams.set('category', 'membership');
+          url.searchParams.set('revenue_tier', revenueTier);
+
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.json();
+            const products = data.products || [];
+            if (products.length > 0 && typeof products[0].amount_cents === 'number') {
+              // Use the first matching product's price
+              const exactPrice = escapeHtml(formatCurrency(products[0].amount_cents, products[0].currency));
+              priceMessage = `<span class="promo-banner-price">${exactPrice}</span><span style="font-size: 14px; font-weight: normal;">/year</span>`;
+              subtext = 'Founding member rate';
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching exact price:', e);
+        }
+      }
+
+      // Fall back to range if we couldn't get exact price
+      if (!priceMessage) {
+        priceMessage = isPersonal
+          ? '<span class="promo-banner-price">$50 - $250</span><span style="font-size: 14px; font-weight: normal;">/year</span>'
+          : '<span class="promo-banner-price">$2,500 - $10,000</span><span style="font-size: 14px; font-weight: normal;">/year</span>';
+        subtext = isPersonal
+          ? 'Standard or discounted rates available'
+          : 'Based on company revenue tier';
+      }
 
       promoBanner.innerHTML = `
         <div class="promo-banner">
