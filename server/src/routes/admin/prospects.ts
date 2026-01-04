@@ -592,11 +592,21 @@ export function setupProspectRoutes(apiRouter: Router): void {
         const updates = req.body;
         const pool = getPool();
 
+        // Validate revenue_tier if provided
+        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+        if (updates.revenue_tier && !validRevenueTiers.includes(updates.revenue_tier)) {
+          return res.status(400).json({
+            error: "Invalid revenue_tier",
+            message: `revenue_tier must be one of: ${validRevenueTiers.join(", ")}`,
+          });
+        }
+
         // Build dynamic UPDATE query
         const allowedFields = [
           "name",
           "company_type", // Deprecated: kept for backwards compatibility
           "company_types", // New: array of types
+          "revenue_tier",
           "prospect_status",
           "prospect_source",
           "prospect_owner",
