@@ -15,28 +15,20 @@ AXE operates in two distinct phases: **offline campaign setup** and **real-time 
 
 Before ads serve, campaigns are configured and segment data is synchronized:
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         OFFLINE SETUP PHASE                             │
-│                                                                         │
-│  ┌──────────────┐         ┌──────────────┐         ┌──────────────┐    │
-│  │ Buyer Agent  │         │  Orchestrator │         │ Signal Agent │    │
-│  │              │         │   (Scope3)    │         │              │    │
-│  │ • Campaigns  │────────▶│               │◀────────│ • Audiences  │    │
-│  │ • Budgets    │         │ • Map to AXE  │         │ • Contextual │    │
-│  │ • Targeting  │         │   segments    │         │ • Brand safe │    │
-│  └──────────────┘         │ • Sync to RTD │         └──────────────┘    │
-│                           └───────┬───────┘                             │
-│                                   │                                     │
-│                                   ▼                                     │
-│                           ┌──────────────┐                              │
-│                           │  Sales Agent │                              │
-│                           │              │                              │
-│                           │ Create line  │                              │
-│                           │ items with   │                              │
-│                           │ AXE targeting│                              │
-│                           └──────────────┘                              │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph offline["Offline Setup Phase"]
+        direction TB
+
+        buyer["**Buyer Agent**<br/>• Campaigns<br/>• Budgets<br/>• Targeting"]
+        signal["**Signal Agent**<br/>• Audiences<br/>• Contextual<br/>• Brand safe"]
+        orch["**Orchestrator**<br/>• Map to AXE segments<br/>• Sync to RTD"]
+        sales["**Sales Agent**<br/>Create line items<br/>with AXE targeting"]
+
+        buyer --> orch
+        signal --> orch
+        orch --> sales
+    end
 ```
 
 **What happens:**
@@ -49,37 +41,26 @@ Before ads serve, campaigns are configured and segment data is synchronized:
 
 When an ad request arrives, AXE evaluates it in real-time and returns segment decisions:
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       REAL-TIME SERVING PHASE                           │
-│                                                                         │
-│  ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐       │
-│  │   Page   │────▶│Ad Server │────▶│  Prebid  │────▶│   AXE    │       │
-│  │          │     │          │     │          │     │          │       │
-│  │ User     │     │ GAM/     │     │ OpenRTB  │     │ Segment  │       │
-│  │ visits   │     │ Kevel    │     │ request  │     │ lookup   │       │
-│  └──────────┘     └──────────┘     └──────────┘     └────┬─────┘       │
-│                                                          │              │
-│                        ┌─────────────────────────────────┘              │
-│                        │                                                │
-│                        ▼                                                │
-│              ┌──────────────────┐                                       │
-│              │  AXE Response    │                                       │
-│              │                  │                                       │
-│              │  axei: "seg_123" │  ◀── Include this segment             │
-│              │  axex: "seg_456" │  ◀── Exclude (brand safety)           │
-│              │  axem: "eyJ..."  │  ◀── Creative macro data              │
-│              └────────┬─────────┘                                       │
-│                       │                                                 │
-│                       ▼                                                 │
-│              ┌──────────────────┐                                       │
-│              │    Ad Server     │                                       │
-│              │                  │                                       │
-│              │  Match segments  │                                       │
-│              │  to line items   │                                       │
-│              │  → Serve ad      │                                       │
-│              └──────────────────┘                                       │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph realtime["Real-Time Serving Phase"]
+        direction TB
+
+        page["**Page**<br/>User visits"]
+        adserver1["**Ad Server**<br/>GAM / Kevel"]
+        prebid["**Prebid**<br/>OpenRTB request"]
+        axe["**AXE**<br/>Segment lookup"]
+
+        page --> adserver1 --> prebid --> axe
+
+        axeresponse["**AXE Response**<br/>`axei`: Include segment<br/>`axex`: Exclude (brand safety)<br/>`axem`: Creative macro data"]
+
+        axe --> axeresponse
+
+        adserver2["**Ad Server**<br/>Match segments to line items<br/>→ Serve ad"]
+
+        axeresponse --> adserver2
+    end
 ```
 
 **What happens:**
