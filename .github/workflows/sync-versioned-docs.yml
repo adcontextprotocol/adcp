@@ -38,8 +38,9 @@ jobs:
           # Extract docs folder from 2.6.x branch
           git archive origin/2.6.x -- docs | tar -x -C v2.6-rc/
 
-          # Check if there are changes
-          if git diff --quiet v2.6-rc/; then
+          # Check if there are changes (including untracked files)
+          git add v2.6-rc/
+          if git diff --cached --quiet; then
             echo "No changes to sync"
             echo "CHANGES_DETECTED=false" >> $GITHUB_ENV
           else
