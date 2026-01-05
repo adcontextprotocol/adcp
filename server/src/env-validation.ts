@@ -79,6 +79,15 @@ const envConfig: EnvConfig = {
       name: 'ADMIN_EMAILS',
       description: 'Comma-separated list of admin email addresses for /admin/* access',
     },
+    {
+      name: 'POSTHOG_API_KEY',
+      description: 'PostHog project API key for analytics (ph_...)',
+    },
+    {
+      name: 'POSTHOG_HOST',
+      description: 'PostHog API host URL',
+      defaultValue: 'https://us.i.posthog.com',
+    },
   ],
 };
 

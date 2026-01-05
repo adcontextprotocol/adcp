@@ -117,6 +117,10 @@ const AUTH_ENABLED = !!(
   process.env.WORKOS_COOKIE_PASSWORD.length >= 32
 );
 
+// PostHog config - only enabled if API key is set
+const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY || null;
+const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
+
 // Initialize WorkOS client only if authentication is enabled
 const workos = AUTH_ENABLED ? new WorkOS(process.env.WORKOS_API_KEY!, {
   clientId: process.env.WORKOS_CLIENT_ID!,
@@ -269,15 +273,26 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       lastName: user.lastName,
       isAdmin,
     } : null,
+    posthog: POSTHOG_API_KEY ? {
+      apiKey: POSTHOG_API_KEY,
+      host: POSTHOG_HOST,
+    } : null,
   };
 }
 
 /**
- * Generate the script tag to inject app config into HTML.
+ * Generate the script tags to inject app config and PostHog into HTML.
  */
 function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null): string {
   const config = buildAppConfig(user);
-  return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+  const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+
+  // Add PostHog script if API key is configured
+  const posthogScript = POSTHOG_API_KEY
+    ? `<script src="/posthog-init.js" defer></script>`
+    : '';
+
+  return `${configScript}\n${posthogScript}`;
 }
 
 /**
