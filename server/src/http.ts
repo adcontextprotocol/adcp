@@ -117,6 +117,10 @@ const AUTH_ENABLED = !!(
   process.env.WORKOS_COOKIE_PASSWORD.length >= 32
 );
 
+// PostHog config - only enabled if API key is set
+const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY || null;
+const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
+
 // Initialize WorkOS client only if authentication is enabled
 const workos = AUTH_ENABLED ? new WorkOS(process.env.WORKOS_API_KEY!, {
   clientId: process.env.WORKOS_CLIENT_ID!,
@@ -269,15 +273,26 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       lastName: user.lastName,
       isAdmin,
     } : null,
+    posthog: POSTHOG_API_KEY ? {
+      apiKey: POSTHOG_API_KEY,
+      host: POSTHOG_HOST,
+    } : null,
   };
 }
 
 /**
- * Generate the script tag to inject app config into HTML.
+ * Generate the script tags to inject app config and PostHog into HTML.
  */
 function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null): string {
   const config = buildAppConfig(user);
-  return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+  const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+
+  // Add PostHog script if API key is configured
+  const posthogScript = POSTHOG_API_KEY
+    ? `<script src="/posthog-init.js" defer></script>`
+    : '';
+
+  return `${configScript}\n${posthogScript}`;
 }
 
 /**
@@ -6903,6 +6918,25 @@ Disallow: /api/admin/
         });
       }
     });
+
+    // Global error handler - captures unhandled errors to PostHog
+    this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      // Capture to PostHog if configured
+      import('./utils/posthog.js').then(({ captureException }) => {
+        const userId = req.user?.id || 'anonymous';
+        captureException(err, userId, {
+          path: req.path,
+          method: req.method,
+          query: req.query,
+          userAgent: req.get('user-agent'),
+        });
+      }).catch(() => {
+        // PostHog capture failed silently
+      });
+
+      logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
+      res.status(500).json({ error: 'Internal server error' });
+    });
   }
 
   async start(port: number = 3000): Promise<void> {
@@ -7278,6 +7312,10 @@ Disallow: /api/admin/
         });
       });
     }
+
+    // Shutdown PostHog client (flush pending events)
+    const { shutdownPostHog } = await import('./utils/posthog.js');
+    await shutdownPostHog();
 
     // Close database connection
     logger.info('Closing database connection');
