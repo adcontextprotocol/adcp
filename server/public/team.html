@@ -354,6 +354,15 @@
       <p>You have view-only access to this organization. Contact an admin or owner to manage team members.</p>
     </div>
 
+    <!-- Personal workspace notice -->
+    <div id="personalWorkspaceNotice" class="info-box" style="display: none;">
+      <p><strong>Personal workspaces don't support team features.</strong></p>
+      <p style="margin-top: 8px;">Personal workspaces are for individual use only. To invite team members and claim a corporate domain, you'll need to convert this to a team workspace.</p>
+      <div style="margin-top: 16px;">
+        <a href="/dashboard/settings" class="btn btn-primary">Go to Settings to Upgrade</a>
+      </div>
+    </div>
+
     <div id="content" style="display: none;">
       <div class="card">
         <h2>
@@ -445,6 +454,7 @@
   <script>
     let currentUser = null;
     let currentOrg = null;
+    let currentOrgIsPersonal = false;
     let currentUserRole = null;
     let availableRoles = [];
     let userOrganizations = [];
@@ -480,8 +490,26 @@
 
           currentOrg = selectedOrg.id;
           currentUserRole = selectedOrg.role || 'member';
+          currentOrgIsPersonal = selectedOrg.is_personal || false;
 
           document.getElementById('loading').style.display = 'none';
+
+          // If personal workspace, show notice and hide team features
+          if (currentOrgIsPersonal) {
+            document.getElementById('personalWorkspaceNotice').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+            // Still initialize sidebar
+            if (typeof DashboardNav !== 'undefined') {
+              DashboardNav.init({
+                showOrgSwitcher: false,
+                currentOrgName: selectedOrg.name || 'Organization',
+                isPersonal: true,
+                isSubscribed: false,
+                showAdmin: isAdmin
+              });
+            }
+            return;
+          }
 
           let isSubscribed = false;
 
@@ -502,7 +530,7 @@
             DashboardNav.init({
               showOrgSwitcher: false,
               currentOrgName: selectedOrg.name || 'Organization',
-              isPersonal: false,
+              isPersonal: currentOrgIsPersonal,
               isSubscribed: isSubscribed,
               showAdmin: isAdmin
             });

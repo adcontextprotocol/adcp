@@ -10,7 +10,7 @@
  * - No prospect_status pipeline stages (uses interest_level + activity log)
  */
 
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
@@ -1050,6 +1050,299 @@ export function setupAccountRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch view counts",
+        });
+      }
+    }
+  );
+
+  /**
+   * Convert account type between personal and team
+   *
+   * PUT /admin/accounts/:id/account-type
+   *
+   * Personal → Team: Only allowed if account has 0 or 1 members (the owner)
+   * Team → Personal: Only allowed if account has exactly 1 member
+   */
+  apiRouter.put(
+    "/accounts/:id/account-type",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const { is_personal } = req.body;
+
+      if (typeof is_personal !== "boolean") {
+        return res.status(400).json({
+          error: "Invalid request",
+          message: "is_personal must be a boolean",
+        });
+      }
+
+      try {
+        const pool = getPool();
+
+        // Get current org state
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, is_personal
+           FROM organizations
+           WHERE workos_organization_id = $1`,
+          [id]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({
+            error: "Not found",
+            message: "Account not found",
+          });
+        }
+
+        const org = orgResult.rows[0];
+
+        // No change needed
+        if (org.is_personal === is_personal) {
+          return res.json({
+            success: true,
+            message: "Account type unchanged",
+            is_personal: org.is_personal,
+          });
+        }
+
+        // Get member count from organization_memberships
+        const memberResult = await pool.query(
+          `SELECT COUNT(*) as count
+           FROM organization_memberships
+           WHERE workos_organization_id = $1`,
+          [id]
+        );
+        const memberCount = parseInt(memberResult.rows[0].count);
+
+        // Validate conversion
+        if (is_personal && memberCount > 1) {
+          return res.status(400).json({
+            error: "Cannot convert",
+            message: `Cannot convert to personal account: account has ${memberCount} team members. Remove team members first or migrate them to another account.`,
+            member_count: memberCount,
+          });
+        }
+
+        // Update the account type
+        await pool.query(
+          `UPDATE organizations
+           SET is_personal = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [is_personal, id]
+        );
+
+        logger.info(
+          { orgId: id, from: org.is_personal, to: is_personal },
+          "Account type converted"
+        );
+
+        res.json({
+          success: true,
+          message: is_personal
+            ? "Converted to personal account"
+            : "Converted to team account",
+          is_personal,
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId: id }, "Error converting account type");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to convert account type",
+        });
+      }
+    }
+  );
+
+  /**
+   * Migrate members from one account to another
+   *
+   * POST /admin/accounts/:id/migrate-members
+   *
+   * Body: { target_org_id: string, user_ids?: string[] }
+   *
+   * If user_ids is provided, only migrate those users.
+   * If user_ids is not provided, migrate all members.
+   *
+   * This removes users from the source org and adds them to the target org
+   * via WorkOS API calls.
+   */
+  apiRouter.post(
+    "/accounts/:id/migrate-members",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const { id: sourceOrgId } = req.params;
+      const { target_org_id: targetOrgId, user_ids: userIds } = req.body;
+
+      if (!targetOrgId) {
+        return res.status(400).json({
+          error: "Invalid request",
+          message: "target_org_id is required",
+        });
+      }
+
+      if (sourceOrgId === targetOrgId) {
+        return res.status(400).json({
+          error: "Invalid request",
+          message: "Source and target accounts must be different",
+        });
+      }
+
+      try {
+        const pool = getPool();
+
+        // Verify both organizations exist
+        const orgsResult = await pool.query(
+          `SELECT workos_organization_id, name, is_personal
+           FROM organizations
+           WHERE workos_organization_id IN ($1, $2)`,
+          [sourceOrgId, targetOrgId]
+        );
+
+        if (orgsResult.rows.length !== 2) {
+          return res.status(404).json({
+            error: "Not found",
+            message: "One or both accounts not found",
+          });
+        }
+
+        const sourceOrg = orgsResult.rows.find(
+          (o) => o.workos_organization_id === sourceOrgId
+        );
+        const targetOrg = orgsResult.rows.find(
+          (o) => o.workos_organization_id === targetOrgId
+        );
+
+        // Check if target is personal (can't migrate to personal account)
+        if (targetOrg.is_personal) {
+          return res.status(400).json({
+            error: "Invalid target",
+            message:
+              "Cannot migrate members to a personal account. Convert it to a team account first.",
+          });
+        }
+
+        // Get members to migrate
+        let membersQuery = `
+          SELECT om.workos_user_id, om.workos_membership_id, om.email, om.first_name, om.last_name
+          FROM organization_memberships om
+          WHERE om.workos_organization_id = $1
+        `;
+        const queryParams: (string | string[])[] = [sourceOrgId];
+
+        if (userIds && Array.isArray(userIds) && userIds.length > 0) {
+          membersQuery += ` AND om.workos_user_id = ANY($2)`;
+          queryParams.push(userIds);
+        }
+
+        const membersResult = await pool.query(membersQuery, queryParams);
+        const members = membersResult.rows;
+
+        if (members.length === 0) {
+          return res.status(400).json({
+            error: "No members",
+            message: "No members found to migrate",
+          });
+        }
+
+        // Dynamic import of WorkOS client since it may not be available in all environments
+        const { workos } = await import("../../auth/workos-client.js");
+
+        if (!workos) {
+          return res.status(503).json({
+            error: "Service unavailable",
+            message: "WorkOS client not configured",
+          });
+        }
+
+        const results: {
+          user_id: string;
+          email: string;
+          status: "success" | "error";
+          error?: string;
+        }[] = [];
+
+        for (const member of members) {
+          try {
+            // Remove from source org
+            if (member.workos_membership_id) {
+              await workos.userManagement.deleteOrganizationMembership(
+                member.workos_membership_id
+              );
+            }
+
+            // Add to target org
+            await workos.userManagement.createOrganizationMembership({
+              organizationId: targetOrgId,
+              userId: member.workos_user_id,
+            });
+
+            // Update local cache
+            await pool.query(
+              `DELETE FROM organization_memberships
+               WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+              [member.workos_user_id, sourceOrgId]
+            );
+
+            results.push({
+              user_id: member.workos_user_id,
+              email: member.email,
+              status: "success",
+            });
+          } catch (memberError: unknown) {
+            const errorMessage =
+              memberError instanceof Error
+                ? memberError.message
+                : "Unknown error";
+            logger.error(
+              {
+                err: memberError,
+                userId: member.workos_user_id,
+                sourceOrgId,
+                targetOrgId,
+              },
+              "Error migrating member"
+            );
+            results.push({
+              user_id: member.workos_user_id,
+              email: member.email,
+              status: "error",
+              error: errorMessage,
+            });
+          }
+        }
+
+        const successCount = results.filter((r) => r.status === "success").length;
+        const errorCount = results.filter((r) => r.status === "error").length;
+
+        logger.info(
+          {
+            sourceOrgId,
+            targetOrgId,
+            totalMembers: members.length,
+            successCount,
+            errorCount,
+          },
+          "Member migration completed"
+        );
+
+        res.json({
+          success: errorCount === 0,
+          message: `Migrated ${successCount} of ${members.length} members`,
+          source_org: { id: sourceOrgId, name: sourceOrg.name },
+          target_org: { id: targetOrgId, name: targetOrg.name },
+          results,
+        });
+      } catch (error) {
+        logger.error(
+          { err: error, sourceOrgId, targetOrgId },
+          "Error migrating members"
+        );
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to migrate members",
         });
       }
     }

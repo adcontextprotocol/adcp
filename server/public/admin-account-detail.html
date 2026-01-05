@@ -622,6 +622,7 @@
             <h1>
               <span id="accountName">Loading...</span>
               <span id="memberBadge" class="member-badge prospect">Prospect</span>
+              <span id="accountTypeBadge" class="member-badge" style="background: var(--color-gray-200); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
             </h1>
             <div id="headerSubtitle" class="header-subtitle"></div>
           </div>
@@ -790,10 +791,13 @@
 
           <!-- Members -->
           <div class="card">
-            <h2 class="collapsible collapsed" onclick="toggleSection(this)">
-              Members <span id="memberCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
-            </h2>
-            <div class="collapsible-content collapsed" id="membersContent">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">
+                Members <span id="memberCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
+              </h2>
+              <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
+            </div>
+            <div class="collapsible-content collapsed" id="membersContent" style="margin-top: var(--space-4);">
               <ul id="membersList" class="members-list">
                 <li class="empty-state">No members yet</li>
               </ul>
@@ -1023,6 +1027,53 @@
           <button type="submit" class="btn btn-primary">Add Domain</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Migrate Members Modal -->
+  <div id="migrateMembersModal" class="modal">
+    <div class="modal-content" style="max-width: 550px;">
+      <div class="modal-header">
+        <h2>Migrate Members</h2>
+        <button class="modal-close" onclick="closeModal('migrateMembersModal')">&times;</button>
+      </div>
+      <form id="migrateMembersForm" onsubmit="migrateMembers(event)">
+        <div style="background: var(--color-warning-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+          <div style="font-weight: var(--font-semibold); color: var(--color-warning-700);">Warning</div>
+          <div style="font-size: var(--text-sm); color: var(--color-warning-700);">
+            This will move members from this account to another account. The members will be removed from this account and added to the target account.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Target Account *</label>
+          <input type="text" id="migrateTargetOrgId" placeholder="e.g., org_01ABC123..." required>
+          <div class="form-hint">Enter the organization ID to migrate members to</div>
+        </div>
+        <div class="form-group">
+          <label>Members to Migrate</label>
+          <div id="migrateMembersList" style="max-height: 200px; overflow-y: auto; border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-2);">
+            <!-- Populated by JS -->
+          </div>
+          <div class="form-hint">Select which members to migrate (leave all unchecked to migrate all)</div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('migrateMembersModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="migrateMembersBtn">Migrate Members</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Convert Account Type Modal -->
+  <div id="convertAccountModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2 id="convertAccountTitle">Convert Account Type</h2>
+        <button class="modal-close" onclick="closeModal('convertAccountModal')">&times;</button>
+      </div>
+      <div id="convertAccountContent">
+        <!-- Populated by JS -->
+      </div>
     </div>
   </div>
 
@@ -1282,9 +1333,14 @@
         }
       }
 
+      // Account type badge
+      renderAccountTypeBadge();
+
       // Members
       if (a.members && a.members.length > 0) {
         document.getElementById('memberCount').textContent = `(${a.members.length})`;
+        // Show migrate button if there are members
+        document.getElementById('migrateMembersBtn').style.display = 'inline-flex';
         let membersHtml = '';
         for (const m of a.members) {
           const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
@@ -2120,6 +2176,177 @@
         <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">${label}</div>
         <div style="font-weight: var(--font-medium);">${escapeHtml(String(value))}</div>
       </div>`;
+    }
+
+    // Account type badge and conversion
+    function renderAccountTypeBadge() {
+      const badge = document.getElementById('accountTypeBadge');
+      if (accountData.is_personal) {
+        badge.textContent = 'Personal';
+        badge.style.background = 'var(--color-warning-100)';
+        badge.style.color = 'var(--color-warning-700)';
+      } else {
+        badge.textContent = 'Team';
+        badge.style.background = 'var(--color-primary-100)';
+        badge.style.color = 'var(--color-primary-700)';
+      }
+    }
+
+    function openConvertAccountModal() {
+      const content = document.getElementById('convertAccountContent');
+      const title = document.getElementById('convertAccountTitle');
+      const isPersonal = accountData.is_personal;
+      const memberCount = accountData.members?.length || 0;
+
+      if (isPersonal) {
+        title.textContent = 'Convert to Team Account';
+        content.innerHTML = `
+          <p style="margin-bottom: var(--space-4);">Converting to a team account will allow this account to:</p>
+          <ul style="margin-bottom: var(--space-4); padding-left: var(--space-5);">
+            <li>Invite team members</li>
+            <li>Claim corporate domains</li>
+            <li>Appear in the member directory</li>
+          </ul>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('convertAccountModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="convertAccountType(false)">Convert to Team</button>
+          </div>
+        `;
+      } else {
+        title.textContent = 'Convert to Personal Account';
+        if (memberCount > 1) {
+          content.innerHTML = `
+            <div style="background: var(--color-error-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-error-700);">Cannot Convert</div>
+              <p style="color: var(--color-error-700); margin-top: var(--space-1);">
+                This account has ${memberCount} team members. You must migrate or remove team members before converting to a personal account.
+              </p>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" onclick="closeModal('convertAccountModal')">Close</button>
+              <button type="button" class="btn btn-primary" onclick="closeModal('convertAccountModal'); openMigrateMembersModal();">Migrate Members</button>
+            </div>
+          `;
+        } else {
+          content.innerHTML = `
+            <div style="background: var(--color-warning-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-warning-700);">Warning</div>
+              <p style="color: var(--color-warning-700); margin-top: var(--space-1);">
+                Converting to a personal account will restrict this account from inviting team members and claiming domains.
+              </p>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" onclick="closeModal('convertAccountModal')">Cancel</button>
+              <button type="button" class="btn btn-primary" onclick="convertAccountType(true)">Convert to Personal</button>
+            </div>
+          `;
+        }
+      }
+      openModal('convertAccountModal');
+    }
+
+    async function convertAccountType(isPersonal) {
+      try {
+        const response = await fetch(`/api/admin/accounts/${accountId}/account-type`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_personal: isPersonal })
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to convert account type');
+        }
+
+        closeModal('convertAccountModal');
+        showToast(isPersonal ? 'Converted to personal account' : 'Converted to team account', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Member migration
+    function openMigrateMembersModal() {
+      const members = accountData.members || [];
+      if (members.length === 0) {
+        alert('No members to migrate');
+        return;
+      }
+
+      document.getElementById('migrateTargetOrgId').value = '';
+
+      let html = '';
+      for (const m of members) {
+        const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
+        html += `
+          <label style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);">
+            <input type="checkbox" name="migrateUser" value="${m.id}">
+            <span>${escapeHtml(name)}</span>
+            <span style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</span>
+          </label>
+        `;
+      }
+      document.getElementById('migrateMembersList').innerHTML = html;
+
+      openModal('migrateMembersModal');
+    }
+
+    async function migrateMembers(event) {
+      event.preventDefault();
+
+      const targetOrgId = document.getElementById('migrateTargetOrgId').value.trim();
+      if (!targetOrgId) {
+        alert('Please enter a target organization ID');
+        return;
+      }
+
+      // Get selected users (if any)
+      const checkboxes = document.querySelectorAll('input[name="migrateUser"]:checked');
+      const userIds = Array.from(checkboxes).map(cb => cb.value);
+
+      const btn = document.getElementById('migrateMembersBtn');
+      btn.disabled = true;
+      btn.textContent = 'Migrating...';
+
+      try {
+        const body = { target_org_id: targetOrgId };
+        if (userIds.length > 0) {
+          body.user_ids = userIds;
+        }
+
+        const response = await fetch(`/api/admin/accounts/${accountId}/migrate-members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to migrate members');
+        }
+
+        closeModal('migrateMembersModal');
+
+        // Show results
+        const successCount = data.results.filter(r => r.status === 'success').length;
+        const errorCount = data.results.filter(r => r.status === 'error').length;
+
+        if (errorCount > 0) {
+          const errors = data.results.filter(r => r.status === 'error').map(r => `${r.email}: ${r.error}`).join('\n');
+          alert(`Migrated ${successCount} members, ${errorCount} failed:\n\n${errors}`);
+        } else {
+          showToast(`Successfully migrated ${successCount} members to ${data.target_org.name}`, 'success');
+        }
+
+        setTimeout(() => location.reload(), 1500);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Migrate Members';
+      }
     }
 
     // Initialize
