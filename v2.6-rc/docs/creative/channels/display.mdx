@@ -1,0 +1,560 @@
+---
+title: Display Ads
+---
+
+
+This guide covers how AdCP represents display advertising formats, from static image banners to third-party tags and HTML5 creatives.
+
+## Display Format Characteristics
+
+Display formats in AdCP include:
+- **Hosted Images** - Static image files (JPG, PNG, WebP, GIF)
+- **HTML5 Creatives** - Multi-asset interactive banners
+- **Third-Party Tags** - JavaScript or HTML tags served by external ad servers
+- **Responsive Formats** - Adapt to multiple sizes
+- **Rich Media** - Expandable and interactive formats
+
+## Standard IAB Display Formats
+
+### Medium Rectangle (300x250)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 300,
+        "height": 250,
+        "file_types": ["jpg", "png", "webp", "gif"],
+        "max_file_size_kb": 200
+      }
+    }
+  ]
+}
+```
+
+### Leaderboard (728x90)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_728x90"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 728,
+        "height": 90,
+        "file_types": ["jpg", "png", "webp"],
+        "max_file_size_kb": 150
+      }
+    }
+  ]
+}
+```
+
+### Wide Skyscraper (160x600)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_160x600"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 160,
+        "height": 600,
+        "file_types": ["jpg", "png", "webp"],
+        "max_file_size_kb": 150
+      }
+    }
+  ]
+}
+```
+
+### Billboard (970x250)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_970x250"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 970,
+        "height": 250,
+        "file_types": ["jpg", "png", "webp"],
+        "max_file_size_kb": 300
+      }
+    }
+  ]
+}
+```
+
+### Mobile Banner (320x50)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "mobile_banner_320x50"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 320,
+        "height": 50,
+        "file_types": ["jpg", "png", "webp"],
+        "max_file_size_kb": 150
+      }
+    }
+  ]
+}
+```
+
+### Mobile Interstitial (320x480)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "mobile_interstitial_320x480"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 320,
+        "height": 480,
+        "file_types": ["jpg", "png", "webp"],
+        "max_file_size_kb": 300
+      }
+    }
+  ]
+}
+```
+
+## Creative Manifests
+
+### Simple Image Banner Manifest
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "assets": {
+    "banner_image": {
+      "asset_type": "image",
+      "url": "https://cdn.brand.com/banner_300x250.jpg",
+      "width": 300,
+      "height": 250
+    },
+    "landing_url": {
+      "asset_type": "url",
+      "url_type": "clickthrough",
+      "url": "https://brand.com/spring?campaign={MEDIA_BUY_ID}"
+    },
+    "impression_tracker": {
+      "asset_type": "url",
+      "url_type": "tracker",
+      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    }
+  }
+}
+```
+
+### Animated GIF Manifest
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "assets": {
+    "banner_image": {
+      "asset_type": "image",
+      "url": "https://cdn.brand.com/animated_300x250.gif",
+      "width": 300,
+      "height": 250,
+      "animated": true,
+      "animation_duration_ms": 15000
+    },
+    "landing_url": {
+      "asset_type": "url",
+      "url_type": "clickthrough",
+      "url": "https://brand.com/spring"
+    }
+  }
+}
+```
+
+## Third-Party Tag Formats
+
+### JavaScript Tag Format
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_3p"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "tag",
+      "asset_type": "javascript",
+      "asset_role": "third_party_tag",
+      "required": true,
+      "requirements": {
+        "width": 300,
+        "height": 250,
+        "max_file_size_kb": 200,
+        "https_required": true
+      }
+    }
+  ]
+}
+```
+
+JavaScript tag manifest:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_3p"
+  },
+  "assets": {
+    "tag": {
+      "asset_type": "javascript",
+      "content": "<script src=\"https://ad-server.brand.com/serve?campaign={MEDIA_BUY_ID}&size=300x250&cb={CACHEBUSTER}\"></script>"
+    }
+  }
+}
+```
+
+### HTML Tag Format
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_728x90_html"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "tag",
+      "asset_type": "html",
+      "asset_role": "third_party_tag",
+      "required": true,
+      "requirements": {
+        "width": 728,
+        "height": 90,
+        "max_file_size_kb": 200,
+        "https_required": true
+      }
+    }
+  ]
+}
+```
+
+HTML tag manifest:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_728x90_html"
+  },
+  "assets": {
+    "tag": {
+      "asset_type": "html",
+      "content": "<iframe src=\"https://ad-server.brand.com/render?campaign={MEDIA_BUY_ID}&size=728x90&cb={CACHEBUSTER}\" width=\"728\" height=\"90\" frameborder=\"0\" scrolling=\"no\"></iframe>"
+    }
+  }
+}
+```
+
+## HTML5 Multi-Asset Formats
+
+HTML5 formats specify multiple assets that the publisher's ad server assembles into an interactive creative.
+
+### HTML5 Banner Format
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html5"
+  },
+  "type": "display",
+  "assets_required": [
+    {
+      "asset_id": "background_image",
+      "asset_type": "image",
+      "asset_role": "background",
+      "required": true,
+      "requirements": {
+        "width": 300,
+        "height": 250,
+        "file_types": ["jpg", "png"]
+      }
+    },
+    {
+      "asset_id": "logo",
+      "asset_type": "image",
+      "asset_role": "logo",
+      "required": true,
+      "requirements": {
+        "max_width": 100,
+        "max_height": 50,
+        "file_types": ["png", "svg"]
+      }
+    },
+    {
+      "asset_id": "headline",
+      "asset_type": "text",
+      "asset_role": "headline",
+      "required": true,
+      "requirements": {
+        "max_length": 25
+      }
+    },
+    {
+      "asset_id": "cta_text",
+      "asset_type": "text",
+      "asset_role": "call_to_action",
+      "required": true,
+      "requirements": {
+        "max_length": 15
+      }
+    }
+  ]
+}
+```
+
+HTML5 manifest:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html5"
+  },
+  "assets": {
+    "background_image": {
+      "asset_type": "image",
+      "url": "https://cdn.brand.com/bg.jpg",
+      "width": 300,
+      "height": 250
+    },
+    "logo": {
+      "asset_type": "image",
+      "url": "https://cdn.brand.com/logo.png",
+      "width": 80,
+      "height": 40
+    },
+    "headline": {
+      "asset_type": "text",
+      "content": "Spring Sale - 50% Off"
+    },
+    "cta_text": {
+      "asset_type": "text",
+      "content": "Shop Now"
+    },
+    "landing_url": {
+      "asset_type": "url",
+      "url_type": "clickthrough",
+      "url": "https://brand.com/spring"
+    }
+  }
+}
+```
+
+## Responsive Display Formats
+
+Responsive formats adapt to multiple sizes based on placement context.
+
+### Responsive Banner Format
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_responsive"
+  },
+  "type": "display",
+  "responsive": true,
+  "supported_sizes": ["300x250", "728x90", "320x50"],
+  "assets_required": [
+    {
+      "asset_id": "background_image",
+      "asset_type": "image",
+      "asset_role": "background",
+      "required": true,
+      "requirements": {
+        "min_width": 728,
+        "min_height": 250,
+        "responsive": true,
+        "file_types": ["jpg", "png", "webp"]
+      }
+    },
+    {
+      "asset_id": "logo",
+      "asset_type": "image",
+      "asset_role": "logo",
+      "required": true
+    },
+    {
+      "asset_id": "headline",
+      "asset_type": "text",
+      "asset_role": "headline",
+      "required": true,
+      "requirements": {
+        "max_length": 30
+      }
+    }
+  ]
+}
+```
+
+## Rich Media Formats
+
+### Expandable Banner Format
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_970x250_expandable"
+  },
+  "type": "display",
+  "expandable": true,
+  "collapsed_size": "970x250",
+  "expanded_size": "970x600",
+  "assets_required": [
+    {
+      "asset_id": "collapsed_creative",
+      "asset_type": "html",
+      "asset_role": "collapsed_state",
+      "required": true,
+      "requirements": {
+        "width": 970,
+        "height": 250,
+        "max_file_size_kb": 200
+      }
+    },
+    {
+      "asset_id": "expanded_creative",
+      "asset_type": "html",
+      "asset_role": "expanded_state",
+      "required": true,
+      "requirements": {
+        "width": 970,
+        "height": 600,
+        "max_file_size_kb": 500
+      }
+    }
+  ]
+}
+```
+
+## Display-Specific Macros
+
+In addition to [universal macros](/docs/creative/universal-macros), display formats support:
+
+### Placement Context
+- `{PLACEMENT_ID}` - IAB Global Placement ID
+- `{FOLD_POSITION}` - above_fold, below_fold
+- `{AD_WIDTH}` / `{AD_HEIGHT}` - Ad slot dimensions in pixels
+
+### Web Context
+- `{DOMAIN}` - Publisher domain (e.g., "nytimes.com")
+- `{PAGE_URL}` - Full page URL (URL-encoded)
+- `{REFERRER}` - HTTP referrer URL
+- `{KEYWORDS}` - Page keywords (comma-separated)
+
+### Device Context
+- `{DEVICE_TYPE}` - mobile, tablet, desktop
+- `{OS}` - iOS, Android, Windows, macOS
+- `{USER_AGENT}` - Full user agent string
+
+**Example with display macros:**
+```
+https://track.brand.com/imp?
+  buy={MEDIA_BUY_ID}&
+  placement={PLACEMENT_ID}&
+  domain={DOMAIN}&
+  fold={FOLD_POSITION}&
+  device={DEVICE_TYPE}&
+  cb={CACHEBUSTER}
+```
+
+## Common File Specifications
+
+### Image Requirements
+- **File types**: JPG, PNG, WebP, GIF
+- **Max file sizes**:
+  - Standard banners: 150-200KB
+  - Large formats (970x250): 300KB
+  - Animated GIFs: 500KB
+  - HTML5 initial load: 200KB
+
+### Third-Party Tag Requirements
+- **HTTPS required**: All tag URLs must use secure protocol
+- **Max file size**: 200KB for tag content
+- **Async loading**: Tags should not block page rendering
+
+### Animation Specifications
+For animated GIF formats:
+- `animated`: true
+- `animation_duration_ms`: Duration in milliseconds
+- Common durations: 15000ms (15 seconds)
+
+## Related Documentation
+
+- [Universal Macros](/docs/creative/universal-macros) - Complete macro reference
+- [Creative Manifests](/docs/creative/creative-manifests) - Manifest structure and validation
+- [Asset Types](/docs/creative/asset-types) - Image, HTML, and JavaScript asset specifications
