@@ -610,11 +610,17 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   // Create/update contacts for all participants
   const contacts = await ensureContactsForParticipants(participants);
 
+  logger.info({
+    contactCount: contacts.length,
+    contacts: contacts.map(c => ({ email: c.email, contactId: c.contactId, role: c.role })),
+  }, 'Created/updated email contacts');
+
   if (contacts.length === 0) {
     throw new Error('Failed to create any contacts');
   }
 
   // Extract insights
+  logger.info({ emailId: data.email_id }, 'Starting insight extraction');
   const { insights, method, tokensUsed } = await extractInsightsWithClaude({
     from: data.from,
     subject: data.subject,
@@ -622,6 +628,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     to: toAddresses,
     cc: ccAddresses,
   });
+  logger.info({ emailId: data.email_id, method, tokensUsed }, 'Completed insight extraction');
 
   // Build metadata with all participants (include both original and webhook recipients for debugging)
   const metadata = {
@@ -649,6 +656,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   const primaryContact = contacts.find(c => c.role === 'recipient') || contacts.find(c => c.role === 'cc') || contacts[0];
 
   // Store activity (contacts linked via junction table)
+  logger.info({ emailId: data.email_id, messageId: data.message_id }, 'Storing email activity');
   const activityResult = await pool.query(
     `INSERT INTO email_contact_activities (
       email_id,
@@ -676,6 +684,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   );
 
   const activityId = activityResult.rows[0].id;
+  logger.info({ emailId: data.email_id, activityId }, 'Stored email activity, linking contacts');
 
   // Link all contacts to this activity via junction table
   for (const contact of contacts) {
@@ -685,6 +694,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
       [activityId, contact.contactId, contact.role, contact.contactId === primaryContact.contactId]
     );
   }
+  logger.info({ emailId: data.email_id, activityId, contactCount: contacts.length }, 'Linked contacts to email activity');
 
   // Note: Email activities are shown on org detail pages via a JOIN query
   // through email_contacts.organization_id, so we don't need to duplicate
