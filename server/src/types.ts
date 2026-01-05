@@ -315,17 +315,36 @@ export interface ListMemberProfilesOptions {
   offset?: number;
 }
 
+// User Location Types
+
+export type LocationSource = 'manual' | 'outreach' | 'inferred';
+
+export interface UserLocation {
+  city?: string;
+  country?: string;
+  location_source?: LocationSource;
+  location_updated_at?: Date;
+}
+
+export interface UpdateUserLocationInput {
+  workos_user_id: string;
+  city?: string;
+  country?: string;
+  location_source: LocationSource;
+}
+
 // Working Group Types
 
 export type WorkingGroupStatus = 'active' | 'inactive' | 'archived';
 export type WorkingGroupMembershipStatus = 'active' | 'inactive';
-export type CommitteeType = 'working_group' | 'council' | 'chapter' | 'governance';
+export type CommitteeType = 'working_group' | 'council' | 'chapter' | 'governance' | 'industry_gathering';
 
 export const VALID_COMMITTEE_TYPES: readonly CommitteeType[] = [
   'working_group',
   'council',
   'chapter',
   'governance',
+  'industry_gathering',
 ] as const;
 
 export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
@@ -333,6 +352,7 @@ export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
   council: 'Industry Council',
   chapter: 'Regional Chapter',
   governance: 'Governance',
+  industry_gathering: 'Industry Gathering',
 };
 
 export interface WorkingGroupLeader {
@@ -354,10 +374,21 @@ export interface WorkingGroup {
   display_order: number;
   committee_type: CommitteeType;
   region?: string;
+  // Industry gathering fields
+  linked_event_id?: string;
+  event_start_date?: Date;
+  event_end_date?: Date;
+  event_location?: string;
+  auto_archive_after_event?: boolean;
+  logo_url?: string;
+  website_url?: string;
   created_at: Date;
   updated_at: Date;
   leaders?: WorkingGroupLeader[];
 }
+
+export type EventInterestLevel = 'maybe' | 'interested' | 'attending' | 'attended' | 'not_attending';
+export type EventInterestSource = 'outreach' | 'registration' | 'manual' | 'slack_join';
 
 export interface WorkingGroupMembership {
   id: string;
@@ -369,6 +400,9 @@ export interface WorkingGroupMembership {
   workos_organization_id?: string;
   status: WorkingGroupMembershipStatus;
   added_by_user_id?: string;
+  // Event interest tracking
+  interest_level?: EventInterestLevel;
+  interest_source?: EventInterestSource;
   joined_at: Date;
   updated_at: Date;
 }
@@ -385,6 +419,14 @@ export interface CreateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  // Industry gathering fields
+  linked_event_id?: string;
+  event_start_date?: Date;
+  event_end_date?: Date;
+  event_location?: string;
+  auto_archive_after_event?: boolean;
+  logo_url?: string;
+  website_url?: string;
 }
 
 export interface UpdateWorkingGroupInput {
@@ -398,6 +440,14 @@ export interface UpdateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  // Industry gathering fields
+  linked_event_id?: string;
+  event_start_date?: Date;
+  event_end_date?: Date;
+  event_location?: string;
+  auto_archive_after_event?: boolean;
+  logo_url?: string;
+  website_url?: string;
 }
 
 export interface WorkingGroupWithMemberCount extends WorkingGroup {
@@ -526,6 +576,8 @@ export interface Event {
   virtual_platform?: string;
   luma_event_id?: string;
   luma_url?: string;
+  external_registration_url?: string;
+  is_external_event?: boolean;
   featured_image_url?: string;
   sponsorship_enabled: boolean;
   sponsorship_tiers: SponsorshipTier[];
@@ -561,6 +613,8 @@ export interface CreateEventInput {
   virtual_platform?: string;
   luma_event_id?: string;
   luma_url?: string;
+  external_registration_url?: string;
+  is_external_event?: boolean;
   featured_image_url?: string;
   sponsorship_enabled?: boolean;
   sponsorship_tiers?: SponsorshipTier[];
@@ -592,6 +646,8 @@ export interface UpdateEventInput {
   virtual_platform?: string;
   luma_event_id?: string;
   luma_url?: string;
+  external_registration_url?: string;
+  is_external_event?: boolean;
   featured_image_url?: string;
   sponsorship_enabled?: boolean;
   sponsorship_tiers?: SponsorshipTier[];

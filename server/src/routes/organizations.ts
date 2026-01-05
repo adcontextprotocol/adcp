@@ -311,6 +311,15 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Check if organization is personal (cannot have team members)
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot have team members. Convert to a team workspace first.',
+        });
+      }
+
       const joinRequestDb = new JoinRequestDatabase();
 
       // Get the request
@@ -683,6 +692,15 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Check if organization is personal (cannot claim domains)
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot claim corporate domains. Convert to a team workspace first.',
+        });
+      }
+
       // Generate portal link for domain verification
       const { link } = await workos!.portal.generateLink({
         organization: orgId,
@@ -709,7 +727,7 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier } = req.body;
+      const { organization_name, is_personal, company_type, revenue_tier, corporate_domain } = req.body;
 
       // Validate required fields
       if (!organization_name) {
@@ -746,10 +764,39 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // For non-personal organizations, validate the corporate domain
+      const userEmailDomain = getCompanyDomain(user.email);
+      let verifiedDomain: string | null = null;
+
+      if (!is_personal) {
+        // User must have a corporate email to create a company
+        if (!userEmailDomain) {
+          return res.status(400).json({
+            error: 'Corporate email required',
+            message: 'To register a company, you must be signed in with a corporate email address. Personal email domains (Gmail, Yahoo, etc.) cannot be used for company registration.',
+          });
+        }
+
+        // If corporate_domain is provided, verify it matches the user's email domain
+        if (corporate_domain) {
+          const normalizedDomain = corporate_domain.toLowerCase().trim();
+          if (normalizedDomain !== userEmailDomain) {
+            return res.status(400).json({
+              error: 'Domain mismatch',
+              message: `The corporate domain must match your email domain (${userEmailDomain}).`,
+            });
+          }
+          verifiedDomain = normalizedDomain;
+        } else {
+          // Auto-use the user's email domain
+          verifiedDomain = userEmailDomain;
+        }
+      }
+
       // Use trimmed name for consistency
       const trimmedName = organization_name.trim();
 
-      logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier }, 'Creating WorkOS organization');
+      logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier, verifiedDomain }, 'Creating WorkOS organization');
 
       let workosOrgId: string;
       let workosOrgName: string;
@@ -794,6 +841,47 @@ export function createOrganizationsRouter(): Router {
         company_type: orgRecord.company_type,
         revenue_tier: orgRecord.revenue_tier,
       }, 'Organization record created in database');
+
+      // Create verified domain record for non-personal organizations
+      if (verifiedDomain) {
+        const pool = getPool();
+
+        // Check if domain is already claimed by another organization
+        const existingDomainResult = await pool.query(
+          `SELECT workos_organization_id FROM organization_domains WHERE domain = $1`,
+          [verifiedDomain]
+        );
+
+        if (existingDomainResult.rows.length > 0 && existingDomainResult.rows[0].workos_organization_id !== workosOrgId) {
+          // Domain already claimed - log warning but continue (don't fail org creation)
+          // The org is created but without the domain - admin can resolve later
+          logger.warn({
+            orgId: workosOrgId,
+            domain: verifiedDomain,
+            existingOrgId: existingDomainResult.rows[0].workos_organization_id,
+          }, 'Domain already claimed by another organization, skipping domain assignment');
+        } else {
+          // Insert the domain as verified (since we verified it via email)
+          await pool.query(
+            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+             VALUES ($1, $2, true, true, 'email_verification')
+             ON CONFLICT (domain) DO NOTHING`,
+            [workosOrgId, verifiedDomain]
+          );
+
+          // Also set the email_domain on the organization
+          await pool.query(
+            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2`,
+            [verifiedDomain, workosOrgId]
+          );
+
+          logger.info({
+            orgId: workosOrgId,
+            domain: verifiedDomain,
+          }, 'Corporate domain auto-verified via email');
+        }
+      }
 
       // Record audit log for organization creation
       await orgDb.recordAuditLog({
@@ -1574,6 +1662,15 @@ export function createOrganizationsRouter(): Router {
         return res.status(403).json({
           error: 'Insufficient permissions',
           message: 'Only admins and owners can invite new members',
+        });
+      }
+
+      // Check if organization is personal (cannot invite team members)
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot have team members. Convert to a team workspace first.',
         });
       }
 

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Addie</title>
+  <style>
+    :root {
+      --color-brand: #667eea;
+      --color-brand-dark: #5a67d8;
+      --color-bg: #ffffff;
+      --color-bg-secondary: #f7fafc;
+      --color-text: #1a202c;
+      --color-text-secondary: #718096;
+      --color-border: #e2e8f0;
+      --radius: 8px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-bg: #1a202c;
+        --color-bg-secondary: #2d3748;
+        --color-text: #f7fafc;
+        --color-text-secondary: #a0aec0;
+        --color-border: #4a5568;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      /* iOS safe area support */
+      padding-top: env(safe-area-inset-top);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* Header - draggable area */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+      -webkit-app-region: drag;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .header-btn {
+      background: none;
+      border: none;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .header-btn:hover {
+      background: var(--color-border);
+      color: var(--color-text);
+    }
+
+    /* Login screen */
+    .login-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .login-screen h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .login-screen p {
+      color: var(--color-text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .login-btn {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      padding: 12px 32px;
+      border-radius: var(--radius);
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .login-btn:hover {
+      background: var(--color-brand-dark);
+    }
+
+    /* Loading state */
+    .loading {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-secondary);
+    }
+
+    /* Webview container */
+    .webview-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .webview-container iframe {
+      flex: 1;
+      border: none;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 16v-4M12 8h.01"/>
+      </svg>
+      Addie
+    </h1>
+    <div class="header-actions">
+      <span id="userInfo" class="user-info" style="font-size: 12px; color: var(--color-text-secondary);"></span>
+      <button id="logoutBtn" class="header-btn hidden">Logout</button>
+    </div>
+  </div>
+
+  <!-- Login screen -->
+  <div id="loginScreen" class="login-screen">
+    <h2>Welcome to Addie</h2>
+    <p>Sign in with your AgenticAdvertising.org account to chat with Addie.</p>
+    <button id="loginBtn" class="login-btn">Sign In</button>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loadingScreen" class="loading hidden">
+    Loading...
+  </div>
+
+  <!-- Webview for chat -->
+  <div id="webviewContainer" class="webview-container hidden">
+    <iframe id="chatFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  </div>
+
+  <script>
+    // Tauri 2.0 API structure
+    const { invoke } = window.__TAURI__.core;
+    const { listen } = window.__TAURI__.event;
+
+    // Configuration
+    const CHAT_URL = 'https://agenticadvertising.org/chat';
+
+    // Elements
+    const loginScreen = document.getElementById('loginScreen');
+    const loadingScreen = document.getElementById('loadingScreen');
+    const webviewContainer = document.getElementById('webviewContainer');
+    const chatFrame = document.getElementById('chatFrame');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userInfo = document.getElementById('userInfo');
+
+    // State
+    let sessionToken = null;
+
+    // Initialize
+    async function init() {
+      // Check authentication state
+      await checkAuthState();
+
+      // Listen for auth events from Tauri (for OAuth callback)
+      await listen('auth-success', (e) => {
+        console.log('auth-success event received:', e);
+        loadChatWithAuth(e.payload.user);
+      });
+
+      await listen('auth-error', (e) => {
+        console.log('auth-error event received:', e);
+        alert('Authentication failed: ' + e.payload);
+        showLogin();
+      });
+
+      // Re-check auth state when window gains focus (catches OAuth completion)
+      document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible' && !sessionToken) {
+          console.log('Window visible, checking auth state...');
+          await checkAuthState();
+        }
+      });
+
+      // Also check on window focus (more reliable for app switching)
+      window.addEventListener('focus', async () => {
+        if (!sessionToken) {
+          console.log('Window focused, checking auth state...');
+          await checkAuthState();
+        }
+      });
+    }
+
+    // Check authentication state and update UI
+    async function checkAuthState() {
+      try {
+        const authState = await invoke('get_auth_state');
+        console.log('Auth state:', authState);
+
+        if (authState.is_authenticated) {
+          loadChatWithAuth(authState.user);
+        } else {
+          showLogin();
+        }
+      } catch (e) {
+        console.error('Failed to check auth state:', e);
+        showLogin();
+      }
+    }
+
+    function showLogin() {
+      loginScreen.classList.remove('hidden');
+      loadingScreen.classList.add('hidden');
+      webviewContainer.classList.add('hidden');
+      logoutBtn.classList.add('hidden');
+      userInfo.textContent = '';
+      sessionToken = null;
+    }
+
+    async function loadChatWithAuth(user) {
+      // Show loading state
+      loginScreen.classList.add('hidden');
+      loadingScreen.classList.remove('hidden');
+      webviewContainer.classList.add('hidden');
+      logoutBtn.classList.remove('hidden');
+
+      const name = user.first_name || user.email.split('@')[0];
+      userInfo.textContent = name;
+
+      try {
+        // Get session token for API calls
+        sessionToken = await invoke('get_session_token');
+        console.log('Session token retrieved');
+
+        // Load the web chat page with token in URL hash
+        const chatUrlWithToken = `${CHAT_URL}#token=${encodeURIComponent(sessionToken)}`;
+        chatFrame.src = chatUrlWithToken;
+
+        // Show webview once loaded
+        chatFrame.onload = () => {
+          loadingScreen.classList.add('hidden');
+          webviewContainer.classList.remove('hidden');
+        };
+
+        // Fallback: show after timeout
+        setTimeout(() => {
+          if (!webviewContainer.classList.contains('hidden')) return;
+          loadingScreen.classList.add('hidden');
+          webviewContainer.classList.remove('hidden');
+        }, 5000);
+
+      } catch (e) {
+        console.error('Failed to get session token:', e);
+        alert('Failed to load chat. Please try logging in again.');
+        showLogin();
+      }
+    }
+
+    // Login
+    loginBtn.addEventListener('click', async () => {
+      try {
+        console.log('Starting login...');
+        await invoke('start_login');
+        console.log('Login invoked successfully');
+      } catch (e) {
+        console.error('Login failed:', e);
+        alert('Login failed: ' + e);
+      }
+    });
+
+    // Logout
+    logoutBtn.addEventListener('click', async () => {
+      await invoke('logout');
+      chatFrame.src = 'about:blank';
+      showLogin();
+    });
+
+    // Initialize app
+    init();
+  </script>
+</body>
+</html>

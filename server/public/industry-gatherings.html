@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industry Gatherings | AgenticAdvertising.org</title>
+  <meta name="description" content="Connect with AgenticAdvertising.org members at industry conferences and events. Join attendee groups to network before, during, and after major advertising events.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://agenticadvertising.org/industry-gatherings">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/industry-gatherings">
+  <meta property="og:title" content="Industry Gatherings | AgenticAdvertising.org">
+  <meta property="og:description" content="Connect with AgenticAdvertising.org members at industry conferences and events.">
+  <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://agenticadvertising.org/industry-gatherings">
+  <meta name="twitter:title" content="Industry Gatherings | AgenticAdvertising.org">
+  <meta name="twitter:description" content="Connect with AgenticAdvertising.org members at industry conferences and events.">
+  <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
+      color: white;
+      padding: var(--space-12) 0;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: var(--text-4xl);
+      margin-bottom: var(--space-2);
+    }
+
+    .header .subtitle {
+      font-size: var(--text-lg);
+      color: rgba(255, 255, 255, 0.9);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* Section Headers */
+    .section-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .section-header h2 {
+      font-size: var(--text-2xl);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .section-header p {
+      font-size: var(--text-base);
+      color: var(--color-text-muted);
+    }
+
+    /* Gatherings Grid */
+    .gatherings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      gap: var(--space-6);
+    }
+
+    .gathering-card {
+      background: var(--color-bg-card);
+      border-radius: var(--card-radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-all);
+      border: var(--border-1) solid var(--color-border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .gathering-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--color-brand);
+    }
+
+    .gathering-event-banner {
+      background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
+      padding: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      min-height: 100px;
+    }
+
+    .gathering-event-banner img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: var(--radius-md);
+      background: white;
+    }
+
+    .gathering-event-banner .placeholder-icon {
+      width: 80px;
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-md);
+      color: white;
+      font-size: var(--text-2xl);
+    }
+
+    .gathering-event-info {
+      flex: 1;
+      color: white;
+    }
+
+    .gathering-event-date {
+      font-size: var(--text-sm);
+      opacity: 0.9;
+      margin-bottom: var(--space-1);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .gathering-event-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      margin-bottom: var(--space-1);
+    }
+
+    .gathering-event-location {
+      font-size: var(--text-sm);
+      opacity: 0.85;
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .gathering-content {
+      padding: var(--space-6);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .gathering-group-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .gathering-group-title svg {
+      width: 20px;
+      height: 20px;
+      color: var(--color-brand);
+    }
+
+    .gathering-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-4);
+      flex: 1;
+    }
+
+    .gathering-stats {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .gathering-stat {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .gathering-stat svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .gathering-actions {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      transition: var(--transition-all);
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--color-brand);
+      border: var(--border-1) solid var(--color-brand);
+    }
+
+    .btn-outline:hover {
+      background: var(--color-primary-50);
+    }
+
+    .btn-slack {
+      background: #4A154B;
+      color: white;
+    }
+
+    .btn-slack:hover {
+      background: #611f69;
+    }
+
+    /* Loading & Empty States */
+    .loading-state,
+    .empty-state {
+      text-align: center;
+      padding: var(--space-16);
+      color: var(--color-text-muted);
+    }
+
+    .empty-state h3 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    /* Sections */
+    .gatherings-section {
+      margin-bottom: var(--space-12);
+    }
+
+    .gatherings-section:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Past Events Badge */
+    .past-badge {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-gray-200);
+      color: var(--color-gray-700);
+      border-radius: var(--radius-md);
+      margin-left: var(--space-2);
+    }
+
+    /* Join CTA */
+    .join-cta {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
+      border-radius: var(--card-radius);
+      padding: var(--space-8);
+      text-align: center;
+      margin-top: var(--space-8);
+      color: white;
+    }
+
+    .join-cta h2 {
+      font-size: var(--text-2xl);
+      margin-bottom: var(--space-2);
+    }
+
+    .join-cta p {
+      font-size: var(--text-lg);
+      opacity: 0.9;
+      margin-bottom: var(--space-6);
+    }
+
+    .join-cta-btn {
+      display: inline-block;
+      padding: var(--space-3) var(--space-8);
+      background: white;
+      color: var(--color-brand);
+      text-decoration: none;
+      border-radius: var(--radius-lg);
+      font-weight: var(--font-semibold);
+      transition: var(--transition-all);
+    }
+
+    .join-cta-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    @media (max-width: 768px) {
+      .gatherings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .gathering-event-banner {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Industry Gatherings</h1>
+    <p class="subtitle">Connect with AgenticAdvertising.org members at industry conferences and events</p>
+  </div>
+
+  <div class="container">
+    <!-- Loading State -->
+    <div id="loading" class="loading-state">
+      Loading industry gatherings...
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state" style="display: none;">
+      <h3>No Industry Gatherings Yet</h3>
+      <p>Check back soon for upcoming events where you can connect with AAO members!</p>
+      <a href="/events" class="btn btn-primary" style="margin-top: var(--space-4);">View All Events</a>
+    </div>
+
+    <!-- Upcoming Gatherings Section -->
+    <section id="upcoming-section" class="gatherings-section" style="display: none;">
+      <div class="section-header">
+        <h2>Upcoming Gatherings</h2>
+        <p>Join attendee groups for upcoming industry events to network with AAO members before, during, and after.</p>
+      </div>
+      <div id="upcoming-grid" class="gatherings-grid"></div>
+    </section>
+
+    <!-- Past Gatherings Section -->
+    <section id="past-section" class="gatherings-section" style="display: none;">
+      <div class="section-header">
+        <h2>Past Gatherings</h2>
+        <p>Archives of previous industry event attendee groups.</p>
+      </div>
+      <div id="past-grid" class="gatherings-grid"></div>
+    </section>
+
+    <!-- Join CTA (for non-members) -->
+    <div id="join-cta" class="join-cta" style="display: none;">
+      <h2>Want to Join Our Community?</h2>
+      <p>Become an AAO member to connect with peers at industry events and access exclusive Slack channels.</p>
+      <a href="/membership" class="join-cta-btn">Learn About Membership</a>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer footer--centered">
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="/events">Events</a>
+      <a href="/committees">Committees</a>
+      <a href="/members">Members</a>
+    </div>
+    <div class="footer-copyright">
+      &copy; 2025 AgenticAdvertising.org
+    </div>
+  </footer>
+
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      await checkAuth();
+      await loadGatherings();
+    }
+
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/config', { credentials: 'include' });
+        if (response.ok) {
+          const config = await response.json();
+          currentUser = config.user || null;
+        }
+      } catch (err) {
+        console.debug('Auth check failed:', err);
+      }
+    }
+
+    async function loadGatherings() {
+      const loadingEl = document.getElementById('loading');
+      const emptyEl = document.getElementById('empty-state');
+      const upcomingSection = document.getElementById('upcoming-section');
+      const pastSection = document.getElementById('past-section');
+      const upcomingGrid = document.getElementById('upcoming-grid');
+      const pastGrid = document.getElementById('past-grid');
+      const joinCtaEl = document.getElementById('join-cta');
+
+      try {
+        const response = await fetch('/api/working-groups/industry-gatherings');
+        if (!response.ok) throw new Error('Failed to load gatherings');
+
+        const data = await response.json();
+        const gatherings = data.industry_gatherings || [];
+
+        loadingEl.style.display = 'none';
+
+        if (gatherings.length === 0) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+
+        // Split into upcoming and past based on event end date
+        const now = new Date();
+        const upcoming = [];
+        const past = [];
+
+        for (const g of gatherings) {
+          const endDate = g.event_end_date ? new Date(g.event_end_date) :
+                          g.linked_event?.end_time ? new Date(g.linked_event.end_time) :
+                          g.event_start_date ? new Date(g.event_start_date) : null;
+
+          if (!endDate || endDate >= now) {
+            upcoming.push(g);
+          } else {
+            past.push(g);
+          }
+        }
+
+        // Sort upcoming by start date ascending
+        upcoming.sort((a, b) => {
+          const aDate = a.event_start_date || a.linked_event?.start_time || '';
+          const bDate = b.event_start_date || b.linked_event?.start_time || '';
+          return new Date(aDate) - new Date(bDate);
+        });
+
+        // Sort past by end date descending
+        past.sort((a, b) => {
+          const aDate = a.event_end_date || a.linked_event?.end_time || a.event_start_date || '';
+          const bDate = b.event_end_date || b.linked_event?.end_time || b.event_start_date || '';
+          return new Date(bDate) - new Date(aDate);
+        });
+
+        if (upcoming.length > 0) {
+          upcomingSection.style.display = 'block';
+          upcomingGrid.innerHTML = upcoming.map(g => renderGatheringCard(g, false)).join('');
+        }
+
+        if (past.length > 0) {
+          pastSection.style.display = 'block';
+          pastGrid.innerHTML = past.map(g => renderGatheringCard(g, true)).join('');
+        }
+
+        if (!currentUser) {
+          joinCtaEl.style.display = 'block';
+        }
+
+      } catch (error) {
+        console.error('Error loading gatherings:', error);
+        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load gatherings. Please refresh the page.</p>';
+      }
+    }
+
+    function renderGatheringCard(gathering, isPast) {
+      const event = gathering.linked_event;
+
+      // Format date - use event timezone if available
+      const startDate = gathering.event_start_date || event?.start_time;
+      const eventTimezone = event?.timezone || 'America/New_York';
+      const dateStr = startDate ? formatEventDate(new Date(startDate), eventTimezone) : 'Date TBD';
+
+      // Location
+      const location = gathering.event_location ||
+        (event?.venue_city ? `${event.venue_city}${event.venue_state ? ', ' + event.venue_state : ''}` : '') ||
+        'Location TBD';
+
+      // Event title
+      const eventTitle = event?.title || gathering.name.replace(' Attendees', '');
+
+      // Image
+      const imageUrl = gathering.logo_url || event?.featured_image_url;
+
+      // Detail page URL - use event slug if available, otherwise working group slug
+      const detailUrl = event?.slug ? `/events/${escapeHtml(event.slug)}` : `/working-groups/${escapeHtml(gathering.slug)}`;
+
+      return `
+        <article class="gathering-card">
+          <div class="gathering-event-banner">
+            ${imageUrl
+              ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(eventTitle)}">`
+              : `<div class="placeholder-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                </div>`
+            }
+            <div class="gathering-event-info">
+              <div class="gathering-event-date">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                ${dateStr}
+                ${isPast ? '<span class="past-badge">Past</span>' : ''}
+              </div>
+              <div class="gathering-event-title">${escapeHtml(eventTitle)}</div>
+              <div class="gathering-event-location">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                ${escapeHtml(location)}
+              </div>
+            </div>
+          </div>
+
+          <div class="gathering-content">
+            <div class="gathering-group-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              AAO Attendee Group
+            </div>
+
+            <p class="gathering-description">
+              ${escapeHtml(gathering.description || `Connect with AgenticAdvertising.org members attending ${eventTitle}.`)}
+            </p>
+
+            <div class="gathering-stats">
+              <span class="gathering-stat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                ${gathering.member_count || 0} member${gathering.member_count !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div class="gathering-actions">
+              ${gathering.slack_channel_url
+                ? `<a href="${escapeHtml(gathering.slack_channel_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-slack">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                    </svg>
+                    Join Slack Channel
+                  </a>`
+                : ''
+              }
+              <a href="${detailUrl}" class="btn btn-outline">
+                View Details
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 18l6-6-6-6"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function formatEventDate(date, timezone = 'America/New_York') {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: timezone
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    init();
+  </script>
+</body>
+</html>

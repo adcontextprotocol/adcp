@@ -28,7 +28,9 @@ import {
   initializeExternalRepos,
   isExternalReposReady,
   searchExternalDocs,
+  searchExternalHeadings,
   getExternalRepoStats,
+  getExternalHeadingCount,
   getConfiguredRepos,
 } from './external-repos.js';
 // Note: Slack's search.messages API requires a user token (xoxp-), not a bot token (xoxb-).
@@ -69,10 +71,12 @@ export async function initializeKnowledgeSearch(): Promise<void> {
   try {
     await initializeExternalRepos();
     const repoStats = getExternalRepoStats();
+    const totalHeadings = getExternalHeadingCount();
     if (repoStats.length > 0) {
       logger.info(
         {
-          repos: repoStats.map((r) => `${r.id}(${r.docCount})`).join(', '),
+          repos: repoStats.map((r) => `${r.id}(${r.docCount} docs, ${r.headingCount} sections)`).join(', '),
+          totalHeadings,
         },
         'Addie: External repos index ready'
       );
@@ -193,8 +197,15 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_repos',
     description:
-      'Search indexed external GitHub repositories including: AdCP Sales Agent (how to set up and run a sales agent for publishers), AdCP JavaScript Client, and AdCP Python Client. Use this for implementation examples, SDK usage, setup guides, and changelogs for these projects.',
-    usage_hints: 'use for implementation examples, SDK usage, "how do I use the client?", salesagent setup',
+      'Search indexed external GitHub repositories for ad tech specifications and protocols. Includes: ' +
+      'AdCP (core protocol spec, sales agent, signals agent, JS/Python clients), ' +
+      'A2A (Google Agent-to-Agent protocol and samples), ' +
+      'MCP (Model Context Protocol spec, TypeScript/Python SDKs, reference servers), ' +
+      'IAB Tech Lab specs (OpenRTB 2.x/3.0, AdCOM, OpenDirect, ARTF, UCP, GPP, TCF, US Privacy, UID2, VAST, ads.cert), ' +
+      'Prebid (Prebid.js, Prebid Server), and LangGraph. ' +
+      'Use this for protocol details, spec comparisons, implementation examples, and SDK usage.',
+    usage_hints:
+      'use for: OpenRTB questions, A2A protocol, MCP implementation, IAB specs, Prebid, TCF/GPP consent, UID2, salesagent setup, SDK usage',
     input_schema: {
       type: 'object',
       properties: {
@@ -205,7 +216,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         repo_id: {
           type: 'string',
           description:
-            'Optional filter to search only a specific repo (salesagent, adcp-client, adcp-client-python)',
+            'Optional filter to search only a specific repo: adcp, salesagent, signals-agent, adcp-client, adcp-client-python, a2a, a2a-samples, mcp-spec, mcp-typescript-sdk, mcp-python-sdk, mcp-servers, iab-artf, iab-ucp, iab-openrtb2, iab-openrtb3, iab-adcom, iab-opendirect, iab-gpp, iab-tcf, iab-usprivacy, iab-uid2-docs, iab-vast, iab-adscert, prebid-js, prebid-server, langgraph',
         },
         limit: {
           type: 'number',
@@ -286,6 +297,35 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
       },
       required: ['url', 'title', 'reason'],
+    },
+  },
+  {
+    name: 'get_recent_news',
+    description:
+      'Get recent news and articles about ad tech and agentic advertising from curated industry feeds. Returns articles sorted by recency with summaries and analysis. Use this when users ask "what\'s happening in the news?", "what\'s new in ad tech?", or "what have we learned lately?"',
+    usage_hints: 'use for recent news, "what\'s happening?", "what\'s new?", industry updates, trending topics',
+    input_schema: {
+      type: 'object',
+      properties: {
+        days: {
+          type: 'number',
+          description: 'How many days back to look (default 7, max 30)',
+        },
+        topic: {
+          type: 'string',
+          description: 'Optional topic filter (e.g., "agentic advertising", "CTV", "retail media")',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter by relevance tags (e.g., mcp, a2a, industry-trend, competitor)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of articles (default 10, max 20)',
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -493,8 +533,26 @@ ${content}`;
       return 'External repositories are not yet indexed. Try search_docs for official documentation or web_search for external sources.';
     }
 
-    const results = searchExternalDocs(query, { repoId, limit });
+    // Validate repo_id if provided
+    if (repoId) {
+      const validRepoIds = getConfiguredRepos().map((r) => r.id);
+      if (!validRepoIds.includes(repoId)) {
+        return `Invalid repo_id: "${repoId}". Valid options: ${validRepoIds.join(', ')}`;
+      }
+    }
+
+    // Search both headings (section-level) and docs (file-level)
+    // Heading search is better for finding specific protocol details
+    const headingResults = searchExternalHeadings(query, { repoId, limit });
+    const docResults = searchExternalDocs(query, { repoId, limit });
     const latencyMs = Date.now() - startTime;
+
+    // Combine results, preferring headings but including docs for context
+    // Dedupe by checking if a doc's sections are already represented
+    const seenDocIds = new Set(headingResults.map(h => h.doc_id));
+    const additionalDocs = docResults.filter(d => !seenDocIds.has(d.id)).slice(0, Math.max(1, limit - headingResults.length));
+
+    const totalResults = headingResults.length + additionalDocs.length;
 
     // Log search for pattern analysis
     addieDb.logSearch({
@@ -502,33 +560,53 @@ ${content}`;
       tool_name: 'search_repos',
       category: repoId,
       limit_requested: limit,
-      results_count: results.length,
-      result_ids: results.map(r => r.id),
+      results_count: totalResults,
+      result_ids: [...headingResults.map(h => h.id), ...additionalDocs.map(d => d.id)],
       search_latency_ms: latencyMs,
       channel: 'tool',
     }).catch(err => logger.warn({ err }, 'Failed to log search'));
 
-    if (results.length === 0) {
+    if (totalResults === 0) {
       const repos = getConfiguredRepos();
       const repoList = repos.map((r) => `- ${r.name} (${r.id})`).join('\n');
       return `No results found for: "${query}"${repoId ? ` in repo: ${repoId}` : ''}\n\nAvailable repos:\n${repoList}\n\nTry search_docs for official documentation or web_search for external sources.`;
     }
 
-    // Return smart excerpts that focus on content matching the query
-    const formatted = results
-      .map((doc, i) => {
-        const excerpt = extractSmartExcerpt(doc.content, query, 500);
+    // Format heading results (section-level, more specific)
+    const headingFormatted = headingResults.map((heading, i) => {
+      const breadcrumb = heading.parent_headings.length > 0
+        ? `${heading.parent_headings.join(' > ')} > ${heading.title}`
+        : heading.title;
 
-        return `## ${i + 1}. ${doc.title}
+      // For headings, show the full content (it's already scoped to one section)
+      const content = heading.content.length > 800
+        ? heading.content.substring(0, 800) + '...'
+        : heading.content;
+
+      return `## ${i + 1}. ${breadcrumb}
+**Repo:** ${heading.repoName}
+**Path:** ${heading.path}
+**Source:** ${heading.sourceUrl}
+
+${content}`;
+    });
+
+    // Format additional doc results (file-level, for context)
+    const docFormatted = additionalDocs.map((doc, i) => {
+      const excerpt = extractSmartExcerpt(doc.content, query, 500);
+
+      return `## ${headingResults.length + i + 1}. ${doc.title}
 **Repo:** ${doc.repoName}
 **Path:** ${doc.path}
 **Source:** ${doc.sourceUrl}
 
 ${excerpt}`;
-      })
-      .join('\n\n---\n\n');
+    });
 
-    return `Found ${results.length} repo docs:\n\n${formatted}`;
+    const allFormatted = [...headingFormatted, ...docFormatted].join('\n\n---\n\n');
+    const resultType = headingResults.length > 0 ? 'sections' : 'docs';
+
+    return `Found ${totalResults} ${resultType}:\n\n${allFormatted}`;
   });
 
   handlers.set('search_slack', async (input) => {
@@ -646,6 +724,60 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
     } catch (error) {
       logger.error({ error, url }, 'Addie: Bookmark failed');
       return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_recent_news', async (input) => {
+    const days = Math.min((input.days as number) || 7, 30);
+    const limit = Math.min((input.limit as number) || 10, 20);
+    const topic = input.topic as string | undefined;
+    const tags = input.tags as string[] | undefined;
+
+    try {
+      const results = await addieDb.getRecentNews({
+        days,
+        limit,
+        topic,
+        tags,
+        minQuality: 3, // Only show quality content
+      });
+
+      if (results.length === 0) {
+        const topicHint = topic ? ` about "${topic}"` : '';
+        const tagHint = tags?.length ? ` tagged with ${tags.join(', ')}` : '';
+        return `No recent news found${topicHint}${tagHint} in the last ${days} days.\n\nTry:\n- Expanding the time range (days parameter)\n- Removing topic/tag filters\n- Using web_search for live results`;
+      }
+
+      const formatted = results
+        .map((article, i) => {
+          const qualityStars = article.quality_score
+            ? '★'.repeat(article.quality_score) + '☆'.repeat(5 - article.quality_score)
+            : 'Not rated';
+          const tagsDisplay = article.relevance_tags?.length
+            ? article.relevance_tags.join(', ')
+            : 'No tags';
+          const dateStr = new Date(article.last_fetched_at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+
+          return `### ${i + 1}. ${article.title}
+**Date:** ${dateStr} | **Quality:** ${qualityStars}
+**Tags:** ${tagsDisplay}
+**URL:** ${article.source_url}
+
+${article.summary || 'No summary available.'}
+
+${article.addie_notes ? `**Addie's Take:** ${article.addie_notes}` : ''}`;
+        })
+        .join('\n\n---\n\n');
+
+      const topicNote = topic ? ` about "${topic}"` : '';
+      return `Found ${results.length} recent articles${topicNote} from the last ${days} days:\n\n${formatted}\n\n**Remember to cite the source URL when sharing this information.**`;
+    } catch (error) {
+      logger.error({ error }, 'Addie: get_recent_news failed');
+      return `Failed to fetch recent news: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

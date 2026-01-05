@@ -28,7 +28,8 @@ const EXPECTED_COLUMNS = {
     'created_at',
     'updated_at',
     // Company classification
-    'company_type',
+    'company_type',      // Legacy: single value (deprecated)
+    'company_types',     // New: array of types
     'revenue_tier',
     // Stripe integration
     'stripe_customer_id',

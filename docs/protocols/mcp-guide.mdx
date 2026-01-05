@@ -59,32 +59,32 @@ const response = await mcp.call('build_creative', {
   context: { ui: 'buyer_dashboard', session: '123' }
 });
 
-// Response includes the same context inside the task payload
-console.log(response.data.context); // { ui: 'buyer_dashboard', session: '123' }
+// Response includes the same context at the top level
+console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
 ```
 
 ## MCP Response Format
 
 **New in AdCP 1.6.0**: All responses include unified status field.
 
+MCP responses use a **flat structure** where task-specific fields are at the top level alongside protocol fields:
+
 ```json
 {
   "status": "completed",           // Unified status (see Core Concepts)
-  "message": "Found 5 products",  // Human-readable summary  
-  "context_id": "ctx-abc123",     // MCP session continuity
-  "data": {                       // Task-specific structured data
-    "context": { "ui": "buyer_dashboard" }, // Application-level context echoed back
-    "products": [...],
-    "errors": [...]               // Task-level errors/warnings
-  }
+  "message": "Found 5 products",   // Human-readable summary
+  "context_id": "ctx-abc123",      // MCP session continuity
+  "context": { "ui": "buyer_dashboard" }, // Application-level context echoed back
+  "products": [...],               // Task-specific data (flat, not nested)
+  "errors": [...]                  // Task-level errors/warnings
 }
 ```
 
 ### MCP-Specific Fields
 - **context_id**: Session identifier that you must manually manage
 - **context**: Opaque initiator-provided metadata echoed by agents
-- **data**: Direct JSON structure (vs. A2A's artifact parts)
 - **status**: Same values as A2A protocol for consistency
+- Task-specific fields (e.g., `products`, `media_buy_id`, `creatives`) are at the top level, not wrapped in a `data` object
 
 **Status Handling**: See [Core Concepts](/docs/protocols/core-concepts) for complete status handling patterns.
 
@@ -609,7 +609,7 @@ async function handleAdcpCall(tool, params, options = {}) {
       }
       
     case 'completed':
-      return response.data || response.result;
+      return response; // Task-specific fields are at the top level
       
     case 'failed':
       throw new Error(response.message);

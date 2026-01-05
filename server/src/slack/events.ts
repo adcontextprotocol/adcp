@@ -8,8 +8,13 @@
 import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { WorkingGroupDatabase } from '../db/working-group-db.js';
+import { getPool } from '../db/client.js';
 import type { SlackUser } from './types.js';
 import { getSlackUser, getChannelInfo } from './client.js';
+import { syncUserToChaptersFromSlackChannels } from './sync.js';
+import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
+import { invalidateMemberContextCache } from '../addie/index.js';
 import {
   isAddieReady,
   handleAssistantThreadStarted,
@@ -22,6 +27,7 @@ import {
 
 const slackDb = new SlackDatabase();
 const addieDb = new AddieDatabase();
+const workingGroupDb = new WorkingGroupDatabase();
 
 // Slack event types
 export interface SlackTeamJoinEvent {
@@ -109,7 +115,7 @@ export interface SlackEventPayload {
 
 /**
  * Handle team_join event - new user joined workspace
- * Auto-adds them to our database for mapping
+ * Auto-adds them to our database and auto-maps by email if they have a web account
  */
 export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
   const user = event.user;
@@ -139,17 +145,88 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
       slack_is_deleted: user.deleted || false,
     });
 
-    // Note: Auto-mapping requires WorkOS lookup which is done via the admin API.
-    // New users will appear as "suggested match" if their email matches an AAO user.
-    logger.info({ email }, 'New Slack user added, may be auto-linked if email matches');
+    // Auto-map by email if they have a web account
+    if (email) {
+      await tryAutoMapByEmail(user.id, email);
+    }
+
+    logger.info({ email }, 'New Slack user added');
   } catch (error) {
     logger.error({ error, userId: user.id }, 'Failed to process team_join event');
   }
 }
 
 /**
+ * Try to auto-map a Slack user to a web user by email
+ * Maps them if the email matches and neither account is already mapped
+ */
+async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<void> {
+  try {
+    const pool = getPool();
+
+    // Look up the web user by email
+    const result = await pool.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM organization_memberships WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      logger.debug({ email }, 'No web account found for Slack user email');
+      return;
+    }
+
+    const workosUserId = result.rows[0].workos_user_id;
+
+    // Check if this WorkOS user is already mapped to a different Slack user
+    const existingWorkosMapping = await slackDb.getByWorkosUserId(workosUserId);
+    if (existingWorkosMapping) {
+      logger.debug(
+        { email, workosUserId, existingSlackUserId: existingWorkosMapping.slack_user_id },
+        'Web user already mapped to different Slack account'
+      );
+      return;
+    }
+
+    // Check if this Slack user is already mapped (race condition guard)
+    const existingSlackMapping = await slackDb.getBySlackUserId(slackUserId);
+    if (existingSlackMapping?.workos_user_id) {
+      logger.debug(
+        { slackUserId, existingWorkosUserId: existingSlackMapping.workos_user_id },
+        'Slack user already mapped to a web account'
+      );
+      return;
+    }
+
+    // Map the user
+    await slackDb.mapUser({
+      slack_user_id: slackUserId,
+      workos_user_id: workosUserId,
+      mapping_source: 'email_auto',
+    });
+
+    logger.info({ slackUserId, workosUserId, email }, 'Auto-mapped Slack user to web account by email');
+
+    // Sync user to chapters based on their Slack channel memberships
+    const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUserId);
+    if (chapterSyncResult.chapters_joined > 0) {
+      logger.info(
+        { workosUserId, chaptersJoined: chapterSyncResult.chapters_joined },
+        'Auto-synced user to chapters from Slack channels'
+      );
+    }
+
+    // Invalidate caches
+    invalidateUnifiedUsersCache();
+    invalidateMemberContextCache(slackUserId);
+  } catch (error) {
+    logger.error({ error, slackUserId, email }, 'Failed to auto-map Slack user by email');
+  }
+}
+
+/**
  * Handle member_joined_channel event
  * Records channel join activity for engagement tracking
+ * Also auto-adds users to working groups (chapters/events) when they join linked Slack channels
  */
 export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelEvent): Promise<void> {
   logger.debug(
@@ -178,8 +255,87 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
         inviter: event.inviter,
       },
     });
+
+    // Check if this channel is linked to a working group (chapter or event)
+    // and auto-add the user if they have a WorkOS mapping
+    if (mapping?.workos_user_id) {
+      const isPrivateChannel = event.channel_type === 'G';
+      await autoAddToWorkingGroup(event.channel, mapping.workos_user_id, mapping, isPrivateChannel);
+    }
   } catch (error) {
     logger.error({ error, userId: event.user }, 'Failed to record channel join activity');
+  }
+}
+
+/**
+ * Auto-add user to a working group when they join its Slack channel
+ * This enables "join channel = join group" for all committee types
+ *
+ * For private committees, we only auto-add if the Slack channel is also private,
+ * since Slack already enforces access control for private channels.
+ */
+async function autoAddToWorkingGroup(
+  channelId: string,
+  workosUserId: string,
+  slackMapping: { slack_email?: string | null; slack_real_name?: string | null; slack_display_name?: string | null },
+  isPrivateSlackChannel: boolean
+): Promise<void> {
+  try {
+    // Check if this channel is linked to a working group
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlackChannelId(channelId);
+
+    if (!workingGroup) {
+      // Channel not linked to any working group
+      return;
+    }
+
+    // Skip auto-add for private committees unless the Slack channel is also private
+    // (private Slack channels already enforce access control)
+    if (workingGroup.is_private && !isPrivateSlackChannel) {
+      logger.debug(
+        { workingGroupId: workingGroup.id, name: workingGroup.name },
+        'Skipping auto-add: committee is private but Slack channel is public'
+      );
+      return;
+    }
+
+    // Check if already a member
+    const isMember = await workingGroupDb.isMember(workingGroup.id, workosUserId);
+    if (isMember) {
+      logger.debug(
+        { workingGroupId: workingGroup.id, userId: workosUserId },
+        'User already a member of working group'
+      );
+      return;
+    }
+
+    // Set interest level for industry gatherings (other committee types don't track interest)
+    const interestLevel = workingGroup.committee_type === 'industry_gathering' ? 'interested' : undefined;
+    const interestSource = 'slack_join';
+
+    await workingGroupDb.addMembershipWithInterest({
+      working_group_id: workingGroup.id,
+      workos_user_id: workosUserId,
+      user_email: slackMapping.slack_email || undefined,
+      user_name: slackMapping.slack_real_name || slackMapping.slack_display_name || undefined,
+      interest_level: interestLevel,
+      interest_source: interestSource,
+    });
+
+    logger.info(
+      {
+        workingGroupId: workingGroup.id,
+        workingGroupName: workingGroup.name,
+        userId: workosUserId,
+        type: workingGroup.committee_type,
+      },
+      'Auto-added user to working group via Slack channel join'
+    );
+  } catch (error) {
+    logger.error(
+      { error, channelId, userId: workosUserId },
+      'Failed to auto-add user to working group'
+    );
   }
 }
 

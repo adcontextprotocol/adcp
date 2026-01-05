@@ -6,7 +6,7 @@
 
 import { logger } from '../logger.js';
 import { sendChannelMessage } from '../slack/client.js';
-import { AddieClaudeClient } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -28,7 +28,6 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAdmin,
-  isAdmin,
 } from './mcp/admin-tools.js';
 import {
   MEMBER_TOOLS,
@@ -46,8 +45,10 @@ import { getMemberContext, formatMemberContextForPrompt, type MemberContext } fr
 import {
   extractInsights,
   checkAndMarkOutreachResponse,
+  getGoalsForSystemPrompt,
   type ExtractionContext,
 } from './services/insight-extractor.js';
+import { checkForSensitiveTopics } from './sensitive-topics.js';
 import type { RequestTools } from './claude-client.js';
 import type {
   AssistantThreadStartedEvent,
@@ -56,6 +57,12 @@ import type {
   AddieInteractionLog,
   SuggestedPrompt,
 } from './types.js';
+
+/**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
 
 let claudeClient: AddieClaudeClient | null = null;
 let addieDb: AddieDatabase | null = null;
@@ -162,9 +169,22 @@ async function buildMessageWithMemberContext(
       baseMessage = `[ADMIN USER] ${sanitizedMessage}`;
     }
 
-    if (memberContextText) {
+    // Get insight goals to naturally work into conversation
+    const isMapped = !!memberContext?.is_mapped;
+    let insightGoalsText = '';
+    try {
+      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+      if (goalsPrompt) {
+        insightGoalsText = goalsPrompt;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
+    }
+
+    if (memberContextText || insightGoalsText) {
+      const sections = [memberContextText, insightGoalsText].filter(Boolean);
       return {
-        message: `${memberContextText}\n---\n\n${baseMessage}`,
+        message: `${sections.join('\n\n')}\n---\n\n${baseMessage}`,
         memberContext,
       };
     }
@@ -186,13 +206,16 @@ async function buildMessageWithMemberContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string
-): Promise<RequestTools> {
+): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  // Check if user is AAO admin (based on aao-admin working group membership)
+  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
+
   // Add admin tools if user is admin
-  if (isAdmin(memberContext)) {
+  if (userIsAdmin) {
     const adminHandlers = createAdminToolHandlers(memberContext);
     allTools.push(...ADMIN_TOOLS);
     for (const [name, handler] of adminHandlers) {
@@ -202,7 +225,7 @@ async function createUserScopedTools(
   }
 
   // Add event tools if user can create events (admin or committee lead)
-  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : isAdmin(memberContext);
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : userIsAdmin;
   if (canCreate) {
     const eventHandlers = createEventToolHandlers(memberContext, slackUserId);
     allTools.push(...EVENT_TOOLS);
@@ -213,8 +236,11 @@ async function createUserScopedTools(
   }
 
   return {
-    tools: allTools,
-    handlers: allHandlers,
+    tools: {
+      tools: allTools,
+      handlers: allHandlers,
+    },
+    isAdmin: userIsAdmin,
   };
 }
 
@@ -269,6 +295,12 @@ export async function handleAssistantMessage(
     return;
   }
 
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (event.user === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: event.text?.substring(0, 50) }, 'Addie: Ignoring Slackbot system message');
+    return;
+  }
+
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
@@ -293,33 +325,61 @@ export async function handleAssistantMessage(
     isAdmin
   );
 
-  // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = await createUserScopedTools(memberContext, event.user);
+  // Check for sensitive topics before processing
+  const sensitiveCheck = await checkForSensitiveTopics(
+    inputValidation.sanitized,
+    event.user,
+    channelId
+  );
 
-  // Process with Claude
+  // If we should deflect, return the deflection response instead of processing
   let response;
-  try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
-  } catch (error) {
-    logger.error({ error }, 'Addie: Error processing message');
+  if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
+    logger.info({
+      userId: event.user,
+      category: sensitiveCheck.topicResult.category,
+      severity: sensitiveCheck.topicResult.severity,
+      isKnownMedia: sensitiveCheck.isKnownMedia,
+    }, 'Addie: Deflecting sensitive topic');
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: sensitiveCheck.deflectResponse,
       tools_used: [],
       tool_executions: [],
       flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
     };
+  } else {
+    // Create user-scoped tools (these can only operate on behalf of this user)
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+
+    // Admin users get higher iteration limit for bulk operations
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+
+    // Process with Claude
+    try {
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error processing message');
+      response = {
+        text: "I'm sorry, I encountered an error. Please try again.",
+        tools_used: [],
+        tool_executions: [],
+        flagged: true,
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+    }
   }
 
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response using Addie's bot token
+  // Send response
   try {
     await sendChannelMessage(channelId, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts,
-    }, true); // useAddieToken = true
+    });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send response');
   }
@@ -412,33 +472,62 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     isAdmin
   );
 
-  // Create user-scoped tools (these can only operate on behalf of this user)
-  const userTools = await createUserScopedTools(memberContext, event.user);
+  // Check for sensitive topics before processing (channel mentions are more public)
+  const sensitiveCheck = await checkForSensitiveTopics(
+    inputValidation.sanitized,
+    event.user,
+    event.channel
+  );
 
-  // Process with Claude
+  // If we should deflect, return the deflection response instead of processing
   let response;
-  try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
-  } catch (error) {
-    logger.error({ error }, 'Addie: Error processing mention');
+  if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
+    logger.info({
+      userId: event.user,
+      channel: event.channel,
+      category: sensitiveCheck.topicResult.category,
+      severity: sensitiveCheck.topicResult.severity,
+      isKnownMedia: sensitiveCheck.isKnownMedia,
+    }, 'Addie: Deflecting sensitive topic (mention)');
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: sensitiveCheck.deflectResponse,
       tools_used: [],
       tool_executions: [],
       flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
     };
+  } else {
+    // Create user-scoped tools (these can only operate on behalf of this user)
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+
+    // Admin users get higher iteration limit for bulk operations
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+
+    // Process with Claude
+    try {
+      response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error processing mention');
+      response = {
+        text: "I'm sorry, I encountered an error. Please try again.",
+        tools_used: [],
+        tool_executions: [],
+        flagged: true,
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+    }
   }
 
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in thread using Addie's bot token
+  // Send response in thread
   try {
     await sendChannelMessage(event.channel, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts || event.ts,
-    }, true); // useAddieToken = true
+    });
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send mention response');
   }
@@ -579,7 +668,7 @@ export async function sendAccountLinkedMessage(
     await sendChannelMessage(recentThread.channel_id, {
       text: message,
       thread_ts: recentThread.thread_ts,
-    }, true); // useAddieToken = true
+    });
     logger.info({ slackUserId, channelId: recentThread.channel_id }, 'Addie: Sent account linked message');
     return true;
   } catch (error) {

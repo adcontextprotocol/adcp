@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Conversation Rehearsal - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      color: var(--color-text-heading);
+      font-size: 24px;
+    }
+    .page-header p {
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Persona setup */
+    .persona-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-group input,
+    .form-group select {
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    /* Chat interface */
+    .chat-container {
+      display: none;
+      flex-direction: column;
+      height: 600px;
+    }
+    .chat-container.active {
+      display: flex;
+    }
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 16px;
+    }
+    .chat-header h3 {
+      color: var(--color-text-heading);
+    }
+    .persona-badge {
+      padding: 4px 12px;
+      background: var(--color-info-light);
+      color: var(--color-info);
+      border-radius: 12px;
+      font-size: 12px;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message {
+      display: flex;
+      gap: 12px;
+      max-width: 85%;
+    }
+    .message.addie {
+      align-self: flex-start;
+    }
+    .message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+    .message-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .message.addie .message-avatar {
+      background: var(--color-brand);
+      color: white;
+    }
+    .message.user .message-avatar {
+      background: var(--color-gray-300);
+      color: var(--color-text-heading);
+    }
+    .message-content {
+      padding: 12px 16px;
+      border-radius: 12px;
+      line-height: 1.5;
+    }
+    .message.addie .message-content {
+      background: var(--color-gray-100);
+      color: var(--color-text-primary);
+    }
+    .message.user .message-content {
+      background: var(--color-brand);
+      color: white;
+    }
+    .message-meta {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--color-text-muted);
+    }
+    .message-meta .badge {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .message-meta .badge-info {
+      background: var(--color-info-light);
+      color: var(--color-info);
+    }
+    .message-meta .badge-success {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+    .message-meta .badge-warning {
+      background: var(--color-warning-light);
+      color: var(--color-warning-dark);
+    }
+
+    /* Analysis panel */
+    .analysis-panel {
+      background: var(--color-gray-50);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .analysis-panel h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--color-text-secondary);
+      margin-bottom: 8px;
+    }
+    .analysis-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .analysis-item {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .analysis-item .label {
+      color: var(--color-text-secondary);
+    }
+    .analysis-item .value {
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    /* Input area */
+    .chat-input {
+      display: flex;
+      gap: 12px;
+      padding-top: 16px;
+      border-top: 1px solid var(--color-border);
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .chat-input input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    /* Session history */
+    .sessions-list {
+      margin-top: 24px;
+    }
+    .sessions-list h3 {
+      font-size: 16px;
+      color: var(--color-text-heading);
+      margin-bottom: 12px;
+    }
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--color-gray-50);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .session-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .session-info .name {
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+    .session-info .meta {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .session-status {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .session-status.active {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+    .session-status.completed {
+      background: var(--color-info-light);
+      color: var(--color-info);
+    }
+    .session-status.abandoned {
+      background: var(--color-gray-200);
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Conversation Rehearsal</h1>
+        <p>Practice outbound conversations with simulated personas</p>
+      </div>
+    </div>
+
+    <!-- Setup card (shown when no active session) -->
+    <div id="setup-card" class="card">
+      <h3 style="margin-bottom: 16px; color: var(--color-text-heading);">Start a Rehearsal</h3>
+      <p style="color: var(--color-text-secondary); margin-bottom: 20px;">
+        Create a simulated persona to practice how Addie would approach them.
+      </p>
+
+      <div class="persona-form">
+        <div class="form-group">
+          <label>Persona Name</label>
+          <input type="text" id="persona-name" placeholder="e.g., David at Hearst" value="Test User">
+        </div>
+        <div class="form-group">
+          <label>Company Type</label>
+          <select id="persona-company-type">
+            <option value="">Not specified</option>
+            <option value="publisher">Publisher</option>
+            <option value="dsp">DSP</option>
+            <option value="ssp">SSP</option>
+            <option value="brand">Brand</option>
+            <option value="agency">Agency</option>
+            <option value="verification">Verification</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Company Name</label>
+          <input type="text" id="persona-company-name" placeholder="e.g., Hearst">
+        </div>
+        <div class="form-group">
+          <label>Account Linked?</label>
+          <select id="persona-mapped">
+            <option value="false">No - Not linked</option>
+            <option value="true">Yes - Linked</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Engagement Score</label>
+          <input type="number" id="persona-engagement" min="0" max="100" value="50">
+        </div>
+        <div class="form-group">
+          <label>Role (if known)</label>
+          <input type="text" id="persona-role" placeholder="e.g., VP Engineering">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="startRehearsal()">Start Rehearsal</button>
+    </div>
+
+    <!-- Chat card (shown during active session) -->
+    <div id="chat-card" class="card" style="display: none;">
+      <div class="chat-container active">
+        <div class="chat-header">
+          <div>
+            <h3>Rehearsal Session</h3>
+            <span id="session-persona" class="persona-badge">Test User</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-small" onclick="completeSession()">Complete</button>
+            <button class="btn btn-secondary btn-small" onclick="abandonSession()">Abandon</button>
+          </div>
+        </div>
+
+        <div id="chat-messages" class="chat-messages">
+          <!-- Messages will be inserted here -->
+        </div>
+
+        <div class="chat-input">
+          <input type="text" id="response-input" placeholder="Type a response as the user..." onkeypress="handleKeyPress(event)">
+          <button class="btn btn-primary" onclick="sendResponse()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent sessions -->
+    <div class="sessions-list">
+      <h3>Recent Sessions</h3>
+      <div id="sessions-loading" class="loading">Loading sessions...</div>
+      <div id="sessions-list"></div>
+      <div id="sessions-empty" class="empty-state" style="display: none;">No rehearsal sessions yet.</div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let currentSession = null;
+
+    async function init() {
+      await loadSessions();
+    }
+
+    async function loadSessions() {
+      const loading = document.getElementById('sessions-loading');
+      const list = document.getElementById('sessions-list');
+      const empty = document.getElementById('sessions-empty');
+
+      loading.style.display = 'block';
+      list.innerHTML = '';
+      empty.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/admin/outbound/rehearsal/sessions?limit=10');
+        if (!response.ok) {
+          if (response.status === 401) {
+            AdminSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load sessions');
+        }
+
+        const sessions = await response.json();
+        loading.style.display = 'none';
+
+        if (sessions.length === 0) {
+          empty.style.display = 'block';
+          return;
+        }
+
+        list.innerHTML = sessions.map(s => `
+          <div class="session-item">
+            <div class="session-info">
+              <span class="name">${escapeHtml(s.persona_name || 'Unnamed')}</span>
+              <span class="meta">${formatDate(s.started_at)} · ${s.messages?.length || 0} messages</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="session-status ${s.status}">${s.status}</span>
+              ${s.status === 'active' ? `<button class="btn btn-secondary btn-small" onclick="resumeSession(${s.id})">Resume</button>` : ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        loading.style.display = 'none';
+        list.innerHTML = `<div class="empty-state">Error loading sessions</div>`;
+      }
+    }
+
+    async function startRehearsal() {
+      const persona = {
+        name: document.getElementById('persona-name').value || 'Test User',
+        company_type: document.getElementById('persona-company-type').value || undefined,
+        company_name: document.getElementById('persona-company-name').value || undefined,
+        is_mapped: document.getElementById('persona-mapped').value === 'true',
+        engagement_score: parseInt(document.getElementById('persona-engagement').value) || 50,
+      };
+
+      const role = document.getElementById('persona-role').value;
+      if (role) {
+        persona.existing_insights = [{ type: 'role', value: role }];
+      }
+
+      try {
+        const response = await fetch('/api/admin/outbound/rehearsal/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ persona }),
+        });
+
+        if (!response.ok) throw new Error('Failed to start session');
+
+        const result = await response.json();
+        currentSession = result.session;
+
+        showChatInterface(result);
+      } catch (err) {
+        alert('Failed to start rehearsal: ' + err.message);
+      }
+    }
+
+    function showChatInterface(result) {
+      document.getElementById('setup-card').style.display = 'none';
+      document.getElementById('chat-card').style.display = 'block';
+      document.getElementById('session-persona').textContent = currentSession.persona_name || 'Test User';
+
+      const messages = document.getElementById('chat-messages');
+      messages.innerHTML = '';
+
+      // Add existing messages
+      if (currentSession.messages) {
+        for (const msg of currentSession.messages) {
+          addMessageToUI(msg);
+        }
+      }
+
+      // Show planner reasoning if available
+      if (result.planned_action) {
+        const reasoningHtml = `
+          <div class="analysis-panel">
+            <h4>Planner Reasoning</h4>
+            <div class="analysis-row">
+              <div class="analysis-item">
+                <span class="label">Selected Goal:</span>
+                <span class="value">${escapeHtml(result.planned_action.goal.name)}</span>
+              </div>
+              <div class="analysis-item">
+                <span class="label">Reason:</span>
+                <span class="value">${escapeHtml(result.planned_action.reason)}</span>
+              </div>
+              <div class="analysis-item">
+                <span class="label">Method:</span>
+                <span class="value">${result.planned_action.decision_method}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        messages.insertAdjacentHTML('beforeend', reasoningHtml);
+      }
+
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function addMessageToUI(msg, analysis = null, outcome = null) {
+      const messages = document.getElementById('chat-messages');
+      const isAddie = msg.role === 'addie';
+
+      let metaHtml = '';
+      if (msg.goal_id) {
+        metaHtml += `<span class="badge badge-info">Goal #${msg.goal_id}</span>`;
+      }
+      if (msg.analysis) {
+        metaHtml += `<span class="badge badge-${msg.analysis.sentiment === 'positive' ? 'success' : 'warning'}">${msg.analysis.sentiment}</span>`;
+        metaHtml += `<span class="badge badge-info">${msg.analysis.intent}</span>`;
+      }
+      if (msg.outcome) {
+        metaHtml += `<span class="badge badge-${msg.outcome.type === 'success' ? 'success' : 'warning'}">${msg.outcome.type}</span>`;
+      }
+
+      const html = `
+        <div class="message ${isAddie ? 'addie' : 'user'}">
+          <div class="message-avatar">${isAddie ? 'A' : 'U'}</div>
+          <div>
+            <div class="message-content">${escapeHtml(msg.content).replace(/\n/g, '<br>')}</div>
+            ${metaHtml ? `<div class="message-meta">${metaHtml}</div>` : ''}
+          </div>
+        </div>
+      `;
+
+      messages.insertAdjacentHTML('beforeend', html);
+
+      // Add analysis panel if provided
+      if (analysis) {
+        const analysisHtml = `
+          <div class="analysis-panel">
+            <h4>Response Analysis</h4>
+            <div class="analysis-row">
+              <div class="analysis-item">
+                <span class="label">Sentiment:</span>
+                <span class="value">${analysis.sentiment}</span>
+              </div>
+              <div class="analysis-item">
+                <span class="label">Intent:</span>
+                <span class="value">${analysis.intent}</span>
+              </div>
+              ${outcome ? `
+                <div class="analysis-item">
+                  <span class="label">Outcome:</span>
+                  <span class="value">${outcome.outcome_type}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        messages.insertAdjacentHTML('beforeend', analysisHtml);
+      }
+
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function sendResponse() {
+      const input = document.getElementById('response-input');
+      const responseText = input.value.trim();
+      if (!responseText || !currentSession) return;
+
+      input.value = '';
+      input.disabled = true;
+
+      // Add user message immediately
+      addMessageToUI({ role: 'user', content: responseText });
+
+      try {
+        const response = await fetch(`/api/admin/outbound/rehearsal/sessions/${currentSession.id}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ response: responseText }),
+        });
+
+        if (!response.ok) throw new Error('Failed to simulate response');
+
+        const result = await response.json();
+        currentSession = result.session;
+
+        // Show analysis
+        const messages = document.getElementById('chat-messages');
+        const analysisHtml = `
+          <div class="analysis-panel">
+            <h4>Response Analysis</h4>
+            <div class="analysis-row">
+              <div class="analysis-item">
+                <span class="label">Sentiment:</span>
+                <span class="value">${result.analysis.sentiment}</span>
+              </div>
+              <div class="analysis-item">
+                <span class="label">Intent:</span>
+                <span class="value">${result.analysis.intent}</span>
+              </div>
+              ${result.matched_outcome ? `
+                <div class="analysis-item">
+                  <span class="label">Matched Outcome:</span>
+                  <span class="value">${result.matched_outcome.outcome_type}</span>
+                </div>
+              ` : ''}
+              ${result.next_action ? `
+                <div class="analysis-item">
+                  <span class="label">Next Goal:</span>
+                  <span class="value">${result.next_action.goal.name}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        messages.insertAdjacentHTML('beforeend', analysisHtml);
+
+        // Add Addie's reply if there is one
+        if (result.addie_reply) {
+          addMessageToUI({
+            role: 'addie',
+            content: result.addie_reply,
+            goal_id: result.next_action?.goal.id,
+          });
+        }
+
+        messages.scrollTop = messages.scrollHeight;
+      } catch (err) {
+        alert('Failed to simulate response: ' + err.message);
+      } finally {
+        input.disabled = false;
+        input.focus();
+      }
+    }
+
+    function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+        sendResponse();
+      }
+    }
+
+    async function completeSession() {
+      if (!currentSession) return;
+
+      const notes = prompt('Any notes about this rehearsal?');
+
+      try {
+        await fetch(`/api/admin/outbound/rehearsal/sessions/${currentSession.id}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes }),
+        });
+
+        currentSession = null;
+        document.getElementById('setup-card').style.display = 'block';
+        document.getElementById('chat-card').style.display = 'none';
+        loadSessions();
+      } catch (err) {
+        alert('Failed to complete session');
+      }
+    }
+
+    async function abandonSession() {
+      if (!currentSession) return;
+      if (!confirm('Abandon this rehearsal session?')) return;
+
+      try {
+        await fetch(`/api/admin/outbound/rehearsal/sessions/${currentSession.id}/abandon`, {
+          method: 'POST',
+        });
+
+        currentSession = null;
+        document.getElementById('setup-card').style.display = 'block';
+        document.getElementById('chat-card').style.display = 'none';
+        loadSessions();
+      } catch (err) {
+        alert('Failed to abandon session');
+      }
+    }
+
+    async function resumeSession(sessionId) {
+      try {
+        const response = await fetch(`/api/admin/outbound/rehearsal/sessions/${sessionId}`);
+        if (!response.ok) throw new Error('Failed to load session');
+
+        currentSession = await response.json();
+        showChatInterface({ session: currentSession, planned_action: null });
+      } catch (err) {
+        alert('Failed to resume session');
+      }
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    init();
+  </script>
+</body>
+</html>

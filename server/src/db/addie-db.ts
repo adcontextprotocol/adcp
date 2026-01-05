@@ -124,6 +124,18 @@ export interface CuratedResourceSearchResult {
   headline: string;
 }
 
+export interface RecentNewsResult {
+  id: number;
+  title: string;
+  source_url: string;
+  summary: string | null;
+  addie_notes: string | null;
+  relevance_tags: string[] | null;
+  quality_score: number | null;
+  last_fetched_at: Date;
+  discovery_source: string | null;
+}
+
 export interface AddieApprovalQueueItem {
   id: number;
   action_type: string;
@@ -791,6 +803,67 @@ export class AddieDatabase {
        FROM addie_knowledge
        WHERE ${conditions.join(' AND ')}
        ORDER BY quality_score DESC NULLS LAST, rank DESC
+       LIMIT $${paramIndex}`,
+      params
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get recent news/articles from curated resources sorted by date
+   * Used for "what's happening in the news?" type queries
+   */
+  async getRecentNews(options: {
+    days?: number;
+    limit?: number;
+    minQuality?: number;
+    tags?: string[];
+    topic?: string;
+  } = {}): Promise<RecentNewsResult[]> {
+    // Clamp inputs to reasonable ranges for safety
+    const days = Math.max(1, Math.min(options.days ?? 7, 365));
+    const limit = Math.max(1, Math.min(options.limit ?? 10, 100));
+    const conditions: string[] = [
+      'is_active = TRUE',
+      "source_type IN ('curated', 'perspective_link', 'web_search', 'rss', 'community')",
+      "fetch_status = 'success'",
+      `last_fetched_at >= NOW() - $1::integer * INTERVAL '1 day'`,
+    ];
+    const params: unknown[] = [days];
+    let paramIndex = 2;
+
+    // Filter by quality score (defaults to 3 to filter low-relevance content)
+    const minQuality = options.minQuality ?? 3;
+    conditions.push(`quality_score >= $${paramIndex++}`);
+    params.push(minQuality);
+
+    if (options.tags && options.tags.length > 0) {
+      conditions.push(`relevance_tags && $${paramIndex++}`);
+      params.push(options.tags);
+    }
+
+    // Optional topic filter using full-text search
+    if (options.topic) {
+      conditions.push(`search_vector @@ websearch_to_tsquery('english', $${paramIndex++})`);
+      params.push(options.topic);
+    }
+
+    params.push(limit);
+
+    const result = await query<RecentNewsResult>(
+      `SELECT
+        id,
+        title,
+        source_url,
+        summary,
+        addie_notes,
+        relevance_tags,
+        quality_score,
+        last_fetched_at,
+        discovery_source
+       FROM addie_knowledge
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY last_fetched_at DESC, quality_score DESC NULLS LAST
        LIMIT $${paramIndex}`,
       params
     );

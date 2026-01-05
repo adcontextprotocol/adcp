@@ -9,6 +9,8 @@ import type {
   WorkingGroupWithDetails,
   AddWorkingGroupMemberInput,
   CommitteeType,
+  EventInterestLevel,
+  EventInterestSource,
 } from '../types.js';
 
 /**
@@ -70,8 +72,10 @@ export class WorkingGroupDatabase {
     const result = await query<WorkingGroup>(
       `INSERT INTO working_groups (
         name, slug, description, slack_channel_url, slack_channel_id,
-        is_private, status, display_order, committee_type, region
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        is_private, status, display_order, committee_type, region,
+        linked_event_id, event_start_date, event_end_date, event_location, auto_archive_after_event,
+        logo_url, website_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
         input.name,
@@ -84,6 +88,13 @@ export class WorkingGroupDatabase {
         input.display_order ?? 0,
         input.committee_type ?? 'working_group',
         input.region || null,
+        input.linked_event_id || null,
+        input.event_start_date || null,
+        input.event_end_date || null,
+        input.event_location || null,
+        input.auto_archive_after_event ?? true,
+        input.logo_url || null,
+        input.website_url || null,
       ]
     );
 
@@ -142,6 +153,7 @@ export class WorkingGroupDatabase {
 
     const COLUMN_MAP: Record<string, string> = {
       name: 'name',
+      slug: 'slug',
       description: 'description',
       slack_channel_url: 'slack_channel_url',
       slack_channel_id: 'slack_channel_id',
@@ -150,6 +162,13 @@ export class WorkingGroupDatabase {
       display_order: 'display_order',
       committee_type: 'committee_type',
       region: 'region',
+      linked_event_id: 'linked_event_id',
+      event_start_date: 'event_start_date',
+      event_end_date: 'event_end_date',
+      event_location: 'event_location',
+      auto_archive_after_event: 'auto_archive_after_event',
+      logo_url: 'logo_url',
+      website_url: 'website_url',
     };
 
     const setClauses: string[] = [];
@@ -465,9 +484,39 @@ export class WorkingGroupDatabase {
    * Get all memberships for a working group
    */
   async getMembershipsByWorkingGroup(workingGroupId: string): Promise<WorkingGroupMembership[]> {
+    // Get memberships with user details from multiple sources:
+    // 1. working_group_memberships.user_name (cached)
+    // 2. users table (canonical from WorkOS)
+    // 3. organization_memberships (older sync)
+    // 4. Falls back to user_id if no name found
     const result = await query<WorkingGroupMembership>(
-      `SELECT * FROM working_group_memberships
-       WHERE working_group_id = $1 AND status = 'active'
+      `SELECT
+         wgm.id,
+         wgm.working_group_id,
+         wgm.workos_user_id,
+         wgm.workos_organization_id,
+         wgm.added_by_user_id,
+         wgm.status,
+         wgm.joined_at,
+         wgm.updated_at,
+         wgm.interest_level,
+         wgm.interest_source,
+         COALESCE(
+           NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           u.email,
+           om.email,
+           wgm.workos_user_id
+         ) AS user_name,
+         COALESCE(wgm.user_email, u.email, om.email) AS user_email,
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS user_org_name
+       FROM working_group_memberships wgm
+       LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
+       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
+       LEFT JOIN organization_memberships om ON wgm.workos_user_id = om.workos_user_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+       WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
        ORDER BY user_name, user_email`,
       [workingGroupId]
     );
@@ -509,16 +558,28 @@ export class WorkingGroupDatabase {
    * Get leaders for a working group
    */
   async getLeaders(workingGroupId: string): Promise<WorkingGroupLeader[]> {
-    // Get leaders with user details from working_group_memberships (if they're a member),
-    // falling back to organization_memberships (the canonical source from WorkOS)
+    // Get leaders with user details from multiple sources:
+    // 1. working_group_memberships (if they're a member with cached name)
+    // 2. users table (canonical user data synced from WorkOS)
+    // 3. organization_memberships (older sync table)
+    // 4. Falls back to user_id if no name found
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
-         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
-         COALESCE(wgm.user_org_name, org.name) AS org_name,
+         COALESCE(
+           NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           u.email,
+           om.email,
+           wgl.user_id
+         ) AS name,
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgl.working_group_id = $1
@@ -541,11 +602,20 @@ export class WorkingGroupDatabase {
       `SELECT
          wgl.working_group_id,
          wgl.user_id,
-         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
-         COALESCE(wgm.user_org_name, org.name) AS org_name,
+         COALESCE(
+           NULLIF(wgm.user_name, ''),
+           NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+           NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
+           u.email,
+           om.email,
+           wgl.user_id
+         ) AS name,
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgl.working_group_id = ANY($1)
@@ -632,6 +702,34 @@ export class WorkingGroupDatabase {
       [workingGroupId, userId]
     );
     return result.rows.length > 0;
+  }
+
+  /**
+   * Get all committees led by a user
+   * Returns committees of all types where the user is a leader
+   */
+  async getCommitteesLedByUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       INNER JOIN working_group_leaders wgl ON wg.id = wgl.working_group_id
+       LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
+       WHERE wgl.user_id = $1
+         AND wg.status = 'active'
+       GROUP BY wg.id
+       ORDER BY wg.display_order, wg.name`,
+      [userId]
+    );
+
+    const groups = result.rows;
+    const groupIds = groups.map(g => g.id);
+    const leadersByGroup = await this.getLeadersBatch(groupIds);
+
+    for (const group of groups) {
+      group.leaders = leadersByGroup.get(group.id) || [];
+    }
+
+    return groups;
   }
 
   /**
@@ -861,5 +959,328 @@ export class WorkingGroupDatabase {
     );
 
     return result.rows;
+  }
+
+  // ============== Event Groups ==============
+
+  /**
+   * Create an event group linked to an event
+   */
+  async createEventGroup(input: {
+    name: string;
+    slug: string;
+    description?: string;
+    linked_event_id: string;
+    event_start_date?: Date;
+    event_end_date?: Date;
+    slack_channel_url?: string;
+    slack_channel_id?: string;
+    leader_user_ids?: string[];
+  }): Promise<WorkingGroup> {
+    return this.createWorkingGroup({
+      ...input,
+      committee_type: 'industry_gathering',
+      is_private: false,
+      auto_archive_after_event: true,
+    });
+  }
+
+  /**
+   * Get industry gathering group by linked event ID
+   */
+  async getIndustryGatheringByEventId(eventId: string): Promise<WorkingGroup | null> {
+    const result = await query<WorkingGroup>(
+      `SELECT * FROM working_groups
+       WHERE linked_event_id = $1 AND committee_type = 'industry_gathering'`,
+      [eventId]
+    );
+    if (!result.rows[0]) return null;
+
+    const workingGroup = result.rows[0];
+    workingGroup.leaders = await this.getLeaders(workingGroup.id);
+    return workingGroup;
+  }
+
+  /**
+   * Get upcoming industry gatherings (that haven't ended yet)
+   */
+  async getUpcomingIndustryGatherings(): Promise<WorkingGroupWithMemberCount[]> {
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
+       WHERE wg.committee_type = 'industry_gathering'
+         AND wg.status = 'active'
+         AND (wg.event_end_date IS NULL OR wg.event_end_date >= CURRENT_DATE)
+       GROUP BY wg.id
+       ORDER BY wg.event_start_date ASC NULLS LAST`
+    );
+
+    const groups = result.rows;
+    const groupIds = groups.map(g => g.id);
+    const leadersByGroup = await this.getLeadersBatch(groupIds);
+
+    for (const group of groups) {
+      group.leaders = leadersByGroup.get(group.id) || [];
+    }
+
+    return groups;
+  }
+
+  /**
+   * Get past industry gatherings (for archival reference)
+   */
+  async getPastIndustryGatherings(): Promise<WorkingGroupWithMemberCount[]> {
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
+       WHERE wg.committee_type = 'industry_gathering'
+         AND wg.event_end_date < CURRENT_DATE
+       GROUP BY wg.id
+       ORDER BY wg.event_end_date DESC`
+    );
+
+    return result.rows;
+  }
+
+  // ============== Chapters ==============
+
+  /**
+   * Get all regional chapters
+   */
+  async getChapters(): Promise<WorkingGroupWithMemberCount[]> {
+    return this.listWorkingGroups({
+      status: 'active',
+      committee_type: 'chapter',
+      includePrivate: false,
+    });
+  }
+
+  /**
+   * Get chapters with their Slack channel info for outreach messages
+   */
+  async getChapterSlackLinks(): Promise<Array<{
+    id: string;
+    name: string;
+    slug: string;
+    region: string;
+    slack_channel_url: string;
+    slack_channel_id: string;
+    member_count: number;
+  }>> {
+    const result = await query<{
+      id: string;
+      name: string;
+      slug: string;
+      region: string;
+      slack_channel_url: string;
+      slack_channel_id: string;
+      member_count: number;
+    }>(
+      `SELECT
+         wg.id,
+         wg.name,
+         wg.slug,
+         wg.region,
+         wg.slack_channel_url,
+         wg.slack_channel_id,
+         COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
+       WHERE wg.committee_type = 'chapter'
+         AND wg.status = 'active'
+         AND wg.slack_channel_id IS NOT NULL
+       GROUP BY wg.id
+       ORDER BY wg.region, wg.name`
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Find chapters near a given city/region
+   * Simple string matching for now - could be enhanced with geo lookup later
+   */
+  async findChaptersNearLocation(city: string): Promise<WorkingGroupWithMemberCount[]> {
+    // Escape LIKE wildcards to prevent pattern injection
+    const escapedCity = escapeLikePattern(city.toLowerCase());
+
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
+       WHERE wg.committee_type = 'chapter'
+         AND wg.status = 'active'
+         AND (LOWER(wg.region) LIKE $1 OR LOWER(wg.name) LIKE $1)
+       GROUP BY wg.id
+       ORDER BY wg.name`,
+      [`%${escapedCity}%`]
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Create a new regional chapter with Slack channel
+   */
+  async createChapter(input: {
+    name: string;
+    slug: string;
+    region: string;
+    description?: string;
+    slack_channel_url?: string;
+    slack_channel_id?: string;
+    founding_member_id?: string;
+  }): Promise<WorkingGroup> {
+    const chapter = await this.createWorkingGroup({
+      name: input.name,
+      slug: input.slug,
+      region: input.region,
+      description: input.description || `Connect with AgenticAdvertising.org members in the ${input.region} area.`,
+      slack_channel_url: input.slack_channel_url,
+      slack_channel_id: input.slack_channel_id,
+      committee_type: 'chapter',
+      is_private: false,
+      leader_user_ids: input.founding_member_id ? [input.founding_member_id] : undefined,
+    });
+
+    return chapter;
+  }
+
+  /**
+   * Create a new industry gathering (temporary committee for conferences/events)
+   */
+  async createIndustryGathering(input: {
+    name: string;
+    slug: string;
+    description?: string;
+    slack_channel_url?: string;
+    slack_channel_id?: string;
+    start_date: Date;
+    end_date?: Date;
+    location: string;
+    website_url?: string;
+    logo_url?: string;
+    founding_member_id?: string;
+  }): Promise<WorkingGroup> {
+    // Generate the full slug: industry-gatherings/YYYY/name
+    const year = input.start_date.getFullYear();
+    const fullSlug = `industry-gatherings/${year}/${input.slug}`;
+
+    const gathering = await this.createWorkingGroup({
+      name: input.name,
+      slug: fullSlug,
+      description: input.description || `Connect with AgenticAdvertising.org members at ${input.name}.`,
+      slack_channel_url: input.slack_channel_url,
+      slack_channel_id: input.slack_channel_id,
+      committee_type: 'industry_gathering',
+      is_private: false,
+      event_start_date: input.start_date,
+      event_end_date: input.end_date,
+      event_location: input.location,
+      website_url: input.website_url,
+      logo_url: input.logo_url,
+      auto_archive_after_event: true,
+      leader_user_ids: input.founding_member_id ? [input.founding_member_id] : undefined,
+    });
+
+    return gathering;
+  }
+
+  /**
+   * Get all active industry gatherings
+   */
+  async getIndustryGatherings(): Promise<WorkingGroupWithMemberCount[]> {
+    const result = await query<WorkingGroupWithMemberCount>(
+      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+       FROM working_groups wg
+       LEFT JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id AND wgm.status = 'active'
+       WHERE wg.committee_type = 'industry_gathering'
+         AND wg.status = 'active'
+       GROUP BY wg.id
+       ORDER BY wg.event_start_date DESC NULLS LAST, wg.name ASC`
+    );
+    return result.rows;
+  }
+
+  // ============== Membership with Interest Tracking ==============
+
+  /**
+   * Add a member with interest level tracking (for event groups)
+   */
+  async addMembershipWithInterest(input: AddWorkingGroupMemberInput & {
+    interest_level?: EventInterestLevel;
+    interest_source?: EventInterestSource;
+  }): Promise<WorkingGroupMembership> {
+    const result = await query<WorkingGroupMembership>(
+      `INSERT INTO working_group_memberships (
+        working_group_id, workos_user_id, user_email, user_name, user_org_name,
+        workos_organization_id, added_by_user_id, interest_level, interest_source
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (working_group_id, workos_user_id)
+      DO UPDATE SET
+        status = 'active',
+        interest_level = COALESCE(EXCLUDED.interest_level, working_group_memberships.interest_level),
+        interest_source = COALESCE(EXCLUDED.interest_source, working_group_memberships.interest_source),
+        updated_at = NOW()
+      RETURNING *`,
+      [
+        input.working_group_id,
+        input.workos_user_id,
+        input.user_email || null,
+        input.user_name || null,
+        input.user_org_name || null,
+        input.workos_organization_id || null,
+        input.added_by_user_id || null,
+        input.interest_level || null,
+        input.interest_source || null,
+      ]
+    );
+
+    return result.rows[0];
+  }
+
+  /**
+   * Update member interest level
+   */
+  async updateMemberInterest(
+    workingGroupId: string,
+    userId: string,
+    interestLevel: EventInterestLevel
+  ): Promise<WorkingGroupMembership | null> {
+    const result = await query<WorkingGroupMembership>(
+      `UPDATE working_group_memberships
+       SET interest_level = $3, updated_at = NOW()
+       WHERE working_group_id = $1 AND workos_user_id = $2
+       RETURNING *`,
+      [workingGroupId, userId, interestLevel]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get members of an event group with interest level stats
+   */
+  async getEventGroupAttendees(workingGroupId: string): Promise<{
+    members: WorkingGroupMembership[];
+    stats: {
+      total: number;
+      attending: number;
+      interested: number;
+      maybe: number;
+    };
+  }> {
+    const members = await this.getMembershipsByWorkingGroup(workingGroupId);
+
+    const stats = {
+      total: members.length,
+      attending: members.filter(m => m.interest_level === 'attending').length,
+      interested: members.filter(m => m.interest_level === 'interested').length,
+      maybe: members.filter(m => m.interest_level === 'maybe').length,
+    };
+
+    return { members, stats };
   }
 }

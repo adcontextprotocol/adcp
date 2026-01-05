@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../logger.js';
+import type { CompanyTypeValue } from '../config/company-types.js';
 
 const LUSHA_API_BASE = 'https://api.lusha.com';
 
@@ -73,15 +74,60 @@ export interface FilterOption {
 
 /**
  * Maps Lusha industry to our company_type enum
+ * Returns the primary type - for multi-type detection, use mapIndustryToCompanyTypes
  */
 export function mapIndustryToCompanyType(
   industry: string | undefined,
   subIndustry: string | undefined
-): 'adtech' | 'agency' | 'brand' | 'publisher' | null {
-  if (!industry) return null;
+): CompanyTypeValue | null {
+  const types = mapIndustryToCompanyTypes(industry, subIndustry);
+  return types.length > 0 ? types[0] : null;
+}
+
+/**
+ * Maps Lusha industry to array of company_type values
+ * Companies can have multiple types (e.g., Microsoft is both brand and ai)
+ */
+export function mapIndustryToCompanyTypes(
+  industry: string | undefined,
+  subIndustry: string | undefined
+): CompanyTypeValue[] {
+  if (!industry) return [];
 
   const ind = industry.toLowerCase();
   const sub = (subIndustry || '').toLowerCase();
+  const types: CompanyTypeValue[] = [];
+
+  // AI & Tech Platforms indicators (check first - these are often also other things)
+  if (
+    ind.includes('artificial intelligence') ||
+    ind.includes('machine learning') ||
+    sub.includes('ai') ||
+    sub.includes('llm') ||
+    sub.includes('generative') ||
+    sub.includes('cloud computing') ||
+    sub.includes('cloud infrastructure') ||
+    sub.includes('cloud services') ||
+    sub.includes('agent') ||
+    sub.includes('ml platform')
+  ) {
+    types.push('ai');
+  }
+
+  // Data & Measurement indicators
+  if (
+    sub.includes('clean room') ||
+    sub.includes('cdp') ||
+    sub.includes('customer data') ||
+    sub.includes('identity') ||
+    sub.includes('measurement') ||
+    sub.includes('analytics') ||
+    sub.includes('attribution') ||
+    ind.includes('data analytics') ||
+    ind.includes('business intelligence')
+  ) {
+    types.push('data');
+  }
 
   // Ad Tech indicators
   if (
@@ -94,13 +140,14 @@ export function mapIndustryToCompanyType(
     sub.includes('supply side') ||
     sub.includes('dsp') ||
     sub.includes('ssp') ||
-    sub.includes('data management')
+    sub.includes('ad server')
   ) {
     // Distinguish between ad tech vendors and agencies
     if (sub.includes('agency') || sub.includes('services')) {
-      return 'agency';
+      types.push('agency');
+    } else {
+      types.push('adtech');
     }
-    return 'adtech';
   }
 
   // Agency indicators
@@ -111,7 +158,9 @@ export function mapIndustryToCompanyType(
     sub.includes('creative services') ||
     ind.includes('public relations')
   ) {
-    return 'agency';
+    if (!types.includes('agency')) {
+      types.push('agency');
+    }
   }
 
   // Publisher indicators
@@ -125,7 +174,7 @@ export function mapIndustryToCompanyType(
     sub.includes('content') ||
     sub.includes('streaming')
   ) {
-    return 'publisher';
+    types.push('publisher');
   }
 
   // Brand indicators (consumer-facing companies)
@@ -142,15 +191,17 @@ export function mapIndustryToCompanyType(
     ind.includes('travel') ||
     ind.includes('hospitality')
   ) {
-    return 'brand';
+    types.push('brand');
   }
 
-  // Default: if it's a software/tech company in our space, likely adtech
-  if (ind.includes('software') || ind.includes('technology')) {
-    return 'adtech';
+  // If nothing matched but it's a software/tech company, default to adtech
+  // (unless we already identified it as ai)
+  if (types.length === 0 && (ind.includes('software') || ind.includes('technology'))) {
+    types.push('adtech');
   }
 
-  return null;
+  // Deduplicate in case multiple conditions matched the same type
+  return [...new Set(types)];
 }
 
 /**

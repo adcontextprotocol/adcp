@@ -21,7 +21,7 @@ All AdCP schemas are available at multiple paths:
 
 ### Exact Version (Recommended for Production)
 ```
-/schemas/2.5.0/core/product.json
+/schemas/2.6.0/core/product.json
 ```
 - **Pin to specific release** - URL never changes
 - **Guaranteed stability** - Schema won't update unexpectedly
@@ -69,8 +69,8 @@ Bundled schemas are experimental and may change or be removed in future releases
 For tools that don't support `$ref` resolution (some API clients, code generators, or desktop applications), AdCP provides **bundled schemas** with all references resolved inline:
 
 ```
-/schemas/2.5.0/bundled/media-buy/create-media-buy-request.json
-/schemas/2.5.0/bundled/media-buy/get-products-response.json
+/schemas/2.6.0/bundled/media-buy/create-media-buy-request.json
+/schemas/2.6.0/bundled/media-buy/get-products-response.json
 ```
 
 ### What's Bundled
@@ -91,11 +91,11 @@ Bundled schemas are generated for all request/response schemas (`*-request.json`
 
 ```javascript
 // Bundled - self-contained, no ref resolution needed
-const schema = await fetch('https://adcp.org/schemas/2.5.0/bundled/media-buy/create-media-buy-request.json');
+const schema = await fetch('https://adcp.org/schemas/2.6.0/bundled/media-buy/create-media-buy-request.json');
 const validate = ajv.compile(await schema.json());
 
 // Modular - requires $ref resolution
-const schema = await fetch('https://adcp.org/schemas/2.5.0/media-buy/create-media-buy-request.json');
+const schema = await fetch('https://adcp.org/schemas/2.6.0/media-buy/create-media-buy-request.json');
 // This schema contains $ref to other schemas that must be resolved
 ```
 
@@ -105,7 +105,7 @@ Bundled schemas include a `_bundled` field with generation metadata:
 
 ```json
 {
-  "$id": "/schemas/2.5.0/bundled/core/product.json",
+  "$id": "/schemas/2.6.0/bundled/core/product.json",
   "title": "Product",
   "_bundled": {
     "generatedAt": "2024-12-17T10:30:00.000Z",
@@ -120,7 +120,7 @@ Bundled schemas include a `_bundled` field with generation metadata:
 
 ```javascript
 // Production - pin exact version
-const SCHEMA_VERSION = '2.5.0';
+const SCHEMA_VERSION = '2.6.0';
 const schema = await fetch(`https://adcp.org/schemas/${SCHEMA_VERSION}/core/product.json`);
 
 // Stable development - track minor version (patch updates only)
@@ -137,12 +137,12 @@ Always use exact versions to ensure generated types match your target protocol v
 ```bash
 # TypeScript SDK generation
 npx json-schema-to-typescript \
-  https://adcp.org/schemas/2.5.0/core/product.json \
+  https://adcp.org/schemas/2.6.0/core/product.json \
   --output types/product.d.ts
 
 # Python SDK generation
 datamodel-codegen \
-  --url https://adcp.org/schemas/2.5.0/core/product.json \
+  --url https://adcp.org/schemas/2.6.0/core/product.json \
   --output models/product.py
 ```
 
@@ -153,7 +153,7 @@ datamodel-codegen \
 import Ajv from 'ajv';
 const ajv = new Ajv();
 
-const schema = await fetch('https://adcp.org/schemas/2.5.0/core/product.json');
+const schema = await fetch('https://adcp.org/schemas/2.6.0/core/product.json');
 const validate = ajv.compile(await schema.json());
 
 if (!validate(data)) {
@@ -227,7 +227,7 @@ If you're currently using `/schemas/v2/`:
    ```
 3. **Consider pinning** for production stability:
    ```javascript
-   const schema = await fetch('/schemas/2.5.0/core/product.json');
+   const schema = await fetch('/schemas/2.6.0/core/product.json');
    ```
 
 ### From Exact Version to Major Alias
@@ -270,11 +270,11 @@ If you want to track the latest 2.x:
 ```bash
 # Get schema registry with version info
 curl https://adcp.org/schemas/v2/index.json | jq '.adcp_version'
-# Output: "2.5.0"
+# Output: "2.6.0"
 
 # Get version from specific release
-curl https://adcp.org/schemas/2.5.0/index.json | jq '.adcp_version'
-# Output: "2.5.0"
+curl https://adcp.org/schemas/2.6.0/index.json | jq '.adcp_version'
+# Output: "2.6.0"
 ```
 
 ### List Available Versions

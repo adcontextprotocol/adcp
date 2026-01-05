@@ -36,12 +36,21 @@ Publishers then return products that include the targeting capabilities to reach
 
 ## Real-Time Decisioning with AXE
 
-For advanced, real-time targeting needs, buyers can layer additional targeting through the **Agentic eXecution Engine (AXE)**:
+For targeting decisions that must happen at impression time, buyers can use the **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)**. AXE is the real-time execution layer between orchestrators and decisioning platforms.
 
-- **Complements base targeting**: Works alongside publisher-defined targeting
-- **Real-time decisions**: Dynamic audience selection based on live data
-- **Avoids conflicts**: Designed to work within publisher targeting constraints
-- **Premium capability**: Advanced targeting for sophisticated campaigns
+**Key capabilities:**
+- **Dynamic audience targeting**: Bring your own DMP/CDP segments to publisher inventory
+- **Brand safety enforcement**: Real-time content evaluation and blocking
+- **Cross-campaign frequency**: Manage user exposure across multiple publishers
+- **First-party data activation**: Use your customer data without sharing PII
+
+**When to use AXE:**
+- Audience segments that can't be expressed in a brief
+- Suppression lists (existing customers, past converters)
+- Real-time brand safety beyond static rules
+- High-cardinality targeting (millions of segment members)
+
+See the [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for implementation details.
 
 ## How Publishers Include Targeting
 
@@ -229,16 +238,18 @@ All targeting parameters use the `any_of` operator pattern for inclusive targeti
 - **Note**: Not all publishers support postal-level targeting
 
 ### axe_include_segment
-- **Description**: AXE segment ID to include for targeting
-- **Format**: String segment identifier
-- **Examples**: `"x8dj3k"`, `"segment_auto_intenders_2024"`
-- **Use cases**: Advanced audience targeting with Agentic eXecution Engine (AXE)
+- **Description**: AXE segment ID for inclusion targeting
+- **Format**: String segment identifier from your AXE platform
+- **Examples**: `"seg_auto_intenders_q1"`, `"audience_lapsed_buyers_30d"`
+- **Use cases**: Dynamic audience targeting, first-party data activation
+- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
 
 ### axe_exclude_segment
-- **Description**: AXE segment ID to exclude from targeting
-- **Format**: String segment identifier
-- **Examples**: `"x9m2p"`, `"segment_existing_customers"`
-- **Use cases**: Exclusion targeting with Agentic eXecution Engine (AXE)
+- **Description**: AXE segment ID for exclusion targeting
+- **Format**: String segment identifier from your AXE platform
+- **Examples**: `"seg_existing_customers"`, `"audience_past_converters"`
+- **Use cases**: Customer suppression, frequency management
+- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per user
@@ -328,6 +339,7 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 
 ## Related Documentation
 
+- **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)** - Real-time execution layer for dynamic targeting
 - **[Signals Protocol](/docs/signals/overview)** - Real-time targeting signals for brand safety and contextual targeting
 - **[Product Discovery](/docs/media-buy/product-discovery/)** - How briefs lead to targeted product recommendations
 - **[Example Briefs](/docs/media-buy/product-discovery/example-briefs)** - Real examples of effective targeting briefs
