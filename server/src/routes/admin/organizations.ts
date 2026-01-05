@@ -1070,4 +1070,137 @@ export function setupOrganizationRoutes(
       }
     }
   );
+
+  // POST /api/admin/organizations/:orgId/add-users - Add users to an organization
+  // Used by Domain Health to move users from personal workspaces to company orgs
+  apiRouter.post(
+    "/organizations/:orgId/add-users",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { user_ids } = req.body;
+
+        if (!Array.isArray(user_ids) || user_ids.length === 0) {
+          return res.status(400).json({
+            error: "Invalid request",
+            message: "user_ids must be a non-empty array",
+          });
+        }
+
+        if (user_ids.length > 100) {
+          return res.status(400).json({
+            error: "Too many users",
+            message: "Cannot add more than 100 users at once",
+          });
+        }
+
+        const pool = getPool();
+
+        // Verify the target org exists and is not a personal workspace
+        const orgCheck = await pool.query(
+          `SELECT workos_organization_id, name, is_personal FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgCheck.rows.length === 0) {
+          return res.status(404).json({
+            error: "Organization not found",
+          });
+        }
+
+        if (orgCheck.rows[0].is_personal) {
+          return res.status(400).json({
+            error: "Invalid target",
+            message: "Cannot add users to a personal workspace",
+          });
+        }
+
+        const orgName = orgCheck.rows[0].name;
+
+        // Process each user
+        let addedCount = 0;
+        const errors: string[] = [];
+
+        for (const userId of user_ids) {
+          try {
+            // Validate user ID format
+            if (typeof userId !== "string" || !/^[\w-]+$/.test(userId)) {
+              errors.push(`Invalid user ID format`);
+              continue;
+            }
+
+            // Check if user exists
+            const userCheck = await pool.query(
+              `SELECT workos_user_id, email, first_name, last_name, workos_organization_id
+               FROM organization_memberships
+               WHERE workos_user_id = $1`,
+              [userId]
+            );
+
+            if (userCheck.rows.length === 0) {
+              errors.push(`User ${userId} not found`);
+              continue;
+            }
+
+            const user = userCheck.rows[0];
+
+            // Check if user is already in this org
+            const existingMembership = await pool.query(
+              `SELECT id FROM organization_memberships
+               WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+              [userId, orgId]
+            );
+
+            if (existingMembership.rows.length > 0) {
+              // User already in target org, skip
+              addedCount++;
+              continue;
+            }
+
+            // Add membership to the new org
+            await pool.query(
+              `INSERT INTO organization_memberships
+               (workos_user_id, workos_organization_id, email, first_name, last_name, role)
+               VALUES ($1, $2, $3, $4, $5, 'member')
+               ON CONFLICT (workos_user_id, workos_organization_id)
+               DO UPDATE SET email = EXCLUDED.email, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
+              [userId, orgId, user.email, user.first_name, user.last_name]
+            );
+
+            addedCount++;
+
+            logger.info(
+              {
+                userId,
+                userEmail: user.email,
+                targetOrgId: orgId,
+                targetOrgName: orgName,
+                previousOrgId: user.workos_organization_id,
+                adminEmail: req.user!.email,
+              },
+              "Admin added user to organization"
+            );
+          } catch (err) {
+            logger.error({ err, userId }, "Error adding user to org");
+            errors.push(`Failed to add user ${userId}`);
+          }
+        }
+
+        res.json({
+          success: true,
+          added_count: addedCount,
+          total_requested: user_ids.length,
+          errors: errors.length > 0 ? errors : undefined,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error adding users to organization");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add users to organization",
+        });
+      }
+    }
+  );
 }
