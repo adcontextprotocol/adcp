@@ -1,4 +1,4 @@
--- Migration: 135_seed_dev_committee_leader.sql
+-- Migration: 137_seed_dev_committee_leader.sql
 -- Set up dev leader user as a leader of the Technical Standards Working Group
 -- This is only for local development testing
 

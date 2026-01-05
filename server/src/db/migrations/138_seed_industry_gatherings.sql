@@ -1,4 +1,4 @@
--- Migration: 136_seed_industry_gatherings.sql
+-- Migration: 138_seed_industry_gatherings.sql
 -- Seed industry gatherings (external events like CES, Cannes Lions)
 -- These are committee-like groups where members coordinate attendance/activities at major industry events
 
