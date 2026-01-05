@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.2
+
+### Patch Changes
+
+- Add documentation versioning support with Mintlify
+  - Version switcher dropdown with 2.5 (default) and 2.6-rc (preview)
+  - GitHub Actions workflow to sync 2.6.x branch docs to v2.6-rc
+  - Local sync script for testing (`npm run sync:docs`)
+
 ## 2.5.1
 
 ### Patch Changes

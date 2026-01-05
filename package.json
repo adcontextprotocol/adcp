@@ -1,11 +1,12 @@
 {
   "name": "adcontextprotocol",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && DOTENV_CONFIG_PATH=.env.local PORT=${CONDUCTOR_PORT:-3000} tsx watch server/src/index.ts'",
     "start:mintlify": "bash scripts/start-mintlify.sh",
+    "sync:docs": "bash scripts/sync-versioned-docs.sh",
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
