@@ -1,0 +1,109 @@
+---
+title: get_creative_standards
+sidebarTitle: get_creative_standards
+description: Retrieve creative execution guidelines
+---
+
+# get_creative_standards
+
+Retrieve the creative execution guidelines for a specific standards configuration. Returns brand guidelines, asset requirements, and evaluation policies.
+
+## Request
+
+```json
+{
+  "standards_id": "acme_global_2024"
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Identifier for the standards configuration to retrieve |
+
+## Response
+
+```json
+{
+  "standards_id": "acme_global_2024",
+  "version": "2.3.0",
+  "effective_date": "2024-01-15T00:00:00Z",
+  "scope": {
+    "brands": ["ACME Corp"],
+    "countries": ["US", "CA", "GB"],
+    "channels": ["display", "video", "native"],
+    "products": ["enterprise", "consumer"],
+    "description": "Global brand standards for ACME Corp enterprise and consumer products"
+  },
+  "logo_policy": "The ACME logo must appear in all creatives at minimum 48px width with 20px clear space on all sides. Use the primary logo on light backgrounds, reversed logo on dark backgrounds.",
+  "color_policy": "Use primary brand colors (ACME Blue #0052CC, ACME Gray #42526E) for main elements. Secondary palette may be used for accents. Seasonal palettes require approval.",
+  "typography_policy": "Headlines use ACME Sans Bold. Body copy uses ACME Sans Regular at minimum 12px. Never use more than 2 font weights per creative.",
+  "imagery_policy": "Photography should feature real people in authentic situations. No stock photos with obvious staging. Product shots should show actual product in use context.",
+  "messaging_policy": "All creatives must include an approved tagline or value proposition. Claims must be substantiated. Competitive comparisons require legal review.",
+  "required_elements": [
+    "Brand logo",
+    "Approved tagline or value proposition",
+    "Clear call-to-action"
+  ],
+  "prohibited_elements": [
+    "Competitor logos or mentions",
+    "Unsubstantiated claims",
+    "Non-brand colors as primary elements",
+    "Stock photography with watermarks"
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `standards_id` | string | Identifier for this configuration |
+| `version` | string | Version of this standards configuration |
+| `effective_date` | string | When this version became effective |
+| `scope` | object | What this configuration applies to |
+| `scope.brands` | array | Brand names covered |
+| `scope.countries` | array | ISO 3166-1 alpha-2 country codes |
+| `scope.channels` | array | Advertising channels |
+| `scope.products` | array | Product lines or categories |
+| `logo_policy` | string | Natural language logo usage guidelines |
+| `color_policy` | string | Natural language color guidelines |
+| `typography_policy` | string | Natural language typography guidelines |
+| `imagery_policy` | string | Natural language imagery guidelines |
+| `messaging_policy` | string | Natural language messaging guidelines |
+| `required_elements` | array | Elements that must be present |
+| `prohibited_elements` | array | Elements that must not appear |
+
+## Scope-Based Selection
+
+Creative standards can vary by:
+
+- **Country**: Regional variations in brand presentation
+- **Channel**: Display vs. video vs. native requirements
+- **Product**: Different product lines may have distinct brand expressions
+- **Campaign**: Special campaigns may have temporary variations
+
+Request the appropriate `standards_id` based on the creative's intended use.
+
+## Policy Prompts
+
+The policy fields (`logo_policy`, `color_policy`, etc.) use natural language descriptions rather than keyword lists. This enables:
+
+- **AI evaluation**: Language models can interpret guidelines contextually
+- **Nuanced judgments**: Handle edge cases that rule-based systems miss
+- **Human readability**: Same policies work for human reviewers
+- **Easy updates**: Marketing teams can update policies without technical changes
+
+## Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "Standards configuration 'unknown_id' not found"
+    }
+  ]
+}
+```

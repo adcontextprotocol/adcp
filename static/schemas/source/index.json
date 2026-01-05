@@ -562,6 +562,51 @@
         }
       }
     },
+    "creative-standards": {
+      "description": "Creative Standards protocol task request/response schemas for brand guideline compliance",
+      "tasks": {
+        "list-creative-features": {
+          "request": {
+            "$ref": "/schemas/creative-standards/list-creative-features-request.json",
+            "description": "Request parameters for discovering creative compliance features"
+          },
+          "response": {
+            "$ref": "/schemas/creative-standards/list-creative-features-response.json",
+            "description": "Response payload with available creative features"
+          }
+        },
+        "get-creative-standards": {
+          "request": {
+            "$ref": "/schemas/creative-standards/get-creative-standards-request.json",
+            "description": "Request parameters for retrieving creative execution guidelines"
+          },
+          "response": {
+            "$ref": "/schemas/creative-standards/get-creative-standards-response.json",
+            "description": "Response payload with creative execution guidelines"
+          }
+        },
+        "check-creative": {
+          "request": {
+            "$ref": "/schemas/creative-standards/check-creative-request.json",
+            "description": "Request parameters for evaluating a creative asset against brand guidelines"
+          },
+          "response": {
+            "$ref": "/schemas/creative-standards/check-creative-response.json",
+            "description": "Response payload with per-feature evaluation results"
+          }
+        },
+        "validate-creative-delivery": {
+          "request": {
+            "$ref": "/schemas/creative-standards/validate-creative-delivery-request.json",
+            "description": "Request parameters for batch validating creatives"
+          },
+          "response": {
+            "$ref": "/schemas/creative-standards/validate-creative-delivery-response.json",
+            "description": "Response payload with batch validation results"
+          }
+        }
+      }
+    },
     "adagents": {
       "description": "Authorized sales agents file format specification",
       "$ref": "/schemas/adagents.json",

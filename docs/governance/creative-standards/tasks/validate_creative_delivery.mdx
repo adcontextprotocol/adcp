@@ -1,0 +1,193 @@
+---
+title: validate_creative_delivery
+sidebarTitle: validate_creative_delivery
+description: Batch validate delivered creatives against brand guidelines
+---
+
+# validate_creative_delivery
+
+Batch validate delivered creatives against brand guidelines. Use this for post-campaign compliance auditing or to validate a library of creatives.
+
+## Request
+
+```json
+{
+  "standards_id": "acme_global_2024",
+  "creatives": [
+    {
+      "creative_id": "creative_001",
+      "assets": [
+        {
+          "asset_id": "main",
+          "url": "https://cdn.example.com/creative_001/main.png",
+          "content_type": "image/png"
+        }
+      ],
+      "metadata": {
+        "headline": "Transform Your Business",
+        "tagline": "Innovation Delivered"
+      }
+    },
+    {
+      "creative_id": "creative_002",
+      "assets": [
+        {
+          "asset_id": "main",
+          "url": "https://cdn.example.com/creative_002/main.png",
+          "content_type": "image/png"
+        }
+      ],
+      "metadata": {
+        "headline": "Scale with Confidence",
+        "tagline": "ACME Enterprise"
+      }
+    }
+  ],
+  "feature_ids": ["logo_present", "color_palette", "approved_tagline"],
+  "include_passed": false
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Standards configuration to validate against |
+| `creatives` | array | Yes | Creative assets to validate (max 1,000) |
+| `creatives[].creative_id` | string | Yes | Unique identifier for each creative |
+| `creatives[].assets` | array | Yes | Asset files for the creative |
+| `creatives[].metadata` | object | No | Text content and metadata |
+| `feature_ids` | array | No | Specific features to evaluate (defaults to all) |
+| `include_passed` | boolean | No | Include passed creatives in results (default: true) |
+
+## Response
+
+```json
+{
+  "summary": {
+    "total_creatives": 2,
+    "passed_creatives": 1,
+    "failed_creatives": 1,
+    "total_features": 6,
+    "passed_features": 5,
+    "failed_features": 1
+  },
+  "results": [
+    {
+      "creative_id": "creative_002",
+      "features": [
+        {
+          "feature_id": "logo_present",
+          "status": "passed"
+        },
+        {
+          "feature_id": "color_palette",
+          "status": "passed",
+          "value": "primary"
+        },
+        {
+          "feature_id": "approved_tagline",
+          "status": "failed",
+          "message": "Tagline 'ACME Enterprise' is not in approved list",
+          "suggestion": "Use 'ACME - Enterprise Solutions' instead"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary` | object | Aggregate counts across all creatives |
+| `summary.total_creatives` | integer | Total creatives evaluated |
+| `summary.passed_creatives` | integer | Creatives passing all features |
+| `summary.failed_creatives` | integer | Creatives with at least one failure |
+| `summary.total_features` | integer | Total feature evaluations |
+| `summary.passed_features` | integer | Feature evaluations that passed |
+| `summary.failed_features` | integer | Feature evaluations that failed |
+| `results` | array | Per-creative evaluation results |
+| `results[].creative_id` | string | Which creative was evaluated |
+| `results[].features` | array | Feature results for this creative |
+
+## Batch Processing
+
+For large creative libraries:
+
+- Maximum 1,000 creatives per request
+- Process in batches for larger sets
+- Use `include_passed: false` to reduce response size when only failures matter
+- Use `feature_ids` to focus on specific compliance aspects
+
+## Use Cases
+
+### Post-Campaign Audit
+Validate all creatives that ran during a campaign:
+
+```json
+{
+  "standards_id": "acme_global_2024",
+  "creatives": [...], // All creatives from campaign
+  "include_passed": true  // Full audit report
+}
+```
+
+### Pre-Flight Check
+Validate creatives before launch:
+
+```json
+{
+  "standards_id": "acme_global_2024",
+  "creatives": [...], // Creatives pending approval
+  "include_passed": false  // Only show problems
+}
+```
+
+### Compliance Monitoring
+Regular checks of active creative library:
+
+```json
+{
+  "standards_id": "acme_global_2024",
+  "creatives": [...], // Random sample or full library
+  "feature_ids": ["logo_present", "approved_tagline"]  // Focus areas
+}
+```
+
+## Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "BATCH_TOO_LARGE",
+      "message": "Request contains 1500 creatives, maximum is 1000"
+    }
+  ]
+}
+```
+
+## Partial Failures
+
+If some creatives fail to evaluate, results include both successful evaluations and errors:
+
+```json
+{
+  "summary": {
+    "total_creatives": 100,
+    "passed_creatives": 95,
+    "failed_creatives": 3,
+    "error_creatives": 2
+  },
+  "results": [...],
+  "errors": [
+    {
+      "creative_id": "creative_099",
+      "code": "ASSET_UNAVAILABLE",
+      "message": "Could not fetch main asset"
+    }
+  ]
+}
+```

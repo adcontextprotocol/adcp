@@ -1,0 +1,120 @@
+---
+title: list_creative_features
+sidebarTitle: list_creative_features
+description: Discover available creative compliance features
+---
+
+# list_creative_features
+
+Discover what creative compliance features this agent can evaluate. Features represent specific aspects of brand guideline compliance that can be checked.
+
+## Request
+
+```json
+{
+  "standards_id": "acme_global_2024"  // Optional: filter to specific standards
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | No | Filter features available for a specific standards configuration |
+
+## Response
+
+```json
+{
+  "features": [
+    {
+      "feature_id": "logo_present",
+      "name": "Logo Present",
+      "description": "Verifies the brand logo is included in the creative",
+      "type": "binary",
+      "severity": "block"
+    },
+    {
+      "feature_id": "logo_clear_space_px",
+      "name": "Logo Clear Space",
+      "description": "Minimum clear space around the logo in pixels",
+      "type": "quantitative",
+      "range": { "min": 20 },
+      "severity": "warn"
+    },
+    {
+      "feature_id": "color_palette",
+      "name": "Color Palette",
+      "description": "Which approved brand color palette is used",
+      "type": "categorical",
+      "allowed_values": ["primary", "secondary", "seasonal_q4"],
+      "severity": "warn"
+    },
+    {
+      "feature_id": "typography_family",
+      "name": "Typography",
+      "description": "Font family used in the creative",
+      "type": "categorical",
+      "allowed_values": ["brand_sans", "brand_serif", "brand_display"],
+      "severity": "warn"
+    },
+    {
+      "feature_id": "text_contrast_ratio",
+      "name": "Text Contrast Ratio",
+      "description": "WCAG contrast ratio for text legibility",
+      "type": "quantitative",
+      "range": { "min": 4.5 },
+      "severity": "warn"
+    }
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `features` | array | List of available features |
+| `features[].feature_id` | string | Unique identifier for the feature |
+| `features[].name` | string | Human-readable name |
+| `features[].description` | string | What this feature evaluates |
+| `features[].type` | string | One of: `binary`, `quantitative`, `categorical` |
+| `features[].range` | object | For quantitative features: min/max values |
+| `features[].allowed_values` | array | For categorical features: valid values |
+| `features[].severity` | string | Default severity when feature fails: `block`, `warn`, `info` |
+
+## Feature Types
+
+### Binary Features
+Pass/fail checks:
+- `logo_present`: Brand logo is included
+- `approved_tagline`: Uses an approved brand tagline
+- `legal_disclaimer`: Required legal text is present
+- `click_url_valid`: Clickthrough URL is accessible
+
+### Quantitative Features
+Numeric thresholds:
+- `logo_clear_space_px`: Minimum pixels around logo
+- `logo_min_width_px`: Minimum logo width
+- `text_contrast_ratio`: WCAG contrast ratio
+- `animation_duration_sec`: Max animation length
+
+### Categorical Features
+Values from defined sets:
+- `color_palette`: primary, secondary, seasonal variants
+- `typography_family`: approved font families
+- `imagery_style`: lifestyle, product, abstract, etc.
+- `cta_style`: primary, secondary, text-only
+
+## Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "INVALID_STANDARDS_ID",
+      "message": "Standards configuration 'unknown_id' not found"
+    }
+  ]
+}
+```

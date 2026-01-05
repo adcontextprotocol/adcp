@@ -102,6 +102,21 @@
             ]
           },
           {
+            "group": "Creative Standards Protocol",
+            "pages": [
+              "docs/governance/creative-standards/index",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/governance/creative-standards/tasks/list_creative_features",
+                  "docs/governance/creative-standards/tasks/get_creative_standards",
+                  "docs/governance/creative-standards/tasks/check_creative",
+                  "docs/governance/creative-standards/tasks/validate_creative_delivery"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Curation Protocol",
             "pages": [
               "docs/curation/coming-soon"

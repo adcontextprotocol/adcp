@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-standards/validate-creative-delivery-request.json",
+  "title": "Validate Creative Delivery Request",
+  "description": "Request parameters for batch validating creatives against brand guidelines",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Standards configuration to validate against"
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Creative assets to validate (max 1,000)",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for this creative"
+          },
+          "assets": {
+            "type": "array",
+            "description": "Asset files for this creative",
+            "items": {
+              "type": "object",
+              "properties": {
+                "asset_id": { "type": "string" },
+                "url": { "type": "string", "format": "uri" },
+                "content_type": { "type": "string" }
+              },
+              "required": ["url"]
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Text content and metadata",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["creative_id", "assets"]
+      }
+    },
+    "feature_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Specific features to evaluate (defaults to all)"
+    },
+    "include_passed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include passed creatives in results"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["standards_id", "creatives"]
+}
