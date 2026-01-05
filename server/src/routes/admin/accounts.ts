@@ -1233,8 +1233,18 @@ export function setupAccountRoutes(
         const queryParams: (string | string[])[] = [sourceOrgId];
 
         if (userIds && Array.isArray(userIds) && userIds.length > 0) {
+          // Validate all user IDs are non-empty strings
+          const validIds = userIds.filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0
+          );
+          if (validIds.length !== userIds.length) {
+            return res.status(400).json({
+              error: "Invalid request",
+              message: "user_ids must contain only non-empty strings",
+            });
+          }
           membersQuery += ` AND om.workos_user_id = ANY($2)`;
-          queryParams.push(userIds);
+          queryParams.push(validIds);
         }
 
         const membersResult = await pool.query(membersQuery, queryParams);
@@ -1266,24 +1276,43 @@ export function setupAccountRoutes(
 
         for (const member of members) {
           try {
-            // Remove from source org
+            // Add to target org FIRST (if this fails, no state has changed)
+            const newMembership =
+              await workos.userManagement.createOrganizationMembership({
+                organizationId: targetOrgId,
+                userId: member.workos_user_id,
+              });
+
+            // Only remove from source org AFTER successful add
             if (member.workos_membership_id) {
               await workos.userManagement.deleteOrganizationMembership(
                 member.workos_membership_id
               );
             }
 
-            // Add to target org
-            await workos.userManagement.createOrganizationMembership({
-              organizationId: targetOrgId,
-              userId: member.workos_user_id,
-            });
-
-            // Update local cache
+            // Update local cache - remove from source and add to target
             await pool.query(
               `DELETE FROM organization_memberships
                WHERE workos_user_id = $1 AND workos_organization_id = $2`,
               [member.workos_user_id, sourceOrgId]
+            );
+
+            // Insert into target org cache
+            await pool.query(
+              `INSERT INTO organization_memberships
+               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, synced_at)
+               VALUES ($1, $2, $3, $4, $5, $6, NOW())
+               ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
+               workos_membership_id = EXCLUDED.workos_membership_id,
+               synced_at = NOW()`,
+              [
+                member.workos_user_id,
+                targetOrgId,
+                newMembership.id,
+                member.email,
+                member.first_name,
+                member.last_name,
+              ]
             );
 
             results.push({

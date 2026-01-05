@@ -1058,7 +1058,7 @@
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="closeModal('migrateMembersModal')">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="migrateMembersBtn">Migrate Members</button>
+          <button type="submit" class="btn btn-primary" id="migrateMembersSubmitBtn">Migrate Members</button>
         </div>
       </form>
     </div>
@@ -2305,7 +2305,7 @@
       const checkboxes = document.querySelectorAll('input[name="migrateUser"]:checked');
       const userIds = Array.from(checkboxes).map(cb => cb.value);
 
-      const btn = document.getElementById('migrateMembersBtn');
+      const btn = document.getElementById('migrateMembersSubmitBtn');
       btn.disabled = true;
       btn.textContent = 'Migrating...';
 
