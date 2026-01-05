@@ -187,7 +187,6 @@
 
     // Events link (no dropdown - just links to events calendar)
     const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
-    const industryGatheringsUrl = isLocal ? '/industry-gatherings' : `${aaoBaseUrl}/industry-gatherings`;
     const isEventsActive = currentPath.startsWith('/events');
     const eventsLink = membershipEnabled
       ? `<a href="${eventsUrl}" class="navbar__link ${isEventsActive ? 'active' : ''}">Events</a>`
