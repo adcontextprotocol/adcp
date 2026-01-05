@@ -75,18 +75,34 @@ Buyers typically maintain multiple standards configurations for different contex
 }
 ```
 
-**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves. Scope fields are metadata that help buyers organize and select the right configuration.
+**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves. Scope defines where this standards configuration applies:
 
 - **brand_ids**: References to brand identifiers defined in the [Brand Manifest](/docs/creative/brand-manifest). Brand names may differ across countries, so we use stable IDs rather than display names.
-- **countries_all**: ISO country codes - the standards configuration was designed for ALL listed countries
-- **channels_any**: Advertising channels - the standards configuration applies to ANY of the listed channels
+- **countries_all**: ISO country codes - standards apply in ALL listed countries (different jurisdictions have different regulations)
+- **channels_any**: Advertising channels - standards apply to ANY of the listed channels
 
 ## Tasks
+
+### Discovery
 
 | Task | Description |
 |------|-------------|
 | [list_content_features](/docs/governance/content-standards/tasks/list_content_features) | Discover features the agent can evaluate |
-| [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) | Retrieve content safety policies |
+| [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) | List available standards configurations |
+| [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) | Retrieve a specific standards configuration |
+
+### Management
+
+| Task | Description |
+|------|-------------|
+| [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) | Create a new standards configuration |
+| [update_content_standards](/docs/governance/content-standards/tasks/update_content_standards) | Update an existing standards configuration |
+| [delete_content_standards](/docs/governance/content-standards/tasks/delete_content_standards) | Delete a standards configuration |
+
+### Evaluation
+
+| Task | Description |
+|------|-------------|
 | [check_content](/docs/governance/content-standards/tasks/check_content) | Evaluate a single content context |
 | [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of delivery records |
 
@@ -97,32 +113,41 @@ Buyers typically maintain multiple standards configurations for different contex
 - **Scope3** - Sustainability-focused brand safety with prompt-based policies
 - **Custom** - Brand-specific implementations
 
-## Feature-Based Results
+## Evaluation Results
 
-All verification tasks return **feature-based results** rather than simple pass/fail:
+Evaluation tasks always return a **pass/fail verdict** and may optionally include feature-level details:
 
 ```json
 {
-  "summary": {
-    "total_features": 5,
-    "passed_features": 4,
-    "failed_features": 1
-  },
-  "results": [
+  "verdict": "fail",
+  "features": [
     {
       "feature_id": "brand_safety",
       "status": "passed",
       "value": "safe"
     },
     {
+      "feature_id": "brand_suitability",
+      "status": "failed",
+      "message": "Content tone doesn't match brand guidelines"
+    },
+    {
       "feature_id": "competitor_adjacency",
       "status": "failed",
-      "message": "Content mentions competitor brand",
-      "suggestion": "Avoid placements on this page"
+      "message": "Content mentions competitor brand"
     }
   ]
 }
 ```
+
+### Why Feature Breakdown Matters
+
+Feature-level results help buyers understand *why* content was blocked:
+
+- **Optimization**: Which rules cause the most blocking? Are your suitability criteria too strict?
+- **Safety vs Suitability**: Distinguish universal brand safety blocks (hate speech, illegal content) from brand-specific suitability blocks (tone, competitive separation)
+- **Debugging**: When using third-party standards like Scope3 Common Sense Brand Standards, identify which specific category caused the issue
+- **Reporting**: Track block rates by feature to inform policy refinement
 
 ## Related
 

@@ -1,0 +1,67 @@
+---
+title: list_content_standards
+sidebar_position: 2
+---
+
+# list_content_standards
+
+List available content standards configurations.
+
+**Response time**: < 500ms
+
+## Request
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand_ids` | array | No | Filter by brand identifiers |
+| `countries` | array | No | Filter by country codes |
+| `channels` | array | No | Filter by channels |
+
+## Response
+
+### Success Response
+
+```json
+{
+  "standards": [
+    {
+      "standards_id": "nike_emea_safety",
+      "version": "1.2.0",
+      "scope": {
+        "brand_ids": ["nike"],
+        "countries_all": ["GB", "DE", "FR"],
+        "channels_any": ["display", "video", "ctv"],
+        "description": "Nike EMEA - all digital channels"
+      }
+    },
+    {
+      "standards_id": "nike_us_display",
+      "version": "1.0.0",
+      "scope": {
+        "brand_ids": ["nike"],
+        "countries_all": ["US"],
+        "channels_any": ["display"],
+        "description": "Nike US - display only"
+      }
+    }
+  ]
+}
+```
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "UNAUTHORIZED",
+      "message": "Invalid or expired token"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Get a specific standards configuration
+- [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) - Create a new configuration

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/content-standards/validate-content-delivery-response.json",
   "title": "Validate Content Delivery Response",
-  "description": "Response payload with per-record feature results and summary statistics",
+  "description": "Response payload with per-record verdicts and optional feature breakdown",
   "type": "object",
   "oneOf": [
     {
@@ -15,10 +15,7 @@
           "properties": {
             "total_records": { "type": "integer" },
             "passed_records": { "type": "integer" },
-            "failed_records": { "type": "integer" },
-            "total_features": { "type": "integer" },
-            "passed_features": { "type": "integer" },
-            "failed_features": { "type": "integer" }
+            "failed_records": { "type": "integer" }
           },
           "required": ["total_records", "passed_records", "failed_records"]
         },
@@ -32,9 +29,14 @@
                 "type": "string",
                 "description": "Which delivery record was evaluated"
               },
+              "verdict": {
+                "type": "string",
+                "enum": ["pass", "fail"],
+                "description": "Overall pass/fail verdict for this record"
+              },
               "features": {
                 "type": "array",
-                "description": "Feature results for this record",
+                "description": "Optional feature-level breakdown",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -45,13 +47,16 @@
                     },
                     "value": {},
                     "message": { "type": "string" },
-                    "suggestion": { "type": "string" }
+                    "rule_id": {
+                      "type": "string",
+                      "description": "Which rule triggered this result (e.g., GARM category, Scope3 standard)"
+                    }
                   },
                   "required": ["feature_id", "status"]
                 }
               }
             },
-            "required": ["record_id", "features"]
+            "required": ["record_id", "verdict"]
           }
         },
         "errors": {

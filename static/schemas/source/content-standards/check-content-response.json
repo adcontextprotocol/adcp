@@ -2,54 +2,43 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/content-standards/check-content-response.json",
   "title": "Check Content Response",
-  "description": "Response payload with per-feature evaluation results",
+  "description": "Response payload with pass/fail verdict and optional feature-level details",
   "type": "object",
   "oneOf": [
     {
       "type": "object",
       "description": "Success response",
       "properties": {
-        "summary": {
-          "type": "object",
-          "description": "Summary counts of feature evaluations",
-          "properties": {
-            "total_features": { "type": "integer" },
-            "passed_features": { "type": "integer" },
-            "failed_features": { "type": "integer" },
-            "warning_features": { "type": "integer" },
-            "unevaluated_features": { "type": "integer" }
-          },
-          "required": ["total_features", "passed_features", "failed_features"]
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "fail"],
+          "description": "Overall pass/fail verdict for the content evaluation"
         },
-        "results": {
+        "features": {
           "type": "array",
-          "description": "Per-feature evaluation results",
+          "description": "Optional feature-level breakdown showing which rules passed/failed",
           "items": {
             "type": "object",
             "properties": {
               "feature_id": {
                 "type": "string",
-                "description": "Which feature was evaluated"
+                "description": "Which feature was evaluated (e.g., brand_safety, brand_suitability, competitor_adjacency)"
               },
               "status": {
                 "type": "string",
                 "enum": ["passed", "failed", "warning", "unevaluated"],
-                "description": "Evaluation status"
+                "description": "Evaluation status for this feature"
               },
               "value": {
                 "description": "The evaluated value (type depends on feature)"
               },
               "message": {
                 "type": "string",
-                "description": "Human-readable explanation"
+                "description": "Human-readable explanation of the result"
               },
               "rule_id": {
                 "type": "string",
-                "description": "Which rule triggered this result"
-              },
-              "suggestion": {
-                "type": "string",
-                "description": "Recommended action if failed"
+                "description": "Which rule triggered this result (e.g., GARM category, Scope3 standard)"
               }
             },
             "required": ["feature_id", "status"]
@@ -66,7 +55,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["summary", "results"]
+      "required": ["verdict"]
     },
     {
       "type": "object",
@@ -76,7 +65,7 @@
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
         },
-        "summary": {
+        "verdict": {
           "not": {},
           "description": "Field must not be present in error response"
         },

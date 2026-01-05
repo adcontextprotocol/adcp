@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # check_content
 
-Evaluate a single content context against content safety policies. Returns per-feature evaluation results.
+Evaluate a single content context against content safety policies. Returns a pass/fail verdict with optional feature-level breakdown.
 
 **Response time**: < 500ms
 
@@ -39,14 +39,8 @@ Evaluate a single content context against content safety policies. Returns per-f
 
 ```json
 {
-  "summary": {
-    "total_features": 5,
-    "passed_features": 5,
-    "failed_features": 0,
-    "warning_features": 0,
-    "unevaluated_features": 0
-  },
-  "results": [
+  "verdict": "pass",
+  "features": [
     {
       "feature_id": "brand_safety",
       "status": "passed",
@@ -54,26 +48,13 @@ Evaluate a single content context against content safety policies. Returns per-f
       "message": "Content classified as safe"
     },
     {
-      "feature_id": "sentiment",
+      "feature_id": "brand_suitability",
       "status": "passed",
-      "value": "positive",
-      "message": "Positive sports coverage"
+      "message": "Content matches brand guidelines"
     },
     {
       "feature_id": "competitor_adjacency",
-      "status": "passed",
-      "value": false
-    },
-    {
-      "feature_id": "garm_category",
-      "status": "passed",
-      "value": "safe"
-    },
-    {
-      "feature_id": "news_quality",
-      "status": "passed",
-      "value": 85,
-      "message": "High-quality sports journalism"
+      "status": "passed"
     }
   ]
 }
@@ -83,59 +64,45 @@ Evaluate a single content context against content safety policies. Returns per-f
 
 ```json
 {
-  "summary": {
-    "total_features": 5,
-    "passed_features": 3,
-    "failed_features": 2,
-    "warning_features": 0,
-    "unevaluated_features": 0
-  },
-  "results": [
+  "verdict": "fail",
+  "features": [
     {
       "feature_id": "brand_safety",
-      "status": "failed",
-      "value": "high_risk",
-      "message": "Content contains controversial political topics",
-      "rule_id": "safety.political_content",
-      "suggestion": "Avoid placements on politically charged content"
-    },
-    {
-      "feature_id": "competitor_adjacency",
-      "status": "failed",
-      "value": true,
-      "message": "Content mentions competitor brand 'Adidas'",
-      "rule_id": "competitive.brand_mention",
-      "suggestion": "Exclude placements where competitors are featured"
-    },
-    {
-      "feature_id": "sentiment",
-      "status": "passed",
-      "value": "neutral"
-    },
-    {
-      "feature_id": "garm_category",
       "status": "passed",
       "value": "safe"
     },
     {
-      "feature_id": "news_quality",
-      "status": "passed",
-      "value": 72
+      "feature_id": "brand_suitability",
+      "status": "failed",
+      "message": "Content tone doesn't match brand guidelines",
+      "rule_id": "suitability.tone"
+    },
+    {
+      "feature_id": "competitor_adjacency",
+      "status": "failed",
+      "message": "Content mentions competitor brand 'Adidas'",
+      "rule_id": "competitive.brand_mention"
     }
   ]
 }
 ```
 
-### Result Fields
+### Response Fields
 
 | Field | Description |
 |-------|-------------|
-| `feature_id` | Which feature was evaluated |
+| `verdict` | Overall `pass` or `fail` decision |
+| `features` | Optional array of per-feature results |
+
+### Feature Fields
+
+| Field | Description |
+|-------|-------------|
+| `feature_id` | Which feature was evaluated (e.g., `brand_safety`, `brand_suitability`, `competitor_adjacency`) |
 | `status` | `passed`, `failed`, `warning`, or `unevaluated` |
 | `value` | The evaluated value (type depends on feature) |
 | `message` | Human-readable explanation |
-| `rule_id` | Which rule triggered this result |
-| `suggestion` | Recommended action if failed |
+| `rule_id` | Which rule triggered this result (e.g., GARM category, Scope3 standard) |
 
 ## Example Usage
 
@@ -150,11 +117,11 @@ result = content_standards_agent.check_content(
     }
 )
 
-if result["summary"]["failed_features"] > 0:
-    # Content has issues - review or skip
-    for r in result["results"]:
-        if r["status"] == "failed":
-            print(f"Failed: {r['feature_id']} - {r['message']}")
+if result["verdict"] == "fail":
+    # Content blocked - check features to understand why
+    for feature in result.get("features", []):
+        if feature["status"] == "failed":
+            print(f"Blocked by: {feature['feature_id']} - {feature.get('message', '')}")
 ```
 
 ## Related Tasks

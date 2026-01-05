@@ -1,0 +1,53 @@
+---
+title: delete_content_standards
+sidebar_position: 7
+---
+
+# delete_content_standards
+
+Delete a content standards configuration.
+
+**Response time**: < 500ms
+
+## Request
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | ID of the standards configuration to delete |
+
+### Example Request
+
+```json
+{
+  "standards_id": "nike_emea_safety"
+}
+```
+
+## Response
+
+### Success Response
+
+```json
+{
+  "deleted": true,
+  "standards_id": "nike_emea_safety"
+}
+```
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) - List all configurations
+- [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) - Create a new configuration
