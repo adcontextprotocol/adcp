@@ -313,6 +313,25 @@ export function createCommitteeRouters(): {
         updates.region = null;
       }
 
+      // Validate slug format and uniqueness if changing
+      if (updates.slug) {
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(updates.slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
+          });
+        }
+
+        const slugAvailable = await workingGroupDb.isSlugAvailable(updates.slug, id);
+        if (!slugAvailable) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: `A working group with slug '${updates.slug}' already exists`
+          });
+        }
+      }
+
       // Check if we're adding/changing a Slack channel
       const existingGroup = await workingGroupDb.getWorkingGroupById(id);
       const isAddingChannel = updates.slack_channel_url && (!existingGroup?.slack_channel_id || updates.slack_channel_url !== existingGroup.slack_channel_url);

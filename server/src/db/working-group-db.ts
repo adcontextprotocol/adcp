@@ -153,6 +153,7 @@ export class WorkingGroupDatabase {
 
     const COLUMN_MAP: Record<string, string> = {
       name: 'name',
+      slug: 'slug',
       description: 'description',
       slack_channel_url: 'slack_channel_url',
       slack_channel_id: 'slack_channel_id',
