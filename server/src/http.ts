@@ -5956,18 +5956,23 @@ Disallow: /api/admin/
 
         return res.json({
           success: true,
-          formats: formats.map(format => ({
-            format_id: format.format_id,
-            name: format.name,
-            type: format.type,
-            description: format.description,
-            preview_image: format.preview_image,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets_required: format.assets_required,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          })),
+          formats: formats.map(format => {
+            // Cast to allow 'assets' field (added in schema v2.5.2, @adcp/client may not have it yet)
+            const formatWithAssets = format as typeof format & { assets?: unknown };
+            return {
+              format_id: format.format_id,
+              name: format.name,
+              type: format.type,
+              description: format.description,
+              preview_image: format.preview_image,
+              example_url: format.example_url,
+              renders: format.renders,
+              assets_required: format.assets_required, // deprecated but kept for backward compatibility
+              assets: formatWithAssets.assets, // new unified field
+              output_format_ids: format.output_format_ids,
+              agent_url: format.agent_url,
+            };
+          }),
         });
       } catch (error) {
         logger.error({ err: error, url }, 'Agent formats fetch error');

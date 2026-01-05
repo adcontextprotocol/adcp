@@ -2,6 +2,7 @@ name: Check Testable Snippets
 
 on:
   pull_request:
+    branches: [main, '2.6.x']
     paths:
       - 'docs/**/*.md'
       - 'docs/**/*.mdx'
@@ -26,7 +27,7 @@ jobs:
 
           if [ -s changed_files.txt ]; then
             echo "📋 Checking documentation changes for testable snippets..."
-            node scripts/check-testable-snippets.js
+            node scripts/check-testable-snippets.cjs
           else
             echo "✓ No documentation files changed"
           fi
