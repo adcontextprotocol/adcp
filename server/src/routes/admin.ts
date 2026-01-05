@@ -226,6 +226,33 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 opted_out: row.outreach_opt_out || false,
               };
             }
+
+            // Get detailed outreach history with goals, responses, and linked threads
+            const outreachHistoryQuery = `
+              SELECT
+                mo.id,
+                mo.sent_at,
+                mo.initial_message,
+                mo.user_responded,
+                mo.response_received_at,
+                mo.response_sentiment,
+                mo.response_intent,
+                mo.response_text,
+                mo.thread_id,
+                mo.dm_channel_id,
+                ig.name as goal_name,
+                ig.question as goal_question,
+                at.message_count as thread_message_count
+              FROM member_outreach mo
+              LEFT JOIN insight_goals ig ON ig.id = mo.insight_goal_id
+              LEFT JOIN addie_threads at ON at.thread_id = mo.thread_id
+              WHERE mo.slack_user_id = $1
+              ORDER BY mo.sent_at DESC
+              LIMIT 10`;
+            const historyResult = await pool.query(outreachHistoryQuery, [slackUserId]);
+            if (historyResult.rows.length > 0) {
+              (extendedContext as typeof extendedContext & { outreach_history?: unknown }).outreach_history = historyResult.rows;
+            }
           }
 
           // Get recent conversations (threads) for this user

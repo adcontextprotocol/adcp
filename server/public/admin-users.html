@@ -2160,8 +2160,51 @@
             <span class="context-badge" style="background: var(--color-error-100); color: var(--color-error-700);">Opted Out</span>
           </div>`;
         }
+        html += '</div>';
 
-        html += '</div></div>';
+        // Detailed outreach history with conversation threads
+        if (context.outreach_history && context.outreach_history.length > 0) {
+          html += '<div style="margin-top: var(--space-3); max-height: 250px; overflow-y: auto;">';
+          context.outreach_history.forEach(outreach => {
+            const date = new Date(outreach.sent_at).toLocaleDateString();
+            const goalName = outreach.goal_name || 'General';
+            const hasResponse = outreach.user_responded;
+            const sentiment = outreach.response_sentiment;
+            const intent = outreach.response_intent;
+
+            // Sentiment badge colors
+            let sentimentBadge = '';
+            if (sentiment) {
+              const colors = {
+                positive: 'background: var(--color-success-100); color: var(--color-success-700);',
+                neutral: 'background: var(--color-gray-100); color: var(--color-gray-700);',
+                negative: 'background: var(--color-warning-100); color: var(--color-warning-700);',
+                refusal: 'background: var(--color-error-100); color: var(--color-error-700);'
+              };
+              sentimentBadge = `<span style="font-size: var(--text-xs); padding: 2px 6px; border-radius: var(--radius-sm); ${colors[sentiment] || ''}">${sentiment}</span>`;
+            }
+
+            // Thread link if available
+            const threadLink = outreach.thread_id
+              ? `<a href="/admin/addie?thread=${encodeURIComponent(outreach.thread_id)}" target="_blank" style="color: var(--color-brand); font-size: var(--text-xs);">View Thread (${outreach.thread_message_count || 0} msgs)</a>`
+              : '';
+
+            html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
+                <span style="font-weight: var(--font-medium); font-size: var(--text-sm); color: var(--color-text-heading);">${escapeHtml(goalName)}</span>
+                <span style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${date}</span>
+              </div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">
+                ${hasResponse ? '✓ Responded' : '○ No response'} ${sentimentBadge}
+              </div>
+              ${outreach.response_text ? `<div style="font-size: var(--text-xs); color: var(--color-text-secondary); font-style: italic; margin-bottom: var(--space-1);">"${escapeHtml(outreach.response_text.substring(0, 100))}${outreach.response_text.length > 100 ? '...' : ''}"</div>` : ''}
+              ${threadLink}
+            </div>`;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
       }
 
       // Impersonation Link (if WorkOS user exists)
