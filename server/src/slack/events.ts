@@ -259,7 +259,8 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
     // Check if this channel is linked to a working group (chapter or event)
     // and auto-add the user if they have a WorkOS mapping
     if (mapping?.workos_user_id) {
-      await autoAddToWorkingGroup(event.channel, mapping.workos_user_id, mapping);
+      const isPrivateChannel = event.channel_type === 'G';
+      await autoAddToWorkingGroup(event.channel, mapping.workos_user_id, mapping, isPrivateChannel);
     }
   } catch (error) {
     logger.error({ error, userId: event.user }, 'Failed to record channel join activity');
@@ -268,12 +269,16 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
 
 /**
  * Auto-add user to a working group when they join its Slack channel
- * This enables "join channel = join group" for chapters and events
+ * This enables "join channel = join group" for all committee types
+ *
+ * For private committees, we only auto-add if the Slack channel is also private,
+ * since Slack already enforces access control for private channels.
  */
 async function autoAddToWorkingGroup(
   channelId: string,
   workosUserId: string,
-  slackMapping: { slack_email?: string | null; slack_real_name?: string | null; slack_display_name?: string | null }
+  slackMapping: { slack_email?: string | null; slack_real_name?: string | null; slack_display_name?: string | null },
+  isPrivateSlackChannel: boolean
 ): Promise<void> {
   try {
     // Check if this channel is linked to a working group
@@ -284,11 +289,12 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Only auto-add for chapters and industry gathering groups
-    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'industry_gathering') {
+    // Skip auto-add for private committees unless the Slack channel is also private
+    // (private Slack channels already enforce access control)
+    if (workingGroup.is_private && !isPrivateSlackChannel) {
       logger.debug(
-        { workingGroupId: workingGroup.id, type: workingGroup.committee_type },
-        'Skipping auto-add: not a chapter or industry gathering'
+        { workingGroupId: workingGroup.id, name: workingGroup.name },
+        'Skipping auto-add: committee is private but Slack channel is public'
       );
       return;
     }
@@ -303,7 +309,7 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Add to working group with interest tracking for industry gathering groups
+    // Set interest level for industry gatherings (other committee types don't track interest)
     const interestLevel = workingGroup.committee_type === 'industry_gathering' ? 'interested' : undefined;
     const interestSource = 'slack_join';
 
