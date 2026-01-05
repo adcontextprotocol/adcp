@@ -185,23 +185,12 @@
           </div>
         </div>`;
 
-    // Build Events dropdown
+    // Events link (no dropdown - just links to events calendar)
     const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
     const industryGatheringsUrl = isLocal ? '/industry-gatherings' : `${aaoBaseUrl}/industry-gatherings`;
-    const isEventsActive = currentPath.startsWith('/events') || currentPath === '/industry-gatherings';
-    const eventsDropdown = membershipEnabled
-      ? `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${isEventsActive ? 'active' : ''}">
-            Events
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
-              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            </svg>
-          </button>
-          <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${eventsUrl}" class="navbar__dropdown-item ${currentPath === '/events' ? 'active' : ''}">All Events</a>
-            <a href="${industryGatheringsUrl}" class="navbar__dropdown-item ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>
-          </div>
-        </div>`
+    const isEventsActive = currentPath.startsWith('/events');
+    const eventsLink = membershipEnabled
+      ? `<a href="${eventsUrl}" class="navbar__link ${isEventsActive ? 'active' : ''}">Events</a>`
       : '';
 
     // Build "The Latest" dropdown
@@ -229,7 +218,8 @@
     const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
     const councilsUrl = `${committeesBaseUrl}?type=council`;
     const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
-    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups');
+    const gatheringsUrl = `${committeesBaseUrl}?type=industry_gathering`;
+    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings');
     const committeesDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isCommitteesActive ? 'active' : ''}">
@@ -243,6 +233,7 @@
             <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
             <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
             <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
+            <a href="${gatheringsUrl}" class="navbar__dropdown-item ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>
           </div>
         </div>`
       : '';
@@ -264,7 +255,7 @@
             </a>
             <div class="navbar__links-desktop">
               ${projectsDropdown}
-              ${eventsDropdown}
+              ${eventsLink}
               ${latestDropdown}
               ${committeesDropdown}
               ${aboutDropdown}
@@ -295,9 +286,7 @@
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
-          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Events</span>` : ''}
-          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/events' ? 'active' : ''}">All Events</a>` : ''}
-          ${membershipEnabled ? `<a href="${industryGatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
+          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/research" class="navbar__link navbar__link--indent ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
@@ -308,6 +297,7 @@
           ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
           ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
           ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
+          ${membershipEnabled ? `<a href="${gatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
