@@ -984,6 +984,75 @@ Example: For CES 2026, create an industry gathering with name "CES 2026", locati
   },
 
   // ============================================
+  // COMMITTEE LEADERSHIP TOOLS
+  // ============================================
+  {
+    name: 'add_committee_leader',
+    description: `Add a user as a leader of a committee (working group, council, chapter, or industry gathering).
+Leaders have management access to their committee - they can create events, manage posts, and manage members.
+
+To find the user_id:
+1. Look up the user via Slack (use their Slack user ID to find their WorkOS user ID in the mapping)
+2. Or ask for their email and look up via get_organization_details
+
+To find the committee:
+1. Use list_working_groups, list_chapters, or list_industry_gatherings
+2. Use the committee's slug (e.g., "ces-2026", "technical-standards-wg")`,
+    usage_hints: 'Use when an admin wants to give someone committee management access. Get the user_id from Slack mapping or org details.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The slug of the committee (e.g., "ces-2026", "creative-wg", "austin-chapter")',
+        },
+        user_id: {
+          type: 'string',
+          description: 'The WorkOS user ID of the person to make a leader',
+        },
+        user_email: {
+          type: 'string',
+          description: 'Optional: The user email (for confirmation/logging)',
+        },
+      },
+      required: ['committee_slug', 'user_id'],
+    },
+  },
+  {
+    name: 'remove_committee_leader',
+    description: `Remove a user from the leadership of a committee.
+The user will lose management access but will remain a regular member.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The slug of the committee',
+        },
+        user_id: {
+          type: 'string',
+          description: 'The WorkOS user ID of the leader to remove',
+        },
+      },
+      required: ['committee_slug', 'user_id'],
+    },
+  },
+  {
+    name: 'list_committee_leaders',
+    description: `List all leaders of a specific committee. Shows their user IDs, names, and organizations.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The slug of the committee to list leaders for',
+        },
+      },
+      required: ['committee_slug'],
+    },
+  },
+
+  // ============================================
   // ORGANIZATION MANAGEMENT TOOLS
   // ============================================
   {
@@ -3844,6 +3913,160 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error listing industry gatherings');
       return '❌ Failed to list industry gatherings. Please try again.';
+    }
+  });
+
+  // ============================================
+  // COMMITTEE LEADERSHIP HANDLERS
+  // ============================================
+
+  // Add committee leader
+  handlers.set('add_committee_leader', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const committeeSlug = (input.committee_slug as string)?.trim();
+    const userId = (input.user_id as string)?.trim();
+    const userEmail = input.user_email as string | undefined;
+
+    if (!committeeSlug) {
+      return '❌ Please provide a committee_slug (e.g., "ces-2026", "creative-wg").';
+    }
+
+    if (!userId) {
+      return '❌ Please provide a user_id (WorkOS user ID).';
+    }
+
+    try {
+      // Find the committee
+      const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
+      if (!committee) {
+        return `❌ Committee "${committeeSlug}" not found. Use list_working_groups, list_chapters, or list_industry_gatherings to find the correct slug.`;
+      }
+
+      // Check if already a leader
+      const leaders = await wgDb.getLeaders(committee.id);
+      if (leaders.some((l: { user_id: string }) => l.user_id === userId)) {
+        return `ℹ️ User is already a leader of "${committee.name}".`;
+      }
+
+      // Add as leader
+      await wgDb.addLeader(committee.id, userId);
+
+      // Also ensure they're a member
+      const memberships = await wgDb.getMembershipsByWorkingGroup(committee.id);
+      if (!memberships.some(m => m.workos_user_id === userId)) {
+        await wgDb.addMembership({
+          working_group_id: committee.id,
+          workos_user_id: userId,
+          user_email: userEmail,
+        });
+      }
+
+      logger.info({ committeeSlug, committeeName: committee.name, userId, userEmail }, 'Added committee leader via Addie');
+
+      const emailInfo = userEmail ? ` (${userEmail})` : '';
+      return `✅ Successfully added user ${userId}${emailInfo} as a leader of **${committee.name}**.
+
+They now have management access to:
+- Create and manage events
+- Create and manage posts
+- Manage committee members
+
+Committee management page: https://agenticadvertising.org/working-groups/${committeeSlug}/manage`;
+    } catch (error) {
+      logger.error({ error, committeeSlug, userId }, 'Error adding committee leader');
+      return '❌ Failed to add committee leader. Please try again.';
+    }
+  });
+
+  // Remove committee leader
+  handlers.set('remove_committee_leader', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const committeeSlug = (input.committee_slug as string)?.trim();
+    const userId = (input.user_id as string)?.trim();
+
+    if (!committeeSlug) {
+      return '❌ Please provide a committee_slug.';
+    }
+
+    if (!userId) {
+      return '❌ Please provide a user_id.';
+    }
+
+    try {
+      const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
+      if (!committee) {
+        return `❌ Committee "${committeeSlug}" not found.`;
+      }
+
+      // Check if they are a leader
+      const leaders = await wgDb.getLeaders(committee.id);
+      if (!leaders.some((l: { user_id: string }) => l.user_id === userId)) {
+        return `ℹ️ User ${userId} is not a leader of "${committee.name}".`;
+      }
+
+      await wgDb.removeLeader(committee.id, userId);
+
+      logger.info({ committeeSlug, committeeName: committee.name, userId }, 'Removed committee leader via Addie');
+
+      return `✅ Successfully removed user ${userId} as a leader of **${committee.name}**.
+
+They are still a member but no longer have management access.`;
+    } catch (error) {
+      logger.error({ error, committeeSlug, userId }, 'Error removing committee leader');
+      return '❌ Failed to remove committee leader. Please try again.';
+    }
+  });
+
+  // List committee leaders
+  handlers.set('list_committee_leaders', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const committeeSlug = (input.committee_slug as string)?.trim();
+
+    if (!committeeSlug) {
+      return '❌ Please provide a committee_slug.';
+    }
+
+    try {
+      const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
+      if (!committee) {
+        return `❌ Committee "${committeeSlug}" not found.`;
+      }
+
+      const leaders = await wgDb.getLeaders(committee.id);
+
+      if (leaders.length === 0) {
+        return `ℹ️ **${committee.name}** has no assigned leaders.
+
+Use add_committee_leader to assign a leader.`;
+      }
+
+      let response = `## Leaders of ${committee.name}\n\n`;
+      response += `**Committee type:** ${committee.committee_type}\n`;
+      response += `**Slug:** ${committeeSlug}\n\n`;
+
+      for (const leader of leaders) {
+        response += `- **User ID:** ${leader.user_id}\n`;
+        if (leader.name) {
+          response += `  **Name:** ${leader.name}\n`;
+        }
+        if (leader.org_name) {
+          response += `  **Org:** ${leader.org_name}\n`;
+        }
+        if (leader.created_at) {
+          response += `  Added: ${new Date(leader.created_at).toLocaleDateString()}\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, committeeSlug }, 'Error listing committee leaders');
+      return '❌ Failed to list committee leaders. Please try again.';
     }
   });
 

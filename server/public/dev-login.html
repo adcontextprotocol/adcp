@@ -233,6 +233,21 @@
         <div class="user-card__description">Regular member with organization access, no admin privileges</div>
       </button>
 
+      <button class="user-card" onclick="loginAs('leader')">
+        <div class="user-card__header">
+          <div class="user-card__avatar user-card__avatar--member">🎯</div>
+          <div class="user-card__info">
+            <div class="user-card__name">Committee Leader</div>
+            <div class="user-card__email">leader@test.local</div>
+          </div>
+        </div>
+        <div class="user-card__badges">
+          <span class="user-card__badge user-card__badge--member">Member</span>
+          <span class="user-card__badge" style="background: var(--color-primary-100); color: var(--color-primary-700);">Leader</span>
+        </div>
+        <div class="user-card__description">Committee leader who manages working groups (not a site admin)</div>
+      </button>
+
       <button class="user-card" onclick="loginAs('nonmember')">
         <div class="user-card__header">
           <div class="user-card__avatar user-card__avatar--nonmember">👻</div>
