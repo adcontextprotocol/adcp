@@ -17,6 +17,7 @@ server/node_modules
 
 # Misc
 .DS_Store
+cookies.txt
 .conductor_port
 .env.local
 .env.development.local

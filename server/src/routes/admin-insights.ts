@@ -17,6 +17,7 @@ import { getPool } from '../db/client.js';
 import {
   runOutreachScheduler,
   manualOutreach,
+  manualOutreachWithGoal,
   getOutreachMode,
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
@@ -749,6 +750,54 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       }
     } catch (error) {
       logger.error({ err: error }, 'Error sending manual outreach');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/outreach/send-with-goal - Send outreach with a specific goal (admin override)
+  apiRouter.post('/outreach/send-with-goal', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { slack_user_id, goal_id, admin_context } = req.body;
+
+      // Validate inputs
+      const goalIdNum = parseInt(goal_id, 10);
+      if (!slack_user_id || isNaN(goalIdNum) || goalIdNum <= 0) {
+        return res.status(400).json({ error: 'Valid slack_user_id and goal_id are required' });
+      }
+
+      // Check if user can be contacted
+      const eligibility = await canContactUser(slack_user_id);
+      if (!eligibility.canContact) {
+        return res.status(400).json({ error: eligibility.reason });
+      }
+
+      // Pass admin info for auto-assignment
+      const triggeredBy = req.user ? {
+        id: req.user.id,
+        name: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email,
+        email: req.user.email,
+      } : undefined;
+
+      const result = await manualOutreachWithGoal(
+        slack_user_id,
+        goalIdNum,
+        admin_context,
+        triggeredBy
+      );
+
+      if (result.success) {
+        logger.info({
+          slackUserId: slack_user_id,
+          goalId: goal_id,
+          hasContext: !!admin_context,
+          triggeredBy: req.user?.id,
+        }, 'Admin-override outreach sent');
+        res.json(result);
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error) {
+      logger.error({ err: error }, 'Error sending admin-override outreach');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

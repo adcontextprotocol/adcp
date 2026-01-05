@@ -169,7 +169,7 @@ export type OutcomeType = 'success' | 'defer' | 'clarify' | 'decline' | 'escalat
 /**
  * Planner decision method
  */
-export type PlannerDecisionMethod = 'rule_match' | 'llm';
+export type PlannerDecisionMethod = 'rule_match' | 'llm' | 'admin_override';
 
 /**
  * Rehearsal session status
@@ -363,6 +363,8 @@ export interface PlannerContext {
     workos_user_id?: string;
     display_name?: string;
     is_mapped: boolean;
+    /** Whether the user's org has an active AgenticAdvertising.org membership */
+    is_member: boolean;
     engagement_score: number;
     insights: Array<{
       type: string;
@@ -375,6 +377,8 @@ export interface PlannerContext {
     type: string;
     size?: string;
     offerings?: string[];
+    /** Whether this is a real company org vs an auto-generated personal workspace */
+    is_personal_workspace?: boolean;
   };
   /** What capabilities has/hasn't this member unlocked? */
   capabilities?: MemberCapabilities;

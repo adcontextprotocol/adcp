@@ -210,15 +210,16 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 2: Profile completion (critical setup step)
-    if (caps && !caps.profile_complete) {
+    // PRIORITY 2: Profile completion (only for paid members - profiles are only visible to members)
+    // Skip for personal workspaces since those aren't real company profiles
+    if (caps && !caps.profile_complete && ctx.user.is_member && !ctx.company?.is_personal_workspace) {
       const profileGoal = goals.find(g =>
         g.name.toLowerCase().includes('profile') && g.category === 'admin'
       );
       if (profileGoal) {
         return {
           goal: profileGoal,
-          reason: 'Profile not complete - key capability to unlock',
+          reason: 'Profile not complete - visible to other members once set up',
           priority_score: 85,
           alternative_goals: goals.filter(g => g.id !== profileGoal.id).slice(0, 3),
           decision_method: 'rule_match',
@@ -226,7 +227,25 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 3: Working group discovery (for engaged users with none)
+    // PRIORITY 3: Vendor membership (tech companies benefit from profile visibility)
+    // Only for non-members at vendor-type companies
+    const vendorTypes = ['adtech', 'ai', 'data'];
+    if (ctx.user.is_mapped && !ctx.user.is_member && ctx.company?.type && vendorTypes.includes(ctx.company.type)) {
+      const vendorGoal = goals.find(g =>
+        g.name.toLowerCase().includes('vendor') && g.category === 'invitation'
+      );
+      if (vendorGoal) {
+        return {
+          goal: vendorGoal,
+          reason: 'Tech vendor not a member - profiles visible to members would help their business',
+          priority_score: 75,
+          alternative_goals: goals.filter(g => g.id !== vendorGoal.id).slice(0, 3),
+          decision_method: 'rule_match',
+        };
+      }
+    }
+
+    // PRIORITY 4: Working group discovery (for engaged users with none)
     if (caps && caps.account_linked && caps.working_group_count === 0 && caps.slack_message_count_30d > 5) {
       const wgGoal = goals.find(g =>
         g.name.toLowerCase().includes('working group') && g.category === 'education'
@@ -242,7 +261,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 4: Re-engagement for dormant users
+    // PRIORITY 5: Re-engagement for dormant users
     if (caps && caps.last_active_days_ago !== null && caps.last_active_days_ago > 30) {
       const reengageGoal = goals.find(g =>
         g.name.toLowerCase().includes('re-engage') || g.name.toLowerCase().includes('dormant')
@@ -433,8 +452,13 @@ Respond ONLY with valid JSON (no markdown code blocks):
   buildMessage(goal: OutreachGoal, ctx: PlannerContext, linkUrl?: string): string {
     let message = goal.message_template;
 
+    // Extract first name from display name (e.g., "Julie Lorin" -> "Julie")
+    // Handle edge cases: empty strings, single-char names (like "J."), etc.
+    const rawFirstName = ctx.user.display_name?.trim().split(' ')[0];
+    const firstName = rawFirstName && rawFirstName.length > 1 ? rawFirstName : 'there';
+
     // Replace placeholders
-    message = message.replace(/\{\{user_name\}\}/g, ctx.user.display_name ?? 'there');
+    message = message.replace(/\{\{user_name\}\}/g, firstName);
     message = message.replace(/\{\{company_name\}\}/g, ctx.company?.name ?? 'your company');
     message = message.replace(/\{\{link_url\}\}/g, linkUrl ?? '');
 
