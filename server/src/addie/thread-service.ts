@@ -392,26 +392,26 @@ export class ThreadService {
           input.thread_id,
           input.role,
           input.content,
-          input.content_sanitized || null,
-          input.tools_used || null,
+          input.content_sanitized ?? null,
+          input.tools_used ?? null,
           input.tool_calls ? JSON.stringify(input.tool_calls) : null,
-          input.knowledge_ids || null,
-          input.model || null,
-          input.latency_ms || null,
-          input.tokens_input || null,
-          input.tokens_output || null,
-          input.flagged || false,
-          input.flag_reason || null,
+          input.knowledge_ids ?? null,
+          input.model ?? null,
+          input.latency_ms ?? null,
+          input.tokens_input ?? null,
+          input.tokens_output ?? null,
+          input.flagged ?? false,
+          input.flag_reason ?? null,
           sequenceNumber,
-          input.timing?.system_prompt_ms || null,
-          input.timing?.total_llm_ms || null,
-          input.timing?.total_tool_ms || null,
-          input.timing?.iterations || null,
-          input.tokens_cache_creation || null,
-          input.tokens_cache_read || null,
-          input.active_rule_ids || null,
+          input.timing?.system_prompt_ms ?? null,
+          input.timing?.total_llm_ms ?? null,
+          input.timing?.total_tool_ms ?? null,
+          input.timing?.iterations ?? null,
+          input.tokens_cache_creation ?? null,
+          input.tokens_cache_read ?? null,
+          input.active_rule_ids ?? null,
           input.router_decision ? JSON.stringify(input.router_decision) : null,
-          input.config_version_id || null,
+          input.config_version_id ?? null,
         ]
       );
 
@@ -909,14 +909,14 @@ export class ThreadService {
       `SELECT
         COUNT(*) as total_messages,
         COUNT(*) FILTER (WHERE role = 'assistant') as total_assistant_messages,
-        ROUND(AVG(latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as avg_latency_ms,
-        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as p50_latency_ms,
-        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as p95_latency_ms,
+        ROUND((AVG(latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as avg_latency_ms,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as p50_latency_ms,
+        ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as p95_latency_ms,
         MAX(latency_ms) FILTER (WHERE role = 'assistant') as max_latency_ms,
         COALESCE(SUM(tokens_input), 0) as total_input_tokens,
         COALESCE(SUM(tokens_output), 0) as total_output_tokens,
-        ROUND(AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL)::numeric, 0) as avg_input_tokens,
-        ROUND(AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL)::numeric, 0) as avg_output_tokens
+        ROUND((AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL))::numeric, 0) as avg_input_tokens,
+        ROUND((AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL))::numeric, 0) as avg_output_tokens
       FROM addie_thread_messages
       WHERE created_at > NOW() - make_interval(days => $1)`,
       [days]
@@ -955,8 +955,8 @@ export class ThreadService {
       `SELECT
         COALESCE(model, 'unknown') as model,
         COUNT(*) as count,
-        ROUND(AVG(latency_ms)::numeric, 0) as avg_latency_ms,
-        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms)::numeric, 0) as p50_latency_ms,
+        ROUND((AVG(latency_ms))::numeric, 0) as avg_latency_ms,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms))::numeric, 0) as p50_latency_ms,
         COALESCE(SUM(tokens_input), 0) as total_input_tokens,
         COALESCE(SUM(tokens_output), 0) as total_output_tokens
       FROM addie_thread_messages
@@ -987,9 +987,9 @@ export class ThreadService {
       SELECT
         tool->>'name' as tool_name,
         COUNT(*) as call_count,
-        ROUND(AVG((tool->>'duration_ms')::numeric), 0) as avg_duration_ms,
-        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric), 0) as p50_duration_ms,
-        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric), 0) as p95_duration_ms,
+        ROUND((AVG((tool->>'duration_ms')::numeric))::numeric, 0) as avg_duration_ms,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric))::numeric, 0) as p50_duration_ms,
+        ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric))::numeric, 0) as p95_duration_ms,
         COUNT(*) FILTER (WHERE tool->>'is_error' = 'true') as error_count
       FROM tool_calls
       GROUP BY tool->>'name'
@@ -1006,7 +1006,7 @@ export class ThreadService {
       `SELECT
         t.channel,
         COUNT(m.message_id) as message_count,
-        ROUND(AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant')::numeric, 0) as avg_latency_ms
+        ROUND((AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_latency_ms
       FROM addie_threads t
       JOIN addie_thread_messages m ON t.thread_id = m.thread_id
       WHERE m.created_at > NOW() - make_interval(days => $1)
@@ -1025,7 +1025,7 @@ export class ThreadService {
       `SELECT
         DATE_TRUNC('day', created_at)::date::text as date,
         COUNT(*) as message_count,
-        ROUND(AVG(latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as avg_latency_ms,
+        ROUND((AVG(latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as avg_latency_ms,
         COALESCE(SUM(tokens_input), 0) + COALESCE(SUM(tokens_output), 0) as total_tokens
       FROM addie_thread_messages
       WHERE created_at > NOW() - make_interval(days => $1)

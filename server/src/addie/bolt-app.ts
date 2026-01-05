@@ -942,8 +942,11 @@ async function handleUserMessage({
     }
   }
 
-  // Build final response object if we used streaming
+  // Build final response object if we used streaming but didn't receive a 'done' event
+  // This shouldn't happen normally, but provides a fallback with logging
   if (!response) {
+    logger.warn({ fullTextLength: fullText.length, toolsUsedCount: toolsUsed.length },
+      'Addie Bolt: Streaming completed without done event - using fallback response');
     response = {
       text: fullText,
       tools_used: toolsUsed,
@@ -953,7 +956,8 @@ async function handleUserMessage({
         duration_ms: 0,
         sequence: i + 1,
       })),
-      flagged: false,
+      flagged: true,
+      flag_reason: 'Streaming completed without done event',
     };
   }
 
@@ -2334,6 +2338,7 @@ async function handleReactionAdded({
     'Addie Bolt: Received reaction on Addie message'
   );
 
+  const startTime = Date.now();
   const threadService = getThreadService();
 
   // Build external ID to find the thread
@@ -2468,22 +2473,40 @@ async function handleReactionAdded({
     logger.error({ error }, 'Addie Bolt: Failed to send reaction response');
   }
 
-  // Log assistant response
-  await threadService.addMessage({
-    thread_id: thread.thread_id,
-    role: 'assistant',
-    content: response.text,
-    tools_used: response.tools_used,
-    tool_calls: response.tool_executions?.map(exec => ({
-      name: exec.tool_name,
-      input: exec.parameters,
-      result: exec.result,
-    })),
-    model: AddieModelConfig.chat,
-  });
+  // Log assistant response with performance data
+  try {
+    await threadService.addMessage({
+      thread_id: thread.thread_id,
+      role: 'assistant',
+      content: response.text,
+      tools_used: response.tools_used,
+      tool_calls: response.tool_executions?.map(exec => ({
+        name: exec.tool_name,
+        input: exec.parameters,
+        result: exec.result,
+        duration_ms: exec.duration_ms,
+        is_error: exec.is_error,
+      })),
+      model: AddieModelConfig.chat,
+      latency_ms: Date.now() - startTime,
+      tokens_input: response.usage?.input_tokens,
+      tokens_output: response.usage?.output_tokens,
+      timing: response.timing ? {
+        system_prompt_ms: response.timing.system_prompt_ms,
+        total_llm_ms: response.timing.total_llm_ms,
+        total_tool_ms: response.timing.total_tool_execution_ms,
+        iterations: response.timing.iterations,
+      } : undefined,
+      tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+      tokens_cache_read: response.usage?.cache_read_input_tokens,
+      active_rule_ids: response.active_rule_ids,
+    });
+  } catch (error) {
+    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to log reaction response');
+  }
 
   logger.info(
-    { threadId: thread.thread_id, reaction, isConfirmation: isConfirmationRequest },
+    { threadId: thread.thread_id, reaction, isConfirmation: isConfirmationRequest, latencyMs: Date.now() - startTime },
     'Addie Bolt: Processed reaction and responded'
   );
 }
