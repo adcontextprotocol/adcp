@@ -560,6 +560,49 @@ export function createCommitteeRouters(): {
     }
   });
 
+  // GET /api/working-groups/industry-gatherings - Get industry gatherings with linked event info
+  publicApiRouter.get('/industry-gatherings', async (req: Request, res: Response) => {
+    try {
+      const gatherings = await workingGroupDb.getIndustryGatherings();
+
+      // Fetch linked event info for each gathering
+      const gatheringsWithEvents = await Promise.all(
+        gatherings.map(async (gathering) => {
+          let linkedEvent = null;
+          if (gathering.linked_event_id) {
+            const event = await eventsDb.getEventById(gathering.linked_event_id);
+            if (event) {
+              linkedEvent = {
+                id: event.id,
+                slug: event.slug,
+                title: event.title,
+                start_time: event.start_time,
+                end_time: event.end_time,
+                timezone: event.timezone,
+                venue_city: event.venue_city,
+                venue_state: event.venue_state,
+                event_format: event.event_format,
+                featured_image_url: event.featured_image_url,
+              };
+            }
+          }
+          return {
+            ...gathering,
+            linked_event: linkedEvent,
+          };
+        })
+      );
+
+      res.json({ industry_gatherings: gatheringsWithEvents });
+    } catch (error) {
+      logger.error({ err: error }, 'List industry gatherings error');
+      res.status(500).json({
+        error: 'Failed to list industry gatherings',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // GET /api/working-groups/for-organization/:orgId - Get working groups for an organization
   publicApiRouter.get('/for-organization/:orgId', async (req: Request, res: Response) => {
     try {

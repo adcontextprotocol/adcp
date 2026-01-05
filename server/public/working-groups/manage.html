@@ -669,6 +669,24 @@
           </div>
         </div>
 
+        <div class="form-group" style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); background: var(--color-bg-subtle);">
+          <label style="display: flex; align-items: center; gap: var(--space-2); cursor: pointer;">
+            <input type="checkbox" id="eventIsExternal" onchange="updateExternalEventFields()">
+            <span>This is a third-party event (CES, Cannes Lions, etc.)</span>
+          </label>
+          <small style="display: block; margin-top: var(--space-2); color: var(--color-text-muted);">
+            Check this if the event is hosted elsewhere and you just want to list it for AAO members.
+          </small>
+        </div>
+
+        <div id="externalEventFields" style="display: none;">
+          <div class="form-group">
+            <label>External Registration URL</label>
+            <input type="url" id="eventExternalUrl" placeholder="https://ces.tech/registration">
+            <small>Link to the event's official registration page</small>
+          </div>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
             <label>URL Slug *</label>
@@ -1186,11 +1204,12 @@
       listDiv.innerHTML = events.map(event => {
         const statusBadge = `<span class="badge badge-${event.status}">${event.status}</span>`;
         const formatBadge = event.event_format ? `<span class="badge badge-${event.event_format}">${event.event_format.replace('_', ' ')}</span>` : '';
+        const eventTimezone = event.timezone || 'America/New_York';
         const date = event.start_time
-          ? new Date(event.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+          ? new Date(event.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: eventTimezone })
           : '';
         const time = event.start_time
-          ? new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+          ? new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: eventTimezone })
           : '';
 
         return `
@@ -1227,6 +1246,7 @@
       }
 
       updateEventFormatFields();
+      updateExternalEventFields();
       document.getElementById('eventModal').style.display = 'flex';
     }
 
@@ -1254,6 +1274,8 @@
         document.getElementById('eventVenueState').value = editingEvent.venue_state || '';
         document.getElementById('eventVirtualUrl').value = editingEvent.virtual_url || '';
         document.getElementById('eventMaxAttendees').value = editingEvent.max_attendees || '';
+        document.getElementById('eventIsExternal').checked = editingEvent.is_external_event || false;
+        document.getElementById('eventExternalUrl').value = editingEvent.external_registration_url || '';
 
         // Format datetime-local values
         if (editingEvent.start_time) {
@@ -1264,6 +1286,7 @@
         }
 
         updateEventFormatFields();
+        updateExternalEventFields();
         document.getElementById('eventModal').style.display = 'flex';
       } catch (error) {
         console.error('Error loading event:', error);
@@ -1298,10 +1321,17 @@
       }
     }
 
+    function updateExternalEventFields() {
+      const isExternal = document.getElementById('eventIsExternal').checked;
+      const externalFields = document.getElementById('externalEventFields');
+      externalFields.style.display = isExternal ? 'block' : 'none';
+    }
+
     async function saveEvent(e) {
       e.preventDefault();
 
       const id = document.getElementById('eventId').value;
+      const isExternal = document.getElementById('eventIsExternal').checked;
       const data = {
         title: document.getElementById('eventTitle').value.trim(),
         description: document.getElementById('eventDescription').value.trim() || null,
@@ -1317,6 +1347,8 @@
         venue_state: document.getElementById('eventVenueState').value.trim() || null,
         virtual_meeting_url: document.getElementById('eventVirtualUrl').value.trim() || null,
         max_attendees: document.getElementById('eventMaxAttendees').value ? parseInt(document.getElementById('eventMaxAttendees').value) : null,
+        is_external_event: isExternal,
+        external_registration_url: isExternal ? document.getElementById('eventExternalUrl').value.trim() || null : null,
       };
 
       const saveBtn = document.getElementById('saveEventBtn');

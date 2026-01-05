@@ -87,6 +87,7 @@
     .badge-virtual { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-hybrid { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-type { background: var(--color-gray-100); color: var(--color-gray-700); }
+    .badge-external { background: var(--color-warning-100); color: var(--color-warning-700); }
 
     .event-title {
       font-size: 2rem;
@@ -583,23 +584,27 @@
     function renderEvent(event, sponsors, registrationCount, industryGathering) {
       const startDate = new Date(event.start_time);
       const endDate = event.end_time ? new Date(event.end_time) : null;
+      const eventTimezone = event.timezone || 'America/New_York';
 
       const dateStr = startDate.toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
-        year: 'numeric'
+        year: 'numeric',
+        timeZone: eventTimezone
       });
 
       const timeStr = startDate.toLocaleTimeString('en-US', {
         hour: 'numeric',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: eventTimezone
       });
 
       const endTimeStr = endDate ? endDate.toLocaleTimeString('en-US', {
         hour: 'numeric',
         minute: '2-digit',
-        timeZoneName: 'short'
+        timeZoneName: 'short',
+        timeZone: eventTimezone
       }) : '';
 
       const formatLabel = {
@@ -631,6 +636,7 @@
             <div class="event-badges">
               <span class="event-badge badge-${event.event_format}">${formatLabel}</span>
               <span class="event-badge badge-type">${typeLabel}</span>
+              ${event.is_external_event ? '<span class="event-badge badge-external">Industry Event</span>' : ''}
             </div>
             <h1 class="event-title">${escapeHtml(event.title)}</h1>
 
@@ -675,13 +681,22 @@
             <div class="event-actions">
               ${isPast ? `
                 <span class="btn btn-outline" style="cursor: default;">Event Has Ended</span>
+              ` : event.external_registration_url ? `
+                <a href="${escapeHtml(event.external_registration_url)}" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
+                  Register on Event Site
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 1l7 7-7 7-1.4-1.4L11.2 9H1V7h10.2L6.6 2.4z"/>
+                  </svg>
+                </a>
               ` : event.luma_url ? `
-                <a href="${escapeHtml(event.luma_url)}" class="btn btn-primary" target="_blank" rel="noopener">
+                <a href="${escapeHtml(event.luma_url)}" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
                   Register Now
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M8 1l7 7-7 7-1.4-1.4L11.2 9H1V7h10.2L6.6 2.4z"/>
                   </svg>
                 </a>
+              ` : event.is_external_event ? `
+                <span class="btn btn-outline" style="cursor: default;">External Event</span>
               ` : `
                 <button class="btn btn-primary" onclick="handleRegister()">
                   Register Now
@@ -723,7 +738,7 @@
               </div>
               <div class="attendee-group-actions">
                 ${industryGathering.slack_channel_url ? `
-                  <a href="${escapeHtml(industryGathering.slack_channel_url)}" class="btn btn-primary" target="_blank" rel="noopener">
+                  <a href="${escapeHtml(industryGathering.slack_channel_url)}" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 0.25rem;">
                       <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
                     </svg>
@@ -746,7 +761,7 @@
               ${sponsors.map(sponsor => `
                 <a href="${sponsor.organization_website ? escapeHtml(sponsor.organization_website) : '#'}"
                    class="sponsor-card"
-                   ${sponsor.organization_website ? 'target="_blank" rel="noopener"' : ''}>
+                   ${sponsor.organization_website ? 'target="_blank" rel="noopener noreferrer"' : ''}>
                   ${sponsor.display_logo_url
                     ? `<img src="${escapeHtml(sponsor.display_logo_url)}" alt="${escapeHtml(sponsor.organization_name)}" class="sponsor-logo">`
                     : `<div class="sponsor-logo" style="background: var(--color-gray-200); border-radius: 8px;"></div>`

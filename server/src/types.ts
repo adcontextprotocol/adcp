@@ -576,6 +576,8 @@ export interface Event {
   virtual_platform?: string;
   luma_event_id?: string;
   luma_url?: string;
+  external_registration_url?: string;
+  is_external_event?: boolean;
   featured_image_url?: string;
   sponsorship_enabled: boolean;
   sponsorship_tiers: SponsorshipTier[];
@@ -611,6 +613,8 @@ export interface CreateEventInput {
   virtual_platform?: string;
   luma_event_id?: string;
   luma_url?: string;
+  external_registration_url?: string;
+  is_external_event?: boolean;
   featured_image_url?: string;
   sponsorship_enabled?: boolean;
   sponsorship_tiers?: SponsorshipTier[];
@@ -642,6 +646,8 @@ export interface UpdateEventInput {
   virtual_platform?: string;
   luma_event_id?: string;
   luma_url?: string;
+  external_registration_url?: string;
+  is_external_event?: boolean;
   featured_image_url?: string;
   sponsorship_enabled?: boolean;
   sponsorship_tiers?: SponsorshipTier[];

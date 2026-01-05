@@ -1273,9 +1273,10 @@
 
     function renderEventCard(event, isPast) {
       const eventDate = new Date(event.start_time);
-      const month = eventDate.toLocaleDateString('en-US', { month: 'short' });
-      const day = eventDate.getDate();
-      const time = eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const eventTimezone = event.timezone || 'America/New_York';
+      const month = eventDate.toLocaleDateString('en-US', { month: 'short', timeZone: eventTimezone });
+      const day = eventDate.toLocaleDateString('en-US', { day: 'numeric', timeZone: eventTimezone });
+      const time = eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: eventTimezone });
 
       return `
         <a href="/events/${escapeHtml(event.slug)}" class="event-card">
