@@ -373,7 +373,7 @@ export class OutboundPlanner {
       if (caps.has_team_members) capabilityLines.push('✓ Has team members');
       else capabilityLines.push('✗ No team members added');
 
-      if (caps.is_committee_leader) capabilityLines.push('✓ Committee leader');
+      // Committee leader is now shown in Role section, not here
 
       if (caps.slack_message_count_30d > 0) {
         capabilityLines.push(`Activity: ${caps.slack_message_count_30d} Slack messages in last 30 days`);
@@ -382,19 +382,35 @@ export class OutboundPlanner {
       }
     }
 
+    // Build role/position line
+    const roleLines: string[] = [];
+    if (caps?.is_committee_leader) roleLines.push('Committee Leader');
+    if (caps && caps.council_count > 0) roleLines.push(`Council Member (${caps.council_count})`);
+    if (caps && caps.working_group_count > 0) roleLines.push(`WG Member (${caps.working_group_count})`);
+    const roleStr = roleLines.length > 0 ? roleLines.join(', ') : 'Community member';
+
+    // Filter notes from insights for separate display
+    const notes = ctx.user.insights.filter(i => i.type === 'note');
+    const otherInsights = ctx.user.insights.filter(i => i.type !== 'note');
+    const insightStr = otherInsights.length > 0
+      ? otherInsights.map(i => `${i.type}: ${i.value} (${i.confidence})`).join('\n  - ')
+      : 'Nothing yet';
+
     return `You are helping decide what capability or feature to introduce to a member of AgenticAdvertising.org.
 
 ## User Context
 - Name: ${ctx.user.display_name ?? 'Unknown'}
-- Company: ${ctx.company?.name ?? 'Unknown'} (${ctx.company?.type ?? 'unknown type'})
-- Account Status: ${ctx.user.is_mapped ? 'Linked' : 'Not linked'}
+- Company: ${ctx.company?.name ?? 'Unknown'}
+- Role in Community: ${roleStr}
+- Account Status: ${ctx.user.is_mapped ? 'Linked' : 'Not linked'}, ${ctx.user.is_member ? 'Paying member' : 'Not yet a member'}
 - Engagement Score: ${ctx.user.engagement_score}/100
 
 ## What They've Done (Capabilities)
 ${capabilityLines.length > 0 ? capabilityLines.map(l => `  ${l}`).join('\n') : '  No capability data available'}
 
 ## What We Know (Insights)
-  - ${userInsights}
+  - ${insightStr}
+${notes.length > 0 ? `\n## Notes from Channel Conversations\n${notes.map(n => `  - ${n.value}`).join('\n')}` : ''}
 
 ## Available Goals (pick ONE)
 ${goals.map((g, i) => `${i + 1}. **${g.name}** (${g.category})
