@@ -29,20 +29,20 @@ Retrieve content safety policies for a specific standards configuration.
   "version": "1.2.0",
   "effective_date": "2025-01-01T00:00:00Z",
   "scope": {
-    "brands": ["Nike"],
-    "regions": ["EMEA"],
-    "channels": ["display", "video", "ctv"],
+    "brand_ids": ["nike"],
+    "countries_all": ["GB", "DE", "FR"],
+    "channels_any": ["display", "video", "ctv"],
     "description": "Nike EMEA - all digital channels"
   },
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
   "examples": {
     "acceptable": [
-      "https://espn.com/nba/game-recap",
-      "https://healthline.com/fitness/running-benefits"
+      { "type": "domain", "value": "espn.com", "language": "en" },
+      { "type": "domain", "value": "healthline.com", "language": "en" }
     ],
     "unacceptable": [
-      "https://news.example.com/political-controversy",
-      "https://tabloid.example.com/athlete-scandal"
+      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
+      { "type": "rss_url", "value": "https://controversy.example.com/feed.xml", "language": "en" }
     ]
   },
   "competitive_separation": ["adidas", "puma", "under_armour", "reebok"],
@@ -55,7 +55,7 @@ Retrieve content safety policies for a specific standards configuration.
 | Field | Description |
 |-------|-------------|
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
-| `examples` | Training set of acceptable/unacceptable URLs to calibrate policy interpretation |
+| `examples` | Training set of typed identifiers (domains, app IDs, podcast IDs) to calibrate policy interpretation |
 | `competitive_separation` | Competitor brands to avoid adjacency with |
 | `floor` | Safety floor baseline (`garm_floor` = GARM Brand Safety Floor) |
 
@@ -63,11 +63,9 @@ Retrieve content safety policies for a specific standards configuration.
 
 | Field | Description |
 |-------|-------------|
-| `brands` | Brand names these standards apply to |
-| `regions` | Geographic regions (EMEA, APAC, etc.) |
-| `countries` | ISO country codes |
-| `channels` | Ad channels (display, video, ctv, audio) |
-| `products` | Product lines or categories |
+| `brand_ids` | Brand identifiers as defined in the Brand Manifest |
+| `countries_all` | ISO country codes - standards must apply in ALL listed countries |
+| `channels_any` | Ad channels - standards apply to ANY of the listed channels |
 | `description` | Human-readable scope description |
 
 ### Error Response

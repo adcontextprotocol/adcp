@@ -26,30 +26,20 @@
           "type": "object",
           "description": "What this standards configuration applies to",
           "properties": {
-            "brands": {
+            "brand_ids": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Brand names covered"
+              "description": "Brand identifiers as defined in the Brand Manifest"
             },
-            "countries": {
+            "countries_all": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "ISO 3166-1 alpha-2 country codes"
+              "description": "ISO 3166-1 alpha-2 country codes - standards must apply in ALL listed countries"
             },
-            "regions": {
+            "channels_any": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Named regions (EMEA, APAC, etc.)"
-            },
-            "channels": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Advertising channels"
-            },
-            "products": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Product lines or categories"
+              "description": "Advertising channels - standards apply to ANY of the listed channels"
             },
             "description": {
               "type": "string",
@@ -67,13 +57,13 @@
           "properties": {
             "acceptable": {
               "type": "array",
-              "items": { "type": "string" },
-              "description": "URLs or content descriptions that are acceptable"
+              "items": { "$ref": "/schemas/content-standards/content-example.json" },
+              "description": "Content contexts that are acceptable"
             },
             "unacceptable": {
               "type": "array",
-              "items": { "type": "string" },
-              "description": "URLs or content descriptions that are unacceptable"
+              "items": { "$ref": "/schemas/content-standards/content-example.json" },
+              "description": "Content contexts that are unacceptable"
             }
           }
         },

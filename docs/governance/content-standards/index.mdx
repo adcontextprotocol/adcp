@@ -45,35 +45,39 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
   "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
   "examples": {
     "acceptable": [
-      "https://espn.com/nba/game-recap",
-      "https://healthline.com/nutrition/healthy-eating"
+      { "type": "domain", "value": "espn.com", "language": "en" },
+      { "type": "domain", "value": "healthline.com", "language": "en" },
+      { "type": "apple_podcast_id", "value": "1234567890", "language": "en" }
     ],
     "unacceptable": [
-      "https://news.example.com/political-controversy",
-      "https://tabloid.example.com/celebrity-scandal"
+      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
+      { "type": "rss_url", "value": "https://controversy.example.com/feed.xml", "language": "en" }
     ]
   }
 }
 ```
 
-The policy prompt enables AI-powered verification agents to understand context and nuance. Examples provide a training set that helps calibrate the agent's interpretation.
+The policy prompt enables AI-powered verification agents to understand context and nuance. Examples provide a training set using typed identifiers (domains, app IDs, podcast IDs, etc.) with language tags that help calibrate the agent's interpretation.
 
 ## Scoped Standards
 
-Standards are scoped by country, brand, channel, and product:
+Standards are scoped by country, brand, and channel:
 
 ```json
 {
   "standards_id": "coke_uk_tv_zero",
   "scope": {
-    "brands": ["Coca-Cola Zero", "Diet Coke"],
-    "countries": ["GB"],
-    "channels": ["ctv", "linear_tv"],
-    "products": ["zero-calorie beverages"],
-    "description": "UK TV - zero-calorie beverages"
+    "brand_ids": ["coke_zero", "diet_coke"],
+    "countries_all": ["GB"],
+    "channels_any": ["ctv", "linear_tv"],
+    "description": "UK TV - Coca-Cola zero-calorie brands"
   }
 }
 ```
+
+- **brand_ids**: References to brand identifiers defined in the [Brand Manifest](/docs/creative/brand-manifest). Brand names may differ across countries, so we use stable IDs rather than display names.
+- **countries_all**: ISO country codes - standards must apply in ALL listed countries (different jurisdictions have different regulations)
+- **channels_any**: Advertising channels - standards apply to ANY of the listed channels
 
 This allows different standards for different contexts (e.g., UK TV has different regulations than US display).
 

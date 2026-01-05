@@ -564,6 +564,12 @@
     },
     "content-standards": {
       "description": "Content Standards protocol task request/response schemas for content safety and suitability evaluation",
+      "models": {
+        "content-example": {
+          "$ref": "/schemas/content-standards/content-example.json",
+          "description": "A typed content context example for training policy interpretation"
+        }
+      },
       "tasks": {
         "list-content-features": {
           "request": {
