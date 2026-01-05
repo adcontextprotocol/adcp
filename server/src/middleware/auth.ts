@@ -173,6 +173,16 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     isMember: false,
     description: 'User without any organization membership',
   },
+  // Committee leader (member who leads a working group but is not a site admin)
+  leader: {
+    id: 'user_dev_leader_001',
+    email: 'leader@test.local',
+    firstName: 'Committee',
+    lastName: 'Leader',
+    isAdmin: false,
+    isMember: true,
+    description: 'Committee leader with working group management access',
+  },
 };
 
 // Dev session cookie name

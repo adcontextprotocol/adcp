@@ -68,7 +68,7 @@
         items: [
           { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Member Profile', icon: '🏢', anchor: 'profile' },
           { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
-          { href: isDashboardPage ? '#working-groups' : '/dashboard#working-groups', label: 'Working Groups', icon: '🏛️', anchor: 'working-groups' },
+          { href: isDashboardPage ? '#committees' : '/dashboard#committees', label: 'Committees', icon: '🏛️', anchor: 'committees' },
           { href: isDashboardPage ? '#leadership' : '/dashboard#leadership', label: 'Leadership', icon: '👔', anchor: 'leadership', hidden: true, id: 'leadershipNavItem' },
           { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
         ]

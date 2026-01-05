@@ -1856,7 +1856,8 @@
         const byType = {
           working_group: allCommittees.filter(c => c.committee_type === 'working_group'),
           council: allCommittees.filter(c => c.committee_type === 'council'),
-          chapter: allCommittees.filter(c => c.committee_type === 'chapter')
+          chapter: allCommittees.filter(c => c.committee_type === 'chapter'),
+          industry_gathering: allCommittees.filter(c => c.committee_type === 'industry_gathering')
         };
 
         // Helper to get icon and colors
@@ -1876,6 +1877,9 @@
           } else if (committee.committee_type === 'chapter') {
             icon = '📍';
             bgColor = 'var(--color-info-100)';
+          } else if (committee.committee_type === 'industry_gathering') {
+            icon = '✈️';
+            bgColor = 'var(--color-primary-50)';
           }
 
           return { icon, bgColor, isJoined, isLaunching };
@@ -1947,6 +1951,16 @@
             <div style="margin-bottom: 16px;">
               <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Regional Chapters</div>
               ${byType.chapter.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Industry Gatherings
+        if (byType.industry_gathering.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Industry Gatherings</div>
+              ${byType.industry_gathering.map(renderCommitteeItem).join('')}
             </div>
           `;
         }
