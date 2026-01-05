@@ -15,6 +15,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../logger.js';
 import { ModelConfig } from '../../config/models.js';
 import * as outboundDb from '../../db/outbound-db.js';
+import { eventsDb } from '../../db/events-db.js';
 import type {
   OutreachGoal,
   UserGoalHistory,
@@ -54,7 +55,9 @@ export class OutboundPlanner {
 
     // STAGE 1: Get enabled goals and filter by eligibility (rule-based, fast)
     const allGoals = await outboundDb.listGoals({ enabledOnly: true });
-    const eligible = allGoals.filter(g => this.isEligible(g, ctx));
+    const staticEligible = allGoals.filter(g => this.isEligible(g, ctx));
+    // Dynamic eligibility checks (e.g., "Discover Events" requires events to exist)
+    const eligible = await this.filterDynamicEligibility(staticEligible, ctx);
 
     if (eligible.length === 0) {
       logger.debug({
@@ -174,6 +177,47 @@ export class OutboundPlanner {
     }
 
     return true;
+  }
+
+  /**
+   * Filter goals by dynamic eligibility (requires async checks)
+   * Some goals depend on external state (e.g., events existing in DB)
+   */
+  private async filterDynamicEligibility(goals: OutreachGoal[], ctx: PlannerContext): Promise<OutreachGoal[]> {
+    const results: OutreachGoal[] = [];
+
+    for (const goal of goals) {
+      // "Discover Events" requires upcoming events the user isn't already registered for
+      if (goal.name === 'Discover Events') {
+        const upcomingEvents = await eventsDb.getUpcomingEvents();
+        if (upcomingEvents.length === 0) {
+          logger.debug({ goal: goal.name }, 'Planner: Skipping goal - no upcoming events');
+          continue;
+        }
+
+        // Check if user is already registered for all upcoming events
+        if (ctx.user.workos_user_id) {
+          const userRegistrations = await eventsDb.getUserRegistrations(ctx.user.workos_user_id);
+          const registeredEventIds = new Set(
+            userRegistrations
+              .filter(r => r.registration_status !== 'cancelled')
+              .map(r => r.event_id)
+          );
+          const unregisteredEvents = upcomingEvents.filter(e => !registeredEventIds.has(e.id));
+          if (unregisteredEvents.length === 0) {
+            logger.debug({
+              goal: goal.name,
+              total_upcoming: upcomingEvents.length,
+              user_registered: registeredEventIds.size,
+            }, 'Planner: Skipping goal - user registered for all upcoming events');
+            continue;
+          }
+        }
+      }
+      results.push(goal);
+    }
+
+    return results;
   }
 
   /**
