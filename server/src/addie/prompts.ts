@@ -38,6 +38,29 @@ CRITICAL: Always use "AgenticAdvertising.org" (NOT "Alliance for Agentic Adverti
 - **Knowledgeable but Humble**: Deep expertise, but always cite sources. Say "I don't know" rather than guess
 - **Connector**: Route people to working groups, chapters, and community members who can help
 - **Question-First**: Ask questions to understand user perspective and knowledge level before answering
+- **Casual & Conversational**: Talk like a helpful colleague, not a survey bot. Use contractions, be warm, skip the corporate speak
+
+## Conversational Onboarding
+
+When meeting someone new, have a NATURAL conversation - don't interrogate them with a list of questions.
+
+**The opener**: Start with something like "Hey! Glad you're here - what brings you to AgenticAdvertising.org?" This one question tells you a lot.
+
+**Follow up based on their answer**, not a fixed script:
+
+- If they're **building something**: "Nice! Are you driving this yourself or working with a team? Looking for more of a technical deep-dive or the business perspective?"
+- If they're **exploring/curious**: "Makes sense - anything specific that sparked your interest? Or just getting a lay of the land?"
+- If they were **sent by someone**: "Got it. Do you have a specific question they wanted answered, or more of a general 'figure out what this is about'?"
+- If they want **technical specs**: "Straight to the technical stuff - I like it. What are you trying to integrate with?"
+- If they want **connections**: "The community is definitely a big part of what we do. Anyone specific you're hoping to connect with?"
+
+**What NOT to do**:
+- Don't ask "What's your role?" - you can infer this from what they're working on
+- Don't ask "What are your 2026 plans?" out of the blue - let it come up naturally
+- Don't rapid-fire multiple questions - one at a time, like a real conversation
+- Don't be overly formal or use phrases like "I'd be happy to assist you with..."
+
+**Extracting insights naturally**: As you chat, you'll learn things about them (what they're building, their challenges, their team situation). Record these as insights when relevant, but don't make the conversation feel like a data collection exercise.
 
 ## Domain Expertise
 
@@ -364,31 +387,32 @@ Use capability questions as an opportunity to **nudge users toward valuable acti
 
 /**
  * Suggested prompts shown when user opens Assistant
+ * Keep these casual and conversational - like things a person would actually say
  */
 export const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
   {
-    title: 'What can you help me with?',
-    message: 'What can you do? What kinds of things can I ask you about?',
+    title: 'What brings you here?',
+    message: "Hey! I'm curious what brought you to AgenticAdvertising.org",
   },
   {
-    title: 'Learn about AdCP',
-    message: 'What is AdCP and how does it work?',
+    title: 'Help me build something',
+    message: "I'm trying to build an agent - where do I start?",
   },
   {
-    title: 'Get started building',
-    message: 'How do I set up a sales agent with AdCP?',
+    title: 'What is this anyway?',
+    message: "I keep hearing about agentic advertising but I'm not sure what it actually is",
   },
   {
-    title: 'Become a member',
-    message: 'I want to join AgenticAdvertising.org. Can you help me find the right membership?',
+    title: 'Connect me with people',
+    message: 'Who else is working on this stuff? I want to meet people in the space',
   },
   {
-    title: 'AdCP vs programmatic',
-    message: 'How is agentic advertising different from programmatic, and why is it better for sustainability?',
+    title: 'Show me the specs',
+    message: 'Where can I find the technical documentation?',
   },
   {
-    title: 'Get involved',
-    message: 'What working groups can I join and how do I become more active in AgenticAdvertising.org?',
+    title: 'What can you do?',
+    message: 'What kinds of things can you help me with?',
   },
 ];
 
@@ -430,16 +454,16 @@ export async function buildDynamicSuggestedPrompts(
     logger.warn({ error }, 'Failed to fetch insight goals for suggested prompts');
   }
 
-  // Not linked - prioritize account setup and discovery
+  // Not linked - prioritize casual discovery
   if (!isMapped) {
     const prompts: SuggestedPrompt[] = [
       {
-        title: 'What can you help me with?',
-        message: 'What can you do? What kinds of things can I ask you about?',
+        title: 'What brings you here?',
+        message: "Hey! I'm curious what brought you to AgenticAdvertising.org",
       },
       {
-        title: 'Link my account',
-        message: 'Help me link my Slack account to AgenticAdvertising.org',
+        title: 'Help me get set up',
+        message: 'I want to link my account and get started',
       },
     ];
 
@@ -447,8 +471,8 @@ export async function buildDynamicSuggestedPrompts(
     prompts.push(...goalPrompts);
 
     prompts.push({
-      title: 'Learn about AdCP',
-      message: 'What is AdCP and how does it work?',
+      title: 'What is this anyway?',
+      message: "I keep hearing about agentic advertising but I'm not sure what it actually is",
     });
 
     return prompts.slice(0, 4); // Slack limits to 4 prompts
@@ -486,28 +510,28 @@ export async function buildDynamicSuggestedPrompts(
   if (memberContext.working_groups && memberContext.working_groups.length > 0) {
     prompts.push({
       title: 'My working groups',
-      message: "What's happening in my working groups?",
+      message: "What's been happening in my working groups?",
     });
   } else {
     prompts.push({
-      title: 'Find a working group',
-      message: 'What working groups can I join based on my interests?',
+      title: 'Find my people',
+      message: 'What working groups would be a good fit for me?',
     });
   }
 
   prompts.push({
     title: 'Test my agent',
-    message: 'Help me verify my AdCP agent is working correctly',
+    message: 'Can you check if my agent is set up correctly?',
   });
 
   prompts.push({
-    title: 'What can you help me with?',
-    message: 'What can you do? What kinds of things can I ask you about?',
+    title: 'What can you do?',
+    message: 'What kinds of things can you help me with?',
   });
 
   prompts.push({
-    title: 'Learn about AdCP',
-    message: 'What is AdCP and how does it work?',
+    title: 'Explain it to me',
+    message: "I'm still wrapping my head around agentic advertising - can you give me the quick version?",
   });
 
   return prompts.slice(0, 4); // Slack limits to 4 prompts
