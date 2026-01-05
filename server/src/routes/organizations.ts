@@ -311,6 +311,15 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Check if organization is personal (cannot have team members)
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot have team members. Convert to a team workspace first.',
+        });
+      }
+
       const joinRequestDb = new JoinRequestDatabase();
 
       // Get the request
@@ -680,6 +689,15 @@ export function createOrganizationsRouter(): Router {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
+        });
+      }
+
+      // Check if organization is personal (cannot claim domains)
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot claim corporate domains. Convert to a team workspace first.',
         });
       }
 
@@ -1644,6 +1662,15 @@ export function createOrganizationsRouter(): Router {
         return res.status(403).json({
           error: 'Insufficient permissions',
           message: 'Only admins and owners can invite new members',
+        });
+      }
+
+      // Check if organization is personal (cannot invite team members)
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot have team members. Convert to a team workspace first.',
         });
       }
 

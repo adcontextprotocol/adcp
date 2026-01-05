@@ -432,6 +432,11 @@
 
     const sectionsHTML = NAV_CONFIG.sections.map(section => {
       const itemsHTML = section.items.map(item => {
+        // Hide Team nav item for personal workspaces (no team features allowed)
+        if (item.anchor === 'team' && isPersonal) {
+          return '';
+        }
+
         // For anchor links on dashboard, check hash; for page links, check path
         let isActive = false;
         if (item.anchor && isDashboardPage) {

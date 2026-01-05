@@ -1003,13 +1003,15 @@
           ? 'How you appear in the member directory'
           : 'How your organization appears in the member directory';
       }
-      if (teamHeading && teamDesc) {
+      // Hide team section entirely for personal workspaces (no team features allowed)
+      const teamSection = document.getElementById('team');
+      if (teamSection) {
         if (isPersonal) {
-          teamHeading.textContent = 'Teammates';
-          teamDesc.textContent = 'Invite others to collaborate on your workspace';
+          teamSection.style.display = 'none';
         } else {
-          teamHeading.textContent = 'Team';
-          teamDesc.textContent = "Manage your organization's members";
+          teamSection.style.display = '';
+          if (teamHeading) teamHeading.textContent = 'Team';
+          if (teamDesc) teamDesc.textContent = "Manage your organization's members";
         }
       }
 
@@ -1020,7 +1022,10 @@
       renderMembershipCard(org, hasSubscription);
 
       // ===== LOAD DATA =====
-      loadTeamSection(org.id);
+      // Only load team section if not a personal workspace
+      if (!isPersonal) {
+        loadTeamSection(org.id);
+      }
       loadCommitteesSection();
       loadLeadershipSection();
 
