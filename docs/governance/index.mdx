@@ -3,11 +3,15 @@ sidebar_position: 1
 title: Governance Protocol
 ---
 
-<Info>
-**AdCP 3.0 Proposal** - This protocol is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
-</Info>
+<Warning>
+**Draft for AdCP 3.0** - These governance protocols are under active development by the AAO Governance Working Group. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Warning>
 
 The Governance Protocol provides standardized mechanisms for compliance, brand safety, and quality control across advertising workflows. It enables specialized agents to evaluate, filter, and score advertising entities against configurable criteria.
+
+## Mission
+
+> Define and operate transparent, privacy-safe, brand-suitable campaign governance that encodes human heuristics in open protocol objects, making campaigns easy to launch, safe to scale, and measurable against verifiable outcomes for buyers, sellers, and auditors.
 
 ## Protocol Domains
 
@@ -21,6 +25,19 @@ The Governance Protocol covers four distinct governance domains:
 | **Campaign Governance** | What can be bought | Budget controls, approval workflows, policy compliance |
 
 Each domain has specialized governance agents that provide data, filtering, and scoring capabilities.
+
+## Working Group Areas
+
+The AAO Governance Working Group is developing standards across six areas that inform these protocols:
+
+| Area | Focus | Protocol Impact |
+|------|-------|-----------------|
+| Brand Safety & Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering |
+| Brand Manifesto & Standards Library | Machine-readable brand policies | Brand Standards |
+| Creative Standards & Validation | Technical and ethical creative criteria | Creative Governance |
+| Process & Human Oversight | Human-in-the-loop checkpoints | All protocols |
+| Regulatory & Compliance | Legal and regional frameworks | All protocols |
+| Measurement & Verification | Proving compliance | All protocols |
 
 ## Architecture
 
@@ -97,6 +114,19 @@ Buyers declare their brand identity, and governance agents automatically apply a
 ```
 
 When a governance agent sees this manifest, it automatically applies COPPA requirements, content filtering for children's brands, and other industry-specific rules.
+
+### Prompt-Based Policies
+
+Governance protocols support **natural language prompts** for policy definitions rather than rigid keyword lists:
+
+```json
+{
+  "policy": "Avoid content about violence, controversial politics, or adult themes. Sports news is excellent. Entertainment is generally acceptable.",
+  "exclusions_prompt": "Block content containing hate speech, illegal activities, or ongoing litigation against our company."
+}
+```
+
+This enables AI-powered verification agents to understand context and nuance.
 
 ### Webhook Notifications
 
