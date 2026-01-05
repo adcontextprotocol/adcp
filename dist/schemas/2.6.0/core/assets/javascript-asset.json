@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/core/assets/javascript-asset.json",
+  "title": "JavaScript Asset",
+  "description": "JavaScript code asset",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "JavaScript content"
+    },
+    "module_type": {
+      "$ref": "/schemas/2.6.0/enums/javascript-module-type.json",
+      "description": "JavaScript module type"
+    }
+  },
+  "required": ["content"],
+  "additionalProperties": false
+}

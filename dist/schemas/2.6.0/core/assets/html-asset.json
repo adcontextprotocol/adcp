@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/core/assets/html-asset.json",
+  "title": "HTML Asset",
+  "description": "HTML content asset",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "HTML content"
+    },
+    "version": {
+      "type": "string",
+      "description": "HTML version (e.g., 'HTML5')"
+    }
+  },
+  "required": ["content"],
+  "additionalProperties": false
+}
