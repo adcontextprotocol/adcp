@@ -565,9 +565,9 @@
     "content-standards": {
       "description": "Content Standards protocol task request/response schemas for content safety and suitability evaluation",
       "models": {
-        "content-example": {
-          "$ref": "/schemas/content-standards/content-example.json",
-          "description": "A typed content context example for training policy interpretation"
+        "content-context": {
+          "$ref": "/schemas/content-standards/content-context.json",
+          "description": "Content context for evaluation or calibration - supports domains, text, media URLs, and podcast identifiers"
         }
       },
       "tasks": {

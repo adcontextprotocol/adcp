@@ -43,21 +43,31 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
 ```json
 {
   "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
-  "examples": {
+  "calibration": {
     "acceptable": [
       { "type": "domain", "value": "espn.com", "language": "en" },
       { "type": "domain", "value": "healthline.com", "language": "en" },
-      { "type": "apple_podcast_id", "value": "1234567890", "language": "en" }
+      { "type": "apple_podcast_id", "value": "1234567890", "language": "en" },
+      { "type": "text", "value": "Championship game recap: Lakers defeat Celtics in thrilling overtime finish", "language": "en" },
+      { "type": "image_url", "value": "https://cdn.example.com/sports/basketball-game.jpg" },
+      { "type": "video_url", "value": "https://cdn.example.com/fitness/workout-tutorial.mp4" }
     ],
     "unacceptable": [
       { "type": "domain", "value": "tabloid.example.com", "language": "en" },
-      { "type": "rss_url", "value": "https://controversy.example.com/feed.xml", "language": "en" }
+      { "type": "rss_url", "value": "https://controversy.example.com/feed.xml", "language": "en" },
+      { "type": "text", "value": "Political scandal rocks the nation as allegations surface", "language": "en" },
+      { "type": "audio_url", "value": "https://cdn.example.com/news/controversial-podcast.mp3" }
     ]
   }
 }
 ```
 
-The policy prompt enables AI-powered verification agents to understand context and nuance. Examples provide a training set using typed identifiers (domains, app IDs, podcast IDs, etc.) with language tags that help calibrate the agent's interpretation.
+The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly:
+
+- **Domains** - Website identifiers (evaluated by crawling/classification)
+- **Podcast/RSS** - Audio content identifiers
+- **Text snippets** - Sample headlines or content for NLP evaluation
+- **Media URLs** - Links to images, audio, or video for multimodal evaluation
 
 ## Scoped Standards
 
@@ -66,16 +76,14 @@ Buyers typically maintain multiple standards configurations for different contex
 ```json
 {
   "standards_id": "coke_uk_tv_zero",
-  "scope": {
-    "brand_ids": ["coke_zero", "diet_coke"],
-    "countries_all": ["GB"],
-    "channels_any": ["ctv", "linear_tv"],
-    "description": "UK TV - Coca-Cola zero-calorie brands"
-  }
+  "name": "UK TV - Coca-Cola zero-calorie brands",
+  "brand_ids": ["coke_zero", "diet_coke"],
+  "countries_all": ["GB"],
+  "channels_any": ["ctv", "linear_tv"]
 }
 ```
 
-**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves. Scope defines where this standards configuration applies:
+**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves. These fields define where this standards configuration applies:
 
 - **brand_ids**: References to brand identifiers defined in the [Brand Manifest](/docs/creative/brand-manifest). Brand names may differ across countries, so we use stable IDs rather than display names.
 - **countries_all**: ISO country codes - standards apply in ALL listed countries (different jurisdictions have different regulations)

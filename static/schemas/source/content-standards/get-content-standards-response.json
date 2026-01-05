@@ -22,47 +22,41 @@
           "format": "date-time",
           "description": "When this version became effective"
         },
-        "scope": {
-          "type": "object",
-          "description": "What this standards configuration applies to",
-          "properties": {
-            "brand_ids": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Brand identifiers as defined in the Brand Manifest"
-            },
-            "countries_all": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "ISO 3166-1 alpha-2 country codes - standards must apply in ALL listed countries"
-            },
-            "channels_any": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Advertising channels - standards apply to ANY of the listed channels"
-            },
-            "description": {
-              "type": "string",
-              "description": "Human-readable scope description"
-            }
-          }
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this standards configuration"
+        },
+        "brand_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Brand identifiers as defined in the Brand Manifest"
+        },
+        "countries_all": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "ISO 3166-1 alpha-2 country codes - standards apply in ALL listed countries"
+        },
+        "channels_any": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Advertising channels - standards apply to ANY of the listed channels"
         },
         "policy": {
           "type": "string",
           "description": "Natural language policy describing acceptable and unacceptable content contexts"
         },
-        "examples": {
+        "calibration": {
           "type": "object",
-          "description": "Training set examples to calibrate policy interpretation",
+          "description": "Training/test set to calibrate policy interpretation",
           "properties": {
             "acceptable": {
               "type": "array",
-              "items": { "$ref": "/schemas/content-standards/content-example.json" },
+              "items": { "$ref": "/schemas/content-standards/content-context.json" },
               "description": "Content contexts that are acceptable"
             },
             "unacceptable": {
               "type": "array",
-              "items": { "$ref": "/schemas/content-standards/content-example.json" },
+              "items": { "$ref": "/schemas/content-standards/content-context.json" },
               "description": "Content contexts that are unacceptable"
             }
           }

@@ -7,7 +7,7 @@ sidebar_position: 3
 
 Evaluate a single content context against content safety policies. Returns a pass/fail verdict with optional feature-level breakdown.
 
-**Response time**: < 500ms
+May be synchronous or asynchronous depending on the agent implementation.
 
 ## Request
 
@@ -16,14 +16,21 @@ Evaluate a single content context against content safety policies. Returns a pas
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | Standards configuration to evaluate against |
-| `content` | object | Yes | Content context to evaluate |
+| `content` | content-context | Yes | Content context to evaluate (see below) |
 | `feature_ids` | array | No | Specific features to check (defaults to all) |
+| `webhook_url` | string | No | URL for async callback with results |
 
-### Content Object
+### Content Context
+
+**Schema**: [content-context.json](https://adcontextprotocol.org/schemas/v2/content-standards/content-context.json)
+
+The content context describes the content being evaluated. This is the same schema used for calibration examples.
 
 ```json
 {
-  "url": "https://example.com/article/sports-news",
+  "type": "domain",
+  "value": "espn.com/nba/game-recap",
+  "language": "en",
   "title": "Championship Finals Preview",
   "description": "Expert analysis of the upcoming championship match",
   "categories": ["sports", "news"],
