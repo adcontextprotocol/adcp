@@ -358,10 +358,12 @@ export async function syncUserToChaptersFromSlackChannels(
     const slackMapping = await slackDb.getBySlackUserId(slackUserId);
 
     // Check each group with a Slack channel
+    // Note: getUserChannels only returns public channels, so we skip private committees
+    // since a public channel shouldn't grant access to a private committee
     for (const group of workingGroups) {
       if (!group.slack_channel_id) continue;
 
-      // Skip private (invite-only) groups
+      // Skip private committees (we only have public channel data from getUserChannels)
       if (group.is_private) continue;
 
       // Check if user is in this channel
