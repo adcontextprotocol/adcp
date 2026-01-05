@@ -153,6 +153,56 @@
       margin-top: 2px;
     }
 
+    /* Mobile responsive styles for profile modal */
+    @media (max-width: 480px) {
+      .profile-modal-overlay {
+        padding: 0;
+        align-items: stretch;
+      }
+
+      .profile-modal {
+        max-width: 100%;
+        border-radius: 0;
+        max-height: 100dvh;
+        height: 100%;
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+      }
+
+      .profile-modal-header {
+        padding: 16px;
+      }
+
+      .profile-modal-header h2 {
+        font-size: 16px;
+      }
+
+      .profile-modal-header p {
+        font-size: 13px;
+      }
+
+      .profile-modal-body {
+        padding: 16px;
+      }
+
+      .radio-option {
+        padding: 10px;
+        gap: 8px;
+      }
+
+      .radio-option-title {
+        font-size: 13px;
+      }
+
+      .radio-option-desc {
+        font-size: 12px;
+      }
+
+      .profile-modal-footer {
+        padding: 12px 16px;
+      }
+    }
+
     .page-header {
       padding: 32px 40px 24px;
       border-bottom: 1px solid var(--color-border);
