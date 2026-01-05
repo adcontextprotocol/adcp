@@ -4,6 +4,7 @@
  */
 
 import { Router } from "express";
+import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
@@ -12,7 +13,12 @@ import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 
 const logger = createLogger("admin-prospects");
 
-export function setupProspectRoutes(apiRouter: Router): void {
+interface ProspectRoutesConfig {
+  workos: WorkOS | null;
+}
+
+export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesConfig): void {
+  const { workos } = config;
 
   // GET /api/admin/prospects - List all prospects with action-based views
   apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
@@ -599,6 +605,30 @@ export function setupProspectRoutes(apiRouter: Router): void {
             error: "Invalid revenue_tier",
             message: `revenue_tier must be one of: ${validRevenueTiers.join(", ")}`,
           });
+        }
+
+        // If name is being updated, sync to WorkOS first
+        if (updates.name && typeof updates.name === "string" && updates.name.trim()) {
+          const trimmedName = updates.name.trim();
+          if (workos) {
+            try {
+              await workos.organizations.updateOrganization({
+                organization: orgId,
+                name: trimmedName,
+              });
+              logger.info({ orgId, newName: trimmedName }, "Organization name synced to WorkOS");
+            } catch (workosError) {
+              logger.error({ err: workosError, orgId }, "Failed to update organization name in WorkOS");
+              return res.status(500).json({
+                error: "Failed to update organization name",
+                message: `Could not sync name change to WorkOS: ${workosError instanceof Error ? workosError.message : 'Unknown error'}`,
+              });
+            }
+          } else {
+            logger.warn({ orgId }, "WorkOS not configured - organization name change will not be synced");
+          }
+          // Use trimmed name for local DB update
+          updates.name = trimmedName;
         }
 
         // Build dynamic UPDATE query
