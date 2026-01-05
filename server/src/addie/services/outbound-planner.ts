@@ -142,6 +142,17 @@ export class OutboundPlanner {
       if (hasInsight) return false;  // Already has this insight, skip goal
     }
 
+    // Skip intro/welcome goals for highly engaged users
+    // These users are clearly already part of the community - no need to ask "what brings you here?"
+    // Any of these indicators suggests the user is already engaged:
+    if (goal.category === 'information' && goal.success_insight_type === 'initial_interest') {
+      const caps = ctx.capabilities;
+      if (caps?.is_committee_leader) return false;
+      if (caps && caps.working_group_count > 0) return false;
+      if (caps && caps.council_count > 0) return false;
+      if (caps && caps.slack_message_count_30d >= 10) return false;
+    }
+
     return true;
   }
 
