@@ -29,12 +29,17 @@ The content context describes the content being evaluated. This is the same sche
 ```json
 {
   "type": "domain",
-  "value": "espn.com/nba/game-recap",
+  "value": "https://espn.com/nba/game-recap",
   "language": "en",
   "title": "Championship Finals Preview",
   "description": "Expert analysis of the upcoming championship match",
-  "categories": ["sports", "news"],
-  "text_content": "The championship finals are set to be an exciting..."
+  "signals": [
+    {"key": "iab_category", "value": "sports/basketball", "confidence": 0.98}
+  ],
+  "text_content": [
+    {"type": "heading", "heading": {"level": 1, "text": "Championship Finals Preview"}},
+    {"type": "paragraph", "paragraphs": ["The championship finals are set to be an exciting...", "Both teams have fought hard to reach this point."]}
+  ]
 }
 ```
 

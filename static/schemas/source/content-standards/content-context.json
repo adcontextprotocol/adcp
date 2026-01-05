@@ -5,6 +5,10 @@
   "description": "A content context for evaluation or calibration. Supports multiple content types: domains, text snippets, media URLs, and podcast identifiers.",
   "type": "object",
   "properties": {
+    "artifact_id": {
+      "type": "string",
+      "description": "Unique identifier for this artifact"
+    },
     "type": {
       "type": "string",
       "enum": [
@@ -26,8 +30,7 @@
     },
     "language": {
       "type": "string",
-      "description": "BCP 47 language tag (e.g., 'en', 'en-US', 'es-MX')",
-      "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+      "description": "BCP 47 language tag (e.g., 'en', 'en-US', 'es-MX')"
     },
     "title": {
       "type": "string",
@@ -37,16 +40,278 @@
       "type": "string",
       "description": "Content description or summary"
     },
-    "categories": {
+    "published_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the content was published (ISO 8601 format)"
+    },
+    "last_update_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the content was last modified (ISO 8601 format)"
+    },
+    "signals": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Content categories or tags"
+      "description": "Pre-computed signals including categories, classifiers, and ratings",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Signal identifier (e.g., 'iab_category', 'violence_score', 'mpaa_rating')"
+          },
+          "value": {
+            "description": "Signal value - can be string, number, or boolean",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score for probabilistic signals (0-1)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the classifier or model that generated this signal"
+          },
+          "source": {
+            "type": "string",
+            "description": "Who generated this signal (e.g., 'publisher_classifier', 'human_moderator')"
+          },
+          "reasons": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Array of reason codes for ratings or classifications"
+          }
+        },
+        "required": ["key", "value"],
+        "additionalProperties": false
+      }
     },
     "text_content": {
-      "type": "string",
-      "description": "Full or partial text content for NLP evaluation"
+      "type": "array",
+      "description": "Structured content blocks in document flow order",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["paragraph", "image", "heading", "video", "audio"]
+          }
+        },
+        "required": ["type"],
+        "oneOf": [
+          {
+            "properties": {
+              "type": { "const": "paragraph" },
+              "paragraphs": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Array of paragraph text content"
+              }
+            },
+            "required": ["type", "paragraphs"]
+          },
+          {
+            "properties": {
+              "type": { "const": "heading" },
+              "heading": {
+                "type": "object",
+                "properties": {
+                  "level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6,
+                    "description": "Heading level (1-6)"
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "Heading text"
+                  }
+                },
+                "required": ["level", "text"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "heading"]
+          },
+          {
+            "properties": {
+              "type": { "const": "image" },
+              "image": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Image URL"
+                  },
+                  "alt_text": {
+                    "type": "string",
+                    "description": "Alt text or image description"
+                  },
+                  "caption": {
+                    "type": "string",
+                    "description": "Image caption"
+                  },
+                  "width": {
+                    "type": "string",
+                    "description": "Image width in pixels (as string)"
+                  },
+                  "height": {
+                    "type": "string",
+                    "description": "Image height in pixels (as string)"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["content", "advertisement", "logo", "thumbnail"],
+                    "description": "Type of image"
+                  },
+                  "filepath": {
+                    "type": "string",
+                    "description": "Local filepath if image was downloaded"
+                  }
+                },
+                "required": ["url"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "image"]
+          },
+          {
+            "properties": {
+              "type": { "const": "video" },
+              "video": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Video URL"
+                  },
+                  "duration_seconds": {
+                    "type": "number",
+                    "description": "Video duration in seconds"
+                  },
+                  "transcript": {
+                    "type": "string",
+                    "description": "Video transcript"
+                  },
+                  "transcript_source": {
+                    "type": "string",
+                    "enum": [
+                      "original_script",
+                      "subtitles",
+                      "closed_captions",
+                      "dub",
+                      "generated"
+                    ],
+                    "description": "How the transcript was generated"
+                  },
+                  "thumbnail_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Video thumbnail URL"
+                  }
+                },
+                "required": ["url"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "video"]
+          },
+          {
+            "properties": {
+              "type": { "const": "audio" },
+              "audio": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Audio URL"
+                  },
+                  "duration_seconds": {
+                    "type": "number",
+                    "description": "Audio duration in seconds"
+                  },
+                  "transcript": {
+                    "type": "string",
+                    "description": "Audio transcript"
+                  },
+                  "transcript_source": {
+                    "type": "string",
+                    "enum": ["original_script", "closed_captions", "generated"],
+                    "description": "How the transcript was generated"
+                  }
+                },
+                "required": ["url"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "audio"]
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Rich metadata extracted from the content",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Content title from metadata"
+        },
+        "description": {
+          "type": "string",
+          "description": "Content description from metadata"
+        },
+        "keywords": {
+          "type": ["string", "null"],
+          "description": "Content keywords"
+        },
+        "author": {
+          "type": ["string", "null"],
+          "description": "Content author name"
+        },
+        "canonical": {
+          "type": "string",
+          "format": "uri",
+          "description": "Canonical URL"
+        },
+        "metaTags": {
+          "type": "object",
+          "description": "All meta tags",
+          "additionalProperties": { "type": "string" }
+        },
+        "open_graph": {
+          "type": "object",
+          "description": "Open Graph protocol metadata",
+          "additionalProperties": true
+        },
+        "twitter_card": {
+          "type": "object",
+          "description": "Twitter Card metadata",
+          "additionalProperties": true
+        },
+        "json_ld": {
+          "type": "array",
+          "description": "JSON-LD structured data (schema.org)",
+          "items": { "type": "array" }
+        },
+        "microdata": {
+          "type": "array",
+          "description": "Microdata structured markup",
+          "items": {}
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": ["type", "value"],
-  "additionalProperties": false
+  "additionalProperties": true
 }
