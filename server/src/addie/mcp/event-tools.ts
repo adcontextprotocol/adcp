@@ -171,8 +171,10 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
     },
   },
   {
-    name: 'list_upcoming_events',
-    description: `List upcoming AAO events. Use this when someone asks about upcoming events, the events calendar, or what's happening soon.`,
+    name: 'list_events',
+    description: `List AAO events. Use this when someone asks about events - either upcoming or past events.
+When asked about past events, historical events, or what events have happened, set include_past=true.
+When asked about upcoming events or what's happening soon, use the defaults (include_past=false).`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -180,6 +182,10 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
           type: 'string',
           enum: ['summit', 'meetup', 'webinar', 'workshop', 'conference', 'other'],
           description: 'Filter by event type',
+        },
+        include_past: {
+          type: 'boolean',
+          description: 'Include past/completed events (default: false, only shows upcoming)',
         },
         limit: {
           type: 'number',
@@ -435,27 +441,39 @@ export function createEventToolHandlers(
     return response;
   });
 
-  // List upcoming events
-  handlers.set('list_upcoming_events', async (input) => {
+  // List events (upcoming or past)
+  handlers.set('list_events', async (input) => {
     const eventType = input.event_type as EventType | undefined;
+    const includePast = input.include_past === true;
     const limit = Math.min((input.limit as number) || 5, 20);
 
-    const events = await eventsDb.listEvents({
-      status: 'published',
+    // Query events based on whether we want past or upcoming
+    const statuses = includePast
+      ? ['published', 'completed'] as const
+      : ['published'] as const;
+
+    let allEvents = await eventsDb.listEvents({
+      statuses: [...statuses],
       event_type: eventType,
-      upcoming_only: true,
+      past_only: includePast,
+      upcoming_only: !includePast,
       limit,
     });
 
-    if (events.length === 0) {
-      let msg = 'No upcoming events found';
+    // Sort descending for past events (most recent first)
+    if (includePast) {
+      allEvents.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+    }
+
+    if (allEvents.length === 0) {
+      let msg = includePast ? 'No past events found' : 'No upcoming events found';
       if (eventType) msg += ` of type "${eventType}"`;
       return msg + '.';
     }
 
-    let response = `## Upcoming Events\n\n`;
+    let response = includePast ? `## Past Events\n\n` : `## Upcoming Events\n\n`;
 
-    for (const event of events) {
+    for (const event of allEvents) {
       const typeEmoji = {
         summit: '🏔️',
         meetup: '🤝',
@@ -476,7 +494,7 @@ export function createEventToolHandlers(
         response += `   💻 Virtual\n`;
       }
 
-      if (event.luma_url) {
+      if (!includePast && event.luma_url) {
         response += `   🔗 Register: ${event.luma_url}\n`;
       }
       response += `\n`;
