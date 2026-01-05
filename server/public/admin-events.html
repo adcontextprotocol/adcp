@@ -679,15 +679,18 @@
 
       document.getElementById('eventsList').innerHTML = filtered.map(event => {
         const startDate = new Date(event.start_time);
+        const eventTimezone = event.timezone || 'America/New_York';
         const dateStr = startDate.toLocaleDateString('en-US', {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
-          year: 'numeric'
+          year: 'numeric',
+          timeZone: eventTimezone
         });
         const timeStr = startDate.toLocaleTimeString('en-US', {
           hour: 'numeric',
-          minute: '2-digit'
+          minute: '2-digit',
+          timeZone: eventTimezone
         });
 
         return `

@@ -1516,6 +1516,11 @@ export class HTTPServer {
       res.redirect(301, '/committees?type=chapter');
     });
 
+    // Industry Gatherings page (events with attendee groups)
+    this.app.get("/industry-gatherings", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'industry-gatherings.html');
+    });
+
     this.app.get("/working-groups/:slug", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'working-groups/detail.html');
     });

@@ -42,6 +42,7 @@ export class EventsDatabase {
         venue_lat, venue_lng,
         virtual_url, virtual_platform,
         luma_event_id, luma_url,
+        external_registration_url, is_external_event,
         featured_image_url,
         sponsorship_enabled, sponsorship_tiers, stripe_product_id,
         status, max_attendees,
@@ -49,7 +50,7 @@ export class EventsDatabase {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
       )
       RETURNING *`,
       [
@@ -73,6 +74,8 @@ export class EventsDatabase {
         input.virtual_platform || null,
         input.luma_event_id || null,
         input.luma_url || null,
+        input.external_registration_url || null,
+        input.is_external_event ?? false,
         input.featured_image_url || null,
         input.sponsorship_enabled ?? false,
         JSON.stringify(input.sponsorship_tiers || []),
@@ -136,6 +139,8 @@ export class EventsDatabase {
       virtual_platform: 'virtual_platform',
       luma_event_id: 'luma_event_id',
       luma_url: 'luma_url',
+      external_registration_url: 'external_registration_url',
+      is_external_event: 'is_external_event',
       featured_image_url: 'featured_image_url',
       sponsorship_enabled: 'sponsorship_enabled',
       sponsorship_tiers: 'sponsorship_tiers',

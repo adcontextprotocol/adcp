@@ -187,8 +187,8 @@
 
     // Build Events dropdown
     const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
-    const industryGatheringsUrl = isLocal ? '/committees?type=industry_gathering' : `${aaoBaseUrl}/committees?type=industry_gathering`;
-    const isEventsActive = currentPath.startsWith('/events');
+    const industryGatheringsUrl = isLocal ? '/industry-gatherings' : `${aaoBaseUrl}/industry-gatherings`;
+    const isEventsActive = currentPath.startsWith('/events') || currentPath === '/industry-gatherings';
     const eventsDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isEventsActive ? 'active' : ''}">
@@ -199,7 +199,7 @@
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
             <a href="${eventsUrl}" class="navbar__dropdown-item ${currentPath === '/events' ? 'active' : ''}">All Events</a>
-            <a href="${industryGatheringsUrl}" class="navbar__dropdown-item">Industry Gatherings</a>
+            <a href="${industryGatheringsUrl}" class="navbar__dropdown-item ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>
           </div>
         </div>`
       : '';
@@ -297,7 +297,7 @@
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Events</span>` : ''}
           ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/events' ? 'active' : ''}">All Events</a>` : ''}
-          ${membershipEnabled ? `<a href="${industryGatheringsUrl}" class="navbar__link navbar__link--indent">Industry Gatherings</a>` : ''}
+          ${membershipEnabled ? `<a href="${industryGatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/research" class="navbar__link navbar__link--indent ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
