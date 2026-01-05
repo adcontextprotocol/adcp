@@ -268,7 +268,7 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
 
 /**
  * Auto-add user to a working group when they join its Slack channel
- * This enables "join channel = join group" for chapters and events
+ * This enables "join channel = join group" for all committee types
  */
 async function autoAddToWorkingGroup(
   channelId: string,
@@ -284,11 +284,11 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Only auto-add for chapters and industry gathering groups
-    if (workingGroup.committee_type !== 'chapter' && workingGroup.committee_type !== 'industry_gathering') {
+    // Skip auto-add for private (invite-only) groups
+    if (workingGroup.is_private) {
       logger.debug(
-        { workingGroupId: workingGroup.id, type: workingGroup.committee_type },
-        'Skipping auto-add: not a chapter or industry gathering'
+        { workingGroupId: workingGroup.id, name: workingGroup.name },
+        'Skipping auto-add: group is private/invite-only'
       );
       return;
     }
@@ -303,7 +303,7 @@ async function autoAddToWorkingGroup(
       return;
     }
 
-    // Add to working group with interest tracking for industry gathering groups
+    // Set interest level for industry gatherings (other committee types don't track interest)
     const interestLevel = workingGroup.committee_type === 'industry_gathering' ? 'interested' : undefined;
     const interestSource = 'slack_join';
 
