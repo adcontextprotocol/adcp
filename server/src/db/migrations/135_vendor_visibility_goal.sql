@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration: 133_vendor_visibility_goal.sql
+-- Migration: 135_vendor_visibility_goal.sql
 -- Description: Add goal to encourage tech vendors to become members
 --
 -- Vendors (adtech, AI, data companies) benefit from public profiles because

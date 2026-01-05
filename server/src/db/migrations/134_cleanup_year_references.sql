@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration: 132_cleanup_year_references.sql
+-- Migration: 134_cleanup_year_references.sql
 -- Description: Clean up old 2025/2026 references from early migrations
 --
 -- Migration 127 created "Learn 2025/2026 Goals" with insight type "goals_2025"
