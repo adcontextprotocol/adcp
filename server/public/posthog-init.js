@@ -7,6 +7,7 @@
  * - Dead clicks
  * - Session recordings
  * - Heatmaps
+ * - Frontend error tracking
  */
 
 (function() {
@@ -59,7 +60,29 @@
     },
     // Capture performance metrics
     capture_performance: true,
+    // Error tracking - capture unhandled errors and promise rejections
+    capture_exceptions: true,
   });
+
+  // Capture unhandled errors
+  window.onerror = function(message, source, lineno, colno, error) {
+    if (window.posthog && window.posthog.captureException) {
+      posthog.captureException(error || new Error(message), {
+        source: source,
+        lineno: lineno,
+        colno: colno,
+      });
+    }
+  };
+
+  // Capture unhandled promise rejections
+  window.onunhandledrejection = function(event) {
+    if (window.posthog && window.posthog.captureException) {
+      posthog.captureException(event.reason, {
+        type: 'unhandledrejection',
+      });
+    }
+  };
 
   // Identify user if logged in
   const user = config.user;

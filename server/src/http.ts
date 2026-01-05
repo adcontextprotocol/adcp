@@ -6918,6 +6918,25 @@ Disallow: /api/admin/
         });
       }
     });
+
+    // Global error handler - captures unhandled errors to PostHog
+    this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      // Capture to PostHog if configured
+      import('./utils/posthog.js').then(({ captureException }) => {
+        const userId = req.user?.id || 'anonymous';
+        captureException(err, userId, {
+          path: req.path,
+          method: req.method,
+          query: req.query,
+          userAgent: req.get('user-agent'),
+        });
+      }).catch(() => {
+        // PostHog capture failed silently
+      });
+
+      logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
+      res.status(500).json({ error: 'Internal server error' });
+    });
   }
 
   async start(port: number = 3000): Promise<void> {
@@ -7293,6 +7312,10 @@ Disallow: /api/admin/
         });
       });
     }
+
+    // Shutdown PostHog client (flush pending events)
+    const { shutdownPostHog } = await import('./utils/posthog.js');
+    await shutdownPostHog();
 
     // Close database connection
     logger.info('Closing database connection');
