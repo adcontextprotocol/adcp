@@ -1802,6 +1802,31 @@
       document.getElementById('contextModal').classList.add('hidden');
     }
 
+    // Wrapper to show context modal with automatic type detection
+    // Called after adding insights or sending outreach
+    function showContextModal(userId, userName) {
+      // Find user in allUsers to determine the appropriate type
+      const user = allUsers.find(u =>
+        u.id === userId ||
+        u.workos_user_id === userId ||
+        u.slack_user_id === userId
+      );
+
+      if (user) {
+        const contextUserId = user.workos_user_id || user.slack_user_id;
+        if (!contextUserId) {
+          // User found but has no identifiers - use original userId
+          showUserContext(userId, 'slack', userName);
+          return;
+        }
+        const contextType = user.workos_user_id ? 'workos' : 'slack';
+        showUserContext(contextUserId, contextType, userName);
+      } else {
+        // Fallback: assume slack type if we can't find the user
+        showUserContext(userId, 'slack', userName);
+      }
+    }
+
     async function loadAddieHomePreview(workosUserId, slackUserId) {
       const container = document.getElementById('addieHomePreviewContainer');
       const loading = document.getElementById('addieHomePreviewLoading');
