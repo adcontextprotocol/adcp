@@ -725,6 +725,170 @@ export async function manualOutreach(
 }
 
 /**
+ * Manual outreach with a specific goal (admin override)
+ *
+ * Allows admins to send outreach using a specific goal instead of the planner's recommendation.
+ * Optionally records admin context as an insight before sending.
+ *
+ * @param slackUserId - Target user's Slack ID
+ * @param goalId - Specific goal ID to use
+ * @param adminContext - Optional context from admin to record as insight
+ * @param triggeredBy - Admin who triggered the outreach
+ */
+export async function manualOutreachWithGoal(
+  slackUserId: string,
+  goalId: number,
+  adminContext?: string,
+  triggeredBy?: { id: string; name: string; email: string }
+): Promise<OutreachResult> {
+  const planner = getOutboundPlanner();
+
+  // Look up user
+  const result = await query<SlackUserMapping>(
+    `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
+    [slackUserId]
+  );
+
+  if (result.rows.length === 0) {
+    return { success: false, error: 'User not found' };
+  }
+
+  const user = result.rows[0];
+
+  // Get the specific goal
+  const goal = await outboundDb.getGoal(goalId);
+  if (!goal) {
+    return { success: false, error: 'Goal not found' };
+  }
+
+  // Record admin context as insight if provided
+  if (adminContext && adminContext.trim()) {
+    try {
+      // Find or create admin_context insight type
+      const adminContextType = await insightsDb.getInsightTypeByName('admin_context');
+      if (adminContextType) {
+        await insightsDb.addInsight({
+          slack_user_id: slackUserId,
+          insight_type_id: adminContextType.id,
+          value: adminContext.trim(),
+          confidence: 'high',
+          source_type: 'manual',
+        });
+        logger.info({
+          slackUserId,
+          adminId: triggeredBy?.id,
+          contextLength: adminContext.length,
+        }, 'Recorded admin context as insight');
+      }
+    } catch (error) {
+      // Don't fail outreach if insight recording fails
+      logger.warn({ error, slackUserId }, 'Failed to record admin context insight');
+    }
+  }
+
+  // Build context for message generation
+  const candidate: OutreachCandidate = {
+    slack_user_id: user.slack_user_id,
+    slack_email: user.slack_email,
+    slack_display_name: user.slack_display_name,
+    slack_real_name: user.slack_real_name,
+    workos_user_id: user.workos_user_id,
+    last_outreach_at: user.last_outreach_at,
+    priority: calculatePriority(user),
+  };
+  const ctx = await buildPlannerContext(candidate);
+
+  // Build the message from the goal template
+  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+  const message = planner.buildMessage(goal, ctx, linkUrl);
+
+  // DRY_RUN mode: log but don't send
+  if (OUTREACH_MODE === 'dry_run') {
+    logger.info({
+      mode: 'dry_run',
+      candidate: slackUserId,
+      goal: goal.name,
+      goalId: goal.id,
+      triggeredBy: triggeredBy?.id,
+      hasAdminContext: !!adminContext,
+      message: message.substring(0, 100) + '...',
+    }, 'DRY RUN: Would send admin-override outreach');
+    return { success: true };
+  }
+
+  // Open DM channel
+  const channelId = await openDmChannel(slackUserId);
+  if (!channelId) {
+    return { success: false, error: 'Failed to open DM channel' };
+  }
+
+  // Send message
+  const messageTs = await sendDmMessage(channelId, message);
+  if (!messageTs) {
+    return { success: false, error: 'Failed to send DM message' };
+  }
+
+  // Map goal category to outreach type
+  const outreachType: OutreachType = goal.category === 'admin' ? 'account_link'
+    : goal.category === 'information' ? 'insight_goal'
+    : 'custom';
+
+  // Record outreach in member_outreach (legacy tracking)
+  const outreach = await insightsDb.recordOutreach({
+    slack_user_id: slackUserId,
+    outreach_type: outreachType,
+    dm_channel_id: channelId,
+    initial_message: message,
+  });
+
+  // Record goal attempt with admin override reason
+  await outboundDb.recordGoalAttempt({
+    slack_user_id: slackUserId,
+    goal_id: goal.id,
+    planner_reason: `Admin override${adminContext ? ' with context' : ''}`,
+    planner_score: 100, // Max priority for admin override
+    decision_method: 'admin_override',
+    outreach_id: outreach.id,
+  });
+
+  // Update user's last_outreach_at
+  await updateLastOutreach(slackUserId);
+
+  // Auto-assign admin as owner if outreach was successful
+  if (triggeredBy) {
+    try {
+      await assignUserStakeholder({
+        slackUserId,
+        workosUserId: user.workos_user_id || undefined,
+        stakeholderId: triggeredBy.id,
+        stakeholderName: triggeredBy.name,
+        stakeholderEmail: triggeredBy.email,
+        role: 'owner',
+        reason: 'outreach',
+      });
+    } catch (error) {
+      logger.warn({ error, slackUserId }, 'Failed to auto-assign user after outreach');
+    }
+  }
+
+  logger.info({
+    outreachId: outreach.id,
+    slackUserId,
+    goalId: goal.id,
+    goalName: goal.name,
+    triggeredBy: triggeredBy?.id,
+    hasAdminContext: !!adminContext,
+    decision_method: 'admin_override',
+  }, 'Sent admin-override outreach');
+
+  return {
+    success: true,
+    outreach_id: outreach.id,
+    dm_channel_id: channelId,
+  };
+}
+
+/**
  * Get current outreach mode
  */
 export function getOutreachMode(): OutreachMode {

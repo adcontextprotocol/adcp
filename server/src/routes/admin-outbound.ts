@@ -454,7 +454,9 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
         },
         company: memberContext?.organization ? (() => {
           const orgName = memberContext.organization!.name;
-          const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace");
+          // Check for both straight and curly apostrophes in personal workspace names
+          const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace") ||
+                                      orgName.toLowerCase().endsWith("'s workspace");
           return {
             name: isPersonalWorkspace ? 'your account' : orgName,
             type: 'unknown', // Would need to look up company_type from organization
@@ -549,7 +551,9 @@ export function createAdminOutboundRouter(): { pageRouter: Router; apiRouter: Ro
         },
         company: memberContext?.organization ? (() => {
           const orgName = memberContext.organization!.name;
-          const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace");
+          // Check for both straight and curly apostrophes in personal workspace names
+          const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace") ||
+                                      orgName.toLowerCase().endsWith("'s workspace");
           return {
             name: isPersonalWorkspace ? 'your account' : orgName,
             type: 'unknown',

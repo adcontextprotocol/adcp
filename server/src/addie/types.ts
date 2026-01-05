@@ -169,7 +169,7 @@ export type OutcomeType = 'success' | 'defer' | 'clarify' | 'decline' | 'escalat
 /**
  * Planner decision method
  */
-export type PlannerDecisionMethod = 'rule_match' | 'llm';
+export type PlannerDecisionMethod = 'rule_match' | 'llm' | 'admin_override';
 
 /**
  * Rehearsal session status

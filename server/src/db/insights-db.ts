@@ -348,6 +348,17 @@ export class InsightsDatabase {
   }
 
   /**
+   * Get insight type by name
+   */
+  async getInsightTypeByName(name: string): Promise<MemberInsightType | null> {
+    const result = await query<MemberInsightType>(
+      'SELECT * FROM member_insight_types WHERE name = $1',
+      [name]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
    * Update an insight type
    */
   async updateInsightType(
