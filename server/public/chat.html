@@ -1070,6 +1070,36 @@
     body.native-app .messages-container {
       padding-top: 16px;
     }
+
+    /* Native app mode - sidebar adjustments for safe areas */
+    body.native-app .chat-sidebar {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body.native-app .chat-sidebar .sidebar-nav {
+      padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    }
+
+    /* Native app mobile - ensure sidebar works with safe areas */
+    @media (max-width: 768px) {
+      body.native-app .chat-sidebar.visible {
+        padding-left: env(safe-area-inset-left, 0px);
+      }
+
+      body.native-app .sidebar-overlay {
+        /* Extend overlay behind safe areas */
+        top: calc(-1 * env(safe-area-inset-top, 0px));
+        left: calc(-1 * env(safe-area-inset-left, 0px));
+        right: calc(-1 * env(safe-area-inset-right, 0px));
+        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+      }
+    }
+
+    /* Native app mode - adjust input area for safe areas */
+    body.native-app .input-container {
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
   </style>
 </head>
 <body>
