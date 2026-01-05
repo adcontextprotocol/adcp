@@ -235,7 +235,8 @@
       border-color: var(--color-brand);
       background: var(--color-primary-50);
     }
-    .profile-radio-option.selected {
+    .profile-radio-option.selected,
+    .profile-radio-option:has(input[type="radio"]:checked) {
       border-color: var(--color-brand);
       background: var(--color-primary-100);
     }
@@ -372,49 +373,49 @@
         <div class="profile-form-group">
           <label id="companyTypeLabel">What type of organization are you?</label>
           <div class="profile-radio-options" id="profileCompanyTypeOptions" role="radiogroup" aria-labelledby="companyTypeLabel">
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'brand')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="brand">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Brand / Advertiser</div>
                 <div class="profile-radio-option-desc">Companies that advertise products or services</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'publisher')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="publisher">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Publisher / Media Network</div>
                 <div class="profile-radio-option-desc">Media owners and networks that sell advertising inventory</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'agency')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="agency">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Agency</div>
                 <div class="profile-radio-option-desc">Advertising, media, or creative agencies</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'adtech')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="adtech">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Ad Tech Provider</div>
                 <div class="profile-radio-option-desc">DSPs, SSPs, ad servers, measurement, identity, and data platforms</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'data')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="data">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Data & Measurement</div>
                 <div class="profile-radio-option-desc">Clean rooms, CDPs, identity, measurement, and analytics</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'ai')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="ai">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">AI & Tech Platforms</div>
                 <div class="profile-radio-option-desc">LLM providers, agent builders, cloud AI, and ML platforms</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'other')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="other">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Other</div>
@@ -426,37 +427,37 @@
         <div class="profile-form-group">
           <label id="revenueTierLabel">Annual Revenue</label>
           <div class="profile-radio-options" id="profileRevenueTierOptions" role="radiogroup" aria-labelledby="revenueTierLabel">
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', 'under_1m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="under_1m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Under $1M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '1m_5m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="1m_5m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$1M - $5M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '5m_50m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="5m_50m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$5M - $50M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '50m_250m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="50m_250m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$50M - $250M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '250m_1b')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="250m_1b">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$250M - $1B</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '1b_plus')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="1b_plus">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$1B+</div>
@@ -921,6 +922,10 @@
       container.querySelectorAll('.profile-radio-option').forEach(opt => opt.classList.remove('selected'));
       element.classList.add('selected');
 
+      // Also ensure the radio input is checked
+      const radio = element.querySelector('input[type="radio"]');
+      if (radio) radio.checked = true;
+
       if (group === 'companyType') {
         profileSelectedCompanyType = value;
       } else if (group === 'revenueTier') {
@@ -930,6 +935,32 @@
       // Enable save button if both are selected
       const btn = document.getElementById('saveProfileBtn');
       btn.disabled = !(profileSelectedCompanyType && profileSelectedRevenueTier);
+    }
+
+    // Initialize profile modal radio button listeners (more reliable than onclick on labels)
+    function initProfileModalListeners() {
+      const radioGroups = [
+        { selector: '#profileCompanyTypeOptions', group: 'companyType' },
+        { selector: '#profileRevenueTierOptions', group: 'revenueTier' }
+      ];
+
+      radioGroups.forEach(({ selector, group }) => {
+        document.querySelectorAll(`${selector} input[type="radio"]`).forEach(radio => {
+          radio.addEventListener('change', function() {
+            const label = this.closest('.profile-radio-option');
+            if (label) {
+              selectProfileOption(label, group, this.value);
+            }
+          });
+        });
+      });
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initProfileModalListeners);
+    } else {
+      initProfileModalListeners();
     }
 
     // Save org profile from modal
