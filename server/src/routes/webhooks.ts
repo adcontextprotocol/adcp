@@ -401,7 +401,7 @@ async function extractInsightsWithClaude(data: {
   }
 
   const startTime = Date.now();
-  logger.debug({
+  logger.info({
     from: data.from,
     subject: data.subject,
     textLength: data.text.length,
@@ -418,17 +418,28 @@ Subject: ${data.subject}
 ${data.text}
 `.trim();
 
-    const response = await anthropic.messages.create({
-      model: ModelConfig.fast,
-      max_tokens: 300,
-      messages: [
-        {
-          role: 'user',
-          content: `Please analyze this email and extract insights:\n\n${emailContent}`,
-        },
-      ],
-      system: EMAIL_INSIGHT_PROMPT,
+    // Add timeout to prevent webhook from hanging
+    const timeoutMs = 25000; // 25 seconds
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Anthropic API timeout after ${timeoutMs}ms`)), timeoutMs);
     });
+
+    logger.info({ model: ModelConfig.fast, contentLength: emailContent.length }, 'Calling Anthropic API');
+
+    const response = await Promise.race([
+      anthropic.messages.create({
+        model: ModelConfig.fast,
+        max_tokens: 300,
+        messages: [
+          {
+            role: 'user',
+            content: `Please analyze this email and extract insights:\n\n${emailContent}`,
+          },
+        ],
+        system: EMAIL_INSIGHT_PROMPT,
+      }),
+      timeoutPromise,
+    ]);
 
     const durationMs = Date.now() - startTime;
     const textBlock = response.content.find(block => block.type === 'text');
