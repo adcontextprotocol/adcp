@@ -1,0 +1,24 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^mailto:"
+    },
+    {
+      "pattern": "^#"
+    },
+    {
+      "pattern": "^http://localhost"
+    },
+    {
+      "pattern": "https://www.npmjs.com"
+    },
+    {
+      "pattern": "https://adcontextprotocol.org/docs/"
+    }
+  ],
+  "timeout": "20s",
+  "retryOn429": true,
+  "retryCount": 5,
+  "fallbackRetryDelay": "5s",
+  "aliveStatusCodes": [200, 206]
+}

@@ -196,6 +196,10 @@ export interface ThreadSummary {
   last_assistant_message: string | null;
   avg_rating: number | null;
   total_latency_ms: number | null;
+  feedback_count: number;
+  user_feedback_count: number;
+  positive_feedback_count: number;
+  negative_feedback_count: number;
 }
 
 export interface ThreadListFilters {
@@ -204,6 +208,7 @@ export interface ThreadListFilters {
   flagged_only?: boolean;
   unreviewed_only?: boolean;
   has_feedback?: boolean;
+  has_user_feedback?: boolean;
   since?: Date;
   limit?: number;
   offset?: number;
@@ -387,26 +392,26 @@ export class ThreadService {
           input.thread_id,
           input.role,
           input.content,
-          input.content_sanitized || null,
-          input.tools_used || null,
+          input.content_sanitized ?? null,
+          input.tools_used ?? null,
           input.tool_calls ? JSON.stringify(input.tool_calls) : null,
-          input.knowledge_ids || null,
-          input.model || null,
-          input.latency_ms || null,
-          input.tokens_input || null,
-          input.tokens_output || null,
-          input.flagged || false,
-          input.flag_reason || null,
+          input.knowledge_ids ?? null,
+          input.model ?? null,
+          input.latency_ms ?? null,
+          input.tokens_input ?? null,
+          input.tokens_output ?? null,
+          input.flagged ?? false,
+          input.flag_reason ?? null,
           sequenceNumber,
-          input.timing?.system_prompt_ms || null,
-          input.timing?.total_llm_ms || null,
-          input.timing?.total_tool_ms || null,
-          input.timing?.iterations || null,
-          input.tokens_cache_creation || null,
-          input.tokens_cache_read || null,
-          input.active_rule_ids || null,
+          input.timing?.system_prompt_ms ?? null,
+          input.timing?.total_llm_ms ?? null,
+          input.timing?.total_tool_ms ?? null,
+          input.timing?.iterations ?? null,
+          input.tokens_cache_creation ?? null,
+          input.tokens_cache_read ?? null,
+          input.active_rule_ids ?? null,
           input.router_decision ? JSON.stringify(input.router_decision) : null,
-          input.config_version_id || null,
+          input.config_version_id ?? null,
         ]
       );
 
@@ -450,8 +455,8 @@ export class ThreadService {
   async addMessageFeedback(
     messageId: string,
     feedback: MessageFeedback
-  ): Promise<void> {
-    await query(
+  ): Promise<boolean> {
+    const result = await query(
       `UPDATE addie_thread_messages
        SET
          rating = $2,
@@ -474,6 +479,7 @@ export class ThreadService {
         feedback.rating_source,
       ]
     );
+    return result.rowCount !== null && result.rowCount > 0;
   }
 
   /**
@@ -533,6 +539,14 @@ export class ThreadService {
       conditions.push(`reviewed = FALSE`);
     }
 
+    if (filters.has_feedback) {
+      conditions.push(`feedback_count > 0`);
+    }
+
+    if (filters.has_user_feedback) {
+      conditions.push(`user_feedback_count > 0`);
+    }
+
     if (filters.since) {
       conditions.push(`started_at >= $${paramIndex++}`);
       params.push(filters.since);
@@ -574,6 +588,32 @@ export class ThreadService {
   }
 
   /**
+   * Get threads for a user across all channels (web + linked Slack)
+   * This fetches both the user's web threads and any threads from their linked Slack account
+   */
+  async getUserCrossChannelThreads(
+    workosUserId: string,
+    slackUserId: string | null,
+    limit = 20
+  ): Promise<ThreadSummary[]> {
+    if (slackUserId) {
+      // User has linked Slack - fetch threads from both channels
+      const result = await query<ThreadSummary>(
+        `SELECT * FROM addie_threads_summary
+         WHERE (user_type = 'workos' AND user_id = $1)
+            OR (user_type = 'slack' AND user_id = $2)
+         ORDER BY last_message_at DESC
+         LIMIT $3`,
+        [workosUserId, slackUserId, limit]
+      );
+      return result.rows;
+    } else {
+      // No linked Slack - just return web threads
+      return this.getUserThreads(workosUserId, 'workos', limit);
+    }
+  }
+
+  /**
    * Get a user's most recent thread (for proactive messages)
    */
   async getUserRecentThread(
@@ -590,6 +630,42 @@ export class ThreadService {
       [userType, userId, maxAgeMinutes]
     );
     return result.rows[0] || null;
+  }
+
+  /**
+   * Get activity stats for a specific user (messages and active days in last 30 days)
+   * Combines activity across all channels (Slack and web chat)
+   */
+  async getUserActivityStats(
+    userId: string,
+    userType: UserType,
+    days = 30
+  ): Promise<{
+    total_messages: number;
+    active_days: number;
+    last_activity_at: Date | null;
+  }> {
+    const result = await query<{
+      total_messages: string;
+      active_days: string;
+      last_activity_at: Date | null;
+    }>(
+      `SELECT
+        COALESCE(SUM(message_count), 0)::text as total_messages,
+        COUNT(DISTINCT DATE(last_message_at))::text as active_days,
+        MAX(last_message_at) as last_activity_at
+       FROM addie_threads
+       WHERE user_type = $1 AND user_id = $2
+         AND last_message_at >= NOW() - make_interval(days => $3)`,
+      [userType, userId, days]
+    );
+
+    const row = result.rows[0];
+    return {
+      total_messages: parseInt(row?.total_messages || '0', 10),
+      active_days: parseInt(row?.active_days || '0', 10),
+      last_activity_at: row?.last_activity_at || null,
+    };
   }
 
   // =====================================================
@@ -833,14 +909,14 @@ export class ThreadService {
       `SELECT
         COUNT(*) as total_messages,
         COUNT(*) FILTER (WHERE role = 'assistant') as total_assistant_messages,
-        ROUND(AVG(latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as avg_latency_ms,
-        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as p50_latency_ms,
-        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as p95_latency_ms,
+        ROUND((AVG(latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as avg_latency_ms,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as p50_latency_ms,
+        ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as p95_latency_ms,
         MAX(latency_ms) FILTER (WHERE role = 'assistant') as max_latency_ms,
         COALESCE(SUM(tokens_input), 0) as total_input_tokens,
         COALESCE(SUM(tokens_output), 0) as total_output_tokens,
-        ROUND(AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL)::numeric, 0) as avg_input_tokens,
-        ROUND(AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL)::numeric, 0) as avg_output_tokens
+        ROUND((AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL))::numeric, 0) as avg_input_tokens,
+        ROUND((AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL))::numeric, 0) as avg_output_tokens
       FROM addie_thread_messages
       WHERE created_at > NOW() - make_interval(days => $1)`,
       [days]
@@ -879,8 +955,8 @@ export class ThreadService {
       `SELECT
         COALESCE(model, 'unknown') as model,
         COUNT(*) as count,
-        ROUND(AVG(latency_ms)::numeric, 0) as avg_latency_ms,
-        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms)::numeric, 0) as p50_latency_ms,
+        ROUND((AVG(latency_ms))::numeric, 0) as avg_latency_ms,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms))::numeric, 0) as p50_latency_ms,
         COALESCE(SUM(tokens_input), 0) as total_input_tokens,
         COALESCE(SUM(tokens_output), 0) as total_output_tokens
       FROM addie_thread_messages
@@ -911,9 +987,9 @@ export class ThreadService {
       SELECT
         tool->>'name' as tool_name,
         COUNT(*) as call_count,
-        ROUND(AVG((tool->>'duration_ms')::numeric), 0) as avg_duration_ms,
-        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric), 0) as p50_duration_ms,
-        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric), 0) as p95_duration_ms,
+        ROUND((AVG((tool->>'duration_ms')::numeric))::numeric, 0) as avg_duration_ms,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric))::numeric, 0) as p50_duration_ms,
+        ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric))::numeric, 0) as p95_duration_ms,
         COUNT(*) FILTER (WHERE tool->>'is_error' = 'true') as error_count
       FROM tool_calls
       GROUP BY tool->>'name'
@@ -930,7 +1006,7 @@ export class ThreadService {
       `SELECT
         t.channel,
         COUNT(m.message_id) as message_count,
-        ROUND(AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant')::numeric, 0) as avg_latency_ms
+        ROUND((AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_latency_ms
       FROM addie_threads t
       JOIN addie_thread_messages m ON t.thread_id = m.thread_id
       WHERE m.created_at > NOW() - make_interval(days => $1)
@@ -949,7 +1025,7 @@ export class ThreadService {
       `SELECT
         DATE_TRUNC('day', created_at)::date::text as date,
         COUNT(*) as message_count,
-        ROUND(AVG(latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as avg_latency_ms,
+        ROUND((AVG(latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as avg_latency_ms,
         COALESCE(SUM(tokens_input), 0) + COALESCE(SUM(tokens_output), 0) as total_tokens
       FROM addie_thread_messages
       WHERE created_at > NOW() - make_interval(days => $1)

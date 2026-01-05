@@ -50,7 +50,90 @@ AdCP provides a **public test agent** with free credentials for development and 
 
 ## Protocol Compliance Testing
 
-Use the [AdCP Protocol Test Harness](https://testing.adcontextprotocol.org) to validate your implementation's compliance with the AdCP specification. This interactive tool allows you to test all AdCP tasks and verify correct behavior across different scenarios.
+### Testing via Addie
+
+The easiest way to test your AdCP agent is to ask Addie in Slack:
+
+> "Hey Addie, test my sales agent at https://sales.example.com"
+
+Addie can run comprehensive E2E tests including:
+
+**Standard Scenarios:**
+- **health_check** - Verify agent responds
+- **discovery** - Test `get_products`, `list_creative_formats`, `list_authorized_properties`
+- **create_media_buy** - Discovery + create a test campaign
+- **full_sales_flow** - Complete lifecycle: create → update → delivery
+- **creative_sync** - Test `sync_creatives` flow
+- **creative_inline** - Test inline creatives in `create_media_buy`
+- **pricing_models** - Analyze pricing options across channels
+
+**Edge Case Scenarios:**
+- **error_handling** - Verify proper discriminated union error responses
+- **validation** - Test rejection of invalid inputs (negative budgets, invalid enums)
+- **pricing_edge_cases** - Test auction vs fixed pricing, min_spend requirements, bid_price handling
+- **temporal_validation** - Test date/time ordering, ISO 8601 format validation
+
+**Behavioral Analysis:**
+- **behavior_analysis** - Analyze agent characteristics: authentication requirements, brand_manifest requirements, brief relevance filtering, channel filtering behavior
+
+By default tests run in dry-run mode. For real testing, ask Addie to run without dry-run.
+
+### Sales Agent Compliance Checklist
+
+Use this checklist to verify your sales agent implementation covers all required features:
+
+**Core Discovery (Required)**
+- [ ] `get_products` - Returns products with pricing_options, format_ids, delivery_type
+- [ ] `list_creative_formats` - Returns supported formats and creative agents
+- [ ] `list_authorized_properties` - Returns publisher domains (if applicable)
+
+**Media Buy Lifecycle (Required)**
+- [ ] `create_media_buy` - Accepts packages with product_id, pricing_option_id, budget
+- [ ] `update_media_buy` - Supports PATCH semantics for budget, pacing, targeting
+- [ ] `get_media_buy_delivery` - Returns impressions, spend, status
+
+**Creative Management (Required for most channels)**
+- [ ] `sync_creatives` - Upsert creatives with per-item action tracking
+- [ ] `list_creatives` - Query creative library with filtering
+- [ ] Support inline creatives in `create_media_buy`
+- [ ] Support creative references (`creative_ids`)
+
+**Pricing Models (as applicable)**
+- [ ] CPM - Cost per thousand impressions
+- [ ] vCPM - Viewable CPM (MRC standard)
+- [ ] CPCV - Cost per completed view
+- [ ] CPC - Cost per click
+- [ ] CPP - Cost per rating point (TV/radio)
+- [ ] Flat rate - Fixed cost sponsorships
+- [ ] Auction pricing - Support bid_price when is_fixed=false
+
+**Creative Types**
+- [ ] Static creatives (image, video assets)
+- [ ] Reference creatives (creative_ids to existing library)
+- [ ] Generative creatives (manifest-based)
+- [ ] Parameterized creatives (with substitution)
+
+**Response Patterns**
+- [ ] Discriminated union responses (success XOR errors)
+- [ ] Schema-compliant responses (validate against JSON schemas)
+- [ ] Async operations return status: submitted/working/completed
+- [ ] Per-item errors in batch operations (e.g., sync_creatives)
+
+**Testing Support**
+- [ ] `X-Dry-Run` header support
+- [ ] `X-Test-Session-ID` for parallel test isolation
+- [ ] `X-Mock-Time` for time simulation
+
+**Edge Case Validation (Required)**
+- [ ] Reject negative budget values
+- [ ] Reject invalid pacing enum values
+- [ ] Reject end_time before start_time
+- [ ] Reject invalid ISO 8601 date formats
+- [ ] Return proper error for non-existent product_id
+- [ ] Require bid_price for auction pricing options
+- [ ] Reject budget below min_spend_per_package
+- [ ] Reject creative weight > 100
+- [ ] Return discriminated union error responses (success XOR errors, never both)
 
 ## Testing Modes
 

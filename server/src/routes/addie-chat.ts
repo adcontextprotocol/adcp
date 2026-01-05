@@ -11,9 +11,11 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { validate as uuidValidate } from "uuid";
 import rateLimit from "express-rate-limit";
+import cors from "cors";
 import { createLogger } from "../logger.js";
 import { optionalAuth } from "../middleware/auth.js";
-import { AddieClaudeClient } from "../addie/claude-client.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
+import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
 import {
   sanitizeInput,
   validateOutput,
@@ -42,6 +44,7 @@ import {
   getThreadService,
   type ThreadContext,
 } from "../addie/thread-service.js";
+import { UsersDatabase } from "../db/users-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,15 +89,8 @@ async function initializeChatClient(): Promise<void> {
     }
   }
 
-  // Register member tools with null context (for web chat, user-scoped tools will fail gracefully)
-  // This allows tools like draft_github_issue to work without user auth
-  const memberHandlers = createMemberToolHandlers(null);
-  for (const tool of MEMBER_TOOLS) {
-    const handler = memberHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Note: Member tools are registered per-request with user's actual context
+  // This allows user-scoped tools to work correctly for authenticated users
 
   initialized = true;
   logger.info("Addie Chat: Initialized");
@@ -103,6 +99,12 @@ async function initializeChatClient(): Promise<void> {
 interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
+  message_id?: string;
+  rating?: number | null;
+  rating_category?: string | null;
+  rating_notes?: string | null;
+  feedback_tags?: string[] | null;
+  improvement_suggestion?: string | null;
 }
 
 /**
@@ -132,9 +134,79 @@ function hashIp(ip: string | undefined): string {
   return crypto.createHash("sha256").update(ip).digest("hex").substring(0, 16);
 }
 
+interface PreparedRequest {
+  messageToProcess: string;
+  memberContext: MemberContext | null;
+  requestTools: RequestTools;
+}
+
+/**
+ * Prepare a request with member context and per-request tools
+ * Creates member tools with the user's actual context for authenticated users
+ */
+async function prepareRequestWithMemberTools(
+  sanitizedInput: string,
+  userId: string | undefined
+): Promise<PreparedRequest> {
+  let messageToProcess = sanitizedInput;
+  let memberContext: MemberContext | null = null;
+
+  try {
+    if (userId) {
+      memberContext = await getWebMemberContext(userId);
+      const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
+      if (memberContextText) {
+        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+        logger.debug(
+          { userId, hasContext: true, orgName: memberContext.organization?.name },
+          "Addie Chat: Added member context to message"
+        );
+      }
+    } else {
+      const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
+      const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
+      if (memberContextText) {
+        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+        logger.debug("Addie Chat: Added anonymous web context to message");
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+  }
+
+  const memberHandlers = createMemberToolHandlers(memberContext);
+  const requestTools: RequestTools = {
+    tools: MEMBER_TOOLS,
+    handlers: memberHandlers,
+  };
+
+  return { messageToProcess, memberContext, requestTools };
+}
+
+// CORS configuration for native apps (Tauri desktop, mobile)
+const chatCorsOptions: cors.CorsOptions = {
+  origin: [
+    // Production domains
+    'https://agenticadvertising.org',
+    'https://www.agenticadvertising.org',
+    // Tauri app origins
+    'tauri://localhost',
+    'https://tauri.localhost',
+    // Local development (only in non-production)
+    ...(process.env.NODE_ENV !== 'production' ? [/^http:\/\/localhost:\d+$/] : []),
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['X-Conversation-Id'],
+};
+
 export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
+
+  // Enable CORS for all API routes (for native app support)
+  apiRouter.use(cors(chatCorsOptions));
 
   // Initialize client on startup
   initializeChatClient().catch((err) => {
@@ -145,9 +217,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // PAGE ROUTES (mounted at /chat)
   // =========================================================================
 
-  // Note: The chat page (/chat -> chat.html) is served by the global middleware
-  // in http.ts that handles extensionless paths. This middleware injects the
-  // user config needed for the navigation bar. No explicit route needed here.
+  // GET / - Serve the chat page (mounted at /chat, so this serves /chat)
+  pageRouter.get("/", optionalAuth, (req, res) => {
+    serveHtmlWithConfig(req, res, "chat.html").catch((err) => {
+      logger.error({ err }, "Error serving chat page");
+      res.status(500).send("Internal server error");
+    });
+  });
 
   // =========================================================================
   // API ROUTES (mounted at /api/addie/chat)
@@ -253,39 +329,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         text: m.content,
       }));
 
-      // Build message with member context
-      // For web chat, always include channel context (even for anonymous users)
-      let messageToProcess = inputValidation.sanitized;
-      try {
-        if (req.user?.id) {
-          // Authenticated user
-          const memberContext = await getWebMemberContext(req.user.id);
-          const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-            logger.debug(
-              { userId: req.user.id, hasContext: true, orgName: memberContext.organization?.name },
-              "Addie Chat: Added member context to message"
-            );
-          }
-        } else {
-          // Anonymous user - still provide channel context
-          const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
-          const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-            logger.debug("Addie Chat: Added anonymous web context to message");
-          }
-        }
-      } catch (error) {
-        logger.warn({ error, userId: req.user?.id }, "Addie Chat: Failed to get member context");
-        // Continue without context - don't fail the request
-      }
+      // Prepare message with member context and per-request tools
+      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+        inputValidation.sanitized,
+        req.user?.id
+      );
 
       // Process with Claude
       let response;
       try {
-        response = await claudeClient.processMessage(messageToProcess, contextMessages);
+        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools);
       } catch (error) {
         logger.error({ error }, "Addie Chat: Error processing message");
         response = {
@@ -485,32 +538,18 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         text: m.content,
       }));
 
-      // Build message with member context
-      let messageToProcess = inputValidation.sanitized;
-      try {
-        if (req.user?.id) {
-          const memberContext = await getWebMemberContext(req.user.id);
-          const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-          }
-        } else {
-          const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
-          const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
-          if (memberContextText) {
-            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
-          }
-        }
-      } catch (error) {
-        logger.warn({ error }, "Addie Chat Stream: Failed to get member context");
-      }
+      // Prepare message with member context and per-request tools
+      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+        inputValidation.sanitized,
+        req.user?.id
+      );
 
       // Stream the response
       let fullText = '';
       let response;
       const toolsUsed: string[] = [];
 
-      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages)) {
+      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools)) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
           logger.info("Addie Chat Stream: Breaking loop due to client disconnect");
@@ -625,7 +664,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }
 
       // Add feedback to message using unified service
-      await threadService.addMessageFeedback(message_id, {
+      const updated = await threadService.addMessageFeedback(message_id, {
         rating,
         rating_category: rating_category || undefined,
         rating_notes: feedback_text || undefined,
@@ -634,6 +673,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         rated_by: req.user?.id || "anonymous",
         rating_source: 'user',
       });
+
+      if (!updated) {
+        logger.warn({ conversationId, message_id }, "Addie Chat: Message not found for feedback");
+        return res.status(404).json({ error: "Message not found" });
+      }
 
       logger.info(
         { conversationId, message_id, rating, rating_category },
@@ -650,22 +694,111 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
     }
   });
 
+  // GET /api/addie/chat/threads - List user's conversation threads
+  // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
+  apiRouter.get("/threads", optionalAuth, async (req, res) => {
+    const threadService = getThreadService();
+    const usersDb = new UsersDatabase();
+
+    try {
+      // Require authentication for thread listing
+      if (!req.user) {
+        return res.status(401).json({
+          error: "Authentication required",
+          message: "Please log in to view your conversations",
+        });
+      }
+
+      const parsedLimit = parseInt(req.query.limit as string);
+      const limit = Math.min(Math.max(parsedLimit > 0 ? parsedLimit : 20, 1), 50);
+
+      // Look up user's linked Slack account
+      const user = await usersDb.getUser(req.user.id);
+      const slackUserId = user?.primary_slack_user_id || null;
+
+      // Get user's threads across all channels (web + linked Slack)
+      const threads = await threadService.getUserCrossChannelThreads(req.user.id, slackUserId, limit);
+
+      // Map to API response format
+      const conversations = threads.map((t) => ({
+        conversation_id: t.external_id,
+        channel: t.channel,
+        title: t.title || t.first_user_message?.slice(0, 50) || "New conversation",
+        message_count: t.message_count,
+        last_message_at: t.last_message_at,
+        preview: t.last_assistant_message?.slice(0, 100),
+      }));
+
+      res.json({
+        conversations,
+        total: conversations.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Addie Chat: Error listing threads");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to list conversations",
+      });
+    }
+  });
+
   // GET /api/addie/chat/:conversationId - Get conversation history
+  // Supports ?channel=slack for loading Slack threads
   apiRouter.get("/:conversationId", optionalAuth, async (req, res) => {
     const threadService = getThreadService();
+    const usersDb = new UsersDatabase();
 
     try {
       const { conversationId } = req.params;
+      const channel = (req.query.channel as string) || 'web';
 
-      // Validate conversation ID format
-      if (!isValidConversationId(conversationId)) {
-        return res.status(400).json({ error: "Invalid conversation ID format" });
+      // Validate channel
+      if (channel !== 'web' && channel !== 'slack') {
+        return res.status(400).json({ error: "Invalid channel" });
       }
 
-      // Get thread by external_id (which is the conversation_id for web)
-      const thread = await threadService.getThreadByExternalId('web', conversationId);
+      // Validate conversation ID format based on channel
+      if (channel === 'web') {
+        if (!isValidConversationId(conversationId)) {
+          return res.status(400).json({ error: "Invalid conversation ID format" });
+        }
+      } else if (channel === 'slack') {
+        // Slack external_id format: channel_id:thread_ts (e.g., C01234ABC:1234567890.123456)
+        const slackIdPattern = /^[A-Z0-9]{9,12}:\d+\.\d{6}$/;
+        if (!slackIdPattern.test(conversationId)) {
+          return res.status(400).json({ error: "Invalid Slack conversation ID format" });
+        }
+      }
+
+      // Get thread by external_id
+      const thread = await threadService.getThreadByExternalId(channel, conversationId);
       if (!thread) {
         return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Verify ownership - users can only view their own threads
+      if (req.user) {
+        let authorized = false;
+
+        if (thread.user_type === 'workos' && thread.user_id === req.user.id) {
+          authorized = true;
+        } else if (thread.user_type === 'slack' && channel === 'slack') {
+          // For Slack threads, verify the user's linked Slack account matches
+          const user = await usersDb.getUser(req.user.id);
+          if (user?.primary_slack_user_id === thread.user_id) {
+            authorized = true;
+          }
+        }
+
+        if (!authorized) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+      } else {
+        // Anonymous users cannot view threads
+        return res.status(401).json({
+          error: "Authentication required",
+          message: "Please log in to view conversations",
+        });
       }
 
       // Get messages
@@ -675,13 +808,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
+          message_id: m.message_id,
+          rating: m.rating,
+          rating_category: m.rating_category,
+          rating_notes: m.rating_notes,
+          feedback_tags: m.feedback_tags,
+          improvement_suggestion: m.improvement_suggestion,
         }));
 
       res.json({
         conversation_id: conversationId,
+        channel,
         user_name: thread.user_display_name,
         message_count: thread.message_count,
         messages,
+        read_only: channel === 'slack', // Slack threads are read-only in web UI
       });
     } catch (error) {
       logger.error({ err: error }, "Addie Chat: Error fetching conversation");

@@ -17,6 +17,12 @@ import {
   getProductsForCustomer,
   createAndSendInvoice,
 } from "../billing/stripe-client.js";
+import { getMemberCapabilities } from "../db/outbound-db.js";
+import { getOutboundPlanner } from "../addie/services/outbound-planner.js";
+import * as outboundDb from "../db/outbound-db.js";
+import { canContactUser } from "../addie/services/proactive-outreach.js";
+import { InsightsDatabase } from "../db/insights-db.js";
+import type { PlannerContext, MemberCapabilities } from "../addie/types.js";
 
 // Import route modules
 import { setupProspectRoutes } from "./admin/prospects.js";
@@ -25,6 +31,9 @@ import { setupEnrichmentRoutes } from "./admin/enrichment.js";
 import { setupDomainRoutes } from "./admin/domains.js";
 import { setupCleanupRoutes } from "./admin/cleanup.js";
 import { setupStatsRoutes } from "./admin/stats.js";
+import { setupDiscountRoutes } from "./admin/discounts.js";
+import { setupMembersRoutes } from "./admin/members.js";
+import { setupAccountRoutes } from "./admin/accounts.js";
 
 const logger = createLogger("admin-routes");
 
@@ -68,6 +77,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/domain-health", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-domain-health.html").catch((err) => {
+      logger.error({ err }, "Error serving domain health page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================
@@ -89,6 +105,15 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Dashboard stats routes
   setupStatsRoutes(apiRouter);
+
+  // Discount management routes
+  setupDiscountRoutes(apiRouter);
+
+  // Members management routes (list, sync, payments, delete)
+  setupMembersRoutes(apiRouter, { workos });
+
+  // Unified account management routes (replaces separate prospect/org detail)
+  setupAccountRoutes(pageRouter, apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
@@ -161,17 +186,17 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
           // Get member insights
           const insightsQuery = workosUserId
-            ? `SELECT mi.type_key, it.name as type_name, mi.value
+            ? `SELECT mit.name as type_key, mit.name as type_name, mi.value
                FROM member_insights mi
-               LEFT JOIN insight_types it ON it.key = mi.type_key
+               LEFT JOIN member_insight_types mit ON mit.id = mi.insight_type_id
                WHERE mi.workos_user_id = $1 AND mi.is_current = TRUE
-               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               ORDER BY mi.confidence DESC, mi.created_at DESC
                LIMIT 10`
-            : `SELECT mi.type_key, it.name as type_name, mi.value
+            : `SELECT mit.name as type_key, mit.name as type_name, mi.value
                FROM member_insights mi
-               LEFT JOIN insight_types it ON it.key = mi.type_key
+               LEFT JOIN member_insight_types mit ON mit.id = mi.insight_type_id
                WHERE mi.slack_user_id = $1 AND mi.is_current = TRUE
-               ORDER BY mi.confidence DESC, mi.updated_at DESC
+               ORDER BY mi.confidence DESC, mi.created_at DESC
                LIMIT 10`;
 
           const insightsResult = await pool.query(insightsQuery, [workosUserId || slackUserId]);
@@ -186,8 +211,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 sm.last_outreach_at,
                 sm.outreach_opt_out,
                 EXTRACT(EPOCH FROM (NOW() - sm.last_outreach_at)) / 86400 as days_since_outreach,
-                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id) as total_outreach_count,
-                (SELECT COUNT(*) FROM proactive_outreach po WHERE po.slack_user_id = sm.slack_user_id AND po.response_received = TRUE) as responses_received
+                (SELECT COUNT(*) FROM member_outreach mo WHERE mo.slack_user_id = sm.slack_user_id) as total_outreach_count,
+                (SELECT COUNT(*) FROM member_outreach mo WHERE mo.slack_user_id = sm.slack_user_id AND mo.user_responded = TRUE) as responses_received
               FROM slack_user_mappings sm
               WHERE sm.slack_user_id = $1`;
             const outreachResult = await pool.query(outreachQuery, [slackUserId]);
@@ -200,6 +225,33 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 responses_received: parseInt(row.responses_received) || 0,
                 opted_out: row.outreach_opt_out || false,
               };
+            }
+
+            // Get detailed outreach history with goals, responses, and linked threads
+            const outreachHistoryQuery = `
+              SELECT
+                mo.id,
+                mo.sent_at,
+                mo.initial_message,
+                mo.user_responded,
+                mo.response_received_at,
+                mo.response_sentiment,
+                mo.response_intent,
+                mo.response_text,
+                mo.thread_id,
+                mo.dm_channel_id,
+                ig.name as goal_name,
+                ig.question as goal_question,
+                at.message_count as thread_message_count
+              FROM member_outreach mo
+              LEFT JOIN insight_goals ig ON ig.id = mo.insight_goal_id
+              LEFT JOIN addie_threads at ON at.thread_id = mo.thread_id
+              WHERE mo.slack_user_id = $1
+              ORDER BY mo.sent_at DESC
+              LIMIT 10`;
+            const historyResult = await pool.query(outreachHistoryQuery, [slackUserId]);
+            if (historyResult.rows.length > 0) {
+              (extendedContext as typeof extendedContext & { outreach_history?: unknown }).outreach_history = historyResult.rows;
             }
           }
 
@@ -218,6 +270,93 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           const threadsResult = await pool.query(threadsQuery, [workosUserId || slackUserId]);
           if (threadsResult.rows.length > 0) {
             (extendedContext as typeof extendedContext & { recent_conversations?: unknown }).recent_conversations = threadsResult.rows;
+          }
+
+          // Get capabilities and planner recommendation (if Slack user)
+          if (slackUserId) {
+            try {
+              const capabilities = await getMemberCapabilities(slackUserId, workosUserId);
+              (extendedContext as typeof extendedContext & { capabilities?: MemberCapabilities }).capabilities = capabilities;
+
+              // Get planner recommendation
+              const planner = getOutboundPlanner();
+              const insightsDb = new InsightsDatabase();
+              const [plannerInsights, history, contactEligibility] = await Promise.all([
+                insightsDb.getInsightsForUser(slackUserId),
+                outboundDb.getUserGoalHistory(slackUserId),
+                canContactUser(slackUserId),
+              ]);
+
+              // Check if this is a personal workspace (auto-generated "User's Workspace" name)
+              const orgName = context.organization?.name ?? '';
+              const isPersonalWorkspace = orgName.toLowerCase().endsWith("'s workspace") ||
+                                          orgName.toLowerCase().endsWith("'s workspace");
+
+              const plannerCtx: PlannerContext = {
+                user: {
+                  slack_user_id: slackUserId,
+                  workos_user_id: workosUserId,
+                  display_name: context.slack_user?.display_name ?? undefined,
+                  is_mapped: !!workosUserId,
+                  is_member: context.is_member ?? false,
+                  engagement_score: capabilities.slack_message_count_30d > 10 ? 75 :
+                                    capabilities.slack_message_count_30d > 5 ? 50 :
+                                    capabilities.slack_message_count_30d > 0 ? 25 : 0,
+                  insights: plannerInsights.map(i => ({
+                    type: i.insight_type_name ?? 'unknown',
+                    value: i.value,
+                    confidence: i.confidence,
+                  })),
+                },
+                company: context.organization ? {
+                  name: isPersonalWorkspace ? 'your account' : context.organization.name,
+                  type: 'unknown',
+                  is_personal_workspace: isPersonalWorkspace,
+                } : undefined,
+                capabilities,
+                history,
+                contact_eligibility: {
+                  can_contact: contactEligibility.canContact,
+                  reason: contactEligibility.reason ?? 'Eligible',
+                },
+              };
+
+              const planned = await planner.planNextAction(plannerCtx);
+              if (planned) {
+                const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+                const messagePreview = planner.buildMessage(planned.goal, plannerCtx, linkUrl);
+                (extendedContext as typeof extendedContext & { planner?: unknown }).planner = {
+                  recommended_action: {
+                    goal_id: planned.goal.id,
+                    goal_name: planned.goal.name,
+                    category: planned.goal.category,
+                    reason: planned.reason,
+                    priority_score: planned.priority_score,
+                    decision_method: planned.decision_method,
+                  },
+                  message_preview: messagePreview,
+                  alternative_goals: planned.alternative_goals.map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    category: g.category,
+                  })),
+                  contact_eligibility: {
+                    can_contact: contactEligibility.canContact,
+                    reason: contactEligibility.reason,
+                  },
+                };
+              } else {
+                (extendedContext as typeof extendedContext & { planner?: unknown }).planner = {
+                  recommended_action: null,
+                  contact_eligibility: {
+                    can_contact: contactEligibility.canContact,
+                    reason: contactEligibility.reason,
+                  },
+                };
+              }
+            } catch (plannerError) {
+              logger.warn({ err: plannerError, slackUserId }, 'Failed to get planner recommendation');
+            }
           }
         }
 
@@ -320,11 +459,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     async (req, res) => {
       try {
         const { orgId } = req.params;
-        const { lookup_key } = req.body;
+        const { lookup_key, coupon_id, promotion_code } = req.body;
 
         const pool = getPool();
         const orgResult = await pool.query(
-          `SELECT workos_organization_id, name, is_personal, prospect_contact_email
+          `SELECT workos_organization_id, name, is_personal, prospect_contact_email,
+                  stripe_coupon_id, stripe_promotion_code
            FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         );
@@ -345,7 +485,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         if (!lookup_key) {
           return res.json({
             needs_selection: true,
-            products: products.map(p => ({
+            products: products.map((p) => ({
               lookup_key: p.lookup_key,
               display_name: p.display_name,
               amount_cents: p.amount_cents,
@@ -355,7 +495,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const product = products.find(p => p.lookup_key === lookup_key);
+        const product = products.find((p) => p.lookup_key === lookup_key);
         if (!product) {
           return res.status(400).json({
             error: "Product not found",
@@ -363,7 +503,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        // Determine which coupon/promotion code to use
+        // Priority: explicit parameter > org's saved coupon
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        const effectivePromoCode = promotion_code || org.stripe_promotion_code;
+
+        const baseUrl =
+          process.env.BASE_URL || "https://agenticadvertising.org";
         const session = await createCheckoutSession({
           priceId: product.price_id,
           customerEmail: org.prospect_contact_email || undefined,
@@ -371,12 +517,21 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           cancelUrl: `${baseUrl}/join?payment=cancelled`,
           workosOrganizationId: orgId,
           isPersonalWorkspace: org.is_personal,
+          couponId: effectiveCouponId || undefined,
+          promotionCode: !effectiveCouponId ? effectivePromoCode : undefined,
         });
 
         if (!session) {
           return res.status(500).json({
             error: "Failed to create payment link",
-            message: "Stripe may not be configured",
+            message: "Stripe is not configured. Please contact support.",
+          });
+        }
+
+        if (!session.url) {
+          return res.status(500).json({
+            error: "Failed to create payment link",
+            message: "Stripe session created but no URL returned",
           });
         }
 
@@ -404,9 +559,14 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         });
       } catch (error) {
         logger.error({ err: error }, "Error generating payment link");
+        // Extract meaningful error message from Stripe errors
+        let errorMessage = "Unable to generate payment link";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
         res.status(500).json({
           error: "Internal server error",
-          message: "Unable to generate payment link",
+          message: errorMessage,
         });
       }
     }

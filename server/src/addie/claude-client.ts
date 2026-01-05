@@ -8,12 +8,18 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
-import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
+import { ADDIE_SYSTEM_PROMPT, buildMessageTurns } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+/** Default max tool iterations for regular users */
+export const DEFAULT_MAX_ITERATIONS = 10;
+
+/** Elevated max tool iterations for admin users doing bulk operations */
+export const ADMIN_MAX_ITERATIONS = 25;
 
 /**
  * Per-request tools that can be added dynamically
@@ -21,6 +27,22 @@ type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 export interface RequestTools {
   tools: AddieTool[];
   handlers: Map<string, ToolHandler>;
+}
+
+/**
+ * Result from createUserScopedTools including admin status
+ */
+export interface UserScopedToolsResult {
+  tools: RequestTools;
+  isAdmin: boolean;
+}
+
+/**
+ * Options for message processing
+ */
+export interface ProcessMessageOptions {
+  /** Maximum tool iterations (default: DEFAULT_MAX_ITERATIONS) */
+  maxIterations?: number;
 }
 
 /**
@@ -187,12 +209,14 @@ export class AddieClaudeClient {
    * @param threadContext - Optional thread history
    * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
    * @param rulesOverride - Optional rules override for eval framework (bypasses DB lookup)
+   * @param options - Optional processing options (e.g., maxIterations for admin users)
    */
   async processMessage(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
     requestTools?: RequestTools,
-    rulesOverride?: RulesOverride
+    rulesOverride?: RulesOverride,
+    options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -234,13 +258,15 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (skip for eval mode)
     const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
-    const contextualMessage = buildContextWithThread(userMessage, threadContext);
+    // Build proper message turns from thread context
+    // This sends conversation history as actual user/assistant turns, not flattened text
+    const messageTurns = buildMessageTurns(userMessage, threadContext);
+    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+      role: turn.role,
+      content: turn.content,
+    }));
 
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: contextualMessage },
-    ];
-
-    let maxIterations = 10;
+    const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
 
     // Combine global tools with per-request tools
@@ -610,11 +636,13 @@ export class AddieClaudeClient {
    * @param userMessage - The user's message
    * @param threadContext - Optional thread history
    * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
+   * @param options - Optional processing options (e.g., maxIterations for admin users)
    */
   async *processMessageStream(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
-    requestTools?: RequestTools
+    requestTools?: RequestTools,
+    options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -641,13 +669,15 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
-    const contextualMessage = buildContextWithThread(userMessage, threadContext);
+    // Build proper message turns from thread context
+    // This sends conversation history as actual user/assistant turns, not flattened text
+    const messageTurns = buildMessageTurns(userMessage, threadContext);
+    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+      role: turn.role,
+      content: turn.content,
+    }));
 
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: contextualMessage },
-    ];
-
-    const maxIterations = 10;
+    const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
 
     // Combine global tools with per-request tools
@@ -876,6 +906,12 @@ export class AddieClaudeClient {
               is_error: r.is_error,
             })),
           });
+
+          // Add spacing between tool use and subsequent text to prevent run-on text
+          if (fullText.length > 0 && !fullText.endsWith('\n')) {
+            fullText += '\n\n';
+            yield { type: 'text', text: '\n\n' };
+          }
         }
       }
 

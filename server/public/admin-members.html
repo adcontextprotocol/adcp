@@ -6,6 +6,7 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Admin - Members - AdCP Registry</title>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/js/company-types.js"></script>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
@@ -110,6 +111,15 @@
     }
     .members-table tr:hover {
       background: var(--color-gray-50);
+    }
+    .company-link {
+      color: var(--color-text-heading);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+    }
+    .company-link:hover {
+      color: var(--color-brand);
+      text-decoration: underline;
     }
     .status-badge {
       display: inline-block;
@@ -544,17 +554,17 @@
         const statusClass = `status-${member.subscription_status || 'none'}`;
         const statusText = member.subscription_status || 'none';
 
-        // Format company type
-        const companyTypeLabels = {
-          brand: 'Brand',
-          publisher: 'Publisher',
-          agency: 'Agency',
-          adtech: 'Ad Tech',
-          other: 'Other'
-        };
-        const companyTypeText = member.is_personal
-          ? '<span style="color: var(--color-text-muted);">Individual</span>'
-          : (companyTypeLabels[member.company_type] || '<span style="color: var(--color-text-muted);">-</span>');
+        // Format company type - support both array and legacy single value (uses shared config)
+        let companyTypeText;
+        if (member.is_personal) {
+          companyTypeText = '<span style="color: var(--color-text-muted);">Individual</span>';
+        } else {
+          const types = member.company_types || (member.company_type ? [member.company_type] : []);
+          const formatted = formatCompanyTypes(types);
+          companyTypeText = formatted === '-'
+            ? '<span style="color: var(--color-text-muted);">-</span>'
+            : formatted;
+        }
 
         // Format revenue tier
         const revenueTierLabels = {
@@ -600,7 +610,7 @@
 
         return `
           <tr id="row-${member.company_id}">
-            <td><strong>${member.company_name || 'Unknown'}</strong></td>
+            <td><a href="/admin/organizations/${member.company_id}" class="company-link">${member.company_name || 'Unknown'}</a></td>
             <td>${companyTypeText}</td>
             <td>${revenueTierText}</td>
             <td>${member.owner_email || 'No email'}</td>
@@ -631,15 +641,15 @@
           : '';
         const created = new Date(member.created_at).toLocaleDateString();
 
-        // Format company type
-        const companyTypeLabels = {
-          brand: 'Brand',
-          publisher: 'Publisher',
-          agency: 'Agency',
-          adtech: 'Ad Tech',
-          other: 'Other'
-        };
-        const companyType = member.is_personal ? 'Individual' : (companyTypeLabels[member.company_type] || '');
+        // Format company type - support both array and legacy single value (uses shared config)
+        let companyType;
+        if (member.is_personal) {
+          companyType = 'Individual';
+        } else {
+          const types = member.company_types || (member.company_type ? [member.company_type] : []);
+          companyType = formatCompanyTypes(types);
+          if (companyType === '-') companyType = '';
+        }
 
         // Format revenue tier
         const revenueTierLabels = {

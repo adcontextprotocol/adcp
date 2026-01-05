@@ -6,6 +6,7 @@
  */
 
 import { Router } from "express";
+import Stripe from "stripe";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -26,6 +27,110 @@ import {
 } from "../billing/stripe-client.js";
 
 const logger = createLogger("billing-routes");
+
+/**
+ * Sync all invoices for a Stripe customer to the local cache.
+ * Called when manually linking a customer to an organization.
+ */
+async function syncInvoicesForCustomer(
+  customerId: string,
+  workosOrgId: string
+): Promise<number> {
+  if (!stripe) {
+    logger.warn("Stripe not initialized - cannot sync invoices");
+    return 0;
+  }
+
+  const pool = getPool();
+  let syncedCount = 0;
+
+  try {
+    // Fetch all invoices for this customer
+    const invoices = await stripe.invoices.list({
+      customer: customerId,
+      limit: 100,
+    });
+
+    for (const invoice of invoices.data) {
+      // Get product name from line items if available
+      let productName: string | null = null;
+      if (invoice.lines?.data && invoice.lines.data.length > 0) {
+        const primaryLine = invoice.lines.data[0] as any;
+        const productId = primaryLine.price?.product as string;
+        if (productId) {
+          try {
+            const product = await stripe.products.retrieve(productId);
+            productName = product.name;
+          } catch {
+            productName = primaryLine.description || null;
+          }
+        }
+      }
+
+      await pool.query(
+        `INSERT INTO org_invoices (
+          stripe_invoice_id,
+          stripe_customer_id,
+          workos_organization_id,
+          status,
+          amount_due,
+          amount_paid,
+          currency,
+          invoice_number,
+          hosted_invoice_url,
+          invoice_pdf,
+          product_name,
+          customer_email,
+          created_at,
+          due_date,
+          paid_at,
+          voided_at,
+          stripe_updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+        ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+          workos_organization_id = EXCLUDED.workos_organization_id,
+          status = EXCLUDED.status,
+          amount_due = EXCLUDED.amount_due,
+          amount_paid = EXCLUDED.amount_paid,
+          invoice_number = EXCLUDED.invoice_number,
+          hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+          invoice_pdf = EXCLUDED.invoice_pdf,
+          product_name = COALESCE(EXCLUDED.product_name, org_invoices.product_name),
+          customer_email = EXCLUDED.customer_email,
+          paid_at = EXCLUDED.paid_at,
+          voided_at = EXCLUDED.voided_at,
+          stripe_updated_at = NOW()`,
+        [
+          invoice.id,
+          customerId,
+          workosOrgId,
+          invoice.status,
+          invoice.amount_due,
+          invoice.amount_paid,
+          invoice.currency,
+          invoice.number || null,
+          invoice.hosted_invoice_url || null,
+          invoice.invoice_pdf || null,
+          productName,
+          typeof invoice.customer_email === 'string' ? invoice.customer_email : null,
+          new Date(invoice.created * 1000),
+          invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+          invoice.status === 'paid' && invoice.status_transitions?.paid_at
+            ? new Date(invoice.status_transitions.paid_at * 1000)
+            : null,
+          invoice.status === 'void' ? new Date() : null,
+        ]
+      );
+      syncedCount++;
+    }
+
+    logger.info({ customerId, workosOrgId, syncedCount }, "Synced invoices for customer");
+    return syncedCount;
+  } catch (err) {
+    logger.error({ err, customerId, workosOrgId }, "Failed to sync invoices for customer");
+    return syncedCount;
+  }
+}
 
 /**
  * Create billing routes
@@ -563,8 +668,59 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         org_id,
       ]);
 
+      // Sync invoices for this customer to local cache
+      const invoicesSynced = await syncInvoicesForCustomer(customerId, org_id);
+
+      // Sync subscription data from Stripe
+      let subscriptionSynced = false;
+      let subscriptionSyncError: string | null = null;
+      if (stripe) {
+        try {
+          const customer = await stripe.customers.retrieve(customerId, {
+            expand: ["subscriptions"],
+          });
+
+          if (!customer.deleted) {
+            const subscriptions = (customer as Stripe.Customer).subscriptions;
+            if (subscriptions && subscriptions.data.length > 0) {
+              const subscription = subscriptions.data[0];
+              const priceData = subscription.items?.data?.[0]?.price;
+
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_status = $1,
+                     subscription_amount = $2,
+                     subscription_interval = $3,
+                     subscription_currency = $4,
+                     subscription_current_period_end = $5,
+                     subscription_canceled_at = $6,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $7`,
+                [
+                  subscription.status,
+                  priceData?.unit_amount || null,
+                  priceData?.recurring?.interval || null,
+                  priceData?.currency || "usd",
+                  subscription.current_period_end
+                    ? new Date(subscription.current_period_end * 1000)
+                    : null,
+                  subscription.canceled_at
+                    ? new Date(subscription.canceled_at * 1000)
+                    : null,
+                  org_id,
+                ]
+              );
+              subscriptionSynced = true;
+            }
+          }
+        } catch (syncError) {
+          subscriptionSyncError = syncError instanceof Error ? syncError.message : "Unknown error";
+          logger.warn({ err: syncError, customerId, org_id }, "Failed to sync subscription data during link");
+        }
+      }
+
       logger.info(
-        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email },
+        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email, invoicesSynced, subscriptionSynced, subscriptionSyncError },
         "Manually linked Stripe customer to org"
       );
 
@@ -574,6 +730,9 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         customer_id: customerId,
         org_id,
         org_name: org.name,
+        invoices_synced: invoicesSynced,
+        subscription_synced: subscriptionSynced,
+        ...(subscriptionSyncError && { subscription_sync_error: subscriptionSyncError }),
       });
     } catch (error) {
       logger.error({ err: error, customerId, org_id }, "Error linking Stripe customer");

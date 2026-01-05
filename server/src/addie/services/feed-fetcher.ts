@@ -16,6 +16,23 @@ import {
   type RssArticleInput,
 } from '../../db/industry-feeds-db.js';
 
+/**
+ * Decode common HTML entities in RSS feed content
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x22;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
 const parser = new Parser({
   timeout: 30000,
   headers: {
@@ -100,10 +117,12 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
       feed_id: feed.id,
       feed_name: feed.name,
       guid,
-      title: item.title,
+      // Decode title since it displays in UI/Slack where entities look bad
+      title: decodeHtmlEntities(item.title),
       link: item.link,
       author: item.creator || item.author,
       published_at: publishedAt,
+      // Description is used for content processing, not direct display
       description: item.contentSnippet || item.content?.substring(0, 1000),
       category: feed.category || undefined,
     });

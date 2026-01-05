@@ -1,0 +1,56 @@
+name: Sync Versioned Docs
+
+on:
+  push:
+    branches:
+      - main
+      - 2.6.x
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    # Only run if triggered by main branch or manually, or if 2.6.x changes
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/2.6.x' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch 2.6.x branch
+        run: git fetch origin 2.6.x
+
+      - name: Sync docs from 2.6.x to v2.6-rc
+        run: |
+          # Remove existing v2.6-rc/docs to ensure clean sync
+          rm -rf v2.6-rc/docs
+          mkdir -p v2.6-rc
+
+          # Extract docs folder from 2.6.x branch
+          git archive origin/2.6.x -- docs | tar -x -C v2.6-rc/
+
+          # Check if there are changes
+          if git diff --quiet v2.6-rc/; then
+            echo "No changes to sync"
+            echo "CHANGES_DETECTED=false" >> $GITHUB_ENV
+          else
+            echo "Changes detected in v2.6-rc docs"
+            echo "CHANGES_DETECTED=true" >> $GITHUB_ENV
+          fi
+
+      - name: Commit and push changes
+        if: env.CHANGES_DETECTED == 'true'
+        run: |
+          git add v2.6-rc/
+          git commit -m "chore: sync v2.6-rc docs from 2.6.x branch [skip ci]"
+          git push origin main
+

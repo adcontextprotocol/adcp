@@ -25,6 +25,19 @@ import {
   parseEmailAddress,
   type EmailContactResult,
 } from '../db/contacts-db.js';
+import {
+  handleEmailInvocation,
+  type InboundEmailContext,
+} from '../addie/email-handler.js';
+import {
+  parseForwardedEmailHeaders,
+  formatEmailAddress,
+  mergeAddresses,
+} from '../utils/forwarded-email-parser.js';
+import {
+  processInteraction,
+  type InteractionContext,
+} from '../addie/services/interaction-analyzer.js';
 
 const logger = createLogger('webhooks');
 
@@ -205,6 +218,7 @@ async function getOrCreateEmailContact(
 ): Promise<{
   contactId: string;
   organizationId: string | null;
+  workosUserId: string | null;
   isNew: boolean;
   email: string;
   domain: string;
@@ -218,6 +232,7 @@ async function getOrCreateEmailContact(
   return {
     contactId: result.contactId,
     organizationId: result.organizationId,
+    workosUserId: result.workosUserId,
     isNew: result.isNew,
     email: result.email,
     domain: result.domain,
@@ -233,6 +248,7 @@ async function ensureContactsForParticipants(
 ): Promise<Array<{
   contactId: string;
   organizationId: string | null;
+  workosUserId: string | null;
   email: string;
   domain: string;
   role: 'sender' | 'recipient' | 'cc';
@@ -241,6 +257,7 @@ async function ensureContactsForParticipants(
   const contacts: Array<{
     contactId: string;
     organizationId: string | null;
+    workosUserId: string | null;
     email: string;
     domain: string;
     role: 'sender' | 'recipient' | 'cc';
@@ -384,7 +401,7 @@ async function extractInsightsWithClaude(data: {
   }
 
   const startTime = Date.now();
-  logger.debug({
+  logger.info({
     from: data.from,
     subject: data.subject,
     textLength: data.text.length,
@@ -401,17 +418,28 @@ Subject: ${data.subject}
 ${data.text}
 `.trim();
 
-    const response = await anthropic.messages.create({
-      model: ModelConfig.fast,
-      max_tokens: 300,
-      messages: [
-        {
-          role: 'user',
-          content: `Please analyze this email and extract insights:\n\n${emailContent}`,
-        },
-      ],
-      system: EMAIL_INSIGHT_PROMPT,
+    // Add timeout to prevent webhook from hanging
+    const timeoutMs = 25000; // 25 seconds
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Anthropic API timeout after ${timeoutMs}ms`)), timeoutMs);
     });
+
+    logger.info({ model: ModelConfig.fast, contentLength: emailContent.length }, 'Calling Anthropic API');
+
+    const response = await Promise.race([
+      anthropic.messages.create({
+        model: ModelConfig.fast,
+        max_tokens: 300,
+        messages: [
+          {
+            role: 'user',
+            content: `Please analyze this email and extract insights:\n\n${emailContent}`,
+          },
+        ],
+        system: EMAIL_INSIGHT_PROMPT,
+      }),
+      timeoutPromise,
+    ]);
 
     const durationMs = Date.now() - startTime;
     const textBlock = response.content.find(block => block.type === 'text');
@@ -521,10 +549,18 @@ function verifyResendWebhook(req: Request, rawBody: string): boolean {
  */
 async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<{
   activityId: string;
-  contacts: Array<{ contactId: string; email: string; role: string; isNew: boolean }>;
+  contacts: Array<{ contactId: string; workosUserId: string | null; organizationId: string | null; email: string; role: string; isNew: boolean }>;
   insights: string;
   method: string;
   tokensUsed?: number;
+  // Email content for potential Addie invocation
+  emailContent?: {
+    text?: string;
+    html?: string;
+    messageId: string;
+    to: string[];
+    cc?: string[];
+  };
 }> {
   const pool = getPool();
 
@@ -533,15 +569,41 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   const emailBody = await fetchEmailBody(data.email_id);
 
   // Use original recipients from headers if available, otherwise fall back to webhook data
-  const toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
-  const ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+  let toAddresses = emailBody?.originalTo?.length ? emailBody.originalTo : data.to;
+  let ccAddresses = emailBody?.originalCc?.length ? emailBody.originalCc : data.cc;
+
+  // Check if this is a forwarded email and extract original recipients from the body
+  const forwardedInfo = parseForwardedEmailHeaders(data.subject, emailBody?.text);
+
+  if (forwardedInfo.isForwarded && forwardedInfo.confidence !== 'low') {
+    // Extract additional recipients from the forwarded email headers in the body
+    const forwardedTo = forwardedInfo.originalTo.map(formatEmailAddress);
+    const forwardedCc = forwardedInfo.originalCc.map(formatEmailAddress);
+
+    // Merge with existing addresses, avoiding duplicates
+    toAddresses = mergeAddresses(toAddresses, forwardedTo);
+    ccAddresses = mergeAddresses(ccAddresses || [], forwardedCc);
+
+    logger.info({
+      isForwarded: true,
+      confidence: forwardedInfo.confidence,
+      forwardedToCount: forwardedInfo.originalTo.length,
+      forwardedCcCount: forwardedInfo.originalCc.length,
+      forwardedTo: forwardedInfo.originalTo.map(a => a.email),
+      forwardedCc: forwardedInfo.originalCc.map(a => a.email),
+      originalSubject: forwardedInfo.originalSubject,
+    }, 'Extracted recipients from forwarded email body');
+  }
 
   logger.info({
     webhookTo: data.to,
     webhookCc: data.cc,
     originalTo: emailBody?.originalTo,
     originalCc: emailBody?.originalCc,
+    finalTo: toAddresses,
+    finalCc: ccAddresses,
     usingOriginalRecipients: !!(emailBody?.originalTo?.length || emailBody?.originalCc?.length),
+    isForwarded: forwardedInfo.isForwarded,
   }, 'Resolving email recipients');
 
   // Get all external participants using original recipients
@@ -559,11 +621,17 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   // Create/update contacts for all participants
   const contacts = await ensureContactsForParticipants(participants);
 
+  logger.info({
+    contactCount: contacts.length,
+    contacts: contacts.map(c => ({ email: c.email, contactId: c.contactId, role: c.role })),
+  }, 'Created/updated email contacts');
+
   if (contacts.length === 0) {
     throw new Error('Failed to create any contacts');
   }
 
   // Extract insights
+  logger.info({ emailId: data.email_id }, 'Starting insight extraction');
   const { insights, method, tokensUsed } = await extractInsightsWithClaude({
     from: data.from,
     subject: data.subject,
@@ -571,6 +639,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     to: toAddresses,
     cc: ccAddresses,
   });
+  logger.info({ emailId: data.email_id, method, tokensUsed }, 'Completed insight extraction');
 
   // Build metadata with all participants (include both original and webhook recipients for debugging)
   const metadata = {
@@ -598,6 +667,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   const primaryContact = contacts.find(c => c.role === 'recipient') || contacts.find(c => c.role === 'cc') || contacts[0];
 
   // Store activity (contacts linked via junction table)
+  logger.info({ emailId: data.email_id, messageId: data.message_id }, 'Storing email activity');
   const activityResult = await pool.query(
     `INSERT INTO email_contact_activities (
       email_id,
@@ -625,6 +695,7 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
   );
 
   const activityId = activityResult.rows[0].id;
+  logger.info({ emailId: data.email_id, activityId }, 'Stored email activity, linking contacts');
 
   // Link all contacts to this activity via junction table
   for (const contact of contacts) {
@@ -634,39 +705,18 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
       [activityId, contact.contactId, contact.role, contact.contactId === primaryContact.contactId]
     );
   }
+  logger.info({ emailId: data.email_id, activityId, contactCount: contacts.length }, 'Linked contacts to email activity');
 
-  // If primary contact is linked to an org, also store in org_activities
-  if (primaryContact.organizationId) {
-    await pool.query(
-      `INSERT INTO org_activities (
-        organization_id,
-        activity_type,
-        description,
-        logged_by_name,
-        activity_date,
-        metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        primaryContact.organizationId,
-        'email_inbound',
-        insights,
-        'Addie',
-        new Date(data.created_at),
-        JSON.stringify({
-          ...metadata,
-          message_id: data.message_id,
-          primary_contact_email: primaryContact.email,
-          insight_method: method,
-          tokens_used: tokensUsed,
-        }),
-      ]
-    );
-  }
+  // Note: Email activities are shown on org detail pages via a JOIN query
+  // through email_contacts.organization_id, so we don't need to duplicate
+  // the activity into org_activities here.
 
   return {
     activityId: activityResult.rows[0].id,
     contacts: contacts.map(c => ({
       contactId: c.contactId,
+      workosUserId: c.workosUserId,
+      organizationId: c.organizationId,
       email: c.email,
       role: c.role,
       isNew: c.isNew,
@@ -674,6 +724,14 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
     insights,
     method,
     tokensUsed,
+    // Include email content for potential Addie invocation
+    emailContent: {
+      text: emailBody?.text,
+      html: emailBody?.html,
+      messageId: data.message_id,
+      to: toAddresses,
+      cc: ccAddresses,
+    },
   };
 }
 
@@ -1066,6 +1124,77 @@ export function createWebhooksRouter(): Router {
               totalDurationMs,
               insightPreview: result.insights.substring(0, 100) + (result.insights.length > 100 ? '...' : ''),
             }, 'Processed prospect email');
+
+            // Check for Addie invocation and respond if needed
+            // This runs async - don't block the webhook response
+            if (result.emailContent?.text) {
+              // Find which addie address was used
+              const allAddresses = [...data.to, ...(data.cc || [])];
+              const addieAddress = allAddresses.find(addr =>
+                addr.toLowerCase().includes('addie') &&
+                (addr.includes('@agenticadvertising.org') || addr.includes('@updates.agenticadvertising.org'))
+              ) || 'addie+prospect@agenticadvertising.org';
+
+              const emailContext: InboundEmailContext = {
+                emailId: data.email_id,
+                messageId: data.message_id,
+                from: data.from,
+                to: result.emailContent.to,
+                cc: result.emailContent.cc,
+                subject: data.subject,
+                textContent: result.emailContent.text,
+                htmlContent: result.emailContent.html,
+                addieAddress,
+              };
+
+              // Find the sender's WorkOS user ID if they're a known member
+              const senderContact = result.contacts.find(c => c.email.toLowerCase() === parseEmailAddress(data.from).email.toLowerCase());
+
+              // Fire and forget - don't await (pass workosUserId for authorization, not contactId)
+              handleEmailInvocation(emailContext, senderContact?.workosUserId ?? undefined)
+                .then(invocationResult => {
+                  if (invocationResult.responded) {
+                    logger.info({ emailId: data.email_id }, 'Addie responded to email invocation');
+                  }
+                })
+                .catch(err => {
+                  logger.error({ err, emailId: data.email_id }, 'Error checking email invocation');
+                });
+            }
+
+            // Analyze interaction for task management (fire and forget)
+            // This looks for pending tasks to complete/reschedule and learns from the email
+            if (result.emailContent?.text) {
+              const primaryContact = result.contacts[0];
+              const interactionContext: InteractionContext = {
+                fromEmail: data.from,
+                toEmails: result.emailContent.to,
+                subject: data.subject,
+                content: result.emailContent.text,
+                channel: 'email',
+                direction: 'inbound',
+                contactId: primaryContact?.contactId,
+                organizationId: primaryContact?.organizationId || undefined,
+              };
+
+              processInteraction(interactionContext)
+                .then(interactionResult => {
+                  if (interactionResult.analyzed && interactionResult.actionsApplied) {
+                    const { completed, rescheduled, created } = interactionResult.actionsApplied;
+                    if (completed > 0 || rescheduled > 0 || created > 0) {
+                      logger.info({
+                        emailId: data.email_id,
+                        completed,
+                        rescheduled,
+                        created,
+                      }, 'Applied task actions from email interaction');
+                    }
+                  }
+                })
+                .catch(err => {
+                  logger.error({ err, emailId: data.email_id }, 'Error analyzing email interaction');
+                });
+            }
 
             return res.status(200).json({ ok: true, context: 'prospect' });
           }

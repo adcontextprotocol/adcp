@@ -7,9 +7,16 @@ primary_region = 'iad'
 [build]
   dockerfile = "Dockerfile"
 
+# Run migrations ONCE before deployment, not on every machine startup
+# If this fails, the deployment is rolled back automatically
+[deploy]
+  release_command = "node dist/db/migrate.js"
+  strategy = "rolling"
+
 [env]
   PORT = "8080"
-  RUN_MIGRATIONS = "true"
+  # Disabled - migrations now run via release_command
+  RUN_MIGRATIONS = "false"
 
 [http_service]
   internal_port = 8080
@@ -21,10 +28,10 @@ primary_region = 'iad'
 
   [[http_service.checks]]
     interval = "15s"
-    timeout = "2s"
-    grace_period = "5s"
+    timeout = "5s"
+    grace_period = "30s"
     method = "GET"
-    path = "/"
+    path = "/health"
     protocol = "http"
     tls_skip_verify = false
 
@@ -32,7 +39,7 @@ primary_region = 'iad'
       User-Agent = "Fly Health Check"
 
 [machine]
-  memory = "512mb"
+  memory = "1gb"
   cpu_kind = "shared"
   cpus = 1
 

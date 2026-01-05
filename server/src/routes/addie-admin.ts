@@ -358,12 +358,13 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const { channel, flagged_only, unreviewed_only, user_id, since, limit, offset } = req.query;
+      const { channel, flagged_only, unreviewed_only, has_user_feedback, user_id, since, limit, offset } = req.query;
 
       const threads = await threadService.listThreads({
         channel: channel as ThreadChannel | undefined,
         flagged_only: flagged_only === "true",
         unreviewed_only: unreviewed_only === "true",
+        has_user_feedback: has_user_feedback === "true",
         user_id: user_id as string | undefined,
         since: since ? new Date(since as string) : undefined,
         limit: limit ? parseInt(limit as string, 10) : 50,
@@ -527,7 +528,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
       }
 
-      await threadService.addMessageFeedback(messageId, {
+      const updated = await threadService.addMessageFeedback(messageId, {
         rating,
         rating_category,
         rating_notes,
@@ -536,6 +537,11 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         rated_by: req.user?.id || "admin",
         rating_source: 'admin',
       });
+
+      if (!updated) {
+        logger.warn({ messageId }, "No message found to add feedback to");
+        return res.status(404).json({ error: "Message not found" });
+      }
 
       // Also mark the thread as reviewed when admin provides feedback
       const threadResult = await query<{ thread_id: string }>(
@@ -1965,6 +1971,97 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to submit eval result review",
+      });
+    }
+  });
+
+  // =========================================================================
+  // HOME PREVIEW API (for debugging/testing Addie Home for any user)
+  // =========================================================================
+
+  // GET /api/admin/addie/home/preview - Preview Addie Home for any user
+  apiRouter.get("/home/preview", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { user_id, email, slack_user_id, format } = req.query;
+
+      if (!user_id && !email && !slack_user_id) {
+        return res.status(400).json({
+          error: "One of user_id (WorkOS), email, or slack_user_id is required",
+        });
+      }
+
+      // Validate input parameters
+      if (slack_user_id && (typeof slack_user_id !== "string" || !/^U[A-Z0-9]+$/i.test(slack_user_id))) {
+        return res.status(400).json({ error: "Invalid slack_user_id format" });
+      }
+      if (user_id && (typeof user_id !== "string" || user_id.length > 100)) {
+        return res.status(400).json({ error: "Invalid user_id format" });
+      }
+      if (email && (typeof email !== "string" || !email.includes("@") || email.length > 254)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      // Dynamic import to avoid circular dependencies
+      const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import("../addie/home/index.js");
+      const { getHomeContent } = await import("../addie/home/index.js");
+
+      let content;
+      let targetUserId: string | undefined;
+
+      if (slack_user_id) {
+        // Use Slack-based home content
+        content = await getHomeContent(slack_user_id as string, { forceRefresh: true });
+        targetUserId = slack_user_id as string;
+      } else {
+        // Look up WorkOS user by ID or email
+        const { workos } = await import("../auth/workos-client.js");
+
+        let workosUserId: string;
+
+        if (user_id) {
+          workosUserId = user_id as string;
+        } else if (email) {
+          // Look up user by email
+          const users = await workos!.userManagement.listUsers({
+            email: email as string,
+          });
+
+          if (users.data.length === 0) {
+            return res.status(404).json({
+              error: "User not found",
+              email: email,
+            });
+          }
+
+          workosUserId = users.data[0].id;
+        } else {
+          return res.status(400).json({ error: "Invalid request" });
+        }
+
+        targetUserId = workosUserId;
+        content = await getWebHomeContent(workosUserId);
+      }
+
+      // Return based on format
+      if (format === "html") {
+        const html = renderHomeHTML(content);
+        res.json({
+          user_id: targetUserId,
+          html,
+          css: ADDIE_HOME_CSS,
+          content, // Also include raw content for debugging
+        });
+      } else {
+        res.json({
+          user_id: targetUserId,
+          content,
+        });
+      }
+    } catch (error) {
+      logger.error({ err: error }, "Error previewing Addie Home");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unable to preview Addie Home",
       });
     }
   });

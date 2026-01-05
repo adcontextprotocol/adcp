@@ -113,12 +113,58 @@ export function setupOrganizationRoutes(
           [orgId]
         );
 
-        // Get recent activities
+        // Get recent activities (combines org_activities with email activities via contacts)
         const activitiesResult = await pool.query(
           `
-          SELECT *
-          FROM org_activities
-          WHERE organization_id = $1
+          SELECT * FROM (
+            -- Direct org activities (manual logs, etc.)
+            SELECT
+              id::text as id,
+              activity_type,
+              description,
+              logged_by_user_id,
+              logged_by_name,
+              activity_date,
+              is_next_step,
+              next_step_due_date,
+              next_step_owner_user_id,
+              next_step_owner_name,
+              next_step_completed_at,
+              metadata,
+              created_at,
+              updated_at
+            FROM org_activities
+            WHERE organization_id = $1
+
+            UNION ALL
+
+            -- Email activities via linked contacts
+            SELECT
+              eca.id::text as id,
+              'email_inbound' as activity_type,
+              eca.insights as description,
+              NULL as logged_by_user_id,
+              'Addie' as logged_by_name,
+              eca.email_date as activity_date,
+              false as is_next_step,
+              NULL as next_step_due_date,
+              NULL as next_step_owner_user_id,
+              NULL as next_step_owner_name,
+              NULL as next_step_completed_at,
+              jsonb_build_object(
+                'email_id', eca.email_id,
+                'message_id', eca.message_id,
+                'subject', eca.subject,
+                'contact_email', ec.email,
+                'source', 'email_contact_activities'
+              ) as metadata,
+              eca.created_at,
+              eca.created_at as updated_at
+            FROM email_contact_activities eca
+            INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id AND eac.is_primary = true
+            INNER JOIN email_contacts ec ON ec.id = eac.contact_id
+            WHERE ec.organization_id = $1
+          ) combined
           ORDER BY activity_date DESC
           LIMIT 50
         `,
@@ -555,6 +601,18 @@ export function setupOrganizationRoutes(
 
         const pool = getPool();
 
+        // Check if user is already an owner - don't downgrade them
+        const existing = await pool.query(
+          `SELECT role FROM org_stakeholders WHERE organization_id = $1 AND user_id = $2`,
+          [orgId, req.user.id]
+        );
+
+        if (existing.rows.length > 0 && existing.rows[0].role === "owner" && actualRole !== "owner") {
+          return res.status(400).json({
+            error: "Cannot change role from owner. Use the owner selector to reassign ownership first.",
+          });
+        }
+
         const userName =
           `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
           req.user.email;
@@ -589,7 +647,7 @@ export function setupOrganizationRoutes(
     }
   );
 
-  // DELETE /api/admin/organizations/:orgId/stakeholders/me - Remove self as stakeholder
+  // DELETE /api/admin/organizations/:orgId/stakeholders/me - Remove self as stakeholder (but not if owner)
   apiRouter.delete(
     "/organizations/:orgId/stakeholders/me",
     requireAuth,
@@ -604,16 +662,27 @@ export function setupOrganizationRoutes(
 
         const pool = getPool();
 
+        // Only delete if not owner - owners must be reassigned via owner selector
         const result = await pool.query(
           `
           DELETE FROM org_stakeholders
-          WHERE organization_id = $1 AND user_id = $2
+          WHERE organization_id = $1 AND user_id = $2 AND role != 'owner'
           RETURNING *
         `,
           [orgId, req.user.id]
         );
 
         if (result.rows.length === 0) {
+          // Check if they're the owner
+          const ownerCheck = await pool.query(
+            `SELECT role FROM org_stakeholders WHERE organization_id = $1 AND user_id = $2`,
+            [orgId, req.user.id]
+          );
+          if (ownerCheck.rows.length > 0 && ownerCheck.rows[0].role === "owner") {
+            return res.status(400).json({
+              error: "Cannot remove yourself as owner. Reassign ownership first.",
+            });
+          }
           return res
             .status(404)
             .json({ error: "You are not a stakeholder for this organization" });
@@ -701,6 +770,435 @@ export function setupOrganizationRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch engagement signals",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/organizations/:orgId/addie-research - Get Addie interactions related to this org
+  apiRouter.get(
+    "/organizations/:orgId/addie-research",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Get org details to find related domains and member emails
+        const orgResult = await pool.query(
+          `SELECT name, email_domain FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const orgName = org.name;
+        const emailDomain = org.email_domain;
+
+        // Get linked domains
+        const domainsResult = await pool.query(
+          `SELECT domain FROM organization_domains WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        const domains = domainsResult.rows.map((r) => r.domain);
+
+        // Search Addie interactions that mention this org name or domains
+        // Look in both input_text and output_text
+        const searchTerms = [orgName, ...domains].filter(Boolean);
+
+        if (searchTerms.length === 0) {
+          return res.json({ interactions: [] });
+        }
+
+        // Build search pattern - case insensitive search for org name or domains
+        const searchPattern = searchTerms
+          .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+
+        const interactionsResult = await pool.query(
+          `
+          SELECT
+            id,
+            event_type,
+            input_text,
+            output_text,
+            tools_used,
+            user_id,
+            created_at
+          FROM addie_interactions
+          WHERE (
+            input_text ~* $1 OR
+            output_text ~* $1
+          )
+          ORDER BY created_at DESC
+          LIMIT 20
+        `,
+          [searchPattern]
+        );
+
+        // Get user names for interactions
+        const interactions = await Promise.all(
+          interactionsResult.rows.map(async (interaction) => {
+            let userName = null;
+            if (interaction.user_id) {
+              // Try to get Slack user name
+              const slackUserResult = await pool.query(
+                `SELECT slack_display_name, slack_real_name FROM slack_user_mappings WHERE slack_user_id = $1`,
+                [interaction.user_id]
+              );
+              if (slackUserResult.rows.length > 0) {
+                userName =
+                  slackUserResult.rows[0].slack_display_name ||
+                  slackUserResult.rows[0].slack_real_name;
+              }
+            }
+
+            return {
+              id: interaction.id,
+              event_type: interaction.event_type,
+              summary: interaction.output_text?.substring(0, 500),
+              output_text: interaction.output_text,
+              tools_used: interaction.tools_used,
+              user_name: userName,
+              created_at: interaction.created_at,
+            };
+          })
+        );
+
+        res.json({ interactions });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching Addie research");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch Addie research",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/organizations/:orgId/member-insights - Get member insights for this org
+  apiRouter.get(
+    "/organizations/:orgId/member-insights",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Get all WorkOS user IDs for members of this org
+        // We need to look up via organization memberships
+        let memberUserIds: string[] = [];
+        try {
+          if (workos) {
+            const memberships =
+              await workos.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+              });
+            memberUserIds = (memberships.data || []).map((m) => m.userId);
+          }
+        } catch {
+          // Org might not exist in WorkOS
+        }
+
+        if (memberUserIds.length === 0) {
+          return res.json({ insights: [] });
+        }
+
+        // Get Slack user IDs for these WorkOS users
+        const slackUsersResult = await pool.query(
+          `SELECT slack_user_id, slack_display_name, slack_real_name
+           FROM slack_user_mappings
+           WHERE workos_user_id = ANY($1)`,
+          [memberUserIds]
+        );
+
+        const slackUserMap = new Map(
+          slackUsersResult.rows.map((r) => [
+            r.slack_user_id,
+            r.slack_display_name || r.slack_real_name,
+          ])
+        );
+        const slackUserIds = slackUsersResult.rows.map((r) => r.slack_user_id);
+
+        if (slackUserIds.length === 0) {
+          return res.json({ insights: [] });
+        }
+
+        // Get insights for these Slack users
+        const insightsResult = await pool.query(
+          `
+          SELECT
+            mi.slack_user_id,
+            mi.value,
+            mi.confidence,
+            mi.source_type,
+            mi.created_at,
+            mit.name as insight_type,
+            mit.display_name as insight_type_display
+          FROM member_insights mi
+          JOIN member_insight_types mit ON mi.insight_type_id = mit.id
+          WHERE mi.slack_user_id = ANY($1)
+            AND mi.is_current = true
+          ORDER BY mi.created_at DESC
+        `,
+          [slackUserIds]
+        );
+
+        const insights = insightsResult.rows.map((row) => ({
+          slack_user_id: row.slack_user_id,
+          member_name: slackUserMap.get(row.slack_user_id) || row.slack_user_id,
+          insight_type: row.insight_type_display || row.insight_type,
+          value: row.value,
+          confidence: row.confidence,
+          source_type: row.source_type,
+          created_at: row.created_at,
+        }));
+
+        res.json({ insights });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching member insights");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch member insights",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/enrich - Refresh enrichment data for an org
+  apiRouter.post(
+    "/organizations/:orgId/enrich",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Check if enrichment was done recently (within last hour) to prevent abuse
+        const recentCheck = await pool.query(
+          `SELECT enrichment_at FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        if (recentCheck.rows[0]?.enrichment_at) {
+          const lastEnrichment = new Date(recentCheck.rows[0].enrichment_at);
+          const hourAgo = new Date(Date.now() - 3600000);
+          if (lastEnrichment > hourAgo) {
+            return res.status(429).json({
+              error: "Too soon",
+              message:
+                "Enrichment was refreshed recently. Please wait an hour.",
+            });
+          }
+        }
+
+        // Get primary domain for this org
+        const domainResult = await pool.query(
+          `SELECT domain FROM organization_domains
+           WHERE workos_organization_id = $1 AND is_primary = true
+           LIMIT 1`,
+          [orgId]
+        );
+
+        if (domainResult.rows.length === 0) {
+          // Try to get any domain
+          const anyDomainResult = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1
+             LIMIT 1`,
+            [orgId]
+          );
+
+          if (anyDomainResult.rows.length === 0) {
+            return res.status(400).json({
+              error: "No domain found",
+              message:
+                "Add a domain to this organization before enriching",
+            });
+          }
+        }
+
+        const domain =
+          domainResult.rows[0]?.domain ||
+          (
+            await pool.query(
+              `SELECT domain FROM organization_domains WHERE workos_organization_id = $1 LIMIT 1`,
+              [orgId]
+            )
+          ).rows[0]?.domain;
+
+        if (!domain) {
+          return res.status(400).json({
+            error: "No domain found",
+            message: "Add a domain to this organization before enriching",
+          });
+        }
+
+        // Import and call the enrichment function
+        const { enrichOrganization } = await import(
+          "../../services/enrichment"
+        );
+        const result = await enrichOrganization(orgId, domain);
+
+        if (!result.success) {
+          return res.status(500).json({
+            error: "Enrichment failed",
+            message: result.error || "Unable to enrich organization",
+          });
+        }
+
+        logger.info(
+          { orgId, domain, adminEmail: req.user!.email },
+          "Admin refreshed enrichment data"
+        );
+
+        res.json({
+          success: true,
+          message: "Enrichment data refreshed",
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error enriching organization");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to enrich organization",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/add-users - Add users to an organization
+  // Used by Domain Health to move users from personal workspaces to company orgs
+  apiRouter.post(
+    "/organizations/:orgId/add-users",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { user_ids } = req.body;
+
+        if (!Array.isArray(user_ids) || user_ids.length === 0) {
+          return res.status(400).json({
+            error: "Invalid request",
+            message: "user_ids must be a non-empty array",
+          });
+        }
+
+        if (user_ids.length > 100) {
+          return res.status(400).json({
+            error: "Too many users",
+            message: "Cannot add more than 100 users at once",
+          });
+        }
+
+        const pool = getPool();
+
+        // Verify the target org exists and is not a personal workspace
+        const orgCheck = await pool.query(
+          `SELECT workos_organization_id, name, is_personal FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgCheck.rows.length === 0) {
+          return res.status(404).json({
+            error: "Organization not found",
+          });
+        }
+
+        if (orgCheck.rows[0].is_personal) {
+          return res.status(400).json({
+            error: "Invalid target",
+            message: "Cannot add users to a personal workspace",
+          });
+        }
+
+        const orgName = orgCheck.rows[0].name;
+
+        // Process each user
+        let addedCount = 0;
+        const errors: string[] = [];
+
+        for (const userId of user_ids) {
+          try {
+            // Validate user ID format
+            if (typeof userId !== "string" || !/^[\w-]+$/.test(userId)) {
+              errors.push(`Invalid user ID format`);
+              continue;
+            }
+
+            // Check if user exists
+            const userCheck = await pool.query(
+              `SELECT workos_user_id, email, first_name, last_name, workos_organization_id
+               FROM organization_memberships
+               WHERE workos_user_id = $1`,
+              [userId]
+            );
+
+            if (userCheck.rows.length === 0) {
+              errors.push(`User ${userId} not found`);
+              continue;
+            }
+
+            const user = userCheck.rows[0];
+
+            // Check if user is already in this org
+            const existingMembership = await pool.query(
+              `SELECT id FROM organization_memberships
+               WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+              [userId, orgId]
+            );
+
+            if (existingMembership.rows.length > 0) {
+              // User already in target org, skip
+              addedCount++;
+              continue;
+            }
+
+            // Add membership to the new org
+            await pool.query(
+              `INSERT INTO organization_memberships
+               (workos_user_id, workos_organization_id, email, first_name, last_name, role)
+               VALUES ($1, $2, $3, $4, $5, 'member')
+               ON CONFLICT (workos_user_id, workos_organization_id)
+               DO UPDATE SET email = EXCLUDED.email, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
+              [userId, orgId, user.email, user.first_name, user.last_name]
+            );
+
+            addedCount++;
+
+            logger.info(
+              {
+                userId,
+                userEmail: user.email,
+                targetOrgId: orgId,
+                targetOrgName: orgName,
+                previousOrgId: user.workos_organization_id,
+                adminEmail: req.user!.email,
+              },
+              "Admin added user to organization"
+            );
+          } catch (err) {
+            logger.error({ err, userId }, "Error adding user to org");
+            errors.push(`Failed to add user ${userId}`);
+          }
+        }
+
+        res.json({
+          success: true,
+          added_count: addedCount,
+          total_requested: user_ids.length,
+          errors: errors.length > 0 ? errors : undefined,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error adding users to organization");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add users to organization",
         });
       }
     }

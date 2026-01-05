@@ -177,6 +177,55 @@
       color: white;
     }
 
+    /* Image support */
+    .message-content img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 8px 0;
+      display: block;
+    }
+
+    .message-content img:hover {
+      cursor: pointer;
+    }
+
+    /* iframe support for creative previews */
+    .message-content .creative-preview-container {
+      position: relative;
+      width: 100%;
+      margin: 12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .message-content .creative-preview-container iframe {
+      width: 100%;
+      min-height: 200px;
+      border: none;
+      display: block;
+    }
+
+    .message-content .creative-preview-label {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      padding: 4px 8px;
+      background: var(--color-bg-card);
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* Inline HTML creative container */
+    .message-content .creative-html-container {
+      margin: 12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: white;
+      padding: 16px;
+    }
+
     .message-content ul, .message-content ol {
       margin: 8px 0;
       padding-left: 20px;
@@ -332,6 +381,31 @@
 
     .welcome-message p {
       margin-bottom: 24px;
+    }
+
+    /* Addie Home Section */
+    .addie-home-container {
+      display: none;
+      padding: 16px 0;
+    }
+
+    .addie-home-container.visible {
+      display: block;
+    }
+
+    .addie-home-loading {
+      text-align: center;
+      padding: 24px;
+      color: var(--color-text-muted);
+    }
+
+    .addie-home-error {
+      text-align: center;
+      padding: 16px;
+      color: var(--color-error-600);
+      background: var(--color-error-50);
+      border-radius: var(--radius-lg);
+      margin-bottom: 16px;
     }
 
     .error-toast {
@@ -569,51 +643,574 @@
         font-size: 20px;
       }
     }
+
+    /* Chat Sidebar - Vertical Tab Layout */
+    .page-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .chat-sidebar {
+      width: 280px;
+      border-right: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      height: 100%;
+    }
+
+    /* Hide sidebar for unauthenticated users */
+    .chat-sidebar:not(.visible) {
+      display: none;
+    }
+
+    /* Sidebar navigation tabs */
+    .sidebar-nav {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .sidebar-tab {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: none;
+      border-radius: var(--radius-lg);
+      background: transparent;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+    }
+
+    .sidebar-tab:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+    }
+
+    .sidebar-tab.active {
+      background: var(--color-primary-50);
+      color: var(--color-brand);
+      font-weight: 500;
+    }
+
+    .sidebar-tab svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .sidebar-tab--new {
+      background: var(--color-brand);
+      color: white;
+      margin-top: 8px;
+    }
+
+    .sidebar-tab--new:hover {
+      background: var(--color-brand-hover);
+      color: white;
+    }
+
+    /* Sidebar sections */
+    .sidebar-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-section-header {
+      padding: 12px 16px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-section-header button {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sidebar-section-header button:hover {
+      color: var(--color-text);
+    }
+
+    .sidebar-section-header .badge {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-muted);
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+
+    .sidebar-section-header svg {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.2s;
+    }
+
+    .sidebar-section--collapsed .sidebar-section-header svg {
+      transform: rotate(-90deg);
+    }
+
+    .sidebar-section--collapsed .sidebar-section-content {
+      display: none;
+    }
+
+    /* Active tabs list */
+    .sidebar-active-list {
+      padding: 0 8px 8px;
+    }
+
+    .sidebar-active-list:empty::after {
+      content: 'No active chats';
+      display: block;
+      padding: 12px 8px;
+      text-align: center;
+      color: var(--color-text-muted);
+      font-size: 12px;
+    }
+
+    /* Tab items in sidebar */
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .tab-item:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .tab-item.active {
+      background: var(--color-primary-50);
+    }
+
+    .tab-item-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tab-item-indicator--thinking {
+      background: var(--color-warning-500);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .tab-item-indicator--ready {
+      background: var(--color-success-500);
+    }
+
+    .tab-item-indicator--idle {
+      background: var(--color-gray-300);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    .tab-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tab-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tab-item-meta {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+
+    .tab-item-close {
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .tab-item:hover .tab-item-close {
+      opacity: 1;
+    }
+
+    .tab-item-close:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+    }
+
+    .tab-item-close svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .tab-item-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      min-width: 18px;
+      height: 18px;
+      background: var(--color-brand);
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 5px;
+    }
+
+    /* History section */
+    .sidebar-history {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .sidebar-history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 8px 8px;
+    }
+
+    .history-item {
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .history-item:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .history-item-title {
+      font-size: 13px;
+      color: var(--color-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .history-item-meta {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      margin-top: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .thread-channel-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-muted);
+      vertical-align: middle;
+    }
+
+    .thread-channel-badge.slack {
+      background: #4A154B15;
+      color: #4A154B;
+    }
+
+    .thread-channel-badge svg {
+      width: 10px;
+      height: 10px;
+    }
+
+    .history-empty {
+      text-align: center;
+      padding: 24px 16px;
+      color: var(--color-text-muted);
+      font-size: 13px;
+    }
+
+    /* Mobile sidebar toggle */
+    .sidebar-toggle-btn {
+      position: fixed;
+      left: 16px;
+      bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      display: none;
+      align-items: center;
+      gap: 6px;
+      z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+
+    body.native-app .sidebar-toggle-btn {
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .sidebar-toggle-btn:hover {
+      background: var(--color-bg-subtle);
+      border-color: var(--color-brand);
+    }
+
+    .sidebar-toggle-btn .badge {
+      background: var(--color-brand);
+      color: white;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    /* Show toggle button on mobile for authenticated users */
+    @media (max-width: 768px) {
+      .chat-sidebar.visible {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 1000;
+        box-shadow: var(--shadow-lg);
+      }
+
+      .chat-sidebar.visible:not(.mobile-open) {
+        display: none;
+      }
+
+      .chat-sidebar.visible.mobile-open {
+        display: flex;
+      }
+
+      .sidebar-toggle-btn.visible {
+        display: flex;
+      }
+
+      .sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.3);
+        z-index: 999;
+        display: none;
+      }
+
+      .sidebar-overlay.visible {
+        display: block;
+      }
+    }
+
+    /* Desktop: always show sidebar for authenticated users */
+    @media (min-width: 769px) {
+      .chat-sidebar.visible {
+        display: flex;
+      }
+
+      .sidebar-toggle-btn {
+        display: none !important;
+      }
+    }
+
+    /* Native app mode - hide site nav, chat header, and status indicator (app provides its own) */
+    body.native-app #adcp-nav,
+    body.native-app .chat-header,
+    body.native-app .status-indicator {
+      display: none !important;
+    }
+
+    body.native-app .chat-container {
+      padding-top: 0;
+    }
+
+    body.native-app .messages-container {
+      padding-top: 16px;
+    }
+
+    /* Native app mode - sidebar adjustments for safe areas */
+    body.native-app .chat-sidebar {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body.native-app .chat-sidebar .sidebar-nav {
+      padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    }
+
+    /* Native app mobile - ensure sidebar works with safe areas */
+    @media (max-width: 768px) {
+      body.native-app .chat-sidebar.visible {
+        padding-left: env(safe-area-inset-left, 0px);
+      }
+
+      body.native-app .sidebar-overlay {
+        /* Extend overlay behind safe areas */
+        top: calc(-1 * env(safe-area-inset-top, 0px));
+        left: calc(-1 * env(safe-area-inset-left, 0px));
+        right: calc(-1 * env(safe-area-inset-right, 0px));
+        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+      }
+    }
+
+    /* Native app mode - adjust input area for safe areas */
+    body.native-app .input-container {
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
   </style>
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
   <div id="adcp-nav"></div>
 
-  <div class="chat-container">
-    <div class="chat-header">
-      <h1>
-        <span class="addie-avatar">A</span>
-        Chat with Addie
-      </h1>
-      <p>Your AI assistant for AdCP and Agentic Advertising</p>
-    </div>
+  <!-- Mobile sidebar toggle button -->
+  <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Show chats">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    Chats
+    <span class="badge" id="sidebarBadge" style="display: none;">0</span>
+  </button>
 
-    <div class="messages-container" id="messagesContainer">
-      <div class="welcome-message" id="welcomeMessage">
-        <h2>Hi! I'm Addie</h2>
-        <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
-        <div class="suggested-prompts" id="suggestedPrompts">
-          <button class="suggested-prompt" data-prompt="What is AdCP?">What is AdCP?</button>
-          <button class="suggested-prompt" data-prompt="How do I get started with AdCP?">How do I get started?</button>
-          <button class="suggested-prompt" data-prompt="What is agentic advertising?">What is agentic advertising?</button>
-          <button class="suggested-prompt" data-prompt="How do I become an AAO member?">Become a member</button>
+  <!-- Mobile overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="page-layout">
+    <!-- Chat Sidebar -->
+    <div class="chat-sidebar" id="chatSidebar">
+      <!-- Navigation tabs -->
+      <div class="sidebar-nav">
+        <button class="sidebar-tab active" id="homeTab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          Home
+        </button>
+        <button class="sidebar-tab sidebar-tab--new" id="newChatBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Chat
+        </button>
+      </div>
+
+      <!-- Active chats section -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Active</div>
+        <div class="sidebar-active-list" id="activeTabsList"></div>
+      </div>
+
+      <!-- History section -->
+      <div class="sidebar-history" id="historySection">
+        <div class="sidebar-section-header">
+          <button id="historyToggle">
+            History
+            <span class="badge" id="historyCount">0</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="sidebar-history-list" id="historyList">
+            <div class="history-empty">Loading...</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="chat-input-container">
-      <div class="chat-input-wrapper">
-        <textarea
-          class="chat-input"
-          id="chatInput"
-          placeholder="Ask Addie anything..."
-          rows="1"
-        ></textarea>
-        <button class="send-button" id="sendButton" disabled>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-          </svg>
-        </button>
+    <div class="chat-container">
+      <div class="chat-header">
+        <h1>
+          <span class="addie-avatar">A</span>
+          Chat with Addie
+        </h1>
+        <p>Your AI assistant for AdCP and Agentic Advertising</p>
       </div>
-      <div class="status-indicator" id="statusIndicator">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Connecting...</span>
+
+      <div class="messages-container" id="messagesContainer">
+        <!-- Addie Home (shown for authenticated users) -->
+        <div class="addie-home-container" id="addieHomeContainer">
+          <div class="addie-home-loading" id="addieHomeLoading">Loading your dashboard...</div>
+          <div id="addieHomeContent"></div>
+          <style id="addieHomeStyles"></style>
+        </div>
+
+        <div class="welcome-message" id="welcomeMessage">
+          <h2>Hi! I'm Addie</h2>
+          <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
+          <div class="suggested-prompts" id="suggestedPrompts">
+            <button class="suggested-prompt" data-prompt="What can you do? What kinds of things can I ask you about?">What can you help me with?</button>
+            <button class="suggested-prompt" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
+            <button class="suggested-prompt" data-prompt="How do I set up a sales agent with AdCP?">Get started building</button>
+            <button class="suggested-prompt" data-prompt="How is agentic advertising different from programmatic, and why is it better for sustainability?">AdCP vs programmatic</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-container">
+        <div class="chat-input-wrapper">
+          <textarea
+            class="chat-input"
+            id="chatInput"
+            placeholder="Ask Addie anything..."
+            rows="1"
+          ></textarea>
+          <button class="send-button" id="sendButton" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="status-indicator" id="statusIndicator">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting...</span>
+        </div>
       </div>
     </div>
   </div>
@@ -631,20 +1228,82 @@
       const suggestedPrompts = document.getElementById('suggestedPrompts');
       const statusDot = document.getElementById('statusDot');
       const statusText = document.getElementById('statusText');
+      const addieHomeContainer = document.getElementById('addieHomeContainer');
+      const addieHomeContent = document.getElementById('addieHomeContent');
+      const addieHomeLoading = document.getElementById('addieHomeLoading');
+      const addieHomeStyles = document.getElementById('addieHomeStyles');
+      const chatSidebar = document.getElementById('chatSidebar');
+      const homeTab = document.getElementById('homeTab');
+      const newChatBtn = document.getElementById('newChatBtn');
+      const activeTabsList = document.getElementById('activeTabsList');
+      const historyList = document.getElementById('historyList');
+      const historyCount = document.getElementById('historyCount');
+      const historyToggle = document.getElementById('historyToggle');
+      const historySection = document.getElementById('historySection');
+      const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+      const sidebarOverlay = document.getElementById('sidebarOverlay');
+      const sidebarBadge = document.getElementById('sidebarBadge');
 
       // State
       let conversationId = null;
       let isLoading = false;
       let isReady = false;
       let impersonationInfo = null;
+      let isAuthenticated = false;
+      let threads = [];
+      let mobileMenuOpen = false;
 
-      // Check for impersonation
+      // Tab state - persisted to localStorage
+      let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
+      let currentTabId = 'home'; // 'home' or conversation_id
+      const originalTitle = document.title;
+
+      // Native app auth token (from URL hash, e.g., #token=xxx)
+      let nativeAuthToken = null;
+
+      // Extract token from URL hash for native apps (Tauri, Capacitor)
+      function extractNativeToken() {
+        const hash = window.location.hash;
+        if (hash && hash.includes('token=')) {
+          const params = new URLSearchParams(hash.slice(1));
+          const token = params.get('token');
+          if (token) {
+            nativeAuthToken = token;
+            // Mark body as native app mode to hide nav/header via CSS
+            document.body.classList.add('native-app');
+            // Clear hash from URL for cleaner appearance
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            console.log('Native auth token detected');
+          }
+        }
+
+        // Also detect if we're inside a Tauri webview (backup detection)
+        // Tauri injects __TAURI__ global, but this may not be available in iframe
+        // Check for window.self !== window.top (we're in an iframe)
+        if (window.self !== window.top) {
+          document.body.classList.add('native-app');
+          console.log('Running inside iframe, enabling native-app mode');
+        }
+      }
+
+      // Helper for authenticated API requests (works for both web cookies and native tokens)
+      function authFetch(url, options = {}) {
+        const headers = { ...options.headers };
+        if (nativeAuthToken) {
+          headers['Authorization'] = `Bearer ${nativeAuthToken}`;
+        }
+        return fetch(url, { ...options, headers, credentials: 'include' });
+      }
+
+      // Check for impersonation and authentication
       async function checkImpersonation() {
         try {
-          const response = await fetch('/api/me');
+          const response = await authFetch('/api/me');
           if (!response.ok) return; // Not authenticated
 
           const data = await response.json();
+          isAuthenticated = true;
+
           if (data.impersonation && data.impersonation.active) {
             impersonationInfo = data.impersonation;
             const banner = document.getElementById('impersonation-banner');
@@ -658,9 +1317,491 @@
             `;
             banner.classList.add('active');
           }
+
+          // Load Addie Home for authenticated users
+          loadAddieHome();
+
+          // Show sidebar and load threads for authenticated users
+          chatSidebar.classList.add('visible');
+          sidebarToggleBtn.classList.add('visible');
+          loadActiveTabs(); // Restore from localStorage
+          loadThreads();
         } catch (error) {
           // Silently ignore - user may not be authenticated
         }
+      }
+
+      // Load user's conversation threads
+      async function loadThreads() {
+        if (!isAuthenticated) return;
+
+        try {
+          const response = await authFetch('/api/addie/chat/threads');
+          if (!response.ok) return;
+
+          const data = await response.json();
+          threads = data.conversations || [];
+          renderHistoryList();
+          renderActiveTabs();
+        } catch (error) {
+          console.error('Failed to load threads:', error);
+        }
+      }
+
+      // Helper to render channel badge
+      function getChannelBadge(channel) {
+        if (channel === 'slack') {
+          return `<span class="thread-channel-badge slack">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            Slack
+          </span>`;
+        }
+        return '';
+      }
+
+      // === Tab Management Functions ===
+
+      // Debounced thread refresh (avoids excessive API calls when sending multiple messages)
+      let loadThreadsTimer = null;
+      function scheduleLoadThreads() {
+        if (loadThreadsTimer) clearTimeout(loadThreadsTimer);
+        loadThreadsTimer = setTimeout(() => {
+          if (isAuthenticated) loadThreads();
+        }, 1000);
+      }
+
+      // Load active tabs from localStorage
+      function loadActiveTabs() {
+        try {
+          const saved = localStorage.getItem('addie_active_tabs');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            // Validate data structure
+            if (Array.isArray(parsed)) {
+              activeTabs = parsed.filter(tab =>
+                tab && typeof tab.id === 'string' && typeof tab.title === 'string'
+              );
+              // Reset loading states on page load
+              activeTabs.forEach(tab => { tab.isLoading = false; });
+            }
+          }
+        } catch (e) {
+          activeTabs = [];
+        }
+      }
+
+      // Save active tabs to localStorage
+      function saveActiveTabs() {
+        try {
+          localStorage.setItem('addie_active_tabs', JSON.stringify(activeTabs));
+        } catch (e) {
+          console.warn('Failed to save tabs to localStorage');
+        }
+      }
+
+      // Add a conversation to active tabs
+      function addActiveTab(id, title, channel = 'web') {
+        // Check if already in active tabs
+        if (activeTabs.some(t => t.id === id)) return;
+
+        // Limit to 7 active tabs
+        if (activeTabs.length >= 7) {
+          activeTabs.shift(); // Remove oldest
+        }
+
+        activeTabs.push({
+          id,
+          title: title || 'New Chat',
+          channel,
+          isLoading: false,
+          unreadCount: 0
+        });
+        saveActiveTabs();
+        renderActiveTabs();
+        renderHistoryList(); // Update history to remove from list
+      }
+
+      // Remove a conversation from active tabs
+      function removeActiveTab(id) {
+        activeTabs = activeTabs.filter(t => t.id !== id);
+        saveActiveTabs();
+        renderActiveTabs();
+        renderHistoryList();
+
+        // If we removed the current tab, switch to home
+        if (currentTabId === id) {
+          switchToHome();
+        }
+      }
+
+      // Update a tab's state (loading, unread)
+      function updateTabState(id, updates) {
+        const tab = activeTabs.find(t => t.id === id);
+        if (tab) {
+          Object.assign(tab, updates);
+          saveActiveTabs();
+          renderActiveTabs();
+          updateUnreadBadges();
+        }
+      }
+
+      // Get total unread count across all tabs
+      function getTotalUnread() {
+        return activeTabs.reduce((sum, t) => sum + (t.unreadCount || 0), 0);
+      }
+
+      // Update document title and mobile badge with unread count
+      function updateUnreadBadges() {
+        const total = getTotalUnread();
+        if (total > 0) {
+          document.title = `(${total}) ${originalTitle}`;
+          sidebarBadge.textContent = total;
+          sidebarBadge.style.display = 'inline-flex';
+        } else {
+          document.title = originalTitle;
+          sidebarBadge.style.display = 'none';
+        }
+      }
+
+      // Render the active tabs list
+      function renderActiveTabs() {
+        if (activeTabs.length === 0) {
+          activeTabsList.innerHTML = '';
+          return;
+        }
+
+        activeTabsList.innerHTML = activeTabs.map(tab => {
+          const indicatorClass = tab.isLoading ? 'tab-item-indicator--thinking' :
+                                 tab.unreadCount > 0 ? 'tab-item-indicator--ready' :
+                                 'tab-item-indicator--idle';
+          const isActive = currentTabId === tab.id;
+
+          return `
+            <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${tab.id}" data-channel="${tab.channel}">
+              <span class="tab-item-indicator ${indicatorClass}"></span>
+              <div class="tab-item-content">
+                <div class="tab-item-title">${escapeHtml(tab.title)}</div>
+              </div>
+              ${tab.unreadCount > 0 ? `<span class="tab-item-badge">${tab.unreadCount}</span>` : ''}
+              <button class="tab-item-close" data-tab-id="${tab.id}" title="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render the history list (threads not in active tabs)
+      function renderHistoryList() {
+        const activeIds = new Set(activeTabs.map(t => t.id));
+        const historyThreads = threads.filter(t => !activeIds.has(t.conversation_id));
+
+        historyCount.textContent = historyThreads.length;
+
+        if (historyThreads.length === 0) {
+          historyList.innerHTML = '<div class="history-empty">No conversation history</div>';
+          return;
+        }
+
+        historyList.innerHTML = historyThreads.map(t => `
+          <div class="history-item" data-conversation-id="${t.conversation_id}" data-channel="${t.channel || 'web'}">
+            <div class="history-item-title">
+              ${escapeHtml(t.title)}
+              ${getChannelBadge(t.channel)}
+            </div>
+            <div class="history-item-meta">
+              <span>${t.message_count} msgs</span>
+              <span>${formatRelativeTime(t.last_message_at)}</span>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Switch to home tab
+      function switchToHome() {
+        currentTabId = 'home';
+        conversationId = null;
+        currentChannel = 'web';
+
+        // Update UI
+        homeTab.classList.add('active');
+        renderActiveTabs();
+
+        // Show home content
+        messagesContainer.innerHTML = '';
+        if (isAuthenticated) {
+          addieHomeContainer.classList.add('visible');
+          loadAddieHome();
+        } else {
+          welcomeMessage.style.display = 'block';
+        }
+
+        setReadOnlyMode(false);
+        closeMobileSidebar();
+        chatInput.focus();
+      }
+
+      // Toggle history section collapse
+      function toggleHistorySection() {
+        historySection.classList.toggle('sidebar-section--collapsed');
+      }
+
+      // Mobile sidebar functions
+      function openMobileSidebar() {
+        mobileMenuOpen = true;
+        chatSidebar.classList.add('mobile-open');
+        sidebarOverlay.classList.add('visible');
+      }
+
+      function closeMobileSidebar() {
+        mobileMenuOpen = false;
+        chatSidebar.classList.remove('mobile-open');
+        sidebarOverlay.classList.remove('visible');
+      }
+
+      function toggleMobileSidebar() {
+        if (mobileMenuOpen) {
+          closeMobileSidebar();
+        } else {
+          openMobileSidebar();
+        }
+      }
+
+      // Format relative time (e.g., "2 hours ago")
+      function formatRelativeTime(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+      }
+
+      // Escape HTML for safe rendering
+      function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Current conversation channel (web or slack)
+      let currentChannel = 'web';
+
+      // Switch to a different conversation
+      async function switchToConversation(newConversationId, channel = 'web') {
+        if (newConversationId === conversationId && channel === currentChannel) return;
+
+        conversationId = newConversationId;
+        currentChannel = channel;
+        currentTabId = newConversationId;
+
+        // Update home tab state
+        homeTab.classList.remove('active');
+
+        // Clear unread count for this tab
+        const tab = activeTabs.find(t => t.id === newConversationId);
+        if (tab && tab.unreadCount > 0) {
+          updateTabState(newConversationId, { unreadCount: 0 });
+        }
+
+        // Update active tabs UI
+        renderActiveTabs();
+
+        // Clear current messages
+        messagesContainer.innerHTML = '';
+        welcomeMessage.style.display = 'none';
+        addieHomeContainer.classList.remove('visible');
+
+        // Load conversation history
+        try {
+          const url = `/api/addie/chat/${encodeURIComponent(conversationId)}${channel === 'slack' ? '?channel=slack' : ''}`;
+          const response = await authFetch(url);
+          if (!response.ok) throw new Error('Failed to load conversation');
+
+          const data = await response.json();
+
+          // Render messages
+          data.messages.forEach(msg => {
+            addMessage(msg.content, msg.role, msg.message_id);
+          });
+
+          // Handle read-only mode for Slack threads
+          if (data.read_only) {
+            setReadOnlyMode(true);
+          } else {
+            setReadOnlyMode(false);
+          }
+        } catch (error) {
+          console.error('Failed to load conversation:', error);
+          showError('Failed to load conversation');
+        }
+
+        // Close sidebar on mobile
+        closeMobileSidebar();
+      }
+
+      // Set read-only mode for the chat input
+      function setReadOnlyMode(readOnly) {
+        if (readOnly) {
+          chatInput.disabled = true;
+          chatInput.placeholder = 'This is a Slack conversation - reply in Slack to continue';
+          sendButton.disabled = true;
+          sendButton.style.opacity = '0.5';
+        } else {
+          chatInput.disabled = false;
+          chatInput.placeholder = 'Ask Addie anything...';
+          sendButton.disabled = false;
+          sendButton.style.opacity = '1';
+        }
+      }
+
+      // Start a new conversation
+      function startNewConversation() {
+        conversationId = null;
+        currentChannel = 'web';
+        currentTabId = 'home'; // New chat starts from home
+
+        // Clear messages and show home
+        messagesContainer.innerHTML = '';
+
+        // Show welcome or Addie Home based on auth
+        if (isAuthenticated) {
+          addieHomeContainer.classList.add('visible');
+          loadAddieHome();
+        } else {
+          welcomeMessage.style.display = 'block';
+        }
+
+        // Update sidebar UI
+        homeTab.classList.add('active');
+        renderActiveTabs();
+
+        // Reset read-only mode
+        setReadOnlyMode(false);
+
+        // Close sidebar on mobile
+        closeMobileSidebar();
+
+        chatInput.focus();
+      }
+
+      // Load Addie Home content
+      async function loadAddieHome() {
+        if (!isAuthenticated) return;
+
+        addieHomeContainer.classList.add('visible');
+        addieHomeLoading.style.display = 'block';
+        addieHomeContent.innerHTML = '';
+
+        try {
+          const response = await authFetch('/api/me/addie-home?format=html');
+          if (!response.ok) {
+            throw new Error('Failed to load home content');
+          }
+
+          const data = await response.json();
+
+          // Inject CSS
+          addieHomeStyles.textContent = data.css;
+
+          // Inject HTML
+          addieHomeContent.innerHTML = data.html;
+          addieHomeLoading.style.display = 'none';
+
+          // Hide the generic welcome message since we have personalized content
+          welcomeMessage.style.display = 'none';
+
+          // Wire up action buttons
+          setupHomeActions();
+        } catch (error) {
+          console.error('Failed to load Addie Home:', error);
+          addieHomeLoading.style.display = 'none';
+          addieHomeContent.innerHTML = '<div class="addie-home-error">Failed to load your dashboard</div>';
+        }
+      }
+
+      // Setup click handlers for Addie Home action buttons
+      function setupHomeActions() {
+        // Handle quick action buttons
+        addieHomeContent.querySelectorAll('.addie-home-action').forEach(button => {
+          button.addEventListener('click', () => {
+            const actionId = button.dataset.action;
+            handleHomeAction(actionId);
+          });
+        });
+
+        // Handle alert action buttons
+        addieHomeContent.querySelectorAll('.addie-home-alert-action[data-action]').forEach(button => {
+          button.addEventListener('click', () => {
+            const actionId = button.dataset.action;
+            handleHomeAction(actionId);
+          });
+        });
+      }
+
+      // Valid action IDs to prevent injection
+      const VALID_HOME_ACTIONS = new Set([
+        'addie_home_ask_addie',
+        'addie_home_update_profile',
+        'addie_home_browse_groups',
+        'addie_home_view_flagged',
+        'addie_home_pay_invoice',
+        'addie_home_complete_profile',
+        'addie_home_link_account',
+      ]);
+
+      // Handle Addie Home actions by starting a conversation
+      function handleHomeAction(actionId) {
+        // Validate action ID against whitelist
+        if (!VALID_HOME_ACTIONS.has(actionId)) {
+          console.warn('Invalid action ID:', actionId);
+          return;
+        }
+
+        let prompt = '';
+
+        switch (actionId) {
+          case 'addie_home_ask_addie':
+            // Just focus the input
+            chatInput.focus();
+            return;
+          case 'addie_home_update_profile':
+            prompt = 'Help me update my profile';
+            break;
+          case 'addie_home_browse_groups':
+            prompt = 'Show me working groups I can join';
+            break;
+          case 'addie_home_view_flagged':
+            prompt = 'Show me flagged conversations';
+            break;
+          case 'addie_home_pay_invoice':
+            prompt = 'Help me pay my pending invoice';
+            break;
+          case 'addie_home_complete_profile':
+            prompt = 'Help me complete my profile';
+            break;
+          case 'addie_home_link_account':
+            prompt = 'Help me link my Slack account';
+            break;
+        }
+
+        // Send the prompt as a message
+        chatInput.value = prompt;
+        autoResize();
+        updateSendButton();
+        sendMessage();
       }
 
       // Check Addie status
@@ -707,7 +1848,14 @@
           gfm: true, // GitHub flavored markdown
         });
 
-        // Use marked's built-in renderer with custom link handling
+        // Helper to escape HTML attribute values
+        const escapeAttr = (str) => str
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        // Use marked's built-in renderer with custom link and image handling
         const renderer = new marked.Renderer();
         renderer.link = function(href, title, text) {
           // Handle marked v17+ which passes an object
@@ -717,11 +1865,58 @@
             title = link.title;
             text = link.text;
           }
-          const titleAttr = title ? ` title="${title}"` : '';
-          return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+          // Validate URL scheme - only allow safe protocols
+          const safeHref = /^(https?:\/\/|mailto:|#)/i.test(href) ? href : '#';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+        };
+
+        // Custom image renderer
+        renderer.image = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (typeof href === 'object') {
+            const img = href;
+            href = img.href;
+            title = img.title;
+            text = img.text;
+          }
+          // Validate URL scheme - only allow safe protocols
+          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
+          if (!safeHref) return '';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
+          // Make images clickable to open in new tab
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
         return marked.parse(text, { renderer });
+      }
+
+      // Render creative preview (iframe or HTML)
+      function renderCreativePreview(previewUrl, label) {
+        if (!previewUrl) return '';
+        // Validate URL scheme - only allow https
+        if (!/^https?:\/\//i.test(previewUrl)) return '';
+        const safeUrl = previewUrl.replace(/"/g, '&quot;');
+        const safeLabel = label ? label.replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Creative Preview';
+        return `
+          <div class="creative-preview-container">
+            <iframe src="${safeUrl}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
+            <div class="creative-preview-label">${safeLabel}</div>
+          </div>
+        `;
+      }
+
+      // Render inline HTML creative (sandboxed for security)
+      function renderCreativeHtml(html, label) {
+        if (!html) return '';
+        // Use srcdoc with sandbox for isolation - encode for attribute
+        const encodedHtml = html.replace(/"/g, '&quot;');
+        return `
+          <div class="creative-html-container">
+            <iframe srcdoc="${encodedHtml}" sandbox="allow-scripts" loading="lazy"></iframe>
+          </div>
+        `;
       }
 
       // Add message to chat
@@ -855,7 +2050,7 @@
 
       async function submitFeedback(messageId, rating, category, tags, suggestion) {
         try {
-          await fetch(`/api/addie/chat/${conversationId}/feedback`, {
+          await authFetch(`/api/addie/chat/${conversationId}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -928,33 +2123,96 @@
         return { messageDiv, contentDiv };
       }
 
+      // Check if text has balanced markdown markers
+      // Uses arithmetic instead of lookbehind regex for Safari compatibility
+      function hasBalancedMarkdown(text) {
+        // Count bold markers (**)
+        const boldCount = (text.match(/\*\*/g) || []).length;
+        // Calculate italic: total asterisks minus those used in bold
+        const allAsterisks = (text.match(/\*/g) || []).length;
+        const italicCount = allAsterisks - (boldCount * 2);
+
+        // Count code block markers (```) first, then calculate inline code
+        const codeBlockCount = (text.match(/```/g) || []).length;
+        const allBackticks = (text.match(/`/g) || []).length;
+        const inlineCodeCount = allBackticks - (codeBlockCount * 3);
+
+        // Count link brackets - check for unmatched link syntax
+        const openBrackets = (text.match(/\[/g) || []).length;
+        const closeBrackets = (text.match(/\]/g) || []).length;
+        // Count ]( which indicates a complete link opening
+        const linkOpens = (text.match(/\]\(/g) || []).length;
+
+        return boldCount % 2 === 0 &&
+               italicCount % 2 === 0 &&
+               inlineCodeCount % 2 === 0 &&
+               codeBlockCount % 2 === 0 &&
+               openBrackets === closeBrackets;
+      }
+
+      // Strip markdown markers for plain text display during streaming
+      function stripMarkdownMarkers(text) {
+        return text
+          .replace(/\*\*/g, '')      // Bold **
+          .replace(/\*/g, '')        // Italic *
+          .replace(/`{3}[^\n]*\n?/g, '') // Code blocks ```
+          .replace(/`/g, '')         // Inline code `
+          .replace(/^#{1,6}\s*/gm, '') // Headers #
+          .replace(/^\s*[-*+]\s+/gm, '• ') // List items
+          .replace(/^\s*\d+\.\s+/gm, '• ') // Numbered lists
+          .replace(/~~([^~]+)~~/g, '$1') // Strikethrough
+          .replace(/^\s*>\s*/gm, '')  // Blockquotes
+          .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // Links and images - keep text
+          .replace(/^[-*_]{3,}\s*$/gm, ''); // Horizontal rules
+      }
+
       // Append text to streaming message
-      // Render complete paragraphs as markdown, show incomplete paragraph as plain text
+      // Strategy: Split into paragraphs, render complete ones with balanced markdown,
+      // show the incomplete trailing paragraph as plain text (with markers stripped)
       function appendToStreamingMessage(contentDiv, text, fullContent) {
         // Split on paragraph breaks (double newline)
-        const lastParagraphBreak = fullContent.lastIndexOf('\n\n');
+        const paragraphs = fullContent.split(/\n\n/);
 
-        if (lastParagraphBreak === -1) {
-          // No complete paragraphs yet - show as plain text
-          const escaped = fullContent
+        if (paragraphs.length === 1) {
+          // No complete paragraphs yet - show as plain text with markers stripped
+          const stripped = stripMarkdownMarkers(fullContent);
+          const escaped = stripped
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
           contentDiv.innerHTML = escaped + '<span class="streaming-cursor">|</span>';
         } else {
-          // Render complete paragraphs as markdown, show remainder as plain text
-          const completeParagraphs = fullContent.substring(0, lastParagraphBreak);
-          const remainder = fullContent.substring(lastParagraphBreak + 2);
+          // Process each paragraph individually
+          const completeParagraphs = paragraphs.slice(0, -1);
+          const remainder = paragraphs[paragraphs.length - 1];
 
-          const renderedMarkdown = renderMessage(completeParagraphs);
-          const escapedRemainder = remainder
+          // Render each complete paragraph - if it has balanced markdown, render it;
+          // otherwise show as plain text with markers stripped
+          const renderedParagraphs = completeParagraphs.map(para => {
+            if (hasBalancedMarkdown(para)) {
+              return renderMessage(para);
+            } else {
+              // Unbalanced - strip markers and escape
+              const stripped = stripMarkdownMarkers(para);
+              const escaped = stripped
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+              return '<p>' + escaped + '</p>';
+            }
+          });
+
+          // Strip markers from remainder (incomplete paragraph)
+          const strippedRemainder = stripMarkdownMarkers(remainder);
+          const escapedRemainder = strippedRemainder
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br>');
 
-          contentDiv.innerHTML = renderedMarkdown +
+          contentDiv.innerHTML = renderedParagraphs.join('') +
             (escapedRemainder ? '<p>' + escapedRemainder + '<span class="streaming-cursor">|</span></p>' : '<span class="streaming-cursor">|</span>');
         }
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -987,6 +2245,36 @@
         }, 5000);
       }
 
+      // === Browser Notifications ===
+
+      // Request notification permission (opt-in)
+      async function requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+      }
+
+      // Show browser notification
+      function notifyUser(title, body, tabId) {
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+          const notification = new Notification(title, {
+            body: body.slice(0, 100) + (body.length > 100 ? '...' : ''),
+            icon: '/AAo.svg',
+            tag: tabId // Prevents duplicate notifications
+          });
+          notification.onclick = () => {
+            window.focus();
+            if (tabId && tabId !== 'home') {
+              const tab = activeTabs.find(t => t.id === tabId);
+              if (tab) {
+                switchToConversation(tabId, tab.channel);
+              }
+            }
+            notification.close();
+          };
+        }
+      }
+
       // Send message with streaming
       async function sendMessage() {
         const message = chatInput.value.trim();
@@ -995,6 +2283,9 @@
         isLoading = true;
         updateSendButton();
 
+        // Request notification permission on first message
+        requestNotificationPermission();
+
         // Add user message
         addMessage(message, 'user');
 
@@ -1002,13 +2293,16 @@
         chatInput.value = '';
         autoResize();
 
+        // Track if this is a new conversation
+        const isNewConversation = !conversationId;
+
         // Create streaming message element
         const { messageDiv, contentDiv } = createStreamingMessage();
         let fullContent = '';
         let messageId = null;
 
         try {
-          const response = await fetch('/api/addie/chat/stream', {
+          const response = await authFetch('/api/addie/chat/stream', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1027,10 +2321,66 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          let currentEventType = '';
+          let newConversationId = null;
+
+          // Helper to process SSE lines (uses closure for currentEventType)
+          const processLines = (lines) => {
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEventType = line.slice(7);
+              } else if (line.startsWith('data: ') && currentEventType) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+
+                  if (currentEventType === 'text') {
+                    fullContent += data.text;
+                    appendToStreamingMessage(contentDiv, data.text, fullContent);
+                  } else if (currentEventType === 'meta') {
+                    newConversationId = data.conversation_id;
+                    conversationId = data.conversation_id;
+
+                    // For new conversations, add to active tabs and update currentTabId
+                    if (isNewConversation && newConversationId) {
+                      const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
+                      addActiveTab(newConversationId, title, 'web');
+                      currentTabId = newConversationId;
+                      homeTab.classList.remove('active');
+
+                      // Mark as loading
+                      updateTabState(newConversationId, { isLoading: true });
+                    } else if (conversationId) {
+                      // Existing conversation - mark as loading
+                      updateTabState(conversationId, { isLoading: true });
+                    }
+                  } else if (currentEventType === 'done') {
+                    messageId = data.message_id;
+                    conversationId = data.conversation_id;
+                  } else if (currentEventType === 'error') {
+                    throw new Error(data.error || 'Unknown error');
+                  }
+                  // tool_start and tool_end events are informational, could show status
+                } catch (parseError) {
+                  console.warn('Failed to parse SSE data:', parseError);
+                }
+                currentEventType = '';
+              }
+            }
+          };
 
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+
+            if (done) {
+              // Flush the decoder to handle any remaining multi-byte characters
+              buffer += decoder.decode();
+              // Process any remaining complete events
+              if (buffer.trim()) {
+                const lines = buffer.split('\n');
+                processLines(lines);
+              }
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
 
@@ -1038,36 +2388,31 @@
             const lines = buffer.split('\n');
             buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-            let eventType = '';
-            for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                eventType = line.slice(7);
-              } else if (line.startsWith('data: ') && eventType) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-
-                  if (eventType === 'text') {
-                    fullContent += data.text;
-                    appendToStreamingMessage(contentDiv, data.text, fullContent);
-                  } else if (eventType === 'meta') {
-                    conversationId = data.conversation_id;
-                  } else if (eventType === 'done') {
-                    messageId = data.message_id;
-                    conversationId = data.conversation_id;
-                  } else if (eventType === 'error') {
-                    throw new Error(data.error || 'Unknown error');
-                  }
-                  // tool_start and tool_end events are informational, could show status
-                } catch (parseError) {
-                  console.warn('Failed to parse SSE data:', parseError);
-                }
-                eventType = '';
-              }
-            }
+            processLines(lines);
           }
 
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
+
+          // Update tab state - mark as not loading
+          if (conversationId) {
+            // If user switched away, increment unread and notify
+            if (currentTabId !== conversationId) {
+              const tab = activeTabs.find(t => t.id === conversationId);
+              if (tab) {
+                updateTabState(conversationId, {
+                  isLoading: false,
+                  unreadCount: (tab.unreadCount || 0) + 1
+                });
+                notifyUser('Addie replied', fullContent, conversationId);
+              }
+            } else {
+              updateTabState(conversationId, { isLoading: false });
+            }
+          }
+
+          // Refresh thread list to show new/updated conversation (debounced)
+          scheduleLoadThreads();
 
         } catch (error) {
           console.error('Error sending message:', error);
@@ -1076,6 +2421,11 @@
             messageDiv.remove();
           }
           showError('Failed to send message. Please try again.');
+
+          // Clear loading state on error
+          if (conversationId) {
+            updateTabState(conversationId, { isLoading: false });
+          }
         } finally {
           isLoading = false;
           updateSendButton();
@@ -1108,9 +2458,69 @@
         }
       });
 
+      // Sidebar event listeners
+      sidebarToggleBtn.addEventListener('click', toggleMobileSidebar);
+      sidebarOverlay.addEventListener('click', closeMobileSidebar);
+      newChatBtn.addEventListener('click', startNewConversation);
+      homeTab.addEventListener('click', switchToHome);
+      historyToggle.addEventListener('click', toggleHistorySection);
+
+      // Event delegation for active tabs (avoids adding listeners on each render)
+      activeTabsList.addEventListener('click', (e) => {
+        const closeBtn = e.target.closest('.tab-item-close');
+        if (closeBtn) {
+          e.stopPropagation();
+          removeActiveTab(closeBtn.dataset.tabId);
+          return;
+        }
+        const tabItem = e.target.closest('.tab-item');
+        if (tabItem) {
+          switchToConversation(tabItem.dataset.tabId, tabItem.dataset.channel);
+        }
+      });
+
+      // Event delegation for history list
+      historyList.addEventListener('click', (e) => {
+        const historyItem = e.target.closest('.history-item');
+        if (historyItem) {
+          const id = historyItem.dataset.conversationId;
+          const channel = historyItem.dataset.channel;
+          const thread = threads.find(t => t.conversation_id === id);
+          if (thread) {
+            addActiveTab(id, thread.title, channel);
+          }
+          switchToConversation(id, channel);
+        }
+      });
+
+      // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
+      function checkQueryPrompt() {
+        const params = new URLSearchParams(window.location.search);
+        const prompt = params.get('prompt');
+        if (prompt && prompt.trim()) {
+          // Wait for Addie to be ready before sending
+          const waitForReady = setInterval(() => {
+            if (isReady) {
+              clearInterval(waitForReady);
+              chatInput.value = prompt.trim();
+              autoResize();
+              updateSendButton();
+              sendMessage();
+              // Clean URL without reloading
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          }, 100);
+          // Timeout after 10 seconds
+          setTimeout(() => clearInterval(waitForReady), 10000);
+        }
+      }
+
       // Initialize
+      extractNativeToken(); // Check for native app auth token in URL hash
       checkStatus();
       checkImpersonation();
+      // Check for prompt in URL after status check
+      setTimeout(checkQueryPrompt, 500);
       // Check status periodically
       setInterval(checkStatus, 30000);
 

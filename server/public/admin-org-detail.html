@@ -6,6 +6,7 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Organization Details - AdCP Registry</title>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/js/company-types.js"></script>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <style>
@@ -154,6 +155,8 @@
     .status-negotiating { background: var(--color-primary-200); color: var(--color-primary-800); }
     .status-converted { background: var(--color-success-100); color: var(--color-success-700); }
     .status-declined { background: var(--color-error-100); color: var(--color-error-700); }
+    .status-disqualified { background: var(--color-gray-300); color: var(--color-text-muted); }
+    .status-member { background: var(--color-success-600); color: white; font-weight: var(--font-bold); }
 
     /* Members list */
     .members-list {
@@ -173,6 +176,14 @@
       font-size: var(--text-xs);
       color: var(--color-text-muted);
       margin-left: var(--space-2);
+    }
+    .member-name-link {
+      color: var(--color-brand);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .member-name-link:hover {
+      text-decoration: underline;
     }
 
     /* Working groups */
@@ -384,6 +395,33 @@
       color: var(--color-text-muted);
       margin-top: var(--space-1);
     }
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-sm);
+      transition: background-color 0.15s;
+    }
+    .checkbox-label:hover {
+      background: var(--color-gray-200);
+    }
+    .checkbox-label:has(input:checked) {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .checkbox-label input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
     .modal-actions {
       display: flex;
       gap: var(--space-2.5);
@@ -407,51 +445,6 @@
       font-size: var(--text-sm);
     }
 
-    /* Stakeholders */
-    .stakeholders-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .stakeholder-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-2) 0;
-      border-bottom: var(--border-1) solid var(--color-gray-100);
-      font-size: var(--text-sm);
-    }
-    .stakeholder-item:last-child {
-      border-bottom: none;
-    }
-    .stakeholder-role {
-      display: inline-block;
-      padding: var(--space-0.5) var(--space-1.5);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      font-weight: var(--font-medium);
-      margin-left: var(--space-2);
-    }
-    .stakeholder-role.owner {
-      background: var(--color-success-100);
-      color: var(--color-success-700);
-    }
-    .stakeholder-role.interested {
-      background: var(--color-primary-100);
-      color: var(--color-primary-700);
-    }
-    .stakeholder-role.connected {
-      background: var(--color-gray-200);
-      color: var(--color-text-heading);
-    }
-    .btn-connected {
-      background: var(--color-success-100);
-      color: var(--color-success-700);
-      border: var(--border-1) solid var(--color-success-200);
-    }
-    .btn-connected:hover {
-      background: var(--color-success-200);
-    }
 
     /* Pending Invoices */
     .invoice-item {
@@ -512,6 +505,55 @@
     }
     .btn-danger:hover {
       background: var(--color-error-200);
+    }
+
+    /* Owner selector */
+    .owner-selector {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .owner-name {
+      cursor: pointer;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      transition: var(--transition-all);
+    }
+    .owner-name:hover {
+      background: var(--color-gray-100);
+    }
+    .owner-dropdown {
+      display: none;
+      position: relative;
+    }
+    .owner-dropdown.active {
+      display: block;
+    }
+    .owner-dropdown select {
+      padding: var(--space-1) var(--space-2);
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+    .watch-btn {
+      padding: var(--space-1);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: var(--text-base);
+      opacity: 0.4;
+      transition: var(--transition-all);
+    }
+    .watch-btn:hover {
+      opacity: 0.7;
+    }
+    .watch-btn.watching {
+      opacity: 1;
+      color: var(--color-warning-500);
+    }
+    .watch-btn.watching:hover {
+      opacity: 0.8;
     }
 
     /* Domain list */
@@ -580,6 +622,29 @@
     .btn-icon.danger:hover {
       color: var(--color-error-600);
     }
+    /* Quick follow-up inline form */
+    .quick-followup {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .quick-followup-input {
+      flex: 1;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .quick-followup-input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 2px var(--color-brand-light);
+    }
+    .quick-followup-input::placeholder {
+      color: var(--color-text-muted);
+    }
   </style>
 </head>
 <body>
@@ -607,8 +672,11 @@
             <div id="engagementReasons" class="engagement-reasons"></div>
           </div>
           <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-secondary" onclick="openPaymentLinkModal()" title="Generate payment link">💳 Pay Link</button>
+            <button class="btn btn-secondary" onclick="openInvoiceModal()" title="Send invoice">📄 Invoice</button>
             <button class="btn btn-secondary" onclick="openEditOrgModal()">Edit</button>
             <button class="btn btn-secondary" onclick="openLogActivityModal()">Log Activity</button>
+            <button class="btn btn-secondary" onclick="runAIEnrichment()" id="aiEnrichBtn" title="Research and enrich this prospect using AI">AI Enrich</button>
             <button class="btn btn-primary" onclick="openAddNextStepModal()">Add Next Step</button>
           </div>
         </div>
@@ -627,9 +695,23 @@
               <span class="info-label">Company Type</span>
               <span class="info-value" id="orgType">-</span>
             </div>
+            <div class="info-row" id="parentOrgRow" style="display: none;">
+              <span class="info-label">Parent Org</span>
+              <span class="info-value" id="orgParent">-</span>
+            </div>
             <div class="info-row">
               <span class="info-label">Owner</span>
-              <span class="info-value" id="orgOwner">-</span>
+              <span class="info-value" id="orgOwner">
+                <span class="owner-selector">
+                  <span id="ownerDisplay" class="owner-name" onclick="showOwnerDropdown()" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')showOwnerDropdown()">-</span>
+                  <div id="ownerDropdown" class="owner-dropdown">
+                    <select id="ownerSelect" onchange="assignOwner(this.value)">
+                      <option value="">Unassigned</option>
+                    </select>
+                  </div>
+                  <button id="watchBtn" class="watch-btn" onclick="toggleWatch()" title="Watch this organization">☆</button>
+                </span>
+              </span>
             </div>
           </div>
           <div>
@@ -654,7 +736,7 @@
 
         <div id="orgNotes" style="margin-top: var(--space-4); display: none;">
           <strong style="font-size: var(--text-sm);">Notes:</strong>
-          <p id="orgNotesText" style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);"></p>
+          <div id="orgNotesText" style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1); white-space: pre-wrap;"></div>
         </div>
       </div>
 
@@ -664,12 +746,12 @@
           <!-- Engagement Signals -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-              <h2 style="margin-bottom: 0;">Engagement Signals</h2>
-              <button class="btn btn-secondary btn-sm" onclick="openInterestLevelModal()">Set Interest</button>
+              <h2 id="engagementSectionTitle" style="margin-bottom: 0;">Engagement Signals</h2>
+              <button id="setInterestBtn" class="btn btn-secondary btn-sm" onclick="openInterestLevelModal()">Set Interest</button>
             </div>
             <div id="engagementSignalsContent">
               <div class="signal-item">
-                <span class="signal-label">Interest Level</span>
+                <span class="signal-label" id="interestLevelLabel">Interest Level</span>
                 <span class="signal-value" id="signalInterestLevel">-</span>
               </div>
               <div class="signal-item">
@@ -695,6 +777,105 @@
             </div>
           </div>
 
+          <!-- Company Profile (Enrichment Data) -->
+          <div class="card" id="companyProfileCard" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+              <h2 style="margin-bottom: 0;">Company Profile</h2>
+              <button class="btn btn-secondary btn-sm" onclick="refreshEnrichment()" id="refreshEnrichmentBtn">Refresh</button>
+            </div>
+            <div id="companyProfileContent">
+              <div class="signal-item">
+                <span class="signal-label">Industry</span>
+                <span class="signal-value" id="profileIndustry">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Sub-Industry</span>
+                <span class="signal-value" id="profileSubIndustry">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Revenue</span>
+                <span class="signal-value" id="profileRevenue">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Employees</span>
+                <span class="signal-value" id="profileEmployees">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Founded</span>
+                <span class="signal-value" id="profileFounded">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Location</span>
+                <span class="signal-value" id="profileLocation">-</span>
+              </div>
+              <div class="signal-item" id="profileLinkedInRow" style="display: none;">
+                <span class="signal-label">LinkedIn</span>
+                <span class="signal-value" id="profileLinkedIn">-</span>
+              </div>
+            </div>
+            <div id="profileDescription" style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary); display: none;"></div>
+            <div id="profileEnrichedAt" style="margin-top: var(--space-3); font-size: var(--text-xs); color: var(--color-text-muted);"></div>
+          </div>
+
+          <!-- Addie Research -->
+          <div class="card" id="addieResearchCard" style="display: none;">
+            <h2>Addie Research</h2>
+            <div id="addieResearchList" class="empty-state">
+              No research available
+            </div>
+          </div>
+
+          <!-- Member Insights -->
+          <div class="card" id="memberInsightsCard" style="display: none;">
+            <h2>Member Insights</h2>
+            <div id="memberInsightsList" class="empty-state">
+              No insights yet
+            </div>
+          </div>
+
+          <!-- Pricing & Discount -->
+          <div class="card" id="pricingCard">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+              <h2 style="margin-bottom: 0;">Pricing & Discount</h2>
+              <button class="btn btn-secondary btn-sm" onclick="openDiscountModal()" id="manageDiscountBtn">Set Discount</button>
+            </div>
+            <div id="pricingContent">
+              <div class="signal-item">
+                <span class="signal-label">Recommended</span>
+                <span class="signal-value" id="pricingSuggestedTier">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">List Price</span>
+                <span class="signal-value" id="pricingListPrice">-</span>
+              </div>
+              <div id="pricingRationaleRow" class="signal-item" style="display: none;">
+                <span class="signal-label">Rationale</span>
+                <span class="signal-value" id="pricingRationale" style="font-size: var(--text-sm); color: var(--color-text-muted);">-</span>
+              </div>
+              <div class="signal-item" id="discountRow" style="display: none;">
+                <span class="signal-label">Discount</span>
+                <span class="signal-value" id="pricingDiscount">-</span>
+              </div>
+              <div class="signal-item" id="netPriceRow" style="display: none;">
+                <span class="signal-label">Net Price</span>
+                <span class="signal-value" id="pricingNetPrice" style="color: var(--color-success-600); font-weight: var(--font-bold);">-</span>
+              </div>
+              <div class="signal-item" id="promoCodeRow" style="display: none;">
+                <span class="signal-label">Promo Code</span>
+                <span class="signal-value" id="pricingPromoCode">-</span>
+              </div>
+            </div>
+            <div id="discountDetails" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm); display: none;">
+              <div style="font-size: var(--text-sm);">
+                <strong id="discountReasonLabel">Reason:</strong>
+                <span id="discountReasonText"></span>
+              </div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+                Granted by <span id="discountGrantedBy"></span> on <span id="discountGrantedAt"></span>
+              </div>
+            </div>
+          </div>
+
           <!-- Pending Invoices -->
           <div class="card" id="pendingInvoicesCard" style="display: none;">
             <h2>Pending Invoices</h2>
@@ -709,6 +890,10 @@
             <div id="nextStepsList" class="empty-state">
               No pending next steps
             </div>
+            <form id="quickFollowUpForm" class="quick-followup" onsubmit="saveQuickFollowUp(event)">
+              <input type="text" id="quickFollowUpText" placeholder="e.g. Talk to Dave Osborne about pricing..." class="quick-followup-input" autocomplete="off">
+              <button type="submit" class="btn btn-primary btn-sm" id="quickFollowUpBtn">Add</button>
+            </form>
           </div>
 
           <!-- Team Members -->
@@ -737,17 +922,6 @@
               No domains linked
             </div>
           </div>
-
-          <!-- Account Stakeholders -->
-          <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-              <h2 style="margin-bottom: 0;">Account Team</h2>
-              <button id="connectBtn" class="btn btn-secondary btn-sm" onclick="toggleMyConnection()">I'm connected</button>
-            </div>
-            <div id="stakeholdersList" class="empty-state">
-              No team members assigned
-            </div>
-          </div>
         </div>
 
         <!-- Right Column - Activity Timeline -->
@@ -774,41 +948,75 @@
         <button class="modal-close" onclick="closeEditOrgModal()">&times;</button>
       </div>
       <form id="editOrgForm" onsubmit="saveOrgChanges(event)">
+        <div class="form-group">
+          <label>Organization Name</label>
+          <input type="text" id="editOrgName" placeholder="e.g., LinkedIn">
+        </div>
+
+        <div class="form-group">
+          <label>Parent Organization</label>
+          <select id="editParentOrg">
+            <option value="">None (independent)</option>
+          </select>
+          <div class="form-hint">If this is a subsidiary or division, select the parent company.</div>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
             <label>Status</label>
-            <select id="editOrgStatus">
-              <option value="signed_up">Signed Up</option>
+            <select id="editOrgStatus" onchange="toggleDisqualificationReason()">
               <option value="prospect">Prospect</option>
+              <option value="signed_up">Signed Up</option>
               <option value="contacted">Contacted</option>
               <option value="responded">Responded</option>
               <option value="interested">Interested</option>
               <option value="negotiating">Negotiating</option>
               <option value="converted">Converted</option>
               <option value="declined">Declined</option>
+              <option value="disqualified">Disqualified</option>
             </select>
           </div>
           <div class="form-group">
             <label>Owner</label>
             <select id="editOrgOwner">
               <option value="">Not assigned</option>
-              <option value="Brian">Brian</option>
-              <option value="Randy">Randy</option>
-              <option value="Matt">Matt</option>
             </select>
           </div>
         </div>
 
+        <div id="disqualificationReasonGroup" class="form-group" style="display: none;">
+          <label>Disqualification Reason</label>
+          <input type="text" id="editDisqualificationReason" placeholder="e.g., This is us, Competitor, Not in target market">
+          <div class="form-hint">Explain why this org should not be contacted.</div>
+        </div>
+
         <div class="form-row">
           <div class="form-group">
-            <label>Company Type</label>
-            <select id="editOrgType">
-              <option value="">Not specified</option>
-              <option value="adtech">Ad Tech</option>
-              <option value="agency">Agency</option>
-              <option value="brand">Brand</option>
-              <option value="publisher">Publisher</option>
-            </select>
+            <label>Company Types</label>
+            <div class="checkbox-group" id="editOrgTypes">
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="brand"> Brand
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="publisher"> Publisher
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="agency"> Agency
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="adtech"> Ad Tech
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="data"> Data & Measurement
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="ai"> AI & Tech Platforms
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="company_type" value="other"> Other
+              </label>
+            </div>
+            <div class="form-hint">Select all that apply.</div>
           </div>
           <div class="form-group">
             <label>Source</label>
@@ -821,6 +1029,20 @@
               <option value="organic">Organic</option>
             </select>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label>Revenue Tier</label>
+          <select id="editRevenueTier">
+            <option value="">Unknown</option>
+            <option value="under_1m">Under $1M (Startup)</option>
+            <option value="1m_5m">$1M - $5M</option>
+            <option value="5m_50m">$5M - $50M</option>
+            <option value="50m_250m">$50M - $250M</option>
+            <option value="250m_1b">$250M - $1B</option>
+            <option value="1b_plus">Over $1B (Enterprise)</option>
+          </select>
+          <div class="form-hint">Used to determine membership pricing tier.</div>
         </div>
 
         <h3 style="margin-top: var(--space-5); margin-bottom: var(--space-4); font-size: var(--text-base);">Contact Info</h3>
@@ -913,9 +1135,6 @@
               <label>Owner</label>
               <select id="nextStepOwner">
                 <option value="">Not assigned</option>
-                <option value="Brian">Brian</option>
-                <option value="Randy">Randy</option>
-                <option value="Matt">Matt</option>
               </select>
             </div>
           </div>
@@ -940,12 +1159,12 @@
   <div id="interestLevelModal" class="modal">
     <div class="modal-content" style="max-width: 450px;">
       <div class="modal-header">
-        <h2>Set Interest Level</h2>
+        <h2 id="interestModalTitle">Set Interest Level</h2>
         <button class="modal-close" onclick="closeInterestLevelModal()">&times;</button>
       </div>
       <form id="interestLevelForm" onsubmit="saveInterestLevel(event)">
         <div class="form-group">
-          <label>Interest Level</label>
+          <label id="interestModalLabel">Interest Level</label>
           <select id="interestLevelSelect">
             <option value="">Not set</option>
             <option value="low">Low - Not a good fit / not interested</option>
@@ -998,20 +1217,253 @@
     </div>
   </div>
 
+  <!-- User Context Modal -->
+  <div id="userContextModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2 id="userContextModalTitle">Member Context</h2>
+        <button class="modal-close" onclick="closeUserContextModal()">&times;</button>
+      </div>
+      <div id="userContextModalBody" style="padding: var(--space-4);">
+        <!-- Content populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Link Modal -->
+  <div id="paymentLinkModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Generate Payment Link</h2>
+        <button class="modal-close" onclick="closePaymentLinkModal()">&times;</button>
+      </div>
+
+      <p id="paymentLinkOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
+
+      <!-- Discount notice -->
+      <div id="paymentLinkDiscountNotice" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm);">
+        <div style="font-size: var(--text-sm);">
+          <strong style="color: var(--color-success-700);">Discount will be applied:</strong>
+          <span id="paymentLinkDiscountText"></span>
+        </div>
+        <div style="margin-top: var(--space-2);">
+          <label style="font-size: var(--text-sm);">
+            <input type="checkbox" id="applyDiscountToPaymentLink" checked>
+            Include discount in payment link
+          </label>
+        </div>
+      </div>
+
+      <div id="paymentLinkProducts" style="margin-bottom: var(--space-4);">
+        Loading products...
+      </div>
+
+      <div id="paymentLinkResult" style="display: none;">
+        <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+          <strong style="color: var(--color-success-700);">Payment Link Generated!</strong>
+          <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+            Copy this link and send it to the prospect:
+          </p>
+        </div>
+        <div style="display: flex; gap: var(--space-2);">
+          <input type="text" id="paymentLinkUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+          <button class="btn btn-primary btn-sm" onclick="copyPaymentLink()">Copy</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closePaymentLinkModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate Invoice Modal -->
+  <div id="invoiceModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>Generate Invoice</h2>
+        <button class="modal-close" onclick="closeInvoiceModal()">&times;</button>
+      </div>
+
+      <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
+
+      <form id="invoiceForm" onsubmit="submitInvoice(event)">
+        <!-- Product Selection -->
+        <div id="invoiceProductSection">
+          <div class="form-group">
+            <label>Select Product</label>
+            <div id="invoiceProducts" style="margin-bottom: var(--space-4);">
+              Loading products...
+            </div>
+          </div>
+        </div>
+
+        <!-- Billing Details (shown after product selection) -->
+        <div id="invoiceBillingSection" style="display: none;">
+          <div class="form-group">
+            <label>Selected Product</label>
+            <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Contact Name *</label>
+              <input type="text" id="invoiceContactName" required>
+            </div>
+            <div class="form-group">
+              <label>Contact Email *</label>
+              <input type="email" id="invoiceContactEmail" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Company Name *</label>
+            <input type="text" id="invoiceCompanyName" required>
+          </div>
+
+          <h4 style="margin-top: var(--space-4); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-heading);">Billing Address</h4>
+
+          <div class="form-group">
+            <label>Street Address *</label>
+            <input type="text" id="invoiceAddressLine1" required>
+          </div>
+
+          <div class="form-group">
+            <label>Address Line 2</label>
+            <input type="text" id="invoiceAddressLine2">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>City *</label>
+              <input type="text" id="invoiceCity" required>
+            </div>
+            <div class="form-group">
+              <label>State/Province *</label>
+              <input type="text" id="invoiceState" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Postal Code *</label>
+              <input type="text" id="invoicePostalCode" required>
+            </div>
+            <div class="form-group">
+              <label>Country *</label>
+              <input type="text" id="invoiceCountry" value="US" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success Message -->
+        <div id="invoiceResult" style="display: none;">
+          <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <strong style="color: var(--color-success-700);">Invoice Sent!</strong>
+            <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+              The invoice has been emailed to the contact. You can also share this link:
+            </p>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <input type="text" id="invoiceUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+            <button type="button" class="btn btn-primary btn-sm" onclick="copyInvoiceLink()">Copy</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Close</button>
+          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Discount Modal -->
+  <div id="discountModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 id="discountModalTitle">Set Discount</h2>
+        <button class="modal-close" onclick="closeDiscountModal()">&times;</button>
+      </div>
+
+      <form id="discountForm" onsubmit="saveDiscount(event)">
+        <div class="form-group">
+          <label>Discount Type</label>
+          <select id="discountType" onchange="toggleDiscountInputs()">
+            <option value="percent">Percentage</option>
+            <option value="amount">Fixed Amount</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="discountPercentGroup">
+          <label>Discount Percentage *</label>
+          <input type="number" id="discountPercent" min="1" max="100" placeholder="e.g., 20">
+          <div class="form-hint">Enter a value between 1 and 100</div>
+        </div>
+
+        <div class="form-group" id="discountAmountGroup" style="display: none;">
+          <label>Discount Amount (USD) *</label>
+          <input type="number" id="discountAmount" min="1" step="1" placeholder="e.g., 500">
+          <div class="form-hint">Enter the discount amount in dollars</div>
+        </div>
+
+        <div class="form-group">
+          <label>Reason *</label>
+          <select id="discountReasonSelect" onchange="toggleCustomReason()">
+            <option value="">Select a reason...</option>
+            <option value="startup">Startup / Early Stage</option>
+            <option value="nonprofit">Nonprofit Organization</option>
+            <option value="early_adopter">Early Adopter</option>
+            <option value="strategic">Strategic Partner</option>
+            <option value="volume">Multi-Year / Volume</option>
+            <option value="custom">Other (custom reason)</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="customReasonGroup" style="display: none;">
+          <label>Custom Reason *</label>
+          <input type="text" id="discountCustomReason" placeholder="e.g., Referred by existing member">
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="createStripeCoupon" checked>
+            Create Stripe coupon & promo code
+          </label>
+          <div class="form-hint">Generates a unique promo code the prospect can use at checkout</div>
+        </div>
+
+        <div id="currentDiscountInfo" style="display: none; margin-top: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border-radius: var(--radius-sm);">
+          <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-warning-700);">Current Discount</div>
+          <div style="font-size: var(--text-sm); margin-top: var(--space-1);" id="currentDiscountText"></div>
+          <button type="button" class="btn btn-sm btn-danger" style="margin-top: var(--space-2);" onclick="removeDiscount()">Remove Discount</button>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeDiscountModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveDiscountBtn">Save Discount</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     let orgData = null;
     let stakeholders = [];
     let domainsData = null;
     let currentUserId = null;
+    let teamMembers = [];
+    let productsData = []; // Store products for pricing calculations
     const orgId = window.location.pathname.split('/').pop();
 
     async function loadOrganization() {
       try {
-        // Load org data, stakeholders, and domains in parallel
-        const [orgResponse, stakeholdersResponse, domainsResponse] = await Promise.all([
+        // Load org data, stakeholders, domains, and team members in parallel
+        const [orgResponse, stakeholdersResponse, domainsResponse, teamResponse] = await Promise.all([
           fetch(`/api/admin/organizations/${orgId}`),
           fetch(`/api/admin/organizations/${orgId}/stakeholders`),
-          fetch(`/api/admin/organizations/${orgId}/domains`)
+          fetch(`/api/admin/organizations/${orgId}/domains`),
+          fetch('/api/admin/team')
         ]);
 
         if (!orgResponse.ok) {
@@ -1030,6 +1482,7 @@
         orgData = await orgResponse.json();
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
         domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
+        teamMembers = teamResponse.ok ? await teamResponse.json() : [];
 
         // Get current user ID from AdminNav if available
         if (window.AdminNav && window.AdminNav.user) {
@@ -1037,7 +1490,8 @@
         }
 
         renderOrganization();
-        renderStakeholders();
+        renderOwnerSelector();
+        populateOwnerDropdowns();
         renderDomains();
 
         document.getElementById('loading').style.display = 'none';
@@ -1055,19 +1509,41 @@
       document.getElementById('orgName').textContent = orgData.name;
       document.title = `${orgData.name} - AdCP Registry`;
 
-      // Engagement level (fire emojis)
-      const fires = '🔥'.repeat(orgData.engagement_level || 1);
-      document.getElementById('engagementFires').textContent = fires;
+      // Check if this is a paying member
+      const isPayingMember = orgData.subscription_status === 'active' || orgData.subscription_status === 'trialing';
+
+      // Engagement indicator - different for members vs prospects
+      const engagementLevel = orgData.engagement_level || 1;
+      let engagementIndicator;
+      if (isPayingMember) {
+        // For members: stars represent engagement/happiness
+        engagementIndicator = '⭐'.repeat(engagementLevel);
+      } else {
+        // For prospects: fires represent sales heat
+        engagementIndicator = '🔥'.repeat(engagementLevel);
+      }
+      document.getElementById('engagementFires').textContent = engagementIndicator;
       document.getElementById('engagementReasons').textContent =
-        orgData.engagement_reasons?.join(' • ') || 'Cold';
+        orgData.engagement_reasons?.join(' • ') || (isPayingMember ? 'New member' : 'Cold');
 
-      // Render engagement signals
-      renderEngagementSignals(orgData.engagement_signals);
+      // Render engagement signals with context-appropriate title
+      renderEngagementSignals(orgData.engagement_signals, isPayingMember);
 
-      // Status
-      const status = orgData.prospect_status || 'signed_up';
-      document.getElementById('orgStatus').innerHTML =
-        `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+      // Status - show "Member" prominently for paying customers
+      const status = orgData.prospect_status || 'prospect';
+      let statusHtml = '';
+      if (isPayingMember) {
+        statusHtml = `<span class="status-badge status-member">Member</span>`;
+        if (orgData.subscription_product_name) {
+          statusHtml += ` <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(orgData.subscription_product_name)}</span>`;
+        }
+      } else {
+        statusHtml = `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+        if (status === 'disqualified' && orgData.disqualification_reason) {
+          statusHtml += `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(orgData.disqualification_reason)}</span>`;
+        }
+      }
+      document.getElementById('orgStatus').innerHTML = statusHtml;
 
       // Source
       const sourceLabels = {
@@ -1080,18 +1556,24 @@
       document.getElementById('orgSource').textContent =
         sourceLabels[orgData.prospect_source] || orgData.prospect_source || '-';
 
-      // Type
-      const typeLabels = {
-        'adtech': 'Ad Tech',
-        'agency': 'Agency',
-        'brand': 'Brand',
-        'publisher': 'Publisher'
-      };
-      document.getElementById('orgType').textContent =
-        typeLabels[orgData.company_type] || orgData.company_type || '-';
+      // Type(s) - uses shared config from /js/company-types.js
+      const types = orgData.company_types || (orgData.company_type ? [orgData.company_type] : []);
+      document.getElementById('orgType').textContent = formatCompanyTypes(types);
 
-      // Owner
-      document.getElementById('orgOwner').textContent = orgData.prospect_owner || '-';
+      // Parent organization
+      const parentRow = document.getElementById('parentOrgRow');
+      const parentEl = document.getElementById('orgParent');
+      if (orgData.parent_organization_id && orgData.parent_name) {
+        parentRow.style.display = '';
+        parentEl.innerHTML = `<a href="/admin/org/${orgData.parent_organization_id}">${escapeHtml(orgData.parent_name)}</a>`;
+      } else if (orgData.parent_organization_id) {
+        parentRow.style.display = '';
+        parentEl.innerHTML = `<a href="/admin/org/${orgData.parent_organization_id}">${orgData.parent_organization_id}</a>`;
+      } else {
+        parentRow.style.display = 'none';
+      }
+
+      // Owner is now handled by renderOwnerSelector()
 
       // Contact
       let contactHtml = '-';
@@ -1142,6 +1624,18 @@
 
       // Pending invoices
       renderPendingInvoices();
+
+      // Company profile (enrichment data)
+      renderCompanyProfile();
+
+      // Pricing & discount
+      loadPricingData();
+
+      // Addie research
+      loadAddieResearch();
+
+      // Member insights
+      loadMemberInsights();
     }
 
     function renderMembers() {
@@ -1157,11 +1651,16 @@
       count.textContent = `(${orgData.members.length})`;
       list.innerHTML = orgData.members.map(member => {
         const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email;
+        const escapedName = escapeHtml(name);
+        const escapedEmail = escapeHtml(member.email);
+        const memberId = member.id;
         return `
           <li>
-            ${name}
-            <span class="member-role">${member.role}</span>
-            <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${member.email}</span>
+            ${memberId
+              ? `<a href="#" class="member-name-link" onclick="showUserContext('${escapeHtml(memberId)}', 'workos', '${escapedName}'); return false;">${escapedName}</a>`
+              : escapedName}
+            <span class="member-role">${escapeHtml(member.role)}</span>
+            <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapedEmail}</span>
           </li>
         `;
       }).join('');
@@ -1341,12 +1840,260 @@
       }).join('');
     }
 
+    // =========================================================================
+    // Company Profile (Enrichment Data)
+    // =========================================================================
+
+    function renderCompanyProfile() {
+      const card = document.getElementById('companyProfileCard');
+
+      // Check if we have any enrichment data
+      const hasEnrichment = orgData.enrichment_industry ||
+                           orgData.enrichment_revenue ||
+                           orgData.enrichment_employee_count ||
+                           orgData.enrichment_at;
+
+      if (!hasEnrichment) {
+        card.style.display = 'none';
+        return;
+      }
+
+      card.style.display = 'block';
+
+      // Industry
+      document.getElementById('profileIndustry').textContent =
+        orgData.enrichment_industry || '-';
+
+      // Sub-industry
+      const subIndustryEl = document.getElementById('profileSubIndustry');
+      if (orgData.enrichment_sub_industry) {
+        subIndustryEl.textContent = orgData.enrichment_sub_industry;
+        subIndustryEl.parentElement.style.display = 'flex';
+      } else {
+        subIndustryEl.parentElement.style.display = 'none';
+      }
+
+      // Revenue
+      let revenueText = '-';
+      if (orgData.enrichment_revenue_range) {
+        revenueText = orgData.enrichment_revenue_range;
+      } else if (orgData.enrichment_revenue) {
+        revenueText = formatCurrency(orgData.enrichment_revenue);
+      }
+      document.getElementById('profileRevenue').textContent = revenueText;
+
+      // Employees
+      let employeeText = '-';
+      if (orgData.enrichment_employee_count_range) {
+        employeeText = orgData.enrichment_employee_count_range;
+      } else if (orgData.enrichment_employee_count) {
+        employeeText = orgData.enrichment_employee_count.toLocaleString();
+      }
+      document.getElementById('profileEmployees').textContent = employeeText;
+
+      // Founded
+      document.getElementById('profileFounded').textContent =
+        orgData.enrichment_founded_year || '-';
+
+      // Location
+      const location = [orgData.enrichment_city, orgData.enrichment_country]
+        .filter(Boolean).join(', ');
+      document.getElementById('profileLocation').textContent = location || '-';
+
+      // LinkedIn
+      const linkedInRow = document.getElementById('profileLinkedInRow');
+      if (orgData.enrichment_linkedin_url) {
+        linkedInRow.style.display = 'flex';
+        document.getElementById('profileLinkedIn').innerHTML =
+          `<a href="${escapeHtml(orgData.enrichment_linkedin_url)}" target="_blank" style="color: var(--color-brand);">View Profile</a>`;
+      } else {
+        linkedInRow.style.display = 'none';
+      }
+
+      // Description
+      const descEl = document.getElementById('profileDescription');
+      if (orgData.enrichment_description) {
+        descEl.style.display = 'block';
+        descEl.textContent = orgData.enrichment_description;
+      } else {
+        descEl.style.display = 'none';
+      }
+
+      // Enriched at
+      const enrichedAtEl = document.getElementById('profileEnrichedAt');
+      if (orgData.enrichment_at) {
+        const enrichedDate = new Date(orgData.enrichment_at);
+        enrichedAtEl.textContent = `Data from ${orgData.enrichment_source || 'enrichment'} • Updated ${enrichedDate.toLocaleDateString()}`;
+      }
+    }
+
+    function formatCurrency(amount) {
+      if (!amount) return '-';
+      if (amount >= 1000000000) {
+        return '$' + (amount / 1000000000).toFixed(1) + 'B';
+      } else if (amount >= 1000000) {
+        return '$' + (amount / 1000000).toFixed(1) + 'M';
+      } else if (amount >= 1000) {
+        return '$' + (amount / 1000).toFixed(0) + 'K';
+      }
+      return '$' + amount.toLocaleString();
+    }
+
+    async function refreshEnrichment() {
+      const btn = document.getElementById('refreshEnrichmentBtn');
+      btn.disabled = true;
+      btn.textContent = 'Refreshing...';
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/enrich`, {
+          method: 'POST'
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to refresh enrichment');
+        }
+
+        // Reload the page to show updated data
+        loadOrganization();
+      } catch (error) {
+        alert('Error refreshing enrichment: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh';
+      }
+    }
+
+    // =========================================================================
+    // Addie Research
+    // =========================================================================
+
+    async function loadAddieResearch() {
+      const card = document.getElementById('addieResearchCard');
+      const container = document.getElementById('addieResearchList');
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/addie-research`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            // No endpoint yet, hide the card
+            card.style.display = 'none';
+            return;
+          }
+          throw new Error('Failed to load Addie research');
+        }
+
+        const data = await response.json();
+
+        if (!data.interactions || data.interactions.length === 0) {
+          card.style.display = 'none';
+          return;
+        }
+
+        card.style.display = 'block';
+        container.innerHTML = data.interactions.map(interaction => {
+          const date = new Date(interaction.created_at);
+          return `
+            <div class="research-item" style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">
+                ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                ${interaction.user_name ? ` • Conversation with ${escapeHtml(interaction.user_name)}` : ''}
+              </div>
+              <div style="font-size: var(--text-sm);">
+                ${escapeHtml(interaction.summary || interaction.output_text?.substring(0, 200) || 'No summary')}
+                ${interaction.output_text?.length > 200 ? '...' : ''}
+              </div>
+              ${interaction.tools_used?.length > 0 ? `
+                <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+                  Tools: ${interaction.tools_used.join(', ')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+
+        // Remove last border
+        const lastItem = container.querySelector('.research-item:last-child');
+        if (lastItem) {
+          lastItem.style.borderBottom = 'none';
+        }
+
+      } catch (error) {
+        console.error('Error loading Addie research:', error);
+        card.style.display = 'none';
+      }
+    }
+
+    // =========================================================================
+    // Member Insights
+    // =========================================================================
+
+    async function loadMemberInsights() {
+      const card = document.getElementById('memberInsightsCard');
+      const container = document.getElementById('memberInsightsList');
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/member-insights`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            // No endpoint yet, hide the card
+            card.style.display = 'none';
+            return;
+          }
+          throw new Error('Failed to load member insights');
+        }
+
+        const data = await response.json();
+
+        if (!data.insights || data.insights.length === 0) {
+          card.style.display = 'none';
+          return;
+        }
+
+        card.style.display = 'block';
+
+        // Group insights by member
+        const byMember = {};
+        data.insights.forEach(insight => {
+          const key = insight.member_name || insight.slack_user_id || 'Unknown';
+          if (!byMember[key]) {
+            byMember[key] = [];
+          }
+          byMember[key].push(insight);
+        });
+
+        container.innerHTML = Object.entries(byMember).map(([member, insights]) => `
+          <div style="margin-bottom: var(--space-4);">
+            <div style="font-weight: var(--font-semibold); margin-bottom: var(--space-2);">${escapeHtml(member)}</div>
+            ${insights.map(insight => `
+              <div style="display: flex; gap: var(--space-2); padding: var(--space-1) 0; font-size: var(--text-sm);">
+                <span style="background: var(--color-primary-100); color: var(--color-primary-700); padding: var(--space-0.5) var(--space-1.5); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">
+                  ${escapeHtml(insight.insight_type)}
+                </span>
+                <span>${escapeHtml(insight.value)}</span>
+                ${insight.confidence ? `
+                  <span style="font-size: var(--text-xs); color: var(--color-text-muted);">
+                    (${insight.confidence})
+                  </span>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `).join('');
+
+      } catch (error) {
+        console.error('Error loading member insights:', error);
+        card.style.display = 'none';
+      }
+    }
+
     // Edit Organization Modal functions
-    function openEditOrgModal() {
+    async function openEditOrgModal() {
       // Populate form with current values
-      document.getElementById('editOrgStatus').value = orgData.prospect_status || 'signed_up';
+      document.getElementById('editOrgName').value = orgData.name || '';
+      document.getElementById('editOrgStatus').value = orgData.prospect_status || 'prospect';
       document.getElementById('editOrgOwner').value = orgData.prospect_owner || '';
-      document.getElementById('editOrgType').value = orgData.company_type || '';
       document.getElementById('editOrgSource').value = orgData.prospect_source || '';
       document.getElementById('editContactName').value = orgData.prospect_contact_name || '';
       document.getElementById('editContactEmail').value = orgData.prospect_contact_email || '';
@@ -1354,28 +2101,99 @@
       document.getElementById('editNextAction').value = orgData.prospect_next_action || '';
       document.getElementById('editNextActionDate').value = orgData.prospect_next_action_date ? orgData.prospect_next_action_date.split('T')[0] : '';
       document.getElementById('editOrgNotes').value = orgData.prospect_notes || '';
+      document.getElementById('editDisqualificationReason').value = orgData.disqualification_reason || '';
+
+      // Populate company types checkboxes
+      const types = orgData.company_types || (orgData.company_type ? [orgData.company_type] : []);
+      const checkboxes = document.querySelectorAll('#editOrgTypes input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = types.includes(cb.value);
+      });
+
+      // Populate revenue tier
+      document.getElementById('editRevenueTier').value = orgData.revenue_tier || '';
+
+      // Load parent organization options
+      await loadParentOrgOptions();
+
+      // Show/hide disqualification reason based on status
+      toggleDisqualificationReason();
 
       document.getElementById('editOrgModal').style.display = 'block';
+    }
+
+    async function loadParentOrgOptions() {
+      const select = document.getElementById('editParentOrg');
+      // Keep the "None" option
+      select.innerHTML = '<option value="">None (independent)</option>';
+
+      try {
+        // Fetch organizations that could be parents (exclude current org)
+        const response = await fetch('/api/admin/prospects?limit=200');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const orgs = data.prospects || [];
+
+        // Sort by name and add as options
+        orgs
+          .filter(o => o.workos_organization_id !== orgId) // Exclude self
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .forEach(org => {
+            const option = document.createElement('option');
+            option.value = org.workos_organization_id;
+            option.textContent = org.name;
+            if (org.workos_organization_id === orgData.parent_organization_id) {
+              option.selected = true;
+            }
+            select.appendChild(option);
+          });
+      } catch (error) {
+        console.error('Error loading parent org options:', error);
+      }
+    }
+
+    function toggleDisqualificationReason() {
+      const status = document.getElementById('editOrgStatus').value;
+      const group = document.getElementById('disqualificationReasonGroup');
+      group.style.display = status === 'disqualified' ? 'block' : 'none';
     }
 
     function closeEditOrgModal() {
       document.getElementById('editOrgModal').style.display = 'none';
     }
 
+    function openRevenueTierModal() {
+      // Open the edit modal and focus on revenue tier field
+      openEditOrgModal().then(() => {
+        document.getElementById('editRevenueTier').focus();
+      });
+    }
+
     async function saveOrgChanges(event) {
       event.preventDefault();
 
+      const status = document.getElementById('editOrgStatus').value;
+
+      // Collect selected company types from checkboxes
+      const selectedTypes = Array.from(document.querySelectorAll('#editOrgTypes input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+
       const data = {
-        prospect_status: document.getElementById('editOrgStatus').value,
+        name: document.getElementById('editOrgName').value || null,
+        parent_organization_id: document.getElementById('editParentOrg').value || null,
+        prospect_status: status,
         prospect_owner: document.getElementById('editOrgOwner').value || null,
-        company_type: document.getElementById('editOrgType').value || null,
+        company_types: selectedTypes.length > 0 ? selectedTypes : null,
+        revenue_tier: document.getElementById('editRevenueTier').value || null,
         prospect_source: document.getElementById('editOrgSource').value || null,
         prospect_contact_name: document.getElementById('editContactName').value || null,
         prospect_contact_email: document.getElementById('editContactEmail').value || null,
         prospect_contact_title: document.getElementById('editContactTitle').value || null,
         prospect_next_action: document.getElementById('editNextAction').value || null,
         prospect_next_action_date: document.getElementById('editNextActionDate').value || null,
-        prospect_notes: document.getElementById('editOrgNotes').value || null
+        prospect_notes: document.getElementById('editOrgNotes').value || null,
+        disqualification_reason: status === 'disqualified' ? document.getElementById('editDisqualificationReason').value || null : null
       };
 
       const btn = document.getElementById('saveOrgBtn');
@@ -1477,6 +2295,60 @@
       }
     }
 
+    async function saveQuickFollowUp(event) {
+      event.preventDefault();
+
+      const input = document.getElementById('quickFollowUpText');
+      const btn = document.getElementById('quickFollowUpBtn');
+      const description = input.value.trim();
+
+      if (!description) return;
+
+      // Get current user's name for the owner
+      const currentUserMember = teamMembers.find(m => currentUserId && m.user_id === currentUserId);
+      const ownerName = currentUserMember?.user_name || null;
+
+      // Default due date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dueDate = tomorrow.toISOString().split('T')[0];
+
+      const data = {
+        activity_type: 'note',
+        description: description,
+        is_next_step: true,
+        next_step_due_date: dueDate,
+        next_step_owner_name: ownerName
+      };
+
+      btn.disabled = true;
+      btn.textContent = '...';
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/activities`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to save follow-up');
+        }
+
+        input.value = '';
+        loadOrganization(); // Refresh data
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add';
+      }
+    }
+
     async function completeNextStep(activityId) {
       try {
         const response = await fetch(`/api/admin/organizations/${orgId}/activities/${activityId}`, {
@@ -1501,102 +2373,194 @@
       }
     }
 
-    // Stakeholder functions
-    function renderStakeholders() {
-      const container = document.getElementById('stakeholdersList');
-      const connectBtn = document.getElementById('connectBtn');
+    // Owner selector and watch functions
+    function renderOwnerSelector() {
+      const ownerDisplay = document.getElementById('ownerDisplay');
+      const ownerSelect = document.getElementById('ownerSelect');
+      const watchBtn = document.getElementById('watchBtn');
 
-      // Check if current user is already a stakeholder
-      const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
+      // Find owner stakeholder
+      const ownerStakeholder = stakeholders.find(s => s.role === 'owner');
+      const isCurrentUserOwner = ownerStakeholder && currentUserId && ownerStakeholder.user_id === currentUserId;
 
-      if (myStakeholder) {
-        connectBtn.textContent = 'Connected';
-        connectBtn.classList.add('btn-connected');
+      // Update owner display
+      // Fall back to legacy prospect_owner field if no stakeholder owner exists
+      if (ownerStakeholder) {
+        ownerDisplay.textContent = isCurrentUserOwner ? 'Me' : ownerStakeholder.user_name;
+      } else if (orgData.prospect_owner) {
+        ownerDisplay.textContent = orgData.prospect_owner;
       } else {
-        connectBtn.textContent = "I'm connected";
-        connectBtn.classList.remove('btn-connected');
+        ownerDisplay.textContent = 'Unassigned';
       }
 
-      if (!stakeholders || stakeholders.length === 0) {
-        container.innerHTML = '<div class="empty-state">No team members assigned</div>';
-        return;
-      }
+      // Populate owner dropdown using DOM APIs to prevent XSS
+      ownerSelect.innerHTML = '';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Unassigned';
+      ownerSelect.appendChild(defaultOption);
 
-      const roleLabels = {
-        'owner': 'Owner',
-        'interested': 'Interested',
-        'connected': 'Connected'
+      teamMembers.forEach(member => {
+        const option = document.createElement('option');
+        option.value = member.user_id;
+        option.textContent = member.user_id === currentUserId ? 'Me' : member.user_name;
+        if (ownerStakeholder && ownerStakeholder.user_id === member.user_id) {
+          option.selected = true;
+        }
+        ownerSelect.appendChild(option);
+      });
+
+      // Update watch button
+      // Check if current user is watching (interested role) - but not if they're the owner
+      const isWatching = stakeholders.some(s =>
+        currentUserId && s.user_id === currentUserId && s.role === 'interested'
+      );
+
+      if (isCurrentUserOwner) {
+        // Hide watch button if user is owner
+        watchBtn.style.display = 'none';
+      } else {
+        watchBtn.style.display = 'inline-block';
+        watchBtn.className = isWatching ? 'watch-btn watching' : 'watch-btn';
+        watchBtn.textContent = isWatching ? '⭐' : '☆';
+        watchBtn.title = isWatching ? 'Stop watching' : 'Watch this organization';
+      }
+    }
+
+    function populateOwnerDropdowns() {
+      const editOrgOwner = document.getElementById('editOrgOwner');
+      const nextStepOwner = document.getElementById('nextStepOwner');
+
+      editOrgOwner.innerHTML = '<option value="">Not assigned</option>';
+      nextStepOwner.innerHTML = '<option value="">Not assigned</option>';
+
+      teamMembers.forEach(member => {
+        const isMe = currentUserId && member.user_id === currentUserId;
+        const displayName = isMe ? `${member.user_name} (me)` : member.user_name;
+
+        // Edit modal uses legacy prospect_owner field (stores name)
+        const editOption = document.createElement('option');
+        editOption.value = member.user_name;
+        editOption.textContent = displayName;
+        editOrgOwner.appendChild(editOption);
+
+        // Next step dropdown uses name for next_step_owner_name field
+        const nextStepOption = document.createElement('option');
+        nextStepOption.value = member.user_name;
+        nextStepOption.textContent = displayName;
+        nextStepOwner.appendChild(nextStepOption);
+      });
+    }
+
+    function showOwnerDropdown() {
+      const dropdown = document.getElementById('ownerDropdown');
+      const display = document.getElementById('ownerDisplay');
+
+      dropdown.classList.add('active');
+      display.style.display = 'none';
+
+      // Focus the select
+      const select = document.getElementById('ownerSelect');
+      select.focus();
+
+      // Close dropdown when clicking outside
+      const closeDropdown = (e) => {
+        if (!dropdown.contains(e.target) && e.target !== display) {
+          dropdown.classList.remove('active');
+          display.style.display = 'inline';
+          document.removeEventListener('click', closeDropdown);
+        }
       };
-
-      container.innerHTML = `<ul class="stakeholders-list">
-        ${stakeholders.map(s => `
-          <li class="stakeholder-item">
-            <div>
-              ${s.user_name}
-              <span class="stakeholder-role ${s.role}">${roleLabels[s.role] || s.role}</span>
-              ${s.user_email ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${s.user_email}</span>` : ''}
-            </div>
-            ${s.user_id === currentUserId ? `<button class="btn btn-sm btn-secondary" onclick="removeMyConnection()">Remove</button>` : ''}
-          </li>
-        `).join('')}
-      </ul>`;
+      setTimeout(() => document.addEventListener('click', closeDropdown), 0);
     }
 
-    async function toggleMyConnection() {
-      const myStakeholder = stakeholders.find(s => s.user_id === currentUserId);
+    async function assignOwner(userId) {
+      const dropdown = document.getElementById('ownerDropdown');
+      const display = document.getElementById('ownerDisplay');
+
+      // Hide dropdown, show display
+      dropdown.classList.remove('active');
+      display.style.display = 'inline';
 
       try {
-        if (myStakeholder) {
-          // Already connected - do nothing (use Remove button instead)
-          return;
+        let response;
+        if (!userId) {
+          // Remove owner - find and delete owner stakeholder
+          const ownerStakeholder = stakeholders.find(s => s.role === 'owner');
+          if (ownerStakeholder) {
+            response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/${ownerStakeholder.id}`, {
+              method: 'DELETE'
+            });
+          }
+        } else {
+          // Assign new owner
+          const teamMember = teamMembers.find(m => m.user_id === userId);
+          response = await fetch(`/api/admin/organizations/${orgId}/stakeholders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: userId,
+              user_name: teamMember?.user_name || userId,
+              user_email: teamMember?.user_email,
+              role: 'owner'
+            })
+          });
         }
 
-        // Add self as connected
-        const response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'connected' })
-        });
-
-        if (!response.ok) {
+        if (response && !response.ok) {
           if (response.status === 401) {
             window.AdminNav.redirectToLogin();
             return;
           }
-          throw new Error('Failed to update connection');
+          throw new Error('Failed to update owner');
         }
 
-        // Refresh stakeholders list
+        // Refresh stakeholders
         const stakeholdersResponse = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
-        renderStakeholders();
+        renderOwnerSelector();
       } catch (error) {
-        alert('Error: ' + error.message);
+        console.error('Error assigning owner:', error);
+        alert('Failed to assign owner. Please try again.');
       }
     }
 
-    async function removeMyConnection() {
-      if (!confirm('Remove yourself from this account team?')) return;
+    async function toggleWatch() {
+      const isWatching = stakeholders.some(s =>
+        currentUserId && s.user_id === currentUserId && s.role === 'interested'
+      );
 
       try {
-        const response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
-          method: 'DELETE'
-        });
+        let response;
+        if (isWatching) {
+          // Stop watching - remove self as stakeholder
+          response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
+            method: 'DELETE'
+          });
+        } else {
+          // Start watching - add self as interested
+          response = await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'interested' })
+          });
+        }
 
         if (!response.ok) {
           if (response.status === 401) {
             window.AdminNav.redirectToLogin();
             return;
           }
-          throw new Error('Failed to remove connection');
+          throw new Error('Failed to update watch status');
         }
 
-        // Refresh stakeholders list
+        // Refresh stakeholders
         const stakeholdersResponse = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
-        renderStakeholders();
+        renderOwnerSelector();
       } catch (error) {
-        alert('Error: ' + error.message);
+        console.error('Error toggling watch:', error);
+        alert('Failed to update watch status. Please try again.');
       }
     }
 
@@ -1663,8 +2627,9 @@
                 ${badges.join(' ')}
               </div>
               <div class="domain-actions">
+                ${!d.verified ? `<button class="btn btn-sm btn-primary" data-action="verify">Verify</button>` : ''}
                 ${!d.is_primary && !d.workos_only ? `<button class="btn btn-sm btn-secondary" data-action="set-primary">Set Primary</button>` : ''}
-                ${d.source !== 'workos' ? `<button class="btn-icon danger" data-action="remove" title="Remove domain" aria-label="Remove domain ${escapedDomain}">&times;</button>` : ''}
+                <button class="btn-icon danger" data-action="remove" title="Remove domain" aria-label="Remove domain ${escapedDomain}">&times;</button>
               </div>
             </li>
           `;
@@ -1689,6 +2654,8 @@
         setDomainPrimary(domain, btn);
       } else if (action === 'remove') {
         removeDomain(domain, btn);
+      } else if (action === 'verify') {
+        verifyDomain(domain, btn);
       }
     }
 
@@ -1805,14 +2772,61 @@
       }
     }
 
+    async function verifyDomain(domain, btn) {
+      const originalText = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+      }
+
+      try {
+        // Reuse the add domain endpoint - it handles verification of existing domains
+        const response = await fetch(`/api/admin/organizations/${orgId}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain.toLowerCase() })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error(await getErrorMessage(response, 'Failed to verify domain'));
+        }
+
+        await refreshDomains();
+      } catch (error) {
+        alert('Error: ' + error.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      }
+    }
+
     // ========================================
     // ENGAGEMENT SIGNALS
     // ========================================
 
-    function renderEngagementSignals(signals) {
+    function renderEngagementSignals(signals, isPayingMember = false) {
       if (!signals) return;
 
-      // Interest level
+      // Update section title and button text based on member status
+      const titleEl = document.getElementById('engagementSectionTitle');
+      const interestBtn = document.getElementById('setInterestBtn');
+      const interestLabel = document.getElementById('interestLevelLabel');
+      if (isPayingMember) {
+        titleEl.textContent = 'Member Engagement';
+        interestBtn.textContent = 'Set Satisfaction';
+        interestLabel.textContent = 'Satisfaction';
+      } else {
+        titleEl.textContent = 'Engagement Signals';
+        interestBtn.textContent = 'Set Interest';
+        interestLabel.textContent = 'Interest Level';
+      }
+
+      // Interest level (or Satisfaction for members)
       const interestEl = document.getElementById('signalInterestLevel');
       if (signals.interest_level) {
         const levelLabels = {
@@ -1874,13 +2888,18 @@
       const select = document.getElementById('interestLevelSelect');
       const note = document.getElementById('interestLevelNote');
 
+      // Update modal title based on member status
+      const isPayingMember = orgData.subscription_status === 'active' || orgData.subscription_status === 'trialing';
+      document.getElementById('interestModalTitle').textContent = isPayingMember ? 'Set Satisfaction Level' : 'Set Interest Level';
+      document.getElementById('interestModalLabel').textContent = isPayingMember ? 'Satisfaction Level' : 'Interest Level';
+
       // Pre-populate with current values
       if (orgData.engagement_signals) {
         select.value = orgData.engagement_signals.interest_level || '';
         note.value = orgData.engagement_signals.interest_level_note || '';
       }
 
-      modal.style.display = 'flex';
+      modal.style.display = 'block';
     }
 
     function closeInterestLevelModal() {
@@ -1918,16 +2937,175 @@
         const orgResponse = await fetch(`/api/admin/organizations/${orgId}`);
         if (orgResponse.ok) {
           orgData = await orgResponse.json();
-          const fires = '🔥'.repeat(orgData.engagement_level || 1);
-          document.getElementById('engagementFires').textContent = fires;
+          const isPayingMember = orgData.subscription_status === 'active' || orgData.subscription_status === 'trialing';
+          const engagementLevel = orgData.engagement_level || 1;
+          const indicator = isPayingMember ? '⭐'.repeat(engagementLevel) : '🔥'.repeat(engagementLevel);
+          document.getElementById('engagementFires').textContent = indicator;
           document.getElementById('engagementReasons').textContent =
-            orgData.engagement_reasons?.join(' • ') || 'Cold';
+            orgData.engagement_reasons?.join(' • ') || (isPayingMember ? 'New member' : 'Cold');
+          // Re-render engagement signals with correct context
+          renderEngagementSignals(orgData.engagement_signals, isPayingMember);
         }
 
         closeInterestLevelModal();
       } catch (error) {
         alert('Error: ' + error.message);
       }
+    }
+
+    // ========================================
+    // USER CONTEXT MODAL
+    // ========================================
+
+    async function showUserContext(userId, type, userName) {
+      const modal = document.getElementById('userContextModal');
+      const modalTitle = document.getElementById('userContextModalTitle');
+      const modalBody = document.getElementById('userContextModalBody');
+
+      modalTitle.textContent = `Context: ${userName}`;
+      modalBody.innerHTML = '<div style="text-align: center; padding: var(--space-8);"><p>Loading context...</p></div>';
+      modal.style.display = 'block';
+
+      try {
+        const response = await fetch(`/api/admin/users/${userId}/context?type=${type}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch context');
+        }
+        const context = await response.json();
+        modalBody.innerHTML = renderUserContext(context, userId);
+      } catch (error) {
+        console.error('Error fetching context:', error);
+        modalBody.innerHTML = `
+          <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
+            <p>Failed to load context.</p>
+            <button class="btn btn-secondary" onclick="showUserContext('${escapeHtml(userId)}', '${escapeHtml(type)}', '${escapeHtml(userName)}')">Retry</button>
+          </div>
+        `;
+      }
+    }
+
+    function closeUserContextModal() {
+      document.getElementById('userContextModal').style.display = 'none';
+    }
+
+    function renderUserContext(context, userId) {
+      let html = '';
+
+      // Addie's Goal Section
+      if (context.addie_goal) {
+        html += '<div style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Addie\'s Goal</h3>';
+        html += `<div style="font-weight: var(--font-medium); color: var(--color-text-heading);">${escapeHtml(context.addie_goal.goal_name || context.addie_goal.goal_key)}</div>`;
+        if (context.addie_goal.reasoning) {
+          html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(context.addie_goal.reasoning)}</p>`;
+        }
+        html += '</div>';
+      }
+
+      // Identity Section
+      html += '<div style="margin-bottom: var(--space-4);">';
+      html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Identity</h3>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+
+      if (context.workos_user) {
+        html += renderContextItem('Email', context.workos_user.email);
+        const name = `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim();
+        if (name) html += renderContextItem('Name', name);
+      }
+
+      if (context.slack_user && !context.workos_user) {
+        html += renderContextItem('Email', context.slack_user.email || 'Not set');
+        html += renderContextItem('Slack Name', context.slack_user.display_name || context.slack_user.real_name || 'Not set');
+      }
+
+      // Status badges
+      const statusItems = [];
+      if (context.is_member) statusItems.push('<span style="display: inline-block; padding: 2px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">Member</span>');
+      if (context.slack_linked) statusItems.push('<span style="display: inline-block; padding: 2px 8px; background: #4A154B20; color: #4A154B; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">Slack</span>');
+
+      if (statusItems.length > 0) {
+        html += `<div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-md); grid-column: 1 / -1;">
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">Status</div>
+          <div style="display: flex; gap: var(--space-1);">${statusItems.join(' ')}</div>
+        </div>`;
+      }
+
+      html += '</div></div>';
+
+      // Organization Section
+      if (context.organization) {
+        html += '<div style="margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Organization</h3>';
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+        html += renderContextItem('Company', context.organization.name);
+        const subStatus = context.organization.subscription_status || 'None';
+        html += renderContextItem('Subscription', subStatus);
+        html += '</div></div>';
+      }
+
+      // Activity Section
+      html += '<div style="margin-bottom: var(--space-4);">';
+      html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Activity</h3>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+
+      if (context.engagement) {
+        html += renderContextItem('Dashboard Logins (30d)', context.engagement.login_count_30d.toString());
+        if (context.engagement.last_login) {
+          html += renderContextItem('Last Login', new Date(context.engagement.last_login).toLocaleDateString());
+        }
+        html += renderContextItem('Email Clicks (30d)', context.engagement.email_click_count_30d.toString());
+      }
+
+      if (context.slack_activity) {
+        html += renderContextItem('Slack Messages (30d)', context.slack_activity.total_messages_30d.toString());
+        html += renderContextItem('Reactions Given', context.slack_activity.total_reactions_30d.toString());
+        if (context.slack_activity.last_activity_at) {
+          html += renderContextItem('Last Slack Activity', new Date(context.slack_activity.last_activity_at).toLocaleDateString());
+        }
+      }
+
+      html += '</div></div>';
+
+      // Working Groups Section
+      if (context.working_groups && context.working_groups.length > 0) {
+        html += '<div style="margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Working Groups</h3>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">';
+        context.working_groups.forEach(wg => {
+          html += `<span style="display: inline-block; padding: 2px 8px; background: var(--color-primary-100); color: var(--color-primary-700); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);">${escapeHtml(wg.name)}${wg.is_leader ? ' (Leader)' : ''}</span>`;
+        });
+        html += '</div></div>';
+      }
+
+      // Insights Section
+      if (context.insights && context.insights.length > 0) {
+        html += '<div style="margin-bottom: var(--space-4);">';
+        html += '<h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Insights</h3>';
+        html += '<div style="max-height: 150px; overflow-y: auto;">';
+        context.insights.forEach(insight => {
+          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+            <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
+            <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+          </div>`;
+        });
+        html += '</div></div>';
+      }
+
+      // Link to full user view
+      html += `<div style="margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-gray-200);">
+        <a href="/admin/users" class="btn btn-secondary" style="text-decoration: none;">View in Users Page</a>
+      </div>`;
+
+      return html;
+    }
+
+    function renderContextItem(label, value) {
+      return `
+        <div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-md);">
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">${escapeHtml(label)}</div>
+          <div style="font-size: var(--text-sm); color: var(--color-text-heading); font-weight: var(--font-medium);">${escapeHtml(value)}</div>
+        </div>
+      `;
     }
 
     // Close modal when clicking outside
@@ -1937,8 +3115,876 @@
       }
     }
 
+    // Close modals on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeUserContextModal();
+      }
+    });
+
+    // Check for link_domain query parameter
+    async function checkLinkDomainParam() {
+      const params = new URLSearchParams(window.location.search);
+      const linkDomain = params.get('link_domain');
+
+      // Validate domain format (alphanumeric, hyphens, dots only, reasonable length)
+      const isValidDomain = linkDomain && /^[a-z0-9][a-z0-9.-]{0,252}[a-z0-9]$/i.test(linkDomain);
+
+      if (isValidDomain) {
+        // Wait for org to load
+        await loadOrganization();
+
+        // Clean up URL immediately (wrap in try/catch for edge cases)
+        try {
+          const url = new URL(window.location);
+          url.searchParams.delete('link_domain');
+          window.history.replaceState({}, '', url);
+        } catch (e) {
+          console.warn('Could not clean up URL:', e);
+        }
+
+        // Directly add the domain to the org
+        try {
+          const response = await fetch(`/api/admin/organizations/${orgId}/domains`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: linkDomain.toLowerCase(), is_primary: true })
+          });
+
+          if (!response.ok) {
+            if (response.status === 401) {
+              window.AdminNav.redirectToLogin();
+              return;
+            }
+            throw new Error(await getErrorMessage(response, 'Failed to link domain'));
+          }
+
+          // Refresh domains to show the newly added domain
+          await refreshDomains();
+        } catch (error) {
+          alert('Error linking domain: ' + error.message);
+        }
+      } else {
+        loadOrganization();
+      }
+    }
+
+    // =========================================================================
+    // Payment Link Functions
+    // =========================================================================
+
+    function openPaymentLinkModal() {
+      document.getElementById('paymentLinkOrgName').textContent = `For: ${orgData?.name || 'Unknown'}`;
+      document.getElementById('paymentLinkProducts').innerHTML = 'Loading products...';
+      document.getElementById('paymentLinkProducts').style.display = 'block';
+      document.getElementById('paymentLinkResult').style.display = 'none';
+
+      // Show discount notice if org has a discount
+      const discountNotice = document.getElementById('paymentLinkDiscountNotice');
+      if (orgData.discount_percent || orgData.discount_amount_cents) {
+        discountNotice.style.display = 'block';
+        let discountText = '';
+        if (orgData.discount_percent) {
+          discountText = `${orgData.discount_percent}% off`;
+        } else {
+          discountText = `$${(orgData.discount_amount_cents / 100).toFixed(0)} off`;
+        }
+        if (orgData.stripe_promotion_code) {
+          discountText += ` (code: ${orgData.stripe_promotion_code})`;
+        }
+        document.getElementById('paymentLinkDiscountText').textContent = discountText;
+        document.getElementById('applyDiscountToPaymentLink').checked = true;
+      } else {
+        discountNotice.style.display = 'none';
+      }
+
+      document.getElementById('paymentLinkModal').style.display = 'block';
+
+      loadPaymentLinkProducts();
+    }
+
+    async function loadPaymentLinkProducts() {
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}/payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}) // No lookup_key = get product list
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load products');
+        }
+
+        const data = await response.json();
+
+        if (data.needs_selection && data.products) {
+          renderPaymentLinkProducts(data.products);
+        }
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('paymentLinkProducts').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
+      }
+    }
+
+    function renderPaymentLinkProducts(products) {
+      const container = document.getElementById('paymentLinkProducts');
+
+      if (products.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No products available for this account type.</p>';
+        return;
+      }
+
+      container.innerHTML = products.map(product => {
+        const price = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(product.amount_cents / 100);
+
+        const displayName = escapeHtml(product.display_name);
+        const lookupKey = escapeHtml(product.lookup_key);
+        const tiers = product.revenue_tiers?.length > 0
+          ? `<span style="font-size: var(--text-xs); color: var(--color-text-muted);">(${product.revenue_tiers.map(t => escapeHtml(t)).join(', ')})</span>`
+          : '';
+
+        return `
+          <button class="product-select-btn" onclick="generatePaymentLink('${lookupKey}')" style="
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            transition: var(--transition-all);
+          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
+            <strong>${displayName}</strong> ${tiers}
+            <br>
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}/year</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    async function generatePaymentLink(lookupKey) {
+      const container = document.getElementById('paymentLinkProducts');
+      container.innerHTML = '<p>Generating payment link...</p>';
+
+      try {
+        // Check if discount should be applied
+        const applyDiscount = document.getElementById('applyDiscountToPaymentLink')?.checked;
+        const body = { lookup_key: lookupKey };
+
+        if (applyDiscount && orgData.stripe_coupon_id) {
+          body.coupon_id = orgData.stripe_coupon_id;
+        } else if (applyDiscount && orgData.stripe_promotion_code) {
+          body.promotion_code = orgData.stripe_promotion_code;
+        }
+
+        const response = await fetch(`/api/admin/prospects/${orgId}/payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to generate payment link');
+        }
+
+        if (data.success && data.payment_url) {
+          container.style.display = 'none';
+          document.getElementById('paymentLinkDiscountNotice').style.display = 'none';
+          document.getElementById('paymentLinkUrl').value = data.payment_url;
+          document.getElementById('paymentLinkResult').style.display = 'block';
+        } else {
+          throw new Error(data.message || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error generating payment link:', error);
+        container.innerHTML = `<p style="color: var(--color-error-600);">Error: ${error.message}</p>`;
+      }
+    }
+
+    function copyPaymentLink() {
+      const input = document.getElementById('paymentLinkUrl');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('Payment link copied to clipboard!');
+      }).catch(() => {
+        document.execCommand('copy');
+        alert('Payment link copied to clipboard!');
+      });
+    }
+
+    function closePaymentLinkModal() {
+      document.getElementById('paymentLinkModal').style.display = 'none';
+      // Reset the products display for next time
+      document.getElementById('paymentLinkProducts').style.display = 'block';
+    }
+
+    // =========================================================================
+    // Invoice Functions
+    // =========================================================================
+
+    let selectedInvoiceProduct = null;
+
+    function openInvoiceModal() {
+      selectedInvoiceProduct = null;
+
+      document.getElementById('invoiceOrgName').textContent = `For: ${orgData?.name || 'Unknown'}`;
+      document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
+      document.getElementById('invoiceProductSection').style.display = 'block';
+      document.getElementById('invoiceBillingSection').style.display = 'none';
+      document.getElementById('invoiceResult').style.display = 'none';
+      document.getElementById('sendInvoiceBtn').style.display = 'none';
+      document.getElementById('invoiceForm').reset();
+
+      // Pre-fill from org data
+      if (orgData) {
+        document.getElementById('invoiceContactName').value = orgData.prospect_contact_name || '';
+        document.getElementById('invoiceContactEmail').value = orgData.prospect_contact_email || '';
+        document.getElementById('invoiceCompanyName').value = orgData.name || '';
+      }
+
+      document.getElementById('invoiceModal').style.display = 'block';
+
+      loadInvoiceProducts();
+    }
+
+    async function loadInvoiceProducts() {
+      try {
+        const response = await fetch('/api/admin/products');
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        const invoiceableProducts = data.products.filter(p => p.is_invoiceable);
+
+        renderInvoiceProducts(invoiceableProducts);
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('invoiceProducts').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
+      }
+    }
+
+    function renderInvoiceProducts(products) {
+      const container = document.getElementById('invoiceProducts');
+
+      if (products.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No invoiceable products available.</p>';
+        return;
+      }
+
+      container.innerHTML = products.map(product => {
+        const price = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(product.amount_cents / 100);
+
+        const interval = product.billing_interval ? `/${product.billing_interval}` : '';
+        const displayName = escapeHtml(product.display_name || product.product_name);
+        const lookupKey = escapeHtml(product.lookup_key);
+        const description = product.description ? escapeHtml(product.description) : '';
+
+        return `
+          <button type="button" class="product-select-btn" onclick="selectInvoiceProduct('${lookupKey}', '${displayName}', ${product.amount_cents})" style="
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            transition: var(--transition-all);
+          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
+            <strong>${displayName}</strong>
+            <br>
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectInvoiceProduct(lookupKey, productName, amountCents) {
+      selectedInvoiceProduct = { lookupKey, productName, amountCents };
+
+      const price = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(amountCents / 100);
+
+      document.getElementById('selectedProductDisplay').innerHTML = `
+        <strong>${productName}</strong> - <span style="color: var(--color-brand);">${price}</span>
+      `;
+
+      document.getElementById('invoiceProductSection').style.display = 'none';
+      document.getElementById('invoiceBillingSection').style.display = 'block';
+      document.getElementById('sendInvoiceBtn').style.display = 'inline-block';
+    }
+
+    async function submitInvoice(event) {
+      event.preventDefault();
+
+      if (!selectedInvoiceProduct) {
+        alert('Please select a product first');
+        return;
+      }
+
+      const btn = document.getElementById('sendInvoiceBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      const data = {
+        lookup_key: selectedInvoiceProduct.lookupKey,
+        company_name: document.getElementById('invoiceCompanyName').value,
+        contact_name: document.getElementById('invoiceContactName').value,
+        contact_email: document.getElementById('invoiceContactEmail').value,
+        billing_address: {
+          line1: document.getElementById('invoiceAddressLine1').value,
+          line2: document.getElementById('invoiceAddressLine2').value || undefined,
+          city: document.getElementById('invoiceCity').value,
+          state: document.getElementById('invoiceState').value,
+          postal_code: document.getElementById('invoicePostalCode').value,
+          country: document.getElementById('invoiceCountry').value,
+        }
+      };
+
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}/invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || error.message || 'Failed to send invoice');
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.invoice_url) {
+          document.getElementById('invoiceBillingSection').style.display = 'none';
+          document.getElementById('sendInvoiceBtn').style.display = 'none';
+          document.getElementById('invoiceUrl').value = result.invoice_url;
+          document.getElementById('invoiceResult').style.display = 'block';
+
+          // Refresh the org data to show the new pending invoice
+          loadOrganization();
+        } else {
+          throw new Error(result.message || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error sending invoice:', error);
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Invoice';
+      }
+    }
+
+    function copyInvoiceLink() {
+      const input = document.getElementById('invoiceUrl');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('Invoice link copied to clipboard!');
+      }).catch(() => {
+        document.execCommand('copy');
+        alert('Invoice link copied to clipboard!');
+      });
+    }
+
+    function closeInvoiceModal() {
+      document.getElementById('invoiceModal').style.display = 'none';
+      selectedInvoiceProduct = null;
+    }
+
+    // =========================================================================
+    // Pricing & Discount Functions
+    // =========================================================================
+
+    async function loadPricingData() {
+      try {
+        // Load products to determine suggested tier pricing
+        const response = await fetch('/api/admin/products');
+        if (response.ok) {
+          const data = await response.json();
+          productsData = data.products || [];
+        }
+      } catch (error) {
+        console.error('Error loading products:', error);
+      }
+
+      renderPricing();
+    }
+
+    function renderPricing() {
+      // Get the org's revenue tier - either explicitly set or derived from enrichment
+      let orgRevenueTier = orgData.revenue_tier;
+      let revenueTierSource = orgData.revenue_tier ? 'manual' : null;
+
+      // If no revenue_tier set, try to derive from enrichment data
+      if (!orgRevenueTier && orgData.enrichment_revenue_range) {
+        // enrichment_revenue_range might be something like "$1M-$5M" - try to map it
+        const rangeMap = {
+          'under $1m': 'under_1m',
+          '$1m-$5m': '1m_5m',
+          '$5m-$50m': '5m_50m',
+          '$50m-$250m': '50m_250m',
+          '$250m-$1b': '250m_1b',
+          'over $1b': '1b_plus'
+        };
+        const lowerRange = orgData.enrichment_revenue_range.toLowerCase();
+        for (const [key, value] of Object.entries(rangeMap)) {
+          if (lowerRange.includes(key.replace('$', '').replace('-', ' to '))) {
+            orgRevenueTier = value;
+            revenueTierSource = 'enrichment';
+            break;
+          }
+        }
+      }
+
+      // Filter membership products for companies (orgs in admin are always companies)
+      // Include products that either: have no customer_types restriction, or explicitly allow 'company'
+      const membershipProducts = productsData.filter(p =>
+        p.category === 'membership' &&
+        p.billing_type === 'subscription' &&
+        (!p.customer_types || p.customer_types.length === 0 || p.customer_types.includes('company'))
+      );
+
+      // Find products that match the org's revenue tier
+      // If product has no revenue_tiers restriction, it's available to all
+      // If product has revenue_tiers, org must match one of them
+      let matchingProducts = membershipProducts.filter(p => {
+        if (!p.revenue_tiers || p.revenue_tiers.length === 0) {
+          return true; // Available to all
+        }
+        return orgRevenueTier && p.revenue_tiers.includes(orgRevenueTier);
+      });
+
+      // Sort matching products by price (highest first)
+      matchingProducts.sort((a, b) => (b.amount_cents || 0) - (a.amount_cents || 0));
+
+      // Only recommend a product if we have revenue tier data
+      // If we don't know the tier, don't guess - show "Unknown" and let the admin set it
+      const suggestedProduct = orgRevenueTier && matchingProducts.length > 0 ? matchingProducts[0] : null;
+
+      // Build context about what we know (even if we can't make a recommendation)
+      const pricingContext = buildPricingContext({
+        orgRevenueTier,
+        revenueTierSource,
+        suggestedProduct,
+        companyTypes: orgData.company_types || [],
+        employeeCount: orgData.enrichment_employee_count,
+        fundingStage: orgData.enrichment_funding_stage,
+        fundingTotal: orgData.enrichment_funding_total,
+        foundedYear: orgData.enrichment_founded_year,
+      });
+
+      // Display product info
+      if (suggestedProduct) {
+        document.getElementById('pricingSuggestedTier').textContent = suggestedProduct.display_name || suggestedProduct.product_name;
+        if (matchingProducts.length > 1) {
+          document.getElementById('pricingSuggestedTier').innerHTML +=
+            ` <span style="font-size: var(--text-xs); color: var(--color-text-muted);">(${matchingProducts.length} options)</span>`;
+        }
+      } else {
+        // No recommendation - we don't have enough data
+        document.getElementById('pricingSuggestedTier').innerHTML =
+          `<span style="color: var(--color-text-muted);">Unknown</span>` +
+          ` <button onclick="openRevenueTierModal()" style="margin-left: 8px; font-size: var(--text-xs); color: var(--color-brand); background: none; border: none; cursor: pointer; text-decoration: underline;">Set tier</button>`;
+      }
+
+      // Display list price
+      let listPrice = suggestedProduct?.amount_cents || 0;
+      document.getElementById('pricingListPrice').textContent =
+        listPrice > 0 ? formatPriceCurrency(listPrice) + '/year' : '-';
+
+      // Display context (what we know about this org)
+      if (pricingContext) {
+        document.getElementById('pricingRationaleRow').style.display = 'flex';
+        document.getElementById('pricingRationale').innerHTML = pricingContext;
+      } else {
+        document.getElementById('pricingRationaleRow').style.display = 'none';
+      }
+
+      // Check for discount
+      const hasDiscount = orgData.discount_percent || orgData.discount_amount_cents;
+
+      if (hasDiscount) {
+        document.getElementById('discountRow').style.display = 'flex';
+        document.getElementById('netPriceRow').style.display = 'flex';
+        document.getElementById('manageDiscountBtn').textContent = 'Edit Discount';
+
+        let discountText = '';
+        let netPrice = listPrice;
+
+        if (orgData.discount_percent) {
+          discountText = `${orgData.discount_percent}% off`;
+          netPrice = Math.round(listPrice * (1 - orgData.discount_percent / 100));
+        } else if (orgData.discount_amount_cents) {
+          discountText = formatPriceCurrency(orgData.discount_amount_cents) + ' off';
+          netPrice = Math.max(0, listPrice - orgData.discount_amount_cents);
+        }
+
+        document.getElementById('pricingDiscount').innerHTML =
+          `<span style="color: var(--color-success-600);">${discountText}</span>`;
+        document.getElementById('pricingNetPrice').textContent =
+          formatPriceCurrency(netPrice) + '/year';
+
+        // Show promo code if available
+        if (orgData.stripe_promotion_code) {
+          document.getElementById('promoCodeRow').style.display = 'flex';
+          document.getElementById('pricingPromoCode').innerHTML =
+            `<code style="background: var(--color-gray-100); padding: 2px 6px; border-radius: 4px;">${escapeHtml(orgData.stripe_promotion_code)}</code>
+             <button onclick="copyPromoCode('${escapeHtml(orgData.stripe_promotion_code)}')" style="margin-left: 8px; font-size: var(--text-xs); color: var(--color-brand); background: none; border: none; cursor: pointer;">Copy</button>`;
+        }
+
+        // Show discount details
+        document.getElementById('discountDetails').style.display = 'block';
+        document.getElementById('discountReasonText').textContent = orgData.discount_reason || '-';
+        document.getElementById('discountGrantedBy').textContent = orgData.discount_granted_by || 'Unknown';
+        document.getElementById('discountGrantedAt').textContent =
+          orgData.discount_granted_at ? new Date(orgData.discount_granted_at).toLocaleDateString() : '-';
+      } else {
+        document.getElementById('discountRow').style.display = 'none';
+        document.getElementById('netPriceRow').style.display = 'none';
+        document.getElementById('promoCodeRow').style.display = 'none';
+        document.getElementById('discountDetails').style.display = 'none';
+        document.getElementById('manageDiscountBtn').textContent = 'Set Discount';
+      }
+    }
+
+    function formatPriceCurrency(cents) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(cents / 100);
+    }
+
+    function formatRevenueTierDisplay(tier) {
+      const tierLabels = {
+        'under_1m': 'Under $1M',
+        '1m_5m': '$1M-$5M',
+        '5m_50m': '$5M-$50M',
+        '50m_250m': '$50M-$250M',
+        '250m_1b': '$250M-$1B',
+        '1b_plus': 'Over $1B'
+      };
+      return tierLabels[tier] || tier;
+    }
+
+    function buildPricingContext(params) {
+      const {
+        orgRevenueTier,
+        revenueTierSource,
+        suggestedProduct,
+        companyTypes,
+        employeeCount,
+        fundingStage,
+        fundingTotal,
+        foundedYear,
+      } = params;
+
+      const signals = [];
+
+      // If we have a revenue tier, show how we know it
+      if (orgRevenueTier && revenueTierSource === 'manual') {
+        signals.push(`Revenue: ${formatRevenueTierDisplay(orgRevenueTier)}`);
+      } else if (orgRevenueTier && revenueTierSource === 'enrichment') {
+        signals.push(`Revenue: ${formatRevenueTierDisplay(orgRevenueTier)} (enrichment)`);
+      }
+
+      // Funding info - strong signal for startups
+      if (fundingStage || fundingTotal) {
+        let fundingInfo = '';
+        if (fundingStage) {
+          // Escape enrichment data to prevent XSS
+          fundingInfo = escapeHtml(String(fundingStage));
+        }
+        if (fundingTotal) {
+          const totalFormatted = fundingTotal >= 1000000
+            ? `$${(fundingTotal / 1000000).toFixed(1)}M`
+            : `$${(fundingTotal / 1000).toFixed(0)}K`;
+          fundingInfo = fundingInfo ? `${fundingInfo} (${totalFormatted} raised)` : `${totalFormatted} raised`;
+        }
+        signals.push(fundingInfo);
+      }
+
+      // Founded year - helps identify startups
+      if (foundedYear) {
+        const currentYear = new Date().getFullYear();
+        const age = currentYear - foundedYear;
+        if (age <= 2) {
+          signals.push(`Founded ${foundedYear} (startup)`);
+        } else if (age <= 5) {
+          signals.push(`Founded ${foundedYear}`);
+        }
+      }
+
+      // Employee count
+      if (employeeCount) {
+        if (employeeCount >= 1000) {
+          signals.push(`${employeeCount.toLocaleString()} employees (enterprise)`);
+        } else if (employeeCount >= 100) {
+          signals.push(`${employeeCount.toLocaleString()} employees (mid-market)`);
+        } else if (employeeCount >= 10) {
+          signals.push(`${employeeCount.toLocaleString()} employees`);
+        } else {
+          signals.push(`${employeeCount} employees (early stage)`);
+        }
+      }
+
+      // Company type
+      if (companyTypes && companyTypes.length > 0) {
+        const typeLabels = {
+          'brand': 'Brand',
+          'publisher': 'Publisher',
+          'agency': 'Agency',
+          'adtech': 'Ad Tech',
+          'data': 'Data & Measurement',
+          'ai': 'AI & Tech',
+          'other': 'Other'
+        };
+        const typeNames = companyTypes.map(t => typeLabels[t] || t).join(', ');
+        signals.push(typeNames);
+      }
+
+      // If no signals at all, return null
+      if (signals.length === 0) {
+        return suggestedProduct ? null : '<span style="color: var(--color-warning-600);">No data - set revenue tier to recommend a membership</span>';
+      }
+
+      return signals.join(' · ');
+    }
+
+    function copyPromoCode(code) {
+      navigator.clipboard.writeText(code).then(() => {
+        alert('Promo code copied!');
+      });
+    }
+
+    // Discount Modal Functions
+    function openDiscountModal() {
+      // Reset form
+      document.getElementById('discountForm').reset();
+      document.getElementById('discountType').value = 'percent';
+      document.getElementById('discountPercentGroup').style.display = 'block';
+      document.getElementById('discountAmountGroup').style.display = 'none';
+      document.getElementById('customReasonGroup').style.display = 'none';
+
+      // Show current discount if exists
+      const currentInfo = document.getElementById('currentDiscountInfo');
+      if (orgData.discount_percent || orgData.discount_amount_cents) {
+        currentInfo.style.display = 'block';
+        let currentText = '';
+        if (orgData.discount_percent) {
+          currentText = `${orgData.discount_percent}% discount`;
+          document.getElementById('discountType').value = 'percent';
+          document.getElementById('discountPercent').value = orgData.discount_percent;
+        } else {
+          currentText = `$${orgData.discount_amount_cents / 100} discount`;
+          document.getElementById('discountType').value = 'amount';
+          document.getElementById('discountAmount').value = orgData.discount_amount_cents / 100;
+          toggleDiscountInputs();
+        }
+        if (orgData.discount_reason) {
+          currentText += ` - ${orgData.discount_reason}`;
+        }
+        document.getElementById('currentDiscountText').textContent = currentText;
+        document.getElementById('discountModalTitle').textContent = 'Edit Discount';
+      } else {
+        currentInfo.style.display = 'none';
+        document.getElementById('discountModalTitle').textContent = 'Set Discount';
+      }
+
+      document.getElementById('discountModal').style.display = 'block';
+    }
+
+    function closeDiscountModal() {
+      document.getElementById('discountModal').style.display = 'none';
+    }
+
+    function toggleDiscountInputs() {
+      const type = document.getElementById('discountType').value;
+      document.getElementById('discountPercentGroup').style.display = type === 'percent' ? 'block' : 'none';
+      document.getElementById('discountAmountGroup').style.display = type === 'amount' ? 'block' : 'none';
+    }
+
+    function toggleCustomReason() {
+      const reason = document.getElementById('discountReasonSelect').value;
+      document.getElementById('customReasonGroup').style.display = reason === 'custom' ? 'block' : 'none';
+    }
+
+    async function saveDiscount(event) {
+      event.preventDefault();
+
+      const type = document.getElementById('discountType').value;
+      const reasonSelect = document.getElementById('discountReasonSelect').value;
+      const customReason = document.getElementById('discountCustomReason').value;
+      const createStripeCoupon = document.getElementById('createStripeCoupon').checked;
+
+      // Validate
+      let discountValue;
+      if (type === 'percent') {
+        discountValue = parseInt(document.getElementById('discountPercent').value);
+        if (!discountValue || discountValue < 1 || discountValue > 100) {
+          alert('Please enter a valid percentage between 1 and 100');
+          return;
+        }
+      } else {
+        discountValue = parseInt(document.getElementById('discountAmount').value);
+        if (!discountValue || discountValue < 1) {
+          alert('Please enter a valid discount amount');
+          return;
+        }
+      }
+
+      if (!reasonSelect) {
+        alert('Please select a reason for the discount');
+        return;
+      }
+
+      if (reasonSelect === 'custom' && !customReason.trim()) {
+        alert('Please enter a custom reason');
+        return;
+      }
+
+      const reason = reasonSelect === 'custom' ? customReason : reasonSelect;
+
+      const btn = document.getElementById('saveDiscountBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const body = {
+          reason,
+          create_stripe_coupon: createStripeCoupon
+        };
+
+        if (type === 'percent') {
+          body.discount_percent = discountValue;
+        } else {
+          body.discount_amount_cents = discountValue * 100; // Convert to cents
+        }
+
+        const response = await fetch(`/api/admin/organizations/${orgId}/discount`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || error.message || 'Failed to save discount');
+        }
+
+        const result = await response.json();
+
+        closeDiscountModal();
+        loadOrganization(); // Refresh to show updated discount
+
+        if (result.promotion_code) {
+          alert(`Discount saved! Promo code: ${result.promotion_code}`);
+        } else {
+          alert('Discount saved!');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Discount';
+      }
+    }
+
+    async function removeDiscount() {
+      if (!confirm('Are you sure you want to remove this discount?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/discount`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || error.message || 'Failed to remove discount');
+        }
+
+        closeDiscountModal();
+        loadOrganization(); // Refresh
+        alert('Discount removed');
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // AI Enrichment function
+    async function runAIEnrichment() {
+      const btn = document.getElementById('aiEnrichBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Researching...';
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/analyze-with-ai/${orgId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          if (response.status === 503) {
+            alert('AI enrichment is not configured. ANTHROPIC_API_KEY is required.');
+            return;
+          }
+          throw new Error(await getErrorMessage(response, 'Failed to run AI enrichment'));
+        }
+
+        const result = await response.json();
+
+        // Show results in a modal or alert
+        let message = result.analysis || 'Analysis complete.';
+        if (result.tool_calls && result.tool_calls.length > 0) {
+          const updates = result.tool_calls.filter(tc =>
+            ['update_prospect', 'enrich_prospect'].includes(tc.tool)
+          );
+          if (updates.length > 0) {
+            message += '\n\nActions taken:\n' + updates.map(u =>
+              `- ${u.tool}: ${typeof u.result === 'string' ? u.result.substring(0, 100) : JSON.stringify(u.result).substring(0, 100)}`
+            ).join('\n');
+          }
+        }
+
+        alert(message);
+
+        // Reload the organization to show any updates
+        loadOrganization();
+
+      } catch (error) {
+        console.error('AI enrichment error:', error);
+        alert('Error running AI enrichment: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
     // Initialize
-    loadOrganization();
+    checkLinkDomainParam();
   </script>
 </body>
 </html>

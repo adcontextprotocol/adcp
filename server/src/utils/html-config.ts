@@ -20,6 +20,10 @@ const AUTH_ENABLED = !!(
   process.env.WORKOS_COOKIE_PASSWORD
 );
 
+// PostHog config - only enabled if API key is set
+const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY || null;
+const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
+
 interface AppUser {
   id?: string;
   email: string;
@@ -34,6 +38,7 @@ interface AppUser {
 export function buildAppConfig(user?: AppUser | null): {
   authEnabled: boolean;
   user: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isAdmin: boolean } | null;
+  posthog: { apiKey: string; host: string } | null;
 } {
   let isAdmin = false;
   if (user) {
@@ -50,6 +55,10 @@ export function buildAppConfig(user?: AppUser | null): {
       lastName: user.lastName,
       isAdmin,
     } : null,
+    posthog: POSTHOG_API_KEY ? {
+      apiKey: POSTHOG_API_KEY,
+      host: POSTHOG_HOST,
+    } : null,
   };
 }
 
@@ -64,14 +73,22 @@ export function getAppConfigScript(user?: AppUser | null): string {
 /**
  * Inject app config into HTML string.
  * Inserts before </head> or before <body if no </head> found.
+ * Also injects PostHog script if configured.
  */
 export function injectConfigIntoHtml(html: string, user?: AppUser | null): string {
   const configScript = getAppConfigScript(user);
 
+  // Add PostHog script if API key is configured
+  const posthogScript = POSTHOG_API_KEY
+    ? `<script src="/posthog-init.js" defer></script>`
+    : '';
+
+  const injectedScripts = `${configScript}\n${posthogScript}`;
+
   if (html.includes("</head>")) {
-    return html.replace("</head>", `${configScript}\n</head>`);
+    return html.replace("</head>", `${injectedScripts}\n</head>`);
   }
-  return html.replace("<body", `${configScript}\n<body`);
+  return html.replace("<body", `${injectedScripts}\n<body`);
 }
 
 /**
