@@ -636,6 +636,64 @@
       }
     }
 
+    async function addUsersToOrg(button, orgId, orgName, userIds) {
+      // Validate inputs
+      if (!isValidOrgId(orgId)) {
+        alert('Invalid organization ID format');
+        return;
+      }
+
+      if (!confirm(`Add ${userIds.length} user(s) to "${orgName}"?\n\nThis will add them to the company organization. They will keep access to their personal workspace.`)) {
+        return;
+      }
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Adding...';
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/add-users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_ids: userIds })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed to add users');
+        }
+
+        const result = await response.json();
+
+        // Success
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        button.textContent = `Added ${result.added_count || userIds.length}!`;
+
+        // Reload after brief delay
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1500);
+      } catch (error) {
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-primary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
+    }
+
     function renderSummary() {
       const { summary } = healthData;
       const totalIssues = summary.issues.orphan_domains + summary.issues.misaligned_users +
@@ -795,7 +853,10 @@
           <tbody>
             ${misaligned_users.map(d => `
               <tr>
-                <td><span class="domain-name">${escapeHtml(d.domain)}</span></td>
+                <td>
+                  <span class="domain-name">${escapeHtml(d.domain)}</span>
+                  ${d.target_org_name ? `<br><small style="color: var(--color-text-muted);">→ <a href="/admin/accounts/${escapeHtml(d.target_org_id)}" class="org-link">${escapeHtml(d.target_org_name)}</a></small>` : ''}
+                </td>
                 <td><span class="user-count">${d.user_count}</span></td>
                 <td>
                   <ul class="user-list">
@@ -807,7 +868,18 @@
                 </td>
                 <td>
                   <div style="display: flex; flex-direction: column; gap: var(--space-2);">
-                    <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
+                    ${d.target_org_id ? `
+                      <button class="btn btn-primary btn-sm add-to-org-btn"
+                              data-domain="${escapeHtml(d.domain)}"
+                              data-org-id="${escapeHtml(d.target_org_id)}"
+                              data-org-name="${escapeHtml(d.target_org_name)}"
+                              data-user-ids="${d.users.map(u => escapeHtml(u.user_id)).join(',')}"
+                              title="Add all ${d.user_count} user(s) to ${escapeHtml(d.target_org_name)}">
+                        Add to ${escapeHtml(d.target_org_name)}
+                      </button>
+                    ` : `
+                      <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
+                    `}
                     <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
                   </div>
                 </td>
@@ -816,6 +888,16 @@
           </tbody>
         </table>
       `;
+
+      // Set up event handlers for add to org buttons
+      document.querySelectorAll('.add-to-org-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const orgId = btn.dataset.orgId;
+          const orgName = btn.dataset.orgName;
+          const userIds = btn.dataset.userIds.split(',').filter(Boolean);
+          addUsersToOrg(btn, orgId, orgName, userIds);
+        });
+      });
     }
 
     function renderUnverifiedOrgs() {
@@ -836,6 +918,9 @@
         return;
       }
 
+      // Common personal email domains to filter out
+      const personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'protonmail.com', 'me.com', 'live.com', 'msn.com'];
+
       content.innerHTML = `
         <table class="issue-table">
           <thead>
@@ -848,7 +933,12 @@
             </tr>
           </thead>
           <tbody>
-            ${unverified_orgs.map(o => `
+            ${unverified_orgs.map(o => {
+              // Find the first corporate domain (not a personal email domain)
+              const corporateDomains = (o.user_domains || []).filter(d => d && !personalDomains.includes(d.toLowerCase()));
+              const suggestedDomain = corporateDomains[0] || null;
+
+              return `
               <tr>
                 <td>
                   <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
@@ -866,10 +956,21 @@
                   </span>
                 </td>
                 <td>
-                  <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm">View Org</a>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${suggestedDomain ? `
+                      <button class="btn btn-primary btn-sm link-domain-btn"
+                              data-org-id="${escapeHtml(o.org_id)}"
+                              data-org-name="${escapeHtml(o.name)}"
+                              data-domain="${escapeHtml(suggestedDomain)}"
+                              title="Link ${escapeHtml(suggestedDomain)} to ${escapeHtml(o.name)}">
+                        Link ${escapeHtml(suggestedDomain)}
+                      </button>
+                    ` : ''}
+                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm">View Org</a>
+                  </div>
                 </td>
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
       `;

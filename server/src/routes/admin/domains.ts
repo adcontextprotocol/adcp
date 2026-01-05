@@ -1299,12 +1299,19 @@ export function setupDomainRoutes(
         const misalignedResult = await pool.query(`
           WITH company_domains AS (
             -- All domains that have been claimed by non-personal organizations
-            SELECT DISTINCT LOWER(domain) as domain
+            -- Include org info so we know which org they should join
+            SELECT DISTINCT
+              LOWER(od.domain) as domain,
+              o.workos_organization_id as target_org_id,
+              o.name as target_org_name
             FROM organization_domains od
             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
             WHERE o.is_personal = false
             UNION
-            SELECT DISTINCT LOWER(email_domain) as domain
+            SELECT DISTINCT
+              LOWER(email_domain) as domain,
+              workos_organization_id as target_org_id,
+              name as target_org_name
             FROM organizations
             WHERE is_personal = false AND email_domain IS NOT NULL
           )
@@ -1315,7 +1322,9 @@ export function setupDomainRoutes(
             om.workos_user_id,
             LOWER(SPLIT_PART(om.email, '@', 2)) as email_domain,
             o.name as workspace_name,
-            om.workos_organization_id
+            om.workos_organization_id,
+            cd.target_org_id,
+            cd.target_org_name
           FROM organization_memberships om
           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
           JOIN company_domains cd ON cd.domain = LOWER(SPLIT_PART(om.email, '@', 2))
@@ -1460,6 +1469,9 @@ export function setupDomainRoutes(
           misaligned_users: Object.entries(misalignedByDomain).map(([domain, users]) => ({
             domain,
             user_count: users.length,
+            // Target org that owns this domain (users should join this org)
+            target_org_id: users[0]?.target_org_id || null,
+            target_org_name: users[0]?.target_org_name || null,
             users: users.map(u => ({
               email: u.email,
               first_name: u.first_name,
