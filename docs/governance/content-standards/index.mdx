@@ -9,12 +9,11 @@ The Content Standards Protocol controls *content safety and suitability* - what 
 
 ## What It Does
 
-Content Standards agents evaluate placement contexts against brand safety policies. This enables:
+Content Standards agents evaluate placement contexts against brand policies. This enables:
 
-- **Brand safety verification** - Is this content safe for the brand?
-- **Suitability scoring** - How well does this content fit the brand?
+- **Brand safety** - Is this content safe for *any* brand? (universal thresholds like hate speech, illegal content)
+- **Brand suitability** - Is this content appropriate for *my* brand? (brand-specific preferences and tone)
 - **Competitive separation** - Avoid appearing near competitor content
-- **Sentiment analysis** - Content tone and mood evaluation
 
 ## Reference Pattern
 
@@ -43,15 +42,21 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
 
 ```json
 {
-  "policy": "Avoid content about violence, controversial politics, or adult themes. Sports news is excellent. Entertainment is generally acceptable. Avoid hard news unless positive sentiment.",
-
-  "exclusions_prompt": "Block content containing hate speech, illegal activities, explicit adult content, or ongoing litigation against our company.",
-
-  "context_evaluation_prompt": "Consider the overall tone. Sports and fitness content is ideal. Lifestyle content about health is good. Avoid content portraying sedentary lifestyle positively."
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
+  "examples": {
+    "acceptable": [
+      "https://espn.com/nba/game-recap",
+      "https://healthline.com/nutrition/healthy-eating"
+    ],
+    "unacceptable": [
+      "https://news.example.com/political-controversy",
+      "https://tabloid.example.com/celebrity-scandal"
+    ]
+  }
 }
 ```
 
-This enables AI-powered verification agents to understand context and nuance.
+The policy prompt enables AI-powered verification agents to understand context and nuance. Examples provide a training set that helps calibrate the agent's interpretation.
 
 ## Scoped Standards
 

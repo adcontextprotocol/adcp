@@ -34,9 +34,17 @@ Retrieve content safety policies for a specific standards configuration.
     "channels": ["display", "video", "ctv"],
     "description": "Nike EMEA - all digital channels"
   },
-  "policy": "Avoid content about violence, controversial political topics, or adult themes. Sports news is excellent. Entertainment content is generally acceptable. Avoid hard news unless positive sentiment about athletes or sports.",
-  "exclusions_prompt": "Block any content containing hate speech, illegal activities, explicit adult content, or content disparaging athletes or athletic achievement.",
-  "context_evaluation_prompt": "Consider the overall tone. Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Avoid content that portrays sedentary lifestyle positively.",
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
+  "examples": {
+    "acceptable": [
+      "https://espn.com/nba/game-recap",
+      "https://healthline.com/fitness/running-benefits"
+    ],
+    "unacceptable": [
+      "https://news.example.com/political-controversy",
+      "https://tabloid.example.com/athlete-scandal"
+    ]
+  },
   "competitive_separation": ["adidas", "puma", "under_armour", "reebok"],
   "floor": "garm_floor"
 }
@@ -46,9 +54,8 @@ Retrieve content safety policies for a specific standards configuration.
 
 | Field | Description |
 |-------|-------------|
-| `policy` | Primary natural language safety policy |
-| `exclusions_prompt` | Hard exclusions - content that should always be blocked |
-| `context_evaluation_prompt` | Guidance for evaluating contextual appropriateness |
+| `policy` | Natural language policy describing acceptable and unacceptable content contexts |
+| `examples` | Training set of acceptable/unacceptable URLs to calibrate policy interpretation |
 | `competitive_separation` | Competitor brands to avoid adjacency with |
 | `floor` | Safety floor baseline (`garm_floor` = GARM Brand Safety Floor) |
 

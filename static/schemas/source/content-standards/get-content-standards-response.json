@@ -59,15 +59,23 @@
         },
         "policy": {
           "type": "string",
-          "description": "Primary natural language safety policy"
+          "description": "Natural language policy describing acceptable and unacceptable content contexts"
         },
-        "exclusions_prompt": {
-          "type": "string",
-          "description": "Hard exclusions - content that should always be blocked"
-        },
-        "context_evaluation_prompt": {
-          "type": "string",
-          "description": "Guidance for evaluating contextual appropriateness"
+        "examples": {
+          "type": "object",
+          "description": "Training set examples to calibrate policy interpretation",
+          "properties": {
+            "acceptable": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "URLs or content descriptions that are acceptable"
+            },
+            "unacceptable": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "URLs or content descriptions that are unacceptable"
+            }
+          }
         },
         "competitive_separation": {
           "type": "array",
