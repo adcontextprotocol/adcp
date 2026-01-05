@@ -1,0 +1,305 @@
+---
+title: Protocol Envelope Examples
+sidebar_position: 5
+---
+
+
+This guide shows how task responses are wrapped by different protocol layers. The same task response payload appears in different envelope formats depending on the protocol.
+
+## The Separation Principle
+
+**Task Response (what you implement)**:
+```json
+{
+  "products": [
+    {
+      "product_id": "ctv_premium",
+      "name": "CTV Premium",
+      "pricing": { "model": "cpm", "amount": 45.00, "currency": "USD" }
+    }
+  ]
+}
+```
+
+**Protocol Envelope (what the protocol layer adds)**:
+- Session tracking (context_id)
+- Async operation tracking (task_id, status)
+- Human-readable message
+- Webhook configuration
+
+## MCP (Model Context Protocol)
+
+### Successful Response
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Found 3 products matching your criteria for CTV inventory"
+    },
+    {
+      "type": "resource",
+      "resource": {
+        "uri": "adcp://response/get_products",
+        "mimeType": "application/json",
+        "text": "{\"products\": [...]}"
+      }
+    }
+  ],
+  "metadata": {
+    "context_id": "ctx_abc123",
+    "status": "completed"
+  }
+}
+```
+
+**Key Points**:
+- Human message in `content[].text`
+- Task payload in `content[].resource.text` (includes application-level context when present)
+- Protocol metadata in `metadata`
+- MCP doesn't expose `task_id` - async is handled via MCP's progress notifications
+
+### Async Response (Long-Running Operation)
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Creating media buy. This will take 5-10 minutes."
+    }
+  ],
+  "metadata": {
+    "context_id": "ctx_def456",
+    "status": "working"
+  },
+  "isError": false,
+  "_meta": {
+    "progressToken": "prog_789"
+  }
+}
+```
+
+MCP sends progress notifications separately:
+```json
+{
+  "method": "notifications/progress",
+  "params": {
+    "progressToken": "prog_789",
+    "progress": 50,
+    "total": 100
+  }
+}
+```
+
+## A2A (Agent-to-Agent Protocol)
+
+### Successful Response
+
+```json
+{
+  "task": {
+    "task_id": "task_123",
+    "state": "completed",
+    "artifacts": [
+      {
+        "artifactId": "artifact-get-products-abc123",
+        "name": "get_products_result",
+        "content_type": "application/json",
+        "content": "{\"products\": [...]}"
+      }
+    ]
+  },
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Found 3 products matching your criteria for CTV inventory"
+    }
+  ],
+  "context_id": "ctx_abc123"
+}
+```
+
+**Key Points**:
+- Human message in `messages[]` array
+- Task payload in `task.artifacts[]`
+- Explicit `task_id` for tracking
+- `state` field for task status
+- A2A native support for async via task state machine
+
+### Async Response (Submitted)
+
+```json
+{
+  "task": {
+    "task_id": "task_456",
+    "state": "working",
+    "estimated_duration_seconds": 600,
+    "webhook_url": "https://buyer.example.com/webhooks/a2a"
+  },
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Creating media buy. This will take 5-10 minutes. I'll notify you via webhook when complete."
+    }
+  ],
+  "context_id": "ctx_def456"
+}
+```
+
+Later, webhook notification:
+```json
+{
+  "task_id": "task_456",
+  "state": "completed",
+  "artifacts": [
+    {
+      "artifactId": "artifact-media-buy-webhook-def456",
+      "name": "create_media_buy_result",
+      "content_type": "application/json",
+      "content": "{\"media_buy_id\": \"mb_789\", ...}"
+    }
+  ]
+}
+```
+
+## Protocol Compliance Testing
+
+### Validating Your Implementation
+
+Here's how to test that your protocol adapter is compliant:
+
+```typescript
+import { validateTaskResponse } from '@adcp/schemas';
+import { mcpAdapter, a2aAdapter } from './protocol-adapters';
+
+// 1. Test task response schema (domain-specific)
+const taskResponse = getProductsHandler(request);
+const isValid = validateTaskResponse('get_products', taskResponse);
+assert(isValid, 'Task response must match schema');
+
+// 2. Test protocol envelope construction
+const mcpEnvelope = mcpAdapter.wrap({
+  contextId: 'ctx_123',
+  status: 'completed',
+  message: 'Found 3 products',
+  payload: taskResponse
+});
+
+// Verify MCP structure
+assert(mcpEnvelope.content, 'MCP must have content array');
+assert(mcpEnvelope.content[0].type === 'text', 'First content must be text');
+assert(mcpEnvelope.metadata.context_id, 'Must include context_id');
+
+// 3. Test A2A envelope
+const a2aEnvelope = a2aAdapter.wrap({
+  contextId: 'ctx_123',
+  taskId: 'task_456',
+  status: 'completed',
+  message: 'Found 3 products',
+  payload: taskResponse
+});
+
+assert(a2aEnvelope.task.task_id, 'A2A must have task_id');
+assert(a2aEnvelope.messages[0].role === 'assistant', 'Must have assistant message');
+```
+
+### Testing Cross-Protocol Compatibility
+
+```typescript
+// The same task response should work in all protocols
+const taskResponse = { products: [...] };
+
+test('task response works across all protocols', () => {
+  // All adapters should successfully wrap the response
+  const mcp = mcpAdapter.wrap({ payload: taskResponse, status: 'completed' });
+  const a2a = a2aAdapter.wrap({ payload: taskResponse, status: 'completed' });
+
+  // All should extract the same payload
+  assert.deepEqual(
+    mcpAdapter.unwrap(mcp),
+    a2aAdapter.unwrap(a2a)
+  );
+});
+```
+
+## Implementation Checklist
+
+When implementing AdCP support:
+
+- [ ] **Task handlers return ONLY domain data** (no message, context_id, status, task_id)
+- [ ] **Protocol adapter adds envelope fields** based on protocol requirements
+- [ ] **Message generation** creates human-readable text from task results
+- [ ] **Context tracking** maintains conversation state across operations
+- [ ] **Async support** handles long-running operations appropriately
+- [ ] **Error mapping** translates domain errors to protocol-specific formats
+- [ ] **Schema validation** validates task responses against AdCP schemas
+- [ ] **Cross-protocol tests** verify same task response works everywhere
+
+## Common Pitfalls
+
+### ❌ Don't Do This
+
+```typescript
+// Task handler includes protocol fields - WRONG!
+function getProducts(request) {
+  return {
+    status: 'completed',  // ❌ Protocol concern
+    message: 'Found 3',   // ❌ Protocol concern
+    products: [...]       // ✅ Domain data
+  };
+}
+```
+
+### ✅ Do This Instead
+
+```typescript
+// Task handler returns only domain data
+function getProducts(request) {
+  return {
+    products: [...]  // ✅ Domain data only
+  };
+}
+
+// Protocol adapter adds envelope
+function wrapResponse(taskResponse, metadata) {
+  return {
+    status: metadata.status,
+    message: generateMessage(taskResponse),
+    context_id: metadata.contextId,
+    data: taskResponse  // Task response becomes payload
+  };
+}
+```
+
+## Summary
+
+## Webhook
+
+### Task Status Webhook Payload
+
+```json
+{
+  "operation_id": "op_456",
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "message": "Media buy created successfully",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_123",
+    "buyer_ref": "campaign_2024_q1",
+    "packages": [
+      { "package_id": "pkg_001" }
+    ]
+  }
+}
+```
+
+| Protocol | Message Location | Payload Location | Async Mechanism |
+|----------|-----------------|------------------|-----------------|
+| **MCP** | `content[].text` | `content[].resource.text` | Progress notifications |
+| **A2A** | `messages[].content` | `task.artifacts[].content` | Task state + webhooks |
+
+The envelope schema (`/schemas/v2/core/protocol-envelope.json`) provides the conceptual model. This document shows how each protocol actually serializes that model on the wire.

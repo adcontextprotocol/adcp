@@ -1,0 +1,409 @@
+---
+title: Testing and Development
+---
+
+## Overview
+
+AdCP servers support time simulation and dry run capabilities to enable comprehensive testing of advertising workflows without waiting for real-time events or spending actual budgets.
+
+## Test Agent for Development
+
+AdCP provides a **public test agent** with free credentials for development and testing:
+
+**Agent URL**: `https://test-agent.adcontextprotocol.org`
+
+**Free Test Credentials**:
+
+**For MCP Protocol**:
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/mcp",
+  "protocol": "mcp",
+  "version": "1.0",
+  "auth": {
+    "type": "bearer",
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+  }
+}
+```
+
+**For A2A Protocol**:
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/a2a",
+  "protocol": "a2a",
+  "version": "1.0",
+  "auth": {
+    "type": "bearer",
+    "token": "L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8"
+  }
+}
+```
+
+**Use Cases**:
+- Test authenticated operations
+- Practice integration patterns
+- Validate request/response structures
+- Develop and debug client implementations
+
+**Important**: This is a test environment. Data is ephemeral and may be reset periodically.
+
+## Protocol Compliance Testing
+
+### Testing via Addie
+
+The easiest way to test your AdCP agent is to ask Addie in Slack:
+
+> "Hey Addie, test my sales agent at https://sales.example.com"
+
+Addie can run comprehensive E2E tests including:
+
+**Standard Scenarios:**
+- **health_check** - Verify agent responds
+- **discovery** - Test `get_products`, `list_creative_formats`, `list_authorized_properties`
+- **create_media_buy** - Discovery + create a test campaign
+- **full_sales_flow** - Complete lifecycle: create → update → delivery
+- **creative_sync** - Test `sync_creatives` flow
+- **creative_inline** - Test inline creatives in `create_media_buy`
+- **pricing_models** - Analyze pricing options across channels
+
+**Edge Case Scenarios:**
+- **error_handling** - Verify proper discriminated union error responses
+- **validation** - Test rejection of invalid inputs (negative budgets, invalid enums)
+- **pricing_edge_cases** - Test auction vs fixed pricing, min_spend requirements, bid_price handling
+- **temporal_validation** - Test date/time ordering, ISO 8601 format validation
+
+**Behavioral Analysis:**
+- **behavior_analysis** - Analyze agent characteristics: authentication requirements, brand_manifest requirements, brief relevance filtering, channel filtering behavior
+
+By default tests run in dry-run mode. For real testing, ask Addie to run without dry-run.
+
+### Sales Agent Compliance Checklist
+
+Use this checklist to verify your sales agent implementation covers all required features:
+
+**Core Discovery (Required)**
+- [ ] `get_products` - Returns products with pricing_options, format_ids, delivery_type
+- [ ] `list_creative_formats` - Returns supported formats and creative agents
+- [ ] `list_authorized_properties` - Returns publisher domains (if applicable)
+
+**Media Buy Lifecycle (Required)**
+- [ ] `create_media_buy` - Accepts packages with product_id, pricing_option_id, budget
+- [ ] `update_media_buy` - Supports PATCH semantics for budget, pacing, targeting
+- [ ] `get_media_buy_delivery` - Returns impressions, spend, status
+
+**Creative Management (Required for most channels)**
+- [ ] `sync_creatives` - Upsert creatives with per-item action tracking
+- [ ] `list_creatives` - Query creative library with filtering
+- [ ] Support inline creatives in `create_media_buy`
+- [ ] Support creative references (`creative_ids`)
+
+**Pricing Models (as applicable)**
+- [ ] CPM - Cost per thousand impressions
+- [ ] vCPM - Viewable CPM (MRC standard)
+- [ ] CPCV - Cost per completed view
+- [ ] CPC - Cost per click
+- [ ] CPP - Cost per rating point (TV/radio)
+- [ ] Flat rate - Fixed cost sponsorships
+- [ ] Auction pricing - Support bid_price when is_fixed=false
+
+**Creative Types**
+- [ ] Static creatives (image, video assets)
+- [ ] Reference creatives (creative_ids to existing library)
+- [ ] Generative creatives (manifest-based)
+- [ ] Parameterized creatives (with substitution)
+
+**Response Patterns**
+- [ ] Discriminated union responses (success XOR errors)
+- [ ] Schema-compliant responses (validate against JSON schemas)
+- [ ] Async operations return status: submitted/working/completed
+- [ ] Per-item errors in batch operations (e.g., sync_creatives)
+
+**Testing Support**
+- [ ] `X-Dry-Run` header support
+- [ ] `X-Test-Session-ID` for parallel test isolation
+- [ ] `X-Mock-Time` for time simulation
+
+**Edge Case Validation (Required)**
+- [ ] Reject negative budget values
+- [ ] Reject invalid pacing enum values
+- [ ] Reject end_time before start_time
+- [ ] Reject invalid ISO 8601 date formats
+- [ ] Return proper error for non-existent product_id
+- [ ] Require bid_price for auction pricing options
+- [ ] Reject budget below min_spend_per_package
+- [ ] Reject creative weight > 100
+- [ ] Return discriminated union error responses (success XOR errors, never both)
+
+## Testing Modes
+
+### Dry Run Mode
+
+Execute all operations without affecting real platforms or spending money:
+
+```http
+X-Dry-Run: true
+```
+
+When dry run mode is enabled:
+- No real platform API calls are made
+- No actual money is spent
+- Responses indicate test mode is active
+- All operations return simulated but realistic results
+
+### Time Simulation Mode
+
+Control simulated time to instantly progress through campaign events:
+
+```http
+X-Mock-Time: 2025-01-01T09:00:00Z
+X-Auto-Advance: true
+```
+
+Time simulation headers:
+- `X-Mock-Time`: Set current simulated time
+- `X-Auto-Advance`: Auto-advance to next event
+- `X-Jump-To-Event`: Jump to specific campaign event
+
+## Request Headers
+
+### Testing Control Headers
+
+```http
+X-Dry-Run: <boolean>             # Enable dry run mode
+X-Test-Session-ID: <string>      # Isolate parallel test sessions
+X-Mock-Time: <ISO-8601>          # Set current simulated time
+X-Auto-Advance: <boolean>        # Auto-advance to next event
+X-Jump-To-Event: <event_name>    # Jump to specific event (lifecycle or error)
+```
+
+### Response Headers
+
+Servers include these headers in test mode responses:
+
+```http
+X-Dry-Run: true                  # Confirms dry run mode active
+X-Test-Session-ID: <string>      # Test session identifier
+X-Mock-Time: <ISO-8601>          # Current simulated time
+X-Next-Event: <event_name>       # Next scheduled event
+X-Next-Event-Time: <ISO-8601>    # When next event occurs
+X-Simulated-Spend: <decimal>     # Simulated advertising spend so far
+```
+
+## Event Progression
+
+### Jumpable Events
+
+Use `X-Jump-To-Event` to jump to specific campaign lifecycle events:
+
+**Lifecycle Events**:
+- `campaign_created` - Initial setup complete
+- `campaign_approved` - Ready for creative submission
+- `creative_approved` - Ready for launch
+- `campaign_launched` - Live delivery begins
+- `campaign_50_percent` - Halfway through schedule
+- `campaign_completed` - Natural end reached
+
+**Error Events**:
+- `creative_policy_violation` - Force creative rejection
+- `budget_exceeded` - Simulate overspend
+- `inventory_unavailable` - Simulate inventory shortage
+- `manual_approval_delay` - Add HITL approval delay
+
+### Time Advancement
+
+Jump forward by duration:
+
+```http
+X-Advance-Time: 7d
+```
+
+Or advance to next significant event:
+
+```http
+X-Auto-Advance: true
+```
+
+## Testing Examples
+
+### Example: Testing Creative Rejection
+
+```json
+POST /sync_creatives
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Jump-To-Event": "creative_policy_violation"
+}
+
+Response: {
+  "status": "rejected",
+  "dry_run": true,
+  "errors": [{
+    "code": "POLICY_VIOLATION",
+    "message": "Creative violates policy (test event)"
+  }]
+}
+```
+
+### Example: Testing Time Progression
+
+```json
+POST /create_media_buy
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Mock-Time": "2025-01-01T09:00:00Z"
+}
+
+Response: {
+  "media_buy_id": "mb_test_123",
+  "status": "pending_approval",
+  "dry_run": true,
+  "simulated_time": "2025-01-01T09:00:00Z"
+}
+
+GET /get_media_buy_delivery?media_buy_id=mb_test_123
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Jump-To-Event": "campaign_50_percent"
+}
+
+Response: {
+  "media_buy_id": "mb_test_123",
+  "dry_run": true,
+  "simulated_time": "2025-01-15T09:00:00Z",
+  "metrics": {
+    "impressions": 350000,
+    "spend": 5000.00,
+    "pacing": "on_track"
+  }
+}
+```
+
+## Testing Patterns
+
+### Pattern 1: Happy Path Testing
+
+Test successful campaign flows without forcing errors:
+
+```http
+X-Dry-Run: true
+X-Mock-Time: 2025-01-01T00:00:00Z
+```
+
+### Pattern 2: Error Recovery Testing
+
+Test error handling by jumping to error events:
+
+```http
+X-Dry-Run: true
+X-Jump-To-Event: creative_policy_violation
+```
+
+Then test recovery:
+
+```http
+X-Dry-Run: true
+X-Jump-To-Event: creative_approved
+```
+
+### Pattern 3: Time-Based Testing
+
+Test long-running campaigns quickly:
+
+```http
+X-Dry-Run: true
+X-Mock-Time: 2025-01-01T00:00:00Z
+X-Auto-Advance: true
+```
+
+Each request advances to the next significant event.
+
+### Pattern 4: Parallel Testing
+
+Test multiple campaigns in isolated sessions:
+
+```http
+// Test Session A - Normal flow
+POST /create_media_buy
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Test-Session-ID": "test-session-a",
+  "X-Mock-Time": "2025-01-01T00:00:00Z"
+}
+
+// Test Session B - Force error (different session)
+POST /create_media_buy
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Test-Session-ID": "test-session-b",
+  "X-Jump-To-Event": "budget_exceeded"
+}
+```
+
+Each test session maintains its own isolated state, allowing parallel testing without interference.
+
+## Implementation Requirements
+
+### Core Requirements
+
+All AdCP implementations MUST support:
+
+1. **Dry Run Mode**
+   - `X-Dry-Run` header recognition
+   - No side effects on production systems
+   - Clear indication of test mode in responses
+
+2. **Test Session Isolation**
+   - `X-Test-Session-ID` for parallel test isolation
+   - Independent state per session
+   - No cross-session interference
+
+3. **Basic Time Control**
+   - `X-Mock-Time` for setting simulated time
+   - `X-Jump-To-Event` for event progression
+   - Consistent state across time jumps
+
+### Recommended Features
+
+Implementations SHOULD support:
+
+1. **Auto-Advancement**
+   - `X-Auto-Advance` for automatic progression
+   - `X-Advance-Time` for duration-based jumps
+
+2. **Error Events**
+   - Jump to error states via `X-Jump-To-Event`
+   - Common error events (policy violations, budget issues)
+   - Recovery testing
+
+### Optional Features
+
+Implementations MAY support:
+
+1. **Advanced Testing**
+   - Custom event definitions
+   - Complex error injection
+   - Performance simulation
+
+2. **Detailed Metrics**
+   - Realistic performance curves
+   - Industry benchmark simulation
+   - Cost modeling
+
+## Security Considerations
+
+- Test modes MUST be completely isolated from production
+- Test mode operations should be logged separately
+- Authentication is still required in test mode
+- Rate limits apply (potentially with different thresholds)
+
+## Summary
+
+AdCP testing features enable:
+
+1. **Rapid Development** - Test full lifecycles in seconds
+2. **Comprehensive Testing** - Cover all scenarios deterministically
+3. **Zero Cost** - No real money spent on testing
+4. **Isolation** - Complete separation from production
+
+Use HTTP headers to control test behavior, not special naming conventions or separate APIs. This keeps testing orthogonal to business logic and maintains clean separation of concerns.
