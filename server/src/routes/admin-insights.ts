@@ -635,6 +635,28 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
+  // GET /api/admin/outreach/stats/by-goal - Get response rates by goal type
+  apiRouter.get('/outreach/stats/by-goal', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await insightsDb.getOutreachGoalStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting outreach goal stats');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/outreach/stats/time-series - Get time-windowed outreach stats
+  apiRouter.get('/outreach/stats/time-series', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await insightsDb.getOutreachTimeStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting outreach time stats');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/admin/outreach/history - Get recent outreach history
   apiRouter.get('/outreach/history', requireAuth, requireAdmin, async (req, res) => {
     try {
