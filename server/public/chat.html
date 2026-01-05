@@ -644,104 +644,301 @@
       }
     }
 
-    /* Thread Sidebar */
+    /* Chat Sidebar - Vertical Tab Layout */
     .page-layout {
       display: flex;
       flex: 1;
       overflow: hidden;
     }
 
-    .thread-sidebar {
+    .chat-sidebar {
       width: 280px;
       border-right: 1px solid var(--color-border);
       background: var(--color-bg-card);
-      display: none;
+      display: flex;
       flex-direction: column;
+      flex-shrink: 0;
+      height: 100%;
+    }
+
+    /* Hide sidebar for unauthenticated users */
+    .chat-sidebar:not(.visible) {
+      display: none;
+    }
+
+    /* Sidebar navigation tabs */
+    .sidebar-nav {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .sidebar-tab {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: none;
+      border-radius: var(--radius-lg);
+      background: transparent;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+    }
+
+    .sidebar-tab:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+    }
+
+    .sidebar-tab.active {
+      background: var(--color-primary-50);
+      color: var(--color-brand);
+      font-weight: 500;
+    }
+
+    .sidebar-tab svg {
+      width: 18px;
+      height: 18px;
       flex-shrink: 0;
     }
 
-    .thread-sidebar.visible {
-      display: flex;
+    .sidebar-tab--new {
+      background: var(--color-brand);
+      color: white;
+      margin-top: 8px;
     }
 
-    .thread-sidebar-header {
-      padding: 16px;
-      border-bottom: 1px solid var(--color-border);
+    .sidebar-tab--new:hover {
+      background: var(--color-brand-hover);
+      color: white;
+    }
+
+    /* Sidebar sections */
+    .sidebar-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-section-header {
+      padding: 12px 16px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-text-muted);
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .thread-sidebar-header h3 {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--color-text-heading);
-      margin: 0;
-    }
-
-    .new-chat-btn {
-      background: var(--color-brand);
-      color: white;
+    .sidebar-section-header button {
+      background: none;
       border: none;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
+      padding: 0;
       cursor: pointer;
+      color: var(--color-text-muted);
       display: flex;
       align-items: center;
       gap: 4px;
     }
 
-    .new-chat-btn:hover {
-      background: var(--color-brand-hover);
+    .sidebar-section-header button:hover {
+      color: var(--color-text);
     }
 
-    .thread-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
+    .sidebar-section-header .badge {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-muted);
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 500;
     }
 
-    .thread-item {
-      padding: 12px;
-      border-radius: 8px;
+    .sidebar-section-header svg {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.2s;
+    }
+
+    .sidebar-section--collapsed .sidebar-section-header svg {
+      transform: rotate(-90deg);
+    }
+
+    .sidebar-section--collapsed .sidebar-section-content {
+      display: none;
+    }
+
+    /* Active tabs list */
+    .sidebar-active-list {
+      padding: 0 8px 8px;
+    }
+
+    .sidebar-active-list:empty::after {
+      content: 'No active chats';
+      display: block;
+      padding: 12px 8px;
+      text-align: center;
+      color: var(--color-text-muted);
+      font-size: 12px;
+    }
+
+    /* Tab items in sidebar */
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
       cursor: pointer;
-      margin-bottom: 4px;
       transition: background 0.15s;
-      border: 1px solid transparent;
+      position: relative;
     }
 
-    .thread-item:hover {
+    .tab-item:hover {
       background: var(--color-bg-subtle);
     }
 
-    .thread-item.active {
+    .tab-item.active {
       background: var(--color-primary-50);
-      border-color: var(--color-primary-200);
     }
 
-    .thread-item-title {
+    .tab-item-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tab-item-indicator--thinking {
+      background: var(--color-warning-500);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .tab-item-indicator--ready {
+      background: var(--color-success-500);
+    }
+
+    .tab-item-indicator--idle {
+      background: var(--color-gray-300);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    .tab-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tab-item-title {
       font-size: 13px;
       font-weight: 500;
       color: var(--color-text);
-      margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .thread-item-preview {
-      font-size: 12px;
-      color: var(--color-text-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .thread-item-meta {
+    .tab-item-meta {
       font-size: 11px;
       color: var(--color-text-muted);
-      margin-top: 4px;
+      margin-top: 2px;
+    }
+
+    .tab-item-close {
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .tab-item:hover .tab-item-close {
+      opacity: 1;
+    }
+
+    .tab-item-close:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+    }
+
+    .tab-item-close svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .tab-item-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      min-width: 18px;
+      height: 18px;
+      background: var(--color-brand);
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 5px;
+    }
+
+    /* History section */
+    .sidebar-history {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .sidebar-history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 8px 8px;
+    }
+
+    .history-item {
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .history-item:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .history-item-title {
+      font-size: 13px;
+      color: var(--color-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .history-item-meta {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      margin-top: 2px;
       display: flex;
       justify-content: space-between;
     }
@@ -755,7 +952,6 @@
       border-radius: 4px;
       background: var(--color-bg-subtle);
       color: var(--color-text-muted);
-      margin-left: 6px;
       vertical-align: middle;
     }
 
@@ -769,7 +965,15 @@
       height: 10px;
     }
 
-    .thread-toggle-btn {
+    .history-empty {
+      text-align: center;
+      padding: 24px 16px;
+      color: var(--color-text-muted);
+      font-size: 13px;
+    }
+
+    /* Mobile sidebar toggle */
+    .sidebar-toggle-btn {
       position: fixed;
       left: 16px;
       bottom: calc(100px + env(safe-area-inset-bottom, 0px));
@@ -787,29 +991,27 @@
       box-shadow: var(--shadow-sm);
     }
 
-    /* In native app mode, position closer to bottom since there's no status bar */
-    body.native-app .thread-toggle-btn {
+    body.native-app .sidebar-toggle-btn {
       bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     }
 
-    .thread-toggle-btn:hover {
+    .sidebar-toggle-btn:hover {
       background: var(--color-bg-subtle);
       border-color: var(--color-brand);
     }
 
-    .thread-toggle-btn.visible {
-      display: flex;
+    .sidebar-toggle-btn .badge {
+      background: var(--color-brand);
+      color: white;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
     }
 
-    .thread-empty {
-      text-align: center;
-      padding: 24px 16px;
-      color: var(--color-text-muted);
-      font-size: 13px;
-    }
-
+    /* Show toggle button on mobile for authenticated users */
     @media (max-width: 768px) {
-      .thread-sidebar {
+      .chat-sidebar.visible {
         position: fixed;
         left: 0;
         top: 0;
@@ -818,7 +1020,19 @@
         box-shadow: var(--shadow-lg);
       }
 
-      .thread-sidebar-overlay {
+      .chat-sidebar.visible:not(.mobile-open) {
+        display: none;
+      }
+
+      .chat-sidebar.visible.mobile-open {
+        display: flex;
+      }
+
+      .sidebar-toggle-btn.visible {
+        display: flex;
+      }
+
+      .sidebar-overlay {
         position: fixed;
         inset: 0;
         background: rgba(0,0,0,0.3);
@@ -826,8 +1040,19 @@
         display: none;
       }
 
-      .thread-sidebar-overlay.visible {
+      .sidebar-overlay.visible {
         display: block;
+      }
+    }
+
+    /* Desktop: always show sidebar for authenticated users */
+    @media (min-width: 769px) {
+      .chat-sidebar.visible {
+        display: flex;
+      }
+
+      .sidebar-toggle-btn {
+        display: none !important;
       }
     }
 
@@ -845,38 +1070,97 @@
     body.native-app .messages-container {
       padding-top: 16px;
     }
+
+    /* Native app mode - sidebar adjustments for safe areas */
+    body.native-app .chat-sidebar {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body.native-app .chat-sidebar .sidebar-nav {
+      padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    }
+
+    /* Native app mobile - ensure sidebar works with safe areas */
+    @media (max-width: 768px) {
+      body.native-app .chat-sidebar.visible {
+        padding-left: env(safe-area-inset-left, 0px);
+      }
+
+      body.native-app .sidebar-overlay {
+        /* Extend overlay behind safe areas */
+        top: calc(-1 * env(safe-area-inset-top, 0px));
+        left: calc(-1 * env(safe-area-inset-left, 0px));
+        right: calc(-1 * env(safe-area-inset-right, 0px));
+        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+      }
+    }
+
+    /* Native app mode - adjust input area for safe areas */
+    body.native-app .input-container {
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
   </style>
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
   <div id="adcp-nav"></div>
 
-  <!-- Thread toggle button (shown for authenticated users) -->
-  <button class="thread-toggle-btn" id="threadToggleBtn" title="Show conversations">
+  <!-- Mobile sidebar toggle button -->
+  <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Show chats">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
     Chats
+    <span class="badge" id="sidebarBadge" style="display: none;">0</span>
   </button>
 
   <!-- Mobile overlay -->
-  <div class="thread-sidebar-overlay" id="threadOverlay"></div>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <div class="page-layout">
-    <!-- Thread Sidebar -->
-    <div class="thread-sidebar" id="threadSidebar">
-      <div class="thread-sidebar-header">
-        <h3>Conversations</h3>
-        <button class="new-chat-btn" id="newChatBtn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <!-- Chat Sidebar -->
+    <div class="chat-sidebar" id="chatSidebar">
+      <!-- Navigation tabs -->
+      <div class="sidebar-nav">
+        <button class="sidebar-tab active" id="homeTab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          Home
+        </button>
+        <button class="sidebar-tab sidebar-tab--new" id="newChatBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          New
+          New Chat
         </button>
       </div>
-      <div class="thread-list" id="threadList">
-        <div class="thread-empty">Loading conversations...</div>
+
+      <!-- Active chats section -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Active</div>
+        <div class="sidebar-active-list" id="activeTabsList"></div>
+      </div>
+
+      <!-- History section -->
+      <div class="sidebar-history" id="historySection">
+        <div class="sidebar-section-header">
+          <button id="historyToggle">
+            History
+            <span class="badge" id="historyCount">0</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="sidebar-history-list" id="historyList">
+            <div class="history-empty">Loading...</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -948,11 +1232,17 @@
       const addieHomeContent = document.getElementById('addieHomeContent');
       const addieHomeLoading = document.getElementById('addieHomeLoading');
       const addieHomeStyles = document.getElementById('addieHomeStyles');
-      const threadSidebar = document.getElementById('threadSidebar');
-      const threadList = document.getElementById('threadList');
-      const threadToggleBtn = document.getElementById('threadToggleBtn');
-      const threadOverlay = document.getElementById('threadOverlay');
+      const chatSidebar = document.getElementById('chatSidebar');
+      const homeTab = document.getElementById('homeTab');
       const newChatBtn = document.getElementById('newChatBtn');
+      const activeTabsList = document.getElementById('activeTabsList');
+      const historyList = document.getElementById('historyList');
+      const historyCount = document.getElementById('historyCount');
+      const historyToggle = document.getElementById('historyToggle');
+      const historySection = document.getElementById('historySection');
+      const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+      const sidebarOverlay = document.getElementById('sidebarOverlay');
+      const sidebarBadge = document.getElementById('sidebarBadge');
 
       // State
       let conversationId = null;
@@ -961,7 +1251,12 @@
       let impersonationInfo = null;
       let isAuthenticated = false;
       let threads = [];
-      let sidebarVisible = false;
+      let mobileMenuOpen = false;
+
+      // Tab state - persisted to localStorage
+      let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
+      let currentTabId = 'home'; // 'home' or conversation_id
+      const originalTitle = document.title;
 
       // Native app auth token (from URL hash, e.g., #token=xxx)
       let nativeAuthToken = null;
@@ -1026,8 +1321,10 @@
           // Load Addie Home for authenticated users
           loadAddieHome();
 
-          // Show thread toggle button and load threads for authenticated users
-          threadToggleBtn.classList.add('visible');
+          // Show sidebar and load threads for authenticated users
+          chatSidebar.classList.add('visible');
+          sidebarToggleBtn.classList.add('visible');
+          loadActiveTabs(); // Restore from localStorage
           loadThreads();
         } catch (error) {
           // Silently ignore - user may not be authenticated
@@ -1044,53 +1341,235 @@
 
           const data = await response.json();
           threads = data.conversations || [];
-          renderThreadList();
+          renderHistoryList();
+          renderActiveTabs();
         } catch (error) {
           console.error('Failed to load threads:', error);
         }
       }
 
-      // Render the thread list in sidebar
-      function renderThreadList() {
-        if (threads.length === 0) {
-          threadList.innerHTML = '<div class="thread-empty">No conversations yet.<br>Start chatting to create one!</div>';
+      // Helper to render channel badge
+      function getChannelBadge(channel) {
+        if (channel === 'slack') {
+          return `<span class="thread-channel-badge slack">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            Slack
+          </span>`;
+        }
+        return '';
+      }
+
+      // === Tab Management Functions ===
+
+      // Debounced thread refresh (avoids excessive API calls when sending multiple messages)
+      let loadThreadsTimer = null;
+      function scheduleLoadThreads() {
+        if (loadThreadsTimer) clearTimeout(loadThreadsTimer);
+        loadThreadsTimer = setTimeout(() => {
+          if (isAuthenticated) loadThreads();
+        }, 1000);
+      }
+
+      // Load active tabs from localStorage
+      function loadActiveTabs() {
+        try {
+          const saved = localStorage.getItem('addie_active_tabs');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            // Validate data structure
+            if (Array.isArray(parsed)) {
+              activeTabs = parsed.filter(tab =>
+                tab && typeof tab.id === 'string' && typeof tab.title === 'string'
+              );
+              // Reset loading states on page load
+              activeTabs.forEach(tab => { tab.isLoading = false; });
+            }
+          }
+        } catch (e) {
+          activeTabs = [];
+        }
+      }
+
+      // Save active tabs to localStorage
+      function saveActiveTabs() {
+        try {
+          localStorage.setItem('addie_active_tabs', JSON.stringify(activeTabs));
+        } catch (e) {
+          console.warn('Failed to save tabs to localStorage');
+        }
+      }
+
+      // Add a conversation to active tabs
+      function addActiveTab(id, title, channel = 'web') {
+        // Check if already in active tabs
+        if (activeTabs.some(t => t.id === id)) return;
+
+        // Limit to 7 active tabs
+        if (activeTabs.length >= 7) {
+          activeTabs.shift(); // Remove oldest
+        }
+
+        activeTabs.push({
+          id,
+          title: title || 'New Chat',
+          channel,
+          isLoading: false,
+          unreadCount: 0
+        });
+        saveActiveTabs();
+        renderActiveTabs();
+        renderHistoryList(); // Update history to remove from list
+      }
+
+      // Remove a conversation from active tabs
+      function removeActiveTab(id) {
+        activeTabs = activeTabs.filter(t => t.id !== id);
+        saveActiveTabs();
+        renderActiveTabs();
+        renderHistoryList();
+
+        // If we removed the current tab, switch to home
+        if (currentTabId === id) {
+          switchToHome();
+        }
+      }
+
+      // Update a tab's state (loading, unread)
+      function updateTabState(id, updates) {
+        const tab = activeTabs.find(t => t.id === id);
+        if (tab) {
+          Object.assign(tab, updates);
+          saveActiveTabs();
+          renderActiveTabs();
+          updateUnreadBadges();
+        }
+      }
+
+      // Get total unread count across all tabs
+      function getTotalUnread() {
+        return activeTabs.reduce((sum, t) => sum + (t.unreadCount || 0), 0);
+      }
+
+      // Update document title and mobile badge with unread count
+      function updateUnreadBadges() {
+        const total = getTotalUnread();
+        if (total > 0) {
+          document.title = `(${total}) ${originalTitle}`;
+          sidebarBadge.textContent = total;
+          sidebarBadge.style.display = 'inline-flex';
+        } else {
+          document.title = originalTitle;
+          sidebarBadge.style.display = 'none';
+        }
+      }
+
+      // Render the active tabs list
+      function renderActiveTabs() {
+        if (activeTabs.length === 0) {
+          activeTabsList.innerHTML = '';
           return;
         }
 
-        // Helper to render channel badge
-        function getChannelBadge(channel) {
-          if (channel === 'slack') {
-            return `<span class="thread-channel-badge slack">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
-              </svg>
-              Slack
-            </span>`;
-          }
-          return '';
+        activeTabsList.innerHTML = activeTabs.map(tab => {
+          const indicatorClass = tab.isLoading ? 'tab-item-indicator--thinking' :
+                                 tab.unreadCount > 0 ? 'tab-item-indicator--ready' :
+                                 'tab-item-indicator--idle';
+          const isActive = currentTabId === tab.id;
+
+          return `
+            <div class="tab-item ${isActive ? 'active' : ''}" data-tab-id="${tab.id}" data-channel="${tab.channel}">
+              <span class="tab-item-indicator ${indicatorClass}"></span>
+              <div class="tab-item-content">
+                <div class="tab-item-title">${escapeHtml(tab.title)}</div>
+              </div>
+              ${tab.unreadCount > 0 ? `<span class="tab-item-badge">${tab.unreadCount}</span>` : ''}
+              <button class="tab-item-close" data-tab-id="${tab.id}" title="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render the history list (threads not in active tabs)
+      function renderHistoryList() {
+        const activeIds = new Set(activeTabs.map(t => t.id));
+        const historyThreads = threads.filter(t => !activeIds.has(t.conversation_id));
+
+        historyCount.textContent = historyThreads.length;
+
+        if (historyThreads.length === 0) {
+          historyList.innerHTML = '<div class="history-empty">No conversation history</div>';
+          return;
         }
 
-        threadList.innerHTML = threads.map(t => `
-          <div class="thread-item ${t.conversation_id === conversationId ? 'active' : ''}"
-               data-conversation-id="${t.conversation_id}"
-               data-channel="${t.channel || 'web'}">
-            <div class="thread-item-title">${escapeHtml(t.title)}${getChannelBadge(t.channel)}</div>
-            ${t.preview ? `<div class="thread-item-preview">${escapeHtml(t.preview)}</div>` : ''}
-            <div class="thread-item-meta">
-              <span>${t.message_count} messages</span>
+        historyList.innerHTML = historyThreads.map(t => `
+          <div class="history-item" data-conversation-id="${t.conversation_id}" data-channel="${t.channel || 'web'}">
+            <div class="history-item-title">
+              ${escapeHtml(t.title)}
+              ${getChannelBadge(t.channel)}
+            </div>
+            <div class="history-item-meta">
+              <span>${t.message_count} msgs</span>
               <span>${formatRelativeTime(t.last_message_at)}</span>
             </div>
           </div>
         `).join('');
+      }
 
-        // Add click handlers
-        threadList.querySelectorAll('.thread-item').forEach(item => {
-          item.addEventListener('click', () => {
-            const id = item.dataset.conversationId;
-            const channel = item.dataset.channel;
-            switchToConversation(id, channel);
-          });
-        });
+      // Switch to home tab
+      function switchToHome() {
+        currentTabId = 'home';
+        conversationId = null;
+        currentChannel = 'web';
+
+        // Update UI
+        homeTab.classList.add('active');
+        renderActiveTabs();
+
+        // Show home content
+        messagesContainer.innerHTML = '';
+        if (isAuthenticated) {
+          addieHomeContainer.classList.add('visible');
+          loadAddieHome();
+        } else {
+          welcomeMessage.style.display = 'block';
+        }
+
+        setReadOnlyMode(false);
+        closeMobileSidebar();
+        chatInput.focus();
+      }
+
+      // Toggle history section collapse
+      function toggleHistorySection() {
+        historySection.classList.toggle('sidebar-section--collapsed');
+      }
+
+      // Mobile sidebar functions
+      function openMobileSidebar() {
+        mobileMenuOpen = true;
+        chatSidebar.classList.add('mobile-open');
+        sidebarOverlay.classList.add('visible');
+      }
+
+      function closeMobileSidebar() {
+        mobileMenuOpen = false;
+        chatSidebar.classList.remove('mobile-open');
+        sidebarOverlay.classList.remove('visible');
+      }
+
+      function toggleMobileSidebar() {
+        if (mobileMenuOpen) {
+          closeMobileSidebar();
+        } else {
+          openMobileSidebar();
+        }
       }
 
       // Format relative time (e.g., "2 hours ago")
@@ -1126,11 +1605,19 @@
 
         conversationId = newConversationId;
         currentChannel = channel;
+        currentTabId = newConversationId;
 
-        // Update active state in sidebar
-        threadList.querySelectorAll('.thread-item').forEach(item => {
-          item.classList.toggle('active', item.dataset.conversationId === conversationId);
-        });
+        // Update home tab state
+        homeTab.classList.remove('active');
+
+        // Clear unread count for this tab
+        const tab = activeTabs.find(t => t.id === newConversationId);
+        if (tab && tab.unreadCount > 0) {
+          updateTabState(newConversationId, { unreadCount: 0 });
+        }
+
+        // Update active tabs UI
+        renderActiveTabs();
 
         // Clear current messages
         messagesContainer.innerHTML = '';
@@ -1162,9 +1649,7 @@
         }
 
         // Close sidebar on mobile
-        if (window.innerWidth <= 768) {
-          toggleSidebar(false);
-        }
+        closeMobileSidebar();
       }
 
       // Set read-only mode for the chat input
@@ -1186,8 +1671,9 @@
       function startNewConversation() {
         conversationId = null;
         currentChannel = 'web';
+        currentTabId = 'home'; // New chat starts from home
 
-        // Clear messages and show welcome
+        // Clear messages and show home
         messagesContainer.innerHTML = '';
 
         // Show welcome or Addie Home based on auth
@@ -1198,27 +1684,17 @@
           welcomeMessage.style.display = 'block';
         }
 
-        // Update sidebar
-        threadList.querySelectorAll('.thread-item').forEach(item => {
-          item.classList.remove('active');
-        });
+        // Update sidebar UI
+        homeTab.classList.add('active');
+        renderActiveTabs();
 
         // Reset read-only mode
         setReadOnlyMode(false);
 
         // Close sidebar on mobile
-        if (window.innerWidth <= 768) {
-          toggleSidebar(false);
-        }
+        closeMobileSidebar();
 
         chatInput.focus();
-      }
-
-      // Toggle sidebar visibility
-      function toggleSidebar(show) {
-        sidebarVisible = show !== undefined ? show : !sidebarVisible;
-        threadSidebar.classList.toggle('visible', sidebarVisible);
-        threadOverlay.classList.toggle('visible', sidebarVisible && window.innerWidth <= 768);
       }
 
       // Load Addie Home content
@@ -1404,10 +1880,13 @@
             title = img.title;
             text = img.text;
           }
-          const titleAttr = title ? ` title="${title}"` : '';
-          const altAttr = text ? ` alt="${text}"` : ' alt="Image"';
+          // Validate URL scheme - only allow safe protocols
+          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
+          if (!safeHref) return '';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
           // Make images clickable to open in new tab
-          return `<a href="${href}" target="_blank" rel="noopener noreferrer"><img src="${href}"${altAttr}${titleAttr} loading="lazy"></a>`;
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
         return marked.parse(text, { renderer });
@@ -1416,21 +1895,26 @@
       // Render creative preview (iframe or HTML)
       function renderCreativePreview(previewUrl, label) {
         if (!previewUrl) return '';
+        // Validate URL scheme - only allow https
+        if (!/^https?:\/\//i.test(previewUrl)) return '';
+        const safeUrl = previewUrl.replace(/"/g, '&quot;');
         const safeLabel = label ? label.replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Creative Preview';
         return `
           <div class="creative-preview-container">
-            <iframe src="${previewUrl}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
+            <iframe src="${safeUrl}" sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
             <div class="creative-preview-label">${safeLabel}</div>
           </div>
         `;
       }
 
-      // Render inline HTML creative
+      // Render inline HTML creative (sandboxed for security)
       function renderCreativeHtml(html, label) {
         if (!html) return '';
+        // Use srcdoc with sandbox for isolation - encode for attribute
+        const encodedHtml = html.replace(/"/g, '&quot;');
         return `
           <div class="creative-html-container">
-            ${html}
+            <iframe srcdoc="${encodedHtml}" sandbox="allow-scripts" loading="lazy"></iframe>
           </div>
         `;
       }
@@ -1761,6 +2245,36 @@
         }, 5000);
       }
 
+      // === Browser Notifications ===
+
+      // Request notification permission (opt-in)
+      async function requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+      }
+
+      // Show browser notification
+      function notifyUser(title, body, tabId) {
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+          const notification = new Notification(title, {
+            body: body.slice(0, 100) + (body.length > 100 ? '...' : ''),
+            icon: '/AAo.svg',
+            tag: tabId // Prevents duplicate notifications
+          });
+          notification.onclick = () => {
+            window.focus();
+            if (tabId && tabId !== 'home') {
+              const tab = activeTabs.find(t => t.id === tabId);
+              if (tab) {
+                switchToConversation(tabId, tab.channel);
+              }
+            }
+            notification.close();
+          };
+        }
+      }
+
       // Send message with streaming
       async function sendMessage() {
         const message = chatInput.value.trim();
@@ -1769,12 +2283,18 @@
         isLoading = true;
         updateSendButton();
 
+        // Request notification permission on first message
+        requestNotificationPermission();
+
         // Add user message
         addMessage(message, 'user');
 
         // Clear input
         chatInput.value = '';
         autoResize();
+
+        // Track if this is a new conversation
+        const isNewConversation = !conversationId;
 
         // Create streaming message element
         const { messageDiv, contentDiv } = createStreamingMessage();
@@ -1802,6 +2322,7 @@
           const decoder = new TextDecoder();
           let buffer = '';
           let currentEventType = '';
+          let newConversationId = null;
 
           // Helper to process SSE lines (uses closure for currentEventType)
           const processLines = (lines) => {
@@ -1816,7 +2337,22 @@
                     fullContent += data.text;
                     appendToStreamingMessage(contentDiv, data.text, fullContent);
                   } else if (currentEventType === 'meta') {
+                    newConversationId = data.conversation_id;
                     conversationId = data.conversation_id;
+
+                    // For new conversations, add to active tabs and update currentTabId
+                    if (isNewConversation && newConversationId) {
+                      const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
+                      addActiveTab(newConversationId, title, 'web');
+                      currentTabId = newConversationId;
+                      homeTab.classList.remove('active');
+
+                      // Mark as loading
+                      updateTabState(newConversationId, { isLoading: true });
+                    } else if (conversationId) {
+                      // Existing conversation - mark as loading
+                      updateTabState(conversationId, { isLoading: true });
+                    }
                   } else if (currentEventType === 'done') {
                     messageId = data.message_id;
                     conversationId = data.conversation_id;
@@ -1858,10 +2394,25 @@
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
 
-          // Refresh thread list to show new/updated conversation
-          if (isAuthenticated) {
-            loadThreads();
+          // Update tab state - mark as not loading
+          if (conversationId) {
+            // If user switched away, increment unread and notify
+            if (currentTabId !== conversationId) {
+              const tab = activeTabs.find(t => t.id === conversationId);
+              if (tab) {
+                updateTabState(conversationId, {
+                  isLoading: false,
+                  unreadCount: (tab.unreadCount || 0) + 1
+                });
+                notifyUser('Addie replied', fullContent, conversationId);
+              }
+            } else {
+              updateTabState(conversationId, { isLoading: false });
+            }
           }
+
+          // Refresh thread list to show new/updated conversation (debounced)
+          scheduleLoadThreads();
 
         } catch (error) {
           console.error('Error sending message:', error);
@@ -1870,6 +2421,11 @@
             messageDiv.remove();
           }
           showError('Failed to send message. Please try again.');
+
+          // Clear loading state on error
+          if (conversationId) {
+            updateTabState(conversationId, { isLoading: false });
+          }
         } finally {
           isLoading = false;
           updateSendButton();
@@ -1902,10 +2458,40 @@
         }
       });
 
-      // Thread sidebar event listeners
-      threadToggleBtn.addEventListener('click', () => toggleSidebar());
-      threadOverlay.addEventListener('click', () => toggleSidebar(false));
+      // Sidebar event listeners
+      sidebarToggleBtn.addEventListener('click', toggleMobileSidebar);
+      sidebarOverlay.addEventListener('click', closeMobileSidebar);
       newChatBtn.addEventListener('click', startNewConversation);
+      homeTab.addEventListener('click', switchToHome);
+      historyToggle.addEventListener('click', toggleHistorySection);
+
+      // Event delegation for active tabs (avoids adding listeners on each render)
+      activeTabsList.addEventListener('click', (e) => {
+        const closeBtn = e.target.closest('.tab-item-close');
+        if (closeBtn) {
+          e.stopPropagation();
+          removeActiveTab(closeBtn.dataset.tabId);
+          return;
+        }
+        const tabItem = e.target.closest('.tab-item');
+        if (tabItem) {
+          switchToConversation(tabItem.dataset.tabId, tabItem.dataset.channel);
+        }
+      });
+
+      // Event delegation for history list
+      historyList.addEventListener('click', (e) => {
+        const historyItem = e.target.closest('.history-item');
+        if (historyItem) {
+          const id = historyItem.dataset.conversationId;
+          const channel = historyItem.dataset.channel;
+          const thread = threads.find(t => t.conversation_id === id);
+          if (thread) {
+            addActiveTab(id, thread.title, channel);
+          }
+          switchToConversation(id, channel);
+        }
+      });
 
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
       function checkQueryPrompt() {
