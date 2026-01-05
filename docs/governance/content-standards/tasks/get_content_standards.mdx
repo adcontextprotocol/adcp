@@ -1,0 +1,82 @@
+---
+title: get_content_standards
+sidebar_position: 2
+---
+
+# get_content_standards
+
+Retrieve content safety policies for a specific standards configuration.
+
+**Response time**: < 500ms
+
+## Request
+
+**Schema**: [get-content-standards-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-content-standards-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Identifier for the standards configuration |
+
+## Response
+
+**Schema**: [get-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-content-standards-response.json)
+
+### Success Response
+
+```json
+{
+  "standards_id": "nike_emea_safety",
+  "version": "1.2.0",
+  "effective_date": "2025-01-01T00:00:00Z",
+  "scope": {
+    "brands": ["Nike"],
+    "regions": ["EMEA"],
+    "channels": ["display", "video", "ctv"],
+    "description": "Nike EMEA - all digital channels"
+  },
+  "policy": "Avoid content about violence, controversial political topics, or adult themes. Sports news is excellent. Entertainment content is generally acceptable. Avoid hard news unless positive sentiment about athletes or sports.",
+  "exclusions_prompt": "Block any content containing hate speech, illegal activities, explicit adult content, or content disparaging athletes or athletic achievement.",
+  "context_evaluation_prompt": "Consider the overall tone. Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Avoid content that portrays sedentary lifestyle positively.",
+  "competitive_separation": ["adidas", "puma", "under_armour", "reebok"],
+  "floor": "garm_floor"
+}
+```
+
+### Policy Fields
+
+| Field | Description |
+|-------|-------------|
+| `policy` | Primary natural language safety policy |
+| `exclusions_prompt` | Hard exclusions - content that should always be blocked |
+| `context_evaluation_prompt` | Guidance for evaluating contextual appropriateness |
+| `competitive_separation` | Competitor brands to avoid adjacency with |
+| `floor` | Safety floor baseline (`garm_floor` = GARM Brand Safety Floor) |
+
+### Scope Fields
+
+| Field | Description |
+|-------|-------------|
+| `brands` | Brand names these standards apply to |
+| `regions` | Geographic regions (EMEA, APAC, etc.) |
+| `countries` | ISO country codes |
+| `channels` | Ad channels (display, video, ctv, audio) |
+| `products` | Product lines or categories |
+| `description` | Human-readable scope description |
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [list_content_features](/docs/governance/content-standards/tasks/list_content_features) - Discover available features
+- [check_content](/docs/governance/content-standards/tasks/check_content) - Evaluate content against these standards

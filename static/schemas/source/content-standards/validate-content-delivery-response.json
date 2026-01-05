@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/validate-content-delivery-response.json",
+  "title": "Validate Content Delivery Response",
+  "description": "Response payload with per-record feature results and summary statistics",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "description": "Summary counts across all records",
+          "properties": {
+            "total_records": { "type": "integer" },
+            "passed_records": { "type": "integer" },
+            "failed_records": { "type": "integer" },
+            "total_features": { "type": "integer" },
+            "passed_features": { "type": "integer" },
+            "failed_features": { "type": "integer" }
+          },
+          "required": ["total_records", "passed_records", "failed_records"]
+        },
+        "results": {
+          "type": "array",
+          "description": "Per-record evaluation results",
+          "items": {
+            "type": "object",
+            "properties": {
+              "record_id": {
+                "type": "string",
+                "description": "Which delivery record was evaluated"
+              },
+              "features": {
+                "type": "array",
+                "description": "Feature results for this record",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "feature_id": { "type": "string" },
+                    "status": {
+                      "type": "string",
+                      "enum": ["passed", "failed", "warning", "unevaluated"]
+                    },
+                    "value": {},
+                    "message": { "type": "string" },
+                    "suggestion": { "type": "string" }
+                  },
+                  "required": ["feature_id", "status"]
+                }
+              }
+            },
+            "required": ["record_id", "features"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["summary", "results"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "summary": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

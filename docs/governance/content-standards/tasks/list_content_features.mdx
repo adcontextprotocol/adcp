@@ -1,0 +1,117 @@
+---
+title: list_content_features
+sidebar_position: 1
+---
+
+# list_content_features
+
+Discover what features a Content Standards agent can evaluate. Features define the verification capabilities available.
+
+**Response time**: < 500ms
+
+## Request
+
+**Schema**: [list-content-features-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/list-content-features-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | No | Filter features available for a specific standards configuration |
+
+## Response
+
+**Schema**: [list-content-features-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/list-content-features-response.json)
+
+### Success Response
+
+```json
+{
+  "features": [
+    {
+      "feature_id": "brand_safety",
+      "name": "Brand Safety",
+      "description": "Overall brand safety classification",
+      "type": "categorical",
+      "allowed_values": ["safe", "low_risk", "medium_risk", "high_risk", "blocked"],
+      "severity": "block"
+    },
+    {
+      "feature_id": "sentiment",
+      "name": "Content Sentiment",
+      "description": "Overall sentiment of the content",
+      "type": "categorical",
+      "allowed_values": ["positive", "neutral", "negative"],
+      "severity": "warn"
+    },
+    {
+      "feature_id": "sentiment_score",
+      "name": "Sentiment Score",
+      "description": "Numerical sentiment score",
+      "type": "quantitative",
+      "range": { "min": -1.0, "max": 1.0 },
+      "severity": "info"
+    },
+    {
+      "feature_id": "competitor_adjacency",
+      "name": "Competitor Adjacency",
+      "description": "Whether content mentions competitor brands",
+      "type": "binary",
+      "severity": "block"
+    },
+    {
+      "feature_id": "garm_category",
+      "name": "GARM Category",
+      "description": "GARM Brand Safety Floor category",
+      "type": "categorical",
+      "allowed_values": ["adult_explicit", "arms_ammunition", "crime_harmful", "death_injury", "online_piracy", "hate_speech", "terrorism", "spam", "safe"],
+      "severity": "block"
+    },
+    {
+      "feature_id": "news_quality",
+      "name": "News Quality Score",
+      "description": "Quality assessment for news content",
+      "type": "quantitative",
+      "range": { "min": 0, "max": 100 },
+      "severity": "warn"
+    }
+  ]
+}
+```
+
+### Feature Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `binary` | True/false evaluation | `competitor_adjacency` |
+| `quantitative` | Numeric value in a range | `sentiment_score` (-1.0 to 1.0) |
+| `categorical` | One of allowed values | `brand_safety` (safe, low_risk, etc.) |
+
+### Severity Levels
+
+| Severity | Meaning |
+|----------|---------|
+| `block` | Failed features with this severity should block the placement |
+| `warn` | Advisory warning, may not block |
+| `info` | Informational, for reporting only |
+
+### Regional Features
+
+Some features may only be available in certain regions:
+
+```json
+{
+  "feature_id": "imagery_policy",
+  "name": "Imagery Policy Compliance",
+  "description": "Compliance with regional imagery policies",
+  "type": "binary",
+  "severity": "block",
+  "coverage": {
+    "regions": ["EMEA", "APAC"],
+    "markets": ["SA", "AE", "KW"]
+  }
+}
+```
+
+## Related Tasks
+
+- [check_content](/docs/governance/content-standards/tasks/check_content) - Uses these features for evaluation
+- [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) - Batch verification with feature results

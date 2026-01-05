@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/get-content-standards-response.json",
+  "title": "Get Content Standards Response",
+  "description": "Response payload with content safety policies",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "standards_id": {
+          "type": "string",
+          "description": "Identifier for this standards configuration"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of this standards configuration"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this version became effective"
+        },
+        "scope": {
+          "type": "object",
+          "description": "What this standards configuration applies to",
+          "properties": {
+            "brands": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Brand names covered"
+            },
+            "countries": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "ISO 3166-1 alpha-2 country codes"
+            },
+            "regions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Named regions (EMEA, APAC, etc.)"
+            },
+            "channels": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Advertising channels"
+            },
+            "products": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Product lines or categories"
+            },
+            "description": {
+              "type": "string",
+              "description": "Human-readable scope description"
+            }
+          }
+        },
+        "policy": {
+          "type": "string",
+          "description": "Primary natural language safety policy"
+        },
+        "exclusions_prompt": {
+          "type": "string",
+          "description": "Hard exclusions - content that should always be blocked"
+        },
+        "context_evaluation_prompt": {
+          "type": "string",
+          "description": "Guidance for evaluating contextual appropriateness"
+        },
+        "competitive_separation": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Competitor brands to avoid adjacency with"
+        },
+        "floor": {
+          "type": "string",
+          "enum": ["garm_floor", "custom"],
+          "description": "Safety floor baseline"
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["standards_id", "version"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "standards_id": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

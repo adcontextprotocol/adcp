@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/list-content-features-request.json",
+  "title": "List Content Features Request",
+  "description": "Request parameters for discovering features the agent can evaluate",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Filter features available for a specific standards configuration"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  }
+}

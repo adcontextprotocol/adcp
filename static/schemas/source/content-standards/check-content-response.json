@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/check-content-response.json",
+  "title": "Check Content Response",
+  "description": "Response payload with per-feature evaluation results",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "description": "Summary counts of feature evaluations",
+          "properties": {
+            "total_features": { "type": "integer" },
+            "passed_features": { "type": "integer" },
+            "failed_features": { "type": "integer" },
+            "warning_features": { "type": "integer" },
+            "unevaluated_features": { "type": "integer" }
+          },
+          "required": ["total_features", "passed_features", "failed_features"]
+        },
+        "results": {
+          "type": "array",
+          "description": "Per-feature evaluation results",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Which feature was evaluated"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["passed", "failed", "warning", "unevaluated"],
+                "description": "Evaluation status"
+              },
+              "value": {
+                "description": "The evaluated value (type depends on feature)"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable explanation"
+              },
+              "rule_id": {
+                "type": "string",
+                "description": "Which rule triggered this result"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "Recommended action if failed"
+              }
+            },
+            "required": ["feature_id", "status"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["summary", "results"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "summary": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

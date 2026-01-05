@@ -102,6 +102,21 @@
             ]
           },
           {
+            "group": "Content Standards Protocol",
+            "pages": [
+              "docs/governance/content-standards/index",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/governance/content-standards/tasks/list_content_features",
+                  "docs/governance/content-standards/tasks/get_content_standards",
+                  "docs/governance/content-standards/tasks/check_content",
+                  "docs/governance/content-standards/tasks/validate_content_delivery"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Curation Protocol",
             "pages": [
               "docs/curation/coming-soon"

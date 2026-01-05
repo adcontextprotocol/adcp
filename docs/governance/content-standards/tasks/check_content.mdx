@@ -1,0 +1,164 @@
+---
+title: check_content
+sidebar_position: 3
+---
+
+# check_content
+
+Evaluate a single content context against content safety policies. Returns per-feature evaluation results.
+
+**Response time**: < 500ms
+
+## Request
+
+**Schema**: [check-content-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/check-content-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Standards configuration to evaluate against |
+| `content` | object | Yes | Content context to evaluate |
+| `feature_ids` | array | No | Specific features to check (defaults to all) |
+
+### Content Object
+
+```json
+{
+  "url": "https://example.com/article/sports-news",
+  "title": "Championship Finals Preview",
+  "description": "Expert analysis of the upcoming championship match",
+  "categories": ["sports", "news"],
+  "text_content": "The championship finals are set to be an exciting..."
+}
+```
+
+## Response
+
+**Schema**: [check-content-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/check-content-response.json)
+
+### Passing Response
+
+```json
+{
+  "summary": {
+    "total_features": 5,
+    "passed_features": 5,
+    "failed_features": 0,
+    "warning_features": 0,
+    "unevaluated_features": 0
+  },
+  "results": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "value": "safe",
+      "message": "Content classified as safe"
+    },
+    {
+      "feature_id": "sentiment",
+      "status": "passed",
+      "value": "positive",
+      "message": "Positive sports coverage"
+    },
+    {
+      "feature_id": "competitor_adjacency",
+      "status": "passed",
+      "value": false
+    },
+    {
+      "feature_id": "garm_category",
+      "status": "passed",
+      "value": "safe"
+    },
+    {
+      "feature_id": "news_quality",
+      "status": "passed",
+      "value": 85,
+      "message": "High-quality sports journalism"
+    }
+  ]
+}
+```
+
+### Failing Response
+
+```json
+{
+  "summary": {
+    "total_features": 5,
+    "passed_features": 3,
+    "failed_features": 2,
+    "warning_features": 0,
+    "unevaluated_features": 0
+  },
+  "results": [
+    {
+      "feature_id": "brand_safety",
+      "status": "failed",
+      "value": "high_risk",
+      "message": "Content contains controversial political topics",
+      "rule_id": "safety.political_content",
+      "suggestion": "Avoid placements on politically charged content"
+    },
+    {
+      "feature_id": "competitor_adjacency",
+      "status": "failed",
+      "value": true,
+      "message": "Content mentions competitor brand 'Adidas'",
+      "rule_id": "competitive.brand_mention",
+      "suggestion": "Exclude placements where competitors are featured"
+    },
+    {
+      "feature_id": "sentiment",
+      "status": "passed",
+      "value": "neutral"
+    },
+    {
+      "feature_id": "garm_category",
+      "status": "passed",
+      "value": "safe"
+    },
+    {
+      "feature_id": "news_quality",
+      "status": "passed",
+      "value": 72
+    }
+  ]
+}
+```
+
+### Result Fields
+
+| Field | Description |
+|-------|-------------|
+| `feature_id` | Which feature was evaluated |
+| `status` | `passed`, `failed`, `warning`, or `unevaluated` |
+| `value` | The evaluated value (type depends on feature) |
+| `message` | Human-readable explanation |
+| `rule_id` | Which rule triggered this result |
+| `suggestion` | Recommended action if failed |
+
+## Example Usage
+
+```python
+# Check a content URL before placing an ad
+result = content_standards_agent.check_content(
+    standards_id="nike_emea_safety",
+    content={
+        "url": "https://news.example.com/sports/basketball",
+        "title": "NBA Finals Game 7 Recap",
+        "categories": ["sports", "basketball"]
+    }
+)
+
+if result["summary"]["failed_features"] > 0:
+    # Content has issues - review or skip
+    for r in result["results"]:
+        if r["status"] == "failed":
+            print(f"Failed: {r['feature_id']} - {r['message']}")
+```
+
+## Related Tasks
+
+- [list_content_features](/docs/governance/content-standards/tasks/list_content_features) - Discover available features
+- [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) - Batch validation of delivery records
+- [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Retrieve the policies being checked

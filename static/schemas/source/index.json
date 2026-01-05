@@ -562,6 +562,51 @@
         }
       }
     },
+    "content-standards": {
+      "description": "Content Standards protocol task request/response schemas for content safety and suitability evaluation",
+      "tasks": {
+        "list-content-features": {
+          "request": {
+            "$ref": "/schemas/content-standards/list-content-features-request.json",
+            "description": "Request parameters for discovering available content safety features"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/list-content-features-response.json",
+            "description": "Response payload with available content features"
+          }
+        },
+        "get-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/get-content-standards-request.json",
+            "description": "Request parameters for retrieving content safety policies"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/get-content-standards-response.json",
+            "description": "Response payload with content safety policies"
+          }
+        },
+        "check-content": {
+          "request": {
+            "$ref": "/schemas/content-standards/check-content-request.json",
+            "description": "Request parameters for evaluating content context against safety policies"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/check-content-response.json",
+            "description": "Response payload with per-feature evaluation results"
+          }
+        },
+        "validate-content-delivery": {
+          "request": {
+            "$ref": "/schemas/content-standards/validate-content-delivery-request.json",
+            "description": "Request parameters for batch validating delivery records"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/validate-content-delivery-response.json",
+            "description": "Response payload with batch validation results"
+          }
+        }
+      }
+    },
     "adagents": {
       "description": "Authorized sales agents file format specification",
       "$ref": "/schemas/adagents.json",

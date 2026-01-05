@@ -1,0 +1,122 @@
+---
+title: Overview
+sidebar_position: 1
+---
+
+# Content Standards Protocol
+
+The Content Standards Protocol controls *content safety and suitability* - what content contexts are appropriate for a brand's ads.
+
+## What It Does
+
+Content Standards agents evaluate placement contexts against brand safety policies. This enables:
+
+- **Brand safety verification** - Is this content safe for the brand?
+- **Suitability scoring** - How well does this content fit the brand?
+- **Competitive separation** - Avoid appearing near competitor content
+- **Sentiment analysis** - Content tone and mood evaluation
+
+## Reference Pattern
+
+When placing a media buy, reference your content standards:
+
+```json
+{
+  "campaign": {...},
+  "governance": {
+    "content_standards": {
+      "agent_url": "https://safety.ias.com/adcp",
+      "standards_id": "nike_brand_safety",
+      "token": "..."
+    }
+  }
+}
+```
+
+- **agent_url** - The Content Standards service
+- **standards_id** - Which standards configuration to use
+- **token** - Access token (may be optional for public standards)
+
+## Prompt-Based Policies
+
+Content Standards uses **natural language prompts** rather than rigid keyword lists:
+
+```json
+{
+  "policy": "Avoid content about violence, controversial politics, or adult themes. Sports news is excellent. Entertainment is generally acceptable. Avoid hard news unless positive sentiment.",
+
+  "exclusions_prompt": "Block content containing hate speech, illegal activities, explicit adult content, or ongoing litigation against our company.",
+
+  "context_evaluation_prompt": "Consider the overall tone. Sports and fitness content is ideal. Lifestyle content about health is good. Avoid content portraying sedentary lifestyle positively."
+}
+```
+
+This enables AI-powered verification agents to understand context and nuance.
+
+## Scoped Standards
+
+Standards are scoped by country, brand, channel, and product:
+
+```json
+{
+  "standards_id": "coke_uk_tv_zero",
+  "scope": {
+    "brands": ["Coca-Cola Zero", "Diet Coke"],
+    "countries": ["GB"],
+    "channels": ["ctv", "linear_tv"],
+    "products": ["zero-calorie beverages"],
+    "description": "UK TV - zero-calorie beverages"
+  }
+}
+```
+
+This allows different standards for different contexts (e.g., UK TV has different regulations than US display).
+
+## Tasks
+
+| Task | Description |
+|------|-------------|
+| [list_content_features](/docs/governance/content-standards/tasks/list_content_features) | Discover features the agent can evaluate |
+| [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) | Retrieve content safety policies |
+| [check_content](/docs/governance/content-standards/tasks/check_content) | Evaluate a single content context |
+| [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of delivery records |
+
+## Typical Providers
+
+- **IAS** - Integral Ad Science
+- **DoubleVerify** - Brand safety and verification
+- **Scope3** - Sustainability-focused brand safety with prompt-based policies
+- **Custom** - Brand-specific implementations
+
+## Feature-Based Results
+
+All verification tasks return **feature-based results** rather than simple pass/fail:
+
+```json
+{
+  "summary": {
+    "total_features": 5,
+    "passed_features": 4,
+    "failed_features": 1
+  },
+  "results": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "value": "safe"
+    },
+    {
+      "feature_id": "competitor_adjacency",
+      "status": "failed",
+      "message": "Content mentions competitor brand",
+      "suggestion": "Avoid placements on this page"
+    }
+  ]
+}
+```
+
+## Related
+
+- [Property Governance](/docs/governance/property) - Controls *where* ads can run
+- [Creative Standards](/docs/governance/creative-standards) - Controls *creative execution* guidelines
+- [Brand Manifest](/docs/creative/brand-manifest) - Static brand identity that can link to standards agents

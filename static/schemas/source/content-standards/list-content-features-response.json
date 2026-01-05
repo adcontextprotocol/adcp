@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/list-content-features-response.json",
+  "title": "List Content Features Response",
+  "description": "Response payload with features and their types",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "features": {
+          "type": "array",
+          "description": "Available features for content evaluation",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Unique identifier for this feature"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable feature name"
+              },
+              "description": {
+                "type": "string",
+                "description": "What this feature evaluates"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["binary", "quantitative", "categorical"],
+                "description": "Feature type"
+              },
+              "range": {
+                "type": "object",
+                "description": "For quantitative features, the valid range",
+                "properties": {
+                  "min": { "type": "number" },
+                  "max": { "type": "number" }
+                }
+              },
+              "allowed_values": {
+                "type": "array",
+                "description": "For categorical features, the allowed values",
+                "items": { "type": "string" }
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["block", "warn", "info"],
+                "description": "Default severity when this feature fails"
+              },
+              "coverage": {
+                "type": "object",
+                "description": "Geographic coverage for regional features",
+                "properties": {
+                  "regions": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "markets": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            },
+            "required": ["feature_id", "name", "type"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["features"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "features": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}
