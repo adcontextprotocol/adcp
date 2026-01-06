@@ -181,6 +181,141 @@ Without namespacing:
 - Impossible to support multiple platforms simultaneously
 - Harder to deprecate platform-specific features
 
+## Typed Extensions
+
+AdCP supports formal JSON schemas for extensions, enabling type safety and validation. Typed extensions are published in the `/schemas/extensions/` directory and can be declared in agent cards.
+
+### How Typed Extensions Work
+
+Typed extensions provide a middle ground between untyped vendor extensions and core AdCP fields:
+
+- **Untyped extensions** (`ext.vendor.*`) - Any JSON, no validation, vendor-specific
+- **Typed extensions** (`ext.sustainability.*`) - Formal schema, validated, cross-vendor
+- **Core fields** - Part of AdCP specification, required for interoperability
+
+Typed extensions enable SDK code generation, schema validation, and cross-vendor interoperability while remaining optional.
+
+### Extension Schema Registry
+
+The registry of available typed extensions is auto-generated from extension files:
+- **Registry**: `/schemas/v1/extensions/index.json`
+- **Extension schemas**: `/schemas/v1/extensions/{namespace}.json`
+- **Meta schema**: `/schemas/v1/extensions/extension-meta.json`
+
+Each versioned schema path (`/schemas/v2.5/`, `/schemas/v2.6/`) includes only extensions valid for that version, based on the `valid_from` and `valid_until` fields in each extension.
+
+### Extension Versioning
+
+Extensions are versioned independently of the AdCP specification:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/extensions/sustainability.json",
+  "title": "Sustainability Extension",
+  "description": "Carbon footprint and green certification data",
+  "valid_from": "2.5",
+  "valid_until": "4.0",
+  "docs_url": "https://adcontextprotocol.org/docs/extensions/sustainability",
+  "type": "object",
+  "properties": {
+    "carbon_kg_per_impression": { "type": "number" },
+    "certified_green": { "type": "boolean" }
+  }
+}
+```
+
+- **`valid_from`** (required): Minimum AdCP version this extension works with (e.g., `"2.5"`)
+- **`valid_until`** (optional): Last AdCP version this extension works with. Omit if still valid.
+
+This allows extensions to be backported to earlier AdCP versions and deprecated gracefully.
+
+### Declaring Extension Support
+
+Agents declare which typed extensions they support in their agent card's `adcp` extension:
+
+```json
+{
+  "tools": ["get_products", "create_media_buy"],
+  "adcp": {
+    "adcp_version": "2.5.0",
+    "protocols_supported": ["media_buy"],
+    "extensions_supported": ["sustainability"]
+  }
+}
+```
+
+When an agent declares support for an extension, clients can expect:
+- The agent will accept and populate `ext.{namespace}` fields conforming to that extension's schema
+- Data in `ext.{namespace}` is strongly typed and can be validated
+- SDK code generation can produce type-safe interfaces for the extension
+
+### Using Typed Extensions
+
+When an agent supports a typed extension, you can include and expect data in the corresponding namespace:
+
+```json
+{
+  "product_id": "premium_ctv",
+  "name": "Premium CTV Package",
+  "ext": {
+    "sustainability": {
+      "carbon_kg_per_impression": 0.0012,
+      "certified_green": true
+    }
+  }
+}
+```
+
+### Creating a Typed Extension
+
+To create a typed extension:
+
+1. **Create the extension file** at `/schemas/extensions/{namespace}.json`
+2. **Follow the meta schema** defined in `/schemas/extensions/extension-meta.json`
+3. **Set `valid_from`** to the minimum AdCP version your extension requires
+4. **Add documentation** via the `docs_url` field
+
+Example extension file:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/extensions/sustainability.json",
+  "title": "Sustainability Extension",
+  "description": "Carbon footprint and green certification data for ad products",
+  "valid_from": "2.5",
+  "docs_url": "https://adcontextprotocol.org/docs/extensions/sustainability",
+  "type": "object",
+  "properties": {
+    "carbon_kg_per_impression": {
+      "type": "number",
+      "description": "Estimated CO2 emissions per impression in kilograms"
+    },
+    "certified_green": {
+      "type": "boolean",
+      "description": "Whether the inventory is certified by a green advertising program"
+    },
+    "certification_provider": {
+      "type": "string",
+      "description": "Name of the green certification provider"
+    }
+  }
+}
+```
+
+The build process auto-discovers extension files and includes them in the appropriate versioned schema builds.
+
+### Proposing Typed Extensions
+
+To propose a typed extension for inclusion in AdCP:
+
+1. **Validate in production first** - Use vendor-namespaced extensions (`ext.yourcompany.*`) to prove value
+2. **Document the schema** - Define clear property names, types, and descriptions
+3. **Gather adoption evidence** - Show multiple implementations or strong demand
+4. **Submit an RFC** - Propose the extension with schema and use cases
+5. **If accepted** - Extension is added to `/schemas/extensions/` with appropriate `valid_from`
+
 ## Proposing Spec Additions
 
 If your extension field represents **common ad tech functionality** that would benefit all AdCP implementations:

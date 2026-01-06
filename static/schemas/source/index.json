@@ -573,9 +573,21 @@
       "schemas": {
         "adcp-extension": {
           "$ref": "/schemas/protocols/adcp-extension.json",
-          "description": "AdCP extension for agent cards (MCP and A2A). Declares AdCP version and supported protocol domains."
+          "description": "AdCP extension for agent cards (MCP and A2A). Declares AdCP version, supported protocol domains, and typed extensions."
         }
       }
+    },
+    "extensions": {
+      "description": "Typed extension schemas for vendor-specific or domain-specific data. Extensions define the structure of data within the ext.{namespace} field. Agents declare which extensions they support in their agent card.",
+      "registry": {
+        "$ref": "/schemas/extensions/index.json",
+        "description": "Auto-generated registry of all available extensions with metadata"
+      },
+      "meta": {
+        "$ref": "/schemas/extensions/extension-meta.json",
+        "description": "Schema that all extension files must follow. Defines valid_from, valid_until, and extension data structure."
+      },
+      "schemas": {}
     }
   },
   "usage": {
