@@ -215,6 +215,43 @@ function extractUrls(text: string): string[] {
   return urls;
 }
 
+/**
+ * Result of checking Addie's participation in a thread.
+ * Returns both the participation status and the messages to avoid duplicate API calls.
+ */
+interface ThreadParticipationResult {
+  participated: boolean;
+  messages: Awaited<ReturnType<typeof getThreadReplies>>;
+}
+
+/**
+ * Check if Addie has already participated in a thread.
+ * Used to determine if replies in a thread should be treated as implicit @mentions.
+ *
+ * When a user replies to a thread where Addie has already responded,
+ * we should respond automatically without requiring an explicit @mention.
+ * This creates a natural conversational flow.
+ *
+ * Returns both the participation status AND the thread messages to avoid
+ * a duplicate API call when building thread context.
+ */
+async function checkAddieThreadParticipation(
+  channelId: string,
+  threadTs: string,
+  botUserId: string
+): Promise<ThreadParticipationResult> {
+  try {
+    const messages = await getThreadReplies(channelId, threadTs);
+    // Check if any message in the thread is from Addie (matches bot user ID)
+    // Note: Slack messages from bots have a 'user' field matching the bot's user ID
+    const participated = messages.some(msg => msg.user === botUserId);
+    return { participated, messages };
+  } catch (error) {
+    logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to check thread participation');
+    return { participated: false, messages: [] };
+  }
+}
+
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
@@ -1182,6 +1219,32 @@ async function handleAppMention({
     },
   });
 
+  // Fetch conversation history from database for context
+  // This ensures Claude remembers what Addie said in previous turns
+  const MAX_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for mention'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch mention conversation history');
+  }
+
   // Build message with member context and channel context
   const { message: messageWithMemberContext, memberContext } = await buildMessageWithMemberContext(
     userId,
@@ -1214,7 +1277,7 @@ async function handleAppMention({
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -1732,6 +1795,287 @@ async function handleDirectMessage(
 }
 
 /**
+ * Handle replies in threads where Addie has already participated.
+ *
+ * When a user replies to a thread where Addie has already responded,
+ * we treat it as an implicit @mention and respond directly. This creates
+ * natural conversational flow - users don't need to explicitly @mention
+ * Addie to continue a conversation.
+ *
+ * This is similar to DM handling but with thread context included.
+ */
+async function handleActiveThreadReply({
+  event,
+  context,
+  channelId,
+  userId,
+  messageText,
+  threadTs,
+  startTime,
+  threadService,
+  slackThreadMessages,
+}: {
+  event: SlackEventMiddlewareArgs<'message'>['event'];
+  context: { botUserId?: string };
+  channelId: string;
+  userId: string;
+  messageText: string;
+  threadTs: string;
+  startTime: number;
+  threadService: ReturnType<typeof getThreadService>;
+  slackThreadMessages: Awaited<ReturnType<typeof getThreadReplies>>;
+}): Promise<void> {
+  if (!claudeClient || !boltApp) {
+    logger.warn('Addie Bolt: Not initialized for active thread reply');
+    return;
+  }
+
+  // Build external ID for thread: channel_id:thread_ts
+  const externalId = `${channelId}:${threadTs}`;
+
+  // Sanitize input
+  const inputValidation = sanitizeInput(messageText);
+
+  // Build thread context from the messages already fetched (avoid duplicate API call)
+  const MAX_THREAD_CONTEXT_MESSAGES = 25;
+  let threadContext = '';
+
+  if (slackThreadMessages.length > 0) {
+    // Include all messages (including Addie's) for full context
+    // but exclude the current message
+    const filteredMessages = slackThreadMessages
+      .filter(msg => msg.ts !== event.ts) // Exclude current message
+      .filter(msg => (msg.text || '').trim().length > 0)
+      .slice(-MAX_THREAD_CONTEXT_MESSAGES);
+
+    // Collect user IDs for display name lookup
+    const mentionedUserIds = new Set<string>();
+    for (const msg of filteredMessages) {
+      if (msg.user && msg.user !== context.botUserId) {
+        mentionedUserIds.add(msg.user);
+      }
+      const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
+      for (const match of mentions) {
+        if (match[1] !== context.botUserId) {
+          mentionedUserIds.add(match[1]);
+        }
+      }
+    }
+
+    // Look up display names
+    const userNameMap = new Map<string, string>();
+    if (mentionedUserIds.size > 0) {
+      const lookups = await Promise.all(
+        Array.from(mentionedUserIds).map(async (uid) => {
+          const user = await getSlackUser(uid);
+          return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
+        })
+      );
+      for (const { uid, name } of lookups) {
+        if (name) {
+          userNameMap.set(uid, name);
+        }
+      }
+    }
+
+    // Format messages with speaker identification
+    const contextMessages = filteredMessages.map(msg => {
+      let text = msg.text || '';
+      const isAddie = msg.user === context.botUserId;
+      const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
+
+      // Strip bot mentions
+      if (context.botUserId) {
+        text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+      }
+      // Replace user mentions with display names
+      text = text.replace(/<@(U[A-Z0-9]+)>/gi, (match, uid) => {
+        const name = userNameMap.get(uid);
+        return name ? `@${name}` : '[someone]';
+      });
+
+      return `- ${speaker}: ${text}`;
+    });
+
+    if (contextMessages.length > 0) {
+      threadContext = `\n\n## Thread Context\nThis is a continuation of a conversation in a Slack thread. Here are the previous messages:\n${contextMessages.join('\n')}\n\n---\n`;
+      logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Built thread context for active reply');
+    }
+  }
+
+  // Get member context
+  let memberContext: MemberContext | null = null;
+  try {
+    memberContext = await getMemberContext(userId);
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for active thread reply');
+  }
+
+  // Get or create unified thread
+  const thread = await threadService.getOrCreateThread({
+    channel: 'slack',
+    external_id: externalId,
+    user_type: 'slack',
+    user_id: userId,
+    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    context: {
+      channel_id: channelId,
+      message_type: 'active_thread_reply',
+    },
+  });
+
+  // Fetch conversation history from database for context
+  // This ensures Claude remembers what Addie said in previous turns
+  const MAX_DB_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_DB_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for active thread reply'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history for active thread reply');
+  }
+
+  // Build message with member context
+  const { message: messageWithMemberContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
+    userId,
+    inputValidation.sanitized
+  );
+  if (!memberContext && updatedMemberContext) {
+    memberContext = updatedMemberContext;
+  }
+
+  // Prepend thread context
+  const messageWithContext = threadContext
+    ? `${threadContext}${messageWithMemberContext}`
+    : messageWithMemberContext;
+
+  // Log user message to unified thread
+  const userMessageFlagged = inputValidation.flagged;
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'user',
+    content: messageText,
+    content_sanitized: inputValidation.sanitized,
+    flagged: userMessageFlagged,
+    flag_reason: inputValidation.reason || undefined,
+  });
+
+  // Create user-scoped tools
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+
+  // Admin users get higher iteration limit
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+
+  // Process with Claude
+  let response;
+  try {
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Error processing active thread reply');
+    response = {
+      text: "I'm sorry, I encountered an error. Please try again.",
+      tools_used: [],
+      tool_executions: [],
+      flagged: true,
+      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+    };
+  }
+
+  // Validate output
+  const outputValidation = validateOutput(response.text);
+
+  // Send response in the thread
+  try {
+    await boltApp.client.chat.postMessage({
+      channel: channelId,
+      text: outputValidation.sanitized,
+      thread_ts: threadTs, // Reply in the thread
+    });
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Failed to send active thread reply');
+  }
+
+  // Log assistant response to unified thread
+  const assistantFlagged = response.flagged || outputValidation.flagged;
+  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'assistant',
+    content: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    tool_calls: response.tool_executions?.map(exec => ({
+      name: exec.tool_name,
+      input: exec.parameters,
+      result: exec.result,
+      duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
+    })),
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    tokens_input: response.usage?.input_tokens,
+    tokens_output: response.usage?.output_tokens,
+    flagged: assistantFlagged,
+    flag_reason: flagReason || undefined,
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
+  });
+
+  // Flag the thread if any message was flagged
+  if (userMessageFlagged || assistantFlagged) {
+    await threadService.flagThread(
+      thread.thread_id,
+      [inputValidation.reason, flagReason].filter(Boolean).join('; ')
+    );
+  }
+
+  // Log to security audit (using 'mention' since this behaves like an implicit mention)
+  logInteraction({
+    id: thread.thread_id,
+    timestamp: new Date(),
+    event_type: 'mention',
+    channel_id: channelId,
+    thread_ts: threadTs,
+    user_id: userId,
+    input_text: messageText,
+    input_sanitized: inputValidation.sanitized,
+    output_text: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    flagged: userMessageFlagged || assistantFlagged,
+    flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
+  });
+
+  logger.info(
+    { userId, channelId, threadTs, latencyMs: Date.now() - startTime },
+    'Addie Bolt: Active thread reply sent'
+  );
+}
+
+/**
  * Handle channel messages (not mentions) for HITL proposed responses
  *
  * When Addie sees a message in a channel it's in, it uses the router to
@@ -1864,6 +2208,36 @@ async function handleChannelMessage({
 
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
+
+  // Check if this is a reply in a thread where Addie has already participated.
+  // If so, treat it as an implicit @mention and respond directly.
+  // This creates natural conversational flow when users reply to Addie's questions.
+  if (isInThread && context.botUserId) {
+    const threadTsForCheck = 'thread_ts' in event ? event.thread_ts! : event.ts;
+    const { participated, messages: slackThreadMessages } = await checkAddieThreadParticipation(
+      channelId,
+      threadTsForCheck,
+      context.botUserId
+    );
+
+    if (participated) {
+      logger.info({ channelId, userId, threadTs: threadTsForCheck },
+        'Addie Bolt: Responding to active thread reply (Addie already participating)');
+
+      await handleActiveThreadReply({
+        event,
+        context,
+        channelId,
+        userId,
+        messageText,
+        threadTs,
+        startTime,
+        threadService,
+        slackThreadMessages, // Pass messages to avoid duplicate API call
+      });
+      return;
+    }
+  }
 
   try {
     // Fetch member context and insights in parallel (both are independent)
