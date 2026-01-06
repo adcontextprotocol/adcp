@@ -15,6 +15,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { isSlackUserAdmin } from './admin-tools.js';
 import { eventsDb } from '../../db/events-db.js';
+import { query } from '../../db/client.js';
 import {
   createEvent as createLumaEvent,
   getEvent as getLumaEvent,
@@ -28,12 +29,257 @@ import type {
   CreateEventInput,
   EventType,
   EventFormat,
+  Event,
 } from '../../types.js';
 
 const logger = createLogger('addie-event-tools');
 
 // Committee slugs whose leads can create events
 const EVENT_CREATOR_COMMITTEES = ['marketing', 'education', 'aao-admin'];
+
+/**
+ * Result from getting personalized events for a user
+ */
+interface PersonalizedEventsResult {
+  events: Event[];
+  userLocation: { city: string | null; country: string | null };
+  missingLocation: boolean;
+  industryGatherings: Array<{ name: string; eventDate: Date | null }>;
+  chapters: Array<{ name: string; region: string | null }>;
+}
+
+/**
+ * Get events personalized for a specific user.
+ *
+ * Returns:
+ * - Events the user is registered for
+ * - Events in regional chapters the user is a member of
+ * - Events at industry gatherings the user is interested in
+ * - Major global summits (open to all)
+ *
+ * Excludes virtual webinars (those belong in education).
+ */
+async function getPersonalizedEvents(
+  workosUserId?: string,
+  slackUserId?: string,
+  includePast = false
+): Promise<PersonalizedEventsResult> {
+  const result: PersonalizedEventsResult = {
+    events: [],
+    userLocation: { city: null, country: null },
+    missingLocation: true,
+    industryGatherings: [],
+    chapters: [],
+  };
+
+  // Get user location
+  if (slackUserId) {
+    const locationQuery = await query<{ city: string | null; country: string | null }>(
+      `SELECT u.city, u.country
+       FROM slack_user_mappings sm
+       JOIN users u ON u.workos_user_id = sm.workos_user_id
+       WHERE sm.slack_user_id = $1
+       LIMIT 1`,
+      [slackUserId]
+    );
+    if (locationQuery.rows[0]) {
+      result.userLocation = locationQuery.rows[0];
+      result.missingLocation = !locationQuery.rows[0].city;
+    }
+  }
+
+  // Get user's industry gatherings and chapters
+  if (workosUserId) {
+    const [gatheringsQuery, chaptersQuery] = await Promise.all([
+      query<{ name: string; event_start_date: Date | null }>(
+        `SELECT wg.name, wg.event_start_date
+         FROM working_group_memberships wgm
+         JOIN working_groups wg ON wg.id = wgm.working_group_id
+         WHERE wgm.workos_user_id = $1
+           AND wg.committee_type = 'industry_gathering'
+           AND wg.status = 'active'
+           AND wgm.status = 'active'
+           AND wgm.interest_level IN ('attending', 'interested')
+           AND (wg.event_end_date IS NULL OR wg.event_end_date >= CURRENT_DATE)`,
+        [workosUserId]
+      ),
+      query<{ name: string; region: string | null }>(
+        `SELECT wg.name, wg.region
+         FROM working_group_memberships wgm
+         JOIN working_groups wg ON wg.id = wgm.working_group_id
+         WHERE wgm.workos_user_id = $1
+           AND wg.committee_type = 'chapter'
+           AND wg.status = 'active'
+           AND wgm.status = 'active'`,
+        [workosUserId]
+      ),
+    ]);
+
+    result.industryGatherings = gatheringsQuery.rows.map(r => ({
+      name: r.name,
+      eventDate: r.event_start_date,
+    }));
+    result.chapters = chaptersQuery.rows.map(r => ({
+      name: r.name,
+      region: r.region,
+    }));
+  }
+
+  // Build queries for personalized events - separate queries for upcoming vs past to avoid SQL interpolation
+  const eventIds: Set<string> = new Set();
+
+  // 1. Events user is registered for
+  if (workosUserId) {
+    const registeredEvents = includePast
+      ? await query<Event>(
+          `SELECT e.* FROM events e
+           JOIN event_registrations er ON er.event_id = e.id
+           WHERE er.workos_user_id = $1
+             AND e.status IN ('published', 'completed')
+             AND e.start_time < NOW()
+             AND e.event_format != 'virtual'
+           ORDER BY e.start_time DESC`,
+          [workosUserId]
+        )
+      : await query<Event>(
+          `SELECT e.* FROM events e
+           JOIN event_registrations er ON er.event_id = e.id
+           WHERE er.workos_user_id = $1
+             AND e.status IN ('published', 'completed')
+             AND e.start_time > NOW()
+             AND e.event_format != 'virtual'
+           ORDER BY e.start_time ASC`,
+          [workosUserId]
+        );
+    for (const event of registeredEvents.rows) {
+      if (!eventIds.has(event.id)) {
+        eventIds.add(event.id);
+        result.events.push(event);
+      }
+    }
+  }
+
+  // 2. Events at industry gatherings user is interested in
+  if (result.industryGatherings.length > 0 && workosUserId) {
+    const gatheringEvents = includePast
+      ? await query<Event>(
+          `SELECT DISTINCT e.* FROM events e
+           JOIN working_groups wg ON wg.linked_event_id = e.id
+           JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+           WHERE wgm.workos_user_id = $1
+             AND wg.committee_type = 'industry_gathering'
+             AND wgm.status = 'active'
+             AND wgm.interest_level IN ('attending', 'interested')
+             AND e.status IN ('published', 'completed')
+             AND e.start_time < NOW()
+             AND e.event_format != 'virtual'
+           ORDER BY e.start_time DESC`,
+          [workosUserId]
+        )
+      : await query<Event>(
+          `SELECT DISTINCT e.* FROM events e
+           JOIN working_groups wg ON wg.linked_event_id = e.id
+           JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+           WHERE wgm.workos_user_id = $1
+             AND wg.committee_type = 'industry_gathering'
+             AND wgm.status = 'active'
+             AND wgm.interest_level IN ('attending', 'interested')
+             AND e.status IN ('published', 'completed')
+             AND e.start_time > NOW()
+             AND e.event_format != 'virtual'
+           ORDER BY e.start_time ASC`,
+          [workosUserId]
+        );
+    for (const event of gatheringEvents.rows) {
+      if (!eventIds.has(event.id)) {
+        eventIds.add(event.id);
+        result.events.push(event);
+      }
+    }
+  }
+
+  // 3. Events in regional chapters user is a member of (single query for all regions)
+  if (result.chapters.length > 0) {
+    const chapterRegions = result.chapters
+      .map(c => c.region)
+      .filter((r): r is string => r !== null);
+
+    if (chapterRegions.length > 0) {
+      // Use ANY() to match any chapter region in a single query
+      const chapterEvents = includePast
+        ? await query<Event>(
+            `SELECT DISTINCT e.* FROM events e
+             WHERE e.status IN ('published', 'completed')
+               AND e.start_time < NOW()
+               AND e.event_format != 'virtual'
+               AND EXISTS (
+                 SELECT 1 FROM unnest($1::text[]) AS region
+                 WHERE LOWER(e.venue_city) LIKE '%' || LOWER(region) || '%'
+                    OR LOWER(region) LIKE '%' || LOWER(COALESCE(e.venue_city, '')) || '%'
+               )
+             ORDER BY e.start_time DESC
+             LIMIT 20`,
+            [chapterRegions]
+          )
+        : await query<Event>(
+            `SELECT DISTINCT e.* FROM events e
+             WHERE e.status IN ('published', 'completed')
+               AND e.start_time > NOW()
+               AND e.event_format != 'virtual'
+               AND EXISTS (
+                 SELECT 1 FROM unnest($1::text[]) AS region
+                 WHERE LOWER(e.venue_city) LIKE '%' || LOWER(region) || '%'
+                    OR LOWER(region) LIKE '%' || LOWER(COALESCE(e.venue_city, '')) || '%'
+               )
+             ORDER BY e.start_time ASC
+             LIMIT 20`,
+            [chapterRegions]
+          );
+      for (const event of chapterEvents.rows) {
+        if (!eventIds.has(event.id)) {
+          eventIds.add(event.id);
+          result.events.push(event);
+        }
+      }
+    }
+  }
+
+  // 4. Major global summits (open to all)
+  const summits = includePast
+    ? await query<Event>(
+        `SELECT * FROM events
+         WHERE status IN ('published', 'completed')
+           AND start_time < NOW()
+           AND event_type = 'summit'
+           AND event_format != 'virtual'
+         ORDER BY start_time DESC
+         LIMIT 5`
+      )
+    : await query<Event>(
+        `SELECT * FROM events
+         WHERE status IN ('published', 'completed')
+           AND start_time > NOW()
+           AND event_type = 'summit'
+           AND event_format != 'virtual'
+         ORDER BY start_time ASC
+         LIMIT 5`
+      );
+  for (const event of summits.rows) {
+    if (!eventIds.has(event.id)) {
+      eventIds.add(event.id);
+      result.events.push(event);
+    }
+  }
+
+  // Sort final list by date
+  result.events.sort((a, b) => {
+    const aTime = new Date(a.start_time).getTime();
+    const bTime = new Date(b.start_time).getTime();
+    return includePast ? bTime - aTime : aTime - bTime;
+  });
+
+  return result;
+}
 
 /**
  * Check if a Slack user can create events
@@ -172,16 +418,26 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
   },
   {
     name: 'list_events',
-    description: `List AAO events. Use this when someone asks about events - either upcoming or past events.
-When asked about past events, historical events, or what events have happened, set include_past=true.
-When asked about upcoming events or what's happening soon, use the defaults (include_past=false).`,
+    description: `List AAO events personalized for the user. Shows:
+- Events the user is already registered for
+- Events in regional chapters they're a member of
+- Events at industry gatherings they've indicated interest in (CES, Cannes Lions, etc.)
+- Major global summits (open to all members)
+
+Does NOT include virtual webinars (those are educational content).
+
+When asked about past events, set include_past=true.
+When asked about upcoming events or what's happening soon, use the defaults.
+
+If the user isn't in any regional chapters or hasn't indicated interest in any industry events,
+the response will suggest they share their location or join industry gathering groups.`,
     input_schema: {
       type: 'object' as const,
       properties: {
         event_type: {
           type: 'string',
-          enum: ['summit', 'meetup', 'webinar', 'workshop', 'conference', 'other'],
-          description: 'Filter by event type',
+          enum: ['summit', 'meetup', 'workshop', 'conference', 'other'],
+          description: 'Filter by event type (webinar excluded)',
         },
         include_past: {
           type: 'boolean',
@@ -189,7 +445,7 @@ When asked about upcoming events or what's happening soon, use the defaults (inc
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of events to return (default: 5)',
+          description: 'Maximum number of events to return (default: 10)',
         },
       },
     },
@@ -441,47 +697,86 @@ export function createEventToolHandlers(
     return response;
   });
 
-  // List events (upcoming or past)
+  // List events (personalized for the user)
   handlers.set('list_events', async (input) => {
     const eventType = input.event_type as EventType | undefined;
     const includePast = input.include_past === true;
-    const limit = Math.min((input.limit as number) || 5, 20);
+    const limit = Math.min((input.limit as number) || 10, 20);
 
-    // Query events based on whether we want past or upcoming
-    const statuses = includePast
-      ? ['published', 'completed'] as const
-      : ['published'] as const;
+    // Get workos user ID from member context
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
 
-    let allEvents = await eventsDb.listEvents({
-      statuses: [...statuses],
-      event_type: eventType,
-      past_only: includePast,
-      upcoming_only: !includePast,
-      limit,
-    });
+    // Get personalized events for this user
+    const personalizedResult = await getPersonalizedEvents(workosUserId, slackUserId, includePast);
+    let allEvents = personalizedResult.events;
 
-    // Sort descending for past events (most recent first)
-    if (includePast) {
-      allEvents.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+    // Filter by event type if specified (excluding webinars)
+    if (eventType && eventType !== 'webinar') {
+      allEvents = allEvents.filter(e => e.event_type === eventType);
     }
 
+    // Apply limit
+    allEvents = allEvents.slice(0, limit);
+
+    // Build response
+    let response = '';
+
+    // If no events found, provide helpful context
     if (allEvents.length === 0) {
-      let msg = includePast ? 'No past events found' : 'No upcoming events found';
-      if (eventType) msg += ` of type "${eventType}"`;
-      return msg + '.';
+      if (includePast) {
+        response = 'I don\'t see any past events that are relevant to you.\n\n';
+      } else {
+        response = 'I don\'t see any upcoming events that match your profile.\n\n';
+      }
+
+      // Provide guidance on how to see more events
+      const suggestions: string[] = [];
+
+      if (personalizedResult.missingLocation) {
+        suggestions.push('**Share your location** - Tell me where you\'re based (e.g., "I\'m in New York") so I can show you events in your area.');
+      }
+
+      if (personalizedResult.chapters.length === 0) {
+        suggestions.push('**Join a regional chapter** - We have chapters in various cities. Let me know your city and I can help you connect.');
+      }
+
+      if (personalizedResult.industryGatherings.length === 0) {
+        suggestions.push('**Tell me about industry events you\'re attending** - Going to CES, Cannes Lions, or other industry events? Let me know and I\'ll connect you with our gatherings there.');
+      }
+
+      if (suggestions.length > 0) {
+        response += 'To see more relevant events, you could:\n\n';
+        response += suggestions.map(s => `• ${s}`).join('\n\n');
+      }
+
+      return response;
     }
 
-    let response = includePast ? `## Past Events\n\n` : `## Upcoming Events\n\n`;
+    // Build header with context
+    response = includePast ? `## Past Events\n\n` : `## Upcoming Events\n\n`;
 
+    // Add context about what we're showing
+    const contextParts: string[] = [];
+    if (personalizedResult.chapters.length > 0) {
+      contextParts.push(`your chapter${personalizedResult.chapters.length > 1 ? 's' : ''} (${personalizedResult.chapters.map(c => c.name).join(', ')})`);
+    }
+    if (personalizedResult.industryGatherings.length > 0) {
+      contextParts.push(`industry gatherings you're interested in (${personalizedResult.industryGatherings.map(g => g.name).join(', ')})`);
+    }
+    if (contextParts.length > 0) {
+      response += `_Showing events based on ${contextParts.join(' and ')}, plus global summits._\n\n`;
+    }
+
+    // List events
+    const eventTypeEmojis: Record<string, string> = {
+      summit: '🏔️',
+      meetup: '🤝',
+      workshop: '🛠️',
+      conference: '🎤',
+      other: '📅',
+    };
     for (const event of allEvents) {
-      const typeEmoji = {
-        summit: '🏔️',
-        meetup: '🤝',
-        webinar: '💻',
-        workshop: '🛠️',
-        conference: '🎤',
-        other: '📅',
-      }[event.event_type] || '📅';
+      const typeEmoji = eventTypeEmojis[event.event_type] || '📅';
 
       response += `${typeEmoji} **${event.title}**\n`;
       response += `   ${formatDate(event.start_time)} at ${formatTime(event.start_time, event.timezone)}\n`;
@@ -490,14 +785,17 @@ export function createEventToolHandlers(
         response += `   📍 ${event.venue_city}`;
         if (event.venue_name) response += ` - ${event.venue_name}`;
         response += `\n`;
-      } else if (event.event_format === 'virtual') {
-        response += `   💻 Virtual\n`;
       }
 
       if (!includePast && event.luma_url) {
         response += `   🔗 Register: ${event.luma_url}\n`;
       }
       response += `\n`;
+    }
+
+    // If location is missing, add a helpful note
+    if (personalizedResult.missingLocation && !includePast) {
+      response += `\n_Want to see events in your area? Tell me where you're based!_\n`;
     }
 
     return response;

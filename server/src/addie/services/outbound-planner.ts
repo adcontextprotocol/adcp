@@ -54,13 +54,24 @@ export class OutboundPlanner {
 
     // STAGE 1: Get enabled goals and filter by eligibility (rule-based, fast)
     const allGoals = await outboundDb.listGoals({ enabledOnly: true });
-    const eligible = allGoals.filter(g => this.isEligible(g, ctx));
+    let eligible = allGoals.filter(g => this.isEligible(g, ctx));
 
     if (eligible.length === 0) {
       logger.debug({
         slack_user_id: ctx.user.slack_user_id,
         total_goals: allGoals.length,
       }, 'Planner: No eligible goals');
+      return null;
+    }
+
+    // STAGE 1.5: Async eligibility checks (for goals that need database queries)
+    eligible = await this.filterAsyncEligibility(eligible, ctx);
+
+    if (eligible.length === 0) {
+      logger.debug({
+        slack_user_id: ctx.user.slack_user_id,
+        total_goals: allGoals.length,
+      }, 'Planner: No eligible goals after async checks');
       return null;
     }
 
@@ -154,6 +165,41 @@ export class OutboundPlanner {
     }
 
     return true;
+  }
+
+  /**
+   * Async eligibility filter for goals that require database queries.
+   * Called after the fast synchronous isEligible check.
+   */
+  private async filterAsyncEligibility(
+    goals: OutreachGoal[],
+    ctx: PlannerContext
+  ): Promise<OutreachGoal[]> {
+    // Check if any goal needs async filtering
+    const hasDiscoverEventsGoal = goals.some(g => g.name === 'Discover Events');
+
+    if (!hasDiscoverEventsGoal) {
+      return goals; // No async checks needed
+    }
+
+    // Check if there are relevant upcoming events for this user
+    const eventCheck = await outboundDb.hasRelevantUpcomingEvents(
+      ctx.user.workos_user_id,
+      ctx.user.slack_user_id
+    );
+
+    // Filter out "Discover Events" if no relevant events exist
+    if (!eventCheck.hasRelevantEvents) {
+      logger.debug({
+        slack_user_id: ctx.user.slack_user_id,
+        eventCheck: eventCheck.details,
+        userLocation: eventCheck.userLocation,
+      }, 'Planner: Skipping "Discover Events" - no relevant events for user');
+
+      return goals.filter(g => g.name !== 'Discover Events');
+    }
+
+    return goals;
   }
 
   /**
