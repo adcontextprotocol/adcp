@@ -67,11 +67,13 @@ export interface RssPerspective {
 
 /**
  * Get all active feeds that need fetching
+ * Only returns feeds with a valid feed_url (excludes email-only feeds)
  */
 export async function getFeedsToFetch(): Promise<IndustryFeed[]> {
   const result = await query<IndustryFeed>(
     `SELECT * FROM industry_feeds
      WHERE is_active = true
+       AND feed_url IS NOT NULL
        AND (last_fetched_at IS NULL
             OR last_fetched_at < NOW() - (fetch_interval_minutes || ' minutes')::interval)
      ORDER BY last_fetched_at ASC NULLS FIRST
