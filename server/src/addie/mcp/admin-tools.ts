@@ -38,6 +38,7 @@ import {
   isLushaConfigured,
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
+import { COMPANY_TYPE_VALUES } from '../../config/company-types.js';
 import { createProspect } from '../../services/prospect.js';
 import {
   getAllFeedsWithStats,
@@ -395,8 +396,8 @@ This replaces find_prospect and lookup_organization with a unified view.`,
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
-          description: 'Type of company (adtech, agency, brand, publisher, or other)',
+          enum: COMPANY_TYPE_VALUES,
+          description: 'Type of company',
         },
         domain: {
           type: 'string',
@@ -455,7 +456,7 @@ This replaces find_prospect and lookup_organization with a unified view.`,
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
+          enum: COMPANY_TYPE_VALUES,
           description: 'Type of company',
         },
         status: {
@@ -525,7 +526,7 @@ This replaces find_prospect and lookup_organization with a unified view.`,
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
+          enum: COMPANY_TYPE_VALUES,
           description: 'Filter by company type',
         },
         limit: {
