@@ -18,12 +18,21 @@
       "type": "integer",
       "description": "Expected delay in minutes before reporting data becomes available (e.g., 240 for 4-hour delay)",
       "minimum": 0,
-      "examples": [240, 300, 1440]
+      "examples": [
+        240,
+        300,
+        1440
+      ]
     },
     "timezone": {
       "type": "string",
       "description": "Timezone for reporting periods. Use 'UTC' or IANA timezone (e.g., 'America/New_York'). Critical for daily/monthly frequency alignment.",
-      "examples": ["UTC", "America/New_York", "Europe/London", "America/Los_Angeles"]
+      "examples": [
+        "UTC",
+        "America/New_York",
+        "Europe/London",
+        "America/Los_Angeles"
+      ]
     },
     "supports_webhooks": {
       "type": "boolean",
@@ -37,11 +46,26 @@
       },
       "uniqueItems": true,
       "examples": [
-        ["impressions", "spend", "clicks", "video_completions"],
-        ["impressions", "spend", "conversions"]
+        [
+          "impressions",
+          "spend",
+          "clicks",
+          "video_completions"
+        ],
+        [
+          "impressions",
+          "spend",
+          "conversions"
+        ]
       ]
     }
   },
-  "required": ["available_reporting_frequencies", "expected_delay_minutes", "timezone", "supports_webhooks", "available_metrics"],
-  "additionalProperties": false
+  "required": [
+    "available_reporting_frequencies",
+    "expected_delay_minutes",
+    "timezone",
+    "supports_webhooks",
+    "available_metrics"
+  ],
+  "additionalProperties": true
 }

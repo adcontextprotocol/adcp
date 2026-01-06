@@ -24,6 +24,8 @@
       "minItems": 1
     }
   },
-  "required": ["creative_id"],
-  "additionalProperties": false
+  "required": [
+    "creative_id"
+  ],
+  "additionalProperties": true
 }

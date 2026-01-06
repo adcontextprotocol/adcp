@@ -94,7 +94,7 @@
             ]
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "push_notification_config": {
@@ -120,5 +120,5 @@
       ]
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

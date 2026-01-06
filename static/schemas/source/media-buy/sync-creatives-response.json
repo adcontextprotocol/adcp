@@ -79,14 +79,14 @@
                     "description": "Error message for this package assignment"
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "required": [
               "creative_id",
               "action"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "context": {
@@ -99,7 +99,7 @@
       "required": [
         "creatives"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "errors"
@@ -129,7 +129,7 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

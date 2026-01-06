@@ -36,8 +36,11 @@
           "description": "ISO 8601 end timestamp for measurement period"
         }
       },
-      "required": ["start", "end"],
-      "additionalProperties": false
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
     },
     "performance_index": {
       "type": "number",
@@ -55,7 +58,12 @@
     "status": {
       "type": "string",
       "description": "Processing status of the performance feedback",
-      "enum": ["accepted", "queued", "applied", "rejected"]
+      "enum": [
+        "accepted",
+        "queued",
+        "applied",
+        "rejected"
+      ]
     },
     "submitted_at": {
       "type": "string",
@@ -78,5 +86,5 @@
     "status",
     "submitted_at"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

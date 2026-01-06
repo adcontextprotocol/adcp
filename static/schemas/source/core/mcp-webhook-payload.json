@@ -43,7 +43,12 @@
       "description": "Task-specific payload matching the status. For completed/failed, contains the full task response. For working/input-required/submitted, contains status-specific data. This is the data layer that AdCP specs - same structure used in A2A status.message.parts[].data."
     }
   },
-  "required": ["task_id", "task_type", "status", "timestamp"],
+  "required": [
+    "task_id",
+    "task_type",
+    "status",
+    "timestamp"
+  ],
   "additionalProperties": true,
   "examples": [
     {

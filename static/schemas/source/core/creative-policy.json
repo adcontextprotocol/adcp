@@ -18,6 +18,10 @@
       "description": "Whether creative templates are provided"
     }
   },
-  "required": ["co_branding", "landing_page", "templates_available"],
-  "additionalProperties": false
+  "required": [
+    "co_branding",
+    "landing_page",
+    "templates_available"
+  ],
+  "additionalProperties": true
 }
