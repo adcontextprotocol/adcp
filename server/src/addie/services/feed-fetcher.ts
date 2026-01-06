@@ -52,6 +52,47 @@ const parser = new Parser({
   },
 });
 
+/**
+ * Validate that content is actually RSS/Atom XML, not HTML
+ * Some sites disable their RSS feeds and redirect to HTML pages
+ */
+function validateRssContent(content: string, contentType: string): { valid: boolean; error?: string } {
+  // Check content type header first
+  const isXmlContentType =
+    contentType.includes('xml') || contentType.includes('rss') || contentType.includes('atom');
+
+  // Check for HTML doctype or opening tags (indicates redirect to HTML page)
+  const trimmed = content.trim().toLowerCase();
+  if (trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')) {
+    return {
+      valid: false,
+      error: 'Feed URL returned HTML instead of RSS/XML (feed may be disabled)',
+    };
+  }
+
+  // Check for valid XML/RSS markers (use trimmed which is lowercased for case-insensitive matching)
+  const hasXmlDeclaration = trimmed.startsWith('<?xml');
+  const hasRssTag = trimmed.includes('<rss');
+  const hasFeedTag = trimmed.includes('<feed'); // Atom feeds
+  const hasRdfTag = trimmed.includes('<rdf:'); // RDF feeds
+
+  if (!hasXmlDeclaration && !hasRssTag && !hasFeedTag && !hasRdfTag) {
+    // If content type says XML but content doesn't look like RSS
+    if (isXmlContentType) {
+      return {
+        valid: false,
+        error: 'Content type is XML but content does not appear to be RSS/Atom',
+      };
+    }
+    return {
+      valid: false,
+      error: 'Feed URL did not return valid RSS/Atom content',
+    };
+  }
+
+  return { valid: true };
+}
+
 interface FeedItem {
   guid?: string;
   link?: string;
@@ -89,7 +130,31 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
 
   logger.debug({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Fetching RSS feed');
 
-  const parsed = await parser.parseURL(feed.feed_url);
+  // Pre-fetch content to validate it's actually RSS/XML before parsing
+  // This prevents cryptic XML parsing errors when sites return HTML
+  const response = await fetch(feed.feed_url, {
+    headers: {
+      'User-Agent': 'AddieBot/1.0 (AgenticAdvertising.org industry monitor)',
+      Accept: 'application/rss+xml, application/xml, text/xml',
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  const content = await response.text();
+
+  // Validate content is RSS/XML, not HTML (e.g., from a redirect)
+  const validation = validateRssContent(content, contentType);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
+  // Parse the validated content
+  const parsed = await parser.parseString(content);
 
   if (!parsed.items || parsed.items.length === 0) {
     logger.warn({ feedId: feed.id }, 'Feed returned no items');
