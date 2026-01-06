@@ -206,161 +206,6 @@ function injectJoinCtaStyles() {
       color: var(--aao-primary);
     }
 
-    .join-cta-invoice-link {
-      display: block;
-      text-align: center;
-      margin-top: var(--space-3);
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-    }
-
-    .join-cta-invoice-link a,
-    .join-cta-invoice-link button {
-      color: var(--aao-primary);
-      text-decoration: underline;
-      background: none;
-      border: none;
-      padding: 0;
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .join-cta-invoice-link a:hover,
-    .join-cta-invoice-link button:hover {
-      color: var(--aao-primary-light);
-    }
-
-    /* Invoice Request Modal */
-    .invoice-modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: var(--color-surface-overlay);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      padding: var(--space-4);
-    }
-
-    .invoice-modal {
-      background: var(--color-bg-card);
-      border-radius: var(--radius-lg);
-      max-width: 500px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: var(--shadow-xl);
-    }
-
-    .invoice-modal-header {
-      padding: var(--space-5);
-      border-bottom: var(--border-1) solid var(--color-border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .invoice-modal-header h2 {
-      margin: 0;
-      font-size: var(--text-xl);
-      color: var(--color-text-heading);
-    }
-
-    .invoice-modal-close {
-      background: none;
-      border: none;
-      font-size: var(--text-2xl);
-      color: var(--color-text-muted);
-      cursor: pointer;
-      padding: 0;
-      line-height: 1;
-    }
-
-    .invoice-modal-close:hover {
-      color: var(--color-text);
-    }
-
-    .invoice-modal-body {
-      padding: var(--space-5);
-    }
-
-    .invoice-form-group {
-      margin-bottom: var(--space-4);
-    }
-
-    .invoice-form-group label {
-      display: block;
-      font-size: var(--text-sm);
-      font-weight: var(--font-medium);
-      color: var(--color-text);
-      margin-bottom: var(--space-1);
-    }
-
-    .invoice-form-group input,
-    .invoice-form-group select {
-      width: 100%;
-      padding: var(--space-2) var(--space-3);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--radius-md);
-      font-size: var(--text-base);
-      background: var(--color-bg-card);
-      color: var(--color-text);
-    }
-
-    .invoice-form-group input:focus,
-    .invoice-form-group select:focus {
-      outline: none;
-      border-color: var(--aao-primary);
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-
-    .invoice-form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-3);
-    }
-
-    .invoice-form-error {
-      color: var(--color-error-600);
-      font-size: var(--text-sm);
-      margin-top: var(--space-1);
-    }
-
-    .invoice-modal-footer {
-      padding: var(--space-4) var(--space-5);
-      border-top: var(--border-1) solid var(--color-border);
-      display: flex;
-      gap: var(--space-3);
-      justify-content: flex-end;
-    }
-
-    .invoice-modal-footer .btn {
-      min-width: 120px;
-    }
-
-    .invoice-success {
-      text-align: center;
-      padding: var(--space-6);
-    }
-
-    .invoice-success-icon {
-      font-size: 48px;
-      margin-bottom: var(--space-4);
-    }
-
-    .invoice-success h3 {
-      color: var(--color-success-600);
-      margin-bottom: var(--space-2);
-    }
-
-    .invoice-success p {
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-4);
-    }
-
     /* Member Confirmation (for existing members) */
     .join-cta-member-confirmed {
       background: linear-gradient(135deg, var(--color-success-50) 0%, var(--color-success-100) 100%);
@@ -457,7 +302,6 @@ function injectJoinCtaStyles() {
 /**
  * Render the unified join CTA component
  * Fetches pricing from Stripe via API for single source of truth
- * For logged-in users with a revenue tier, shows personalized pricing
  * @param {Object} options - Configuration options
  * @param {string} options.containerId - ID of the container element
  * @param {boolean} options.showFoundingNote - Whether to show founding member note (default: true)
@@ -504,11 +348,7 @@ async function renderJoinCta(options = {}) {
   const priceIndividual = individual ? formatCurrency(individual.amount_cents, individual.currency) : '$250';
   const priceDiscounted = individualDiscounted ? formatCurrency(individualDiscounted.amount_cents, individualDiscounted.currency) : '$50';
 
-  // Determine if we should show personalized pricing for company
-  // Revenue tiers indicating under $5M: 'under_1m', '1m_5m'
-  const isUnder5m = userContext.revenueTier && ['under_1m', '1m_5m'].includes(userContext.revenueTier);
-  const isOver5m = userContext.revenueTier && !isUnder5m;
-  const showPersonalizedCompanyPrice = userContext.isLoggedIn && !userContext.isPersonal && userContext.revenueTier;
+  // Always show all price tiers - no personalization
 
   const industryCouncilBenefits = [
     'Seat on Industry Council with strategic input on roadmap',
@@ -538,43 +378,22 @@ async function renderJoinCta(options = {}) {
     'Newsletter and industry updates'
   ];
 
-  // Build company pricing HTML based on user context
-  let companyPricingHtml;
-  if (showPersonalizedCompanyPrice) {
-    // Show single personalized price
-    const price = isUnder5m ? priceUnder5m : price5m;
-    const label = isUnder5m ? 'Under $5M annual revenue' : '$5M+ annual revenue';
-    companyPricingHtml = `
-      <div class="join-cta-pricing-tier" style="padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
-        <div class="join-cta-pricing-label">${label}</div>
-        <div class="join-cta-pricing-amount">${price}<span class="join-cta-pricing-period">/year</span></div>
-      </div>
-    `;
-  } else {
-    // Show both tiers
-    companyPricingHtml = `
-      <div class="join-cta-pricing-tier">
-        <div class="join-cta-pricing-label">$5M+ annual revenue</div>
-        <div class="join-cta-pricing-amount">${price5m}<span class="join-cta-pricing-period">/year</span></div>
-      </div>
-      <div class="join-cta-pricing-secondary">
-        <div class="join-cta-pricing-secondary-label">Under $5M annual revenue</div>
-        <div class="join-cta-pricing-secondary-amount">${priceUnder5m}<span class="join-cta-pricing-period">/year</span></div>
-      </div>
-    `;
-  }
+  // Always show both company tiers
+  const companyPricingHtml = `
+    <div class="join-cta-pricing-tier">
+      <div class="join-cta-pricing-label">$5M+ annual revenue</div>
+      <div class="join-cta-pricing-amount">${price5m}<span class="join-cta-pricing-period">/year</span></div>
+    </div>
+    <div class="join-cta-pricing-secondary">
+      <div class="join-cta-pricing-secondary-label">Under $5M annual revenue</div>
+      <div class="join-cta-pricing-secondary-amount">${priceUnder5m}<span class="join-cta-pricing-period">/year</span></div>
+    </div>
+  `;
 
-  // Determine CTA button URL and text based on login status
-  const companyCta = userContext.isLoggedIn && userContext.orgId
-    ? { url: `/dashboard/membership?org=${userContext.orgId}`, text: 'Complete Membership' }
-    : { url: '/auth/signup?return_to=/onboarding?signup=true', text: 'Join as a Company' };
-
-  const individualCta = userContext.isLoggedIn
-    ? { url: '/dashboard/membership', text: 'Complete Membership' }
-    : { url: '/auth/signup?return_to=/onboarding?signup=true', text: 'Join as an Individual' };
-
-  // Industry Council Leader is always a high-touch sale - always use mailto
-  const councilLeaderCta = { url: 'mailto:membership@agenticadvertising.org?subject=Industry%20Council%20Leader%20Membership', text: 'Contact Us' };
+  // All tiers use the same signup flow
+  const signupUrl = userContext.isLoggedIn
+    ? `/dashboard/membership${userContext.orgId ? `?org=${userContext.orgId}` : ''}`
+    : '/auth/signup?return_to=/onboarding?signup=true';
 
   container.innerHTML = `
     <div class="join-cta-grid join-cta-grid--three">
@@ -595,12 +414,11 @@ async function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="${councilLeaderCta.url}" class="btn btn-primary">${councilLeaderCta.text}</a>
+          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
         </div>
-        <p class="join-cta-invoice-link">
-          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal({ customerType: 'company', selectedProduct: 'aao_membership_industry_council_leader_50000' })">Request an invoice</button>
+        <p class="join-cta-card-footer">
+          Questions? <a href="mailto:membership@agenticadvertising.org">Contact us</a>
         </p>
-        <p class="join-cta-card-footer">For organizations shaping industry direction</p>
       </div>
 
       <!-- Company Membership -->
@@ -616,11 +434,8 @@ async function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="${companyCta.url}" class="btn btn-primary">${companyCta.text}</a>
+          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
         </div>
-        <p class="join-cta-invoice-link">
-          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal()">Request an invoice</button>
-        </p>
         <p class="join-cta-card-footer">Open to brands, publishers, agencies, and ad tech providers</p>
       </div>
 
@@ -644,7 +459,7 @@ async function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="${individualCta.url}" class="btn btn-primary">${individualCta.text}</a>
+          <a href="${signupUrl}" class="btn btn-primary">Sign Up Now</a>
         </div>
         <p class="join-cta-card-footer">For consultants, professionals, and enthusiasts</p>
       </div>
@@ -759,21 +574,19 @@ async function fetchUserContext() {
       return userContextCache;
     }
 
-    // Fetch billing info for revenue tier and subscription status
-    let revenueTier = null;
+    // Fetch billing info for subscription status
     let isPersonal = org.is_personal;
     let isMember = false;
     try {
       const billingResponse = await fetch(`/api/organizations/${org.id}/billing`, { credentials: 'include' });
       if (billingResponse.ok) {
         const billingData = await billingResponse.json();
-        revenueTier = billingData.revenue_tier;
         isPersonal = billingData.is_personal ?? isPersonal;
         isMember = billingData.subscription?.status === 'active';
       }
     } catch (billingError) {
-      // Billing fetch failed, proceed without revenue tier
-      console.warn('Could not fetch billing info for pricing personalization');
+      // Billing fetch failed, proceed without subscription info
+      console.warn('Could not fetch billing info');
     }
 
     userContextCache = {
@@ -781,7 +594,6 @@ async function fetchUserContext() {
       orgId: org.id,
       orgName: org.name,
       isPersonal: isPersonal,
-      revenueTier: revenueTier,
       isMember: isMember
     };
 
@@ -838,240 +650,3 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-/**
- * Escape HTML special characters to prevent XSS (for invoice modal)
- */
-function escapeHtmlForInvoice(str) {
-  if (!str) return '';
-  return str.replace(/[&<>"']/g, char => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[char]);
-}
-
-/**
- * Open the invoice request modal
- * @param {Object} options - Optional configuration
- * @param {string} options.companyName - Pre-fill company name
- * @param {string} options.selectedProduct - Pre-select a product by lookup_key
- * @param {string} options.customerType - Filter products by customer type (e.g., 'company', 'individual')
- * @param {string} options.revenueTier - Filter products by revenue tier
- */
-async function openInvoiceRequestModal(options = {}) {
-  // Ensure styles are injected
-  injectJoinCtaStyles();
-
-  // Remove any existing modal
-  const existingModal = document.getElementById('invoiceRequestModal');
-  if (existingModal) {
-    existingModal.remove();
-  }
-
-  // Fetch products from API with filtering if provided
-  let url = '/api/billing-products?category=membership';
-  if (options.customerType) {
-    url += `&customer_type=${encodeURIComponent(options.customerType)}`;
-  }
-  if (options.revenueTier) {
-    url += `&revenue_tier=${encodeURIComponent(options.revenueTier)}`;
-  }
-
-  let membershipProducts = [];
-  try {
-    const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      membershipProducts = data.products || [];
-    }
-  } catch (error) {
-    console.error('Error fetching products:', error);
-  }
-
-  // Generate product options HTML
-  // Filter to subscription products only (excludes legacy one-time invoice products)
-  let productOptionsHtml = '<option value="">Select a product...</option>';
-  if (membershipProducts.length > 0) {
-    const subscriptionProducts = membershipProducts.filter(p => p.billing_type === 'subscription');
-    for (const product of subscriptionProducts) {
-      const price = formatCurrency(product.amount_cents, product.currency);
-      const selected = options.selectedProduct === product.lookup_key ? ' selected' : '';
-      const escapedLookupKey = escapeHtmlForInvoice(product.lookup_key);
-      const escapedDisplayName = escapeHtmlForInvoice(product.display_name);
-      productOptionsHtml += `<option value="${escapedLookupKey}"${selected}>${escapedDisplayName} - ${price}/year</option>`;
-    }
-  } else {
-    // Fallback if no products configured in Stripe
-    productOptionsHtml += '<option value="" disabled>No products available - please contact finance@agenticadvertising.org</option>';
-  }
-
-  // Escape company name for HTML attribute
-  const companyNameValue = escapeHtmlForInvoice(options.companyName || '');
-
-  const modalHtml = `
-    <div id="invoiceRequestModal" class="invoice-modal-overlay" onclick="if(event.target === this) closeInvoiceRequestModal()">
-      <div class="invoice-modal">
-        <div class="invoice-modal-header">
-          <h2>Request an Invoice</h2>
-          <button class="invoice-modal-close" onclick="closeInvoiceRequestModal()" aria-label="Close">&times;</button>
-        </div>
-        <form id="invoiceRequestForm" onsubmit="submitInvoiceRequest(event)">
-          <div class="invoice-modal-body">
-            <div class="invoice-form-group">
-              <label for="invoice-company">Company Name *</label>
-              <input type="text" id="invoice-company" name="companyName" required placeholder="Acme Corporation" value="${companyNameValue}">
-            </div>
-
-            <div class="invoice-form-row">
-              <div class="invoice-form-group">
-                <label for="invoice-contact">Contact Name *</label>
-                <input type="text" id="invoice-contact" name="contactName" required placeholder="John Smith">
-              </div>
-              <div class="invoice-form-group">
-                <label for="invoice-email">Billing Email *</label>
-                <input type="email" id="invoice-email" name="contactEmail" required placeholder="billing@acme.com">
-              </div>
-            </div>
-
-            <div class="invoice-form-group">
-              <label for="invoice-product">Product *</label>
-              <select id="invoice-product" name="lookupKey" required>
-                ${productOptionsHtml}
-              </select>
-            </div>
-
-            <div class="invoice-form-group">
-              <label for="invoice-address1">Billing Address Line 1 *</label>
-              <input type="text" id="invoice-address1" name="line1" required placeholder="123 Main Street">
-            </div>
-
-            <div class="invoice-form-group">
-              <label for="invoice-address2">Billing Address Line 2</label>
-              <input type="text" id="invoice-address2" name="line2" placeholder="Suite 100">
-            </div>
-
-            <div class="invoice-form-row">
-              <div class="invoice-form-group">
-                <label for="invoice-city">City *</label>
-                <input type="text" id="invoice-city" name="city" required placeholder="San Francisco">
-              </div>
-              <div class="invoice-form-group">
-                <label for="invoice-state">State/Province *</label>
-                <input type="text" id="invoice-state" name="state" required placeholder="CA">
-              </div>
-            </div>
-
-            <div class="invoice-form-row">
-              <div class="invoice-form-group">
-                <label for="invoice-postal">Postal Code *</label>
-                <input type="text" id="invoice-postal" name="postal_code" required placeholder="94105">
-              </div>
-              <div class="invoice-form-group">
-                <label for="invoice-country">Country *</label>
-                <input type="text" id="invoice-country" name="country" required value="US" placeholder="US">
-              </div>
-            </div>
-
-            <div id="invoiceFormError" class="invoice-form-error" style="display: none;"></div>
-          </div>
-          <div class="invoice-modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeInvoiceRequestModal()">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="invoiceSubmitBtn">Send Invoice</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  `;
-
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-  // Focus first input
-  setTimeout(() => {
-    document.getElementById('invoice-company')?.focus();
-  }, 100);
-}
-
-/**
- * Close the invoice request modal
- */
-function closeInvoiceRequestModal() {
-  const modal = document.getElementById('invoiceRequestModal');
-  if (modal) {
-    modal.remove();
-  }
-}
-
-/**
- * Submit the invoice request form
- */
-async function submitInvoiceRequest(event) {
-  event.preventDefault();
-
-  const form = event.target;
-  const submitBtn = document.getElementById('invoiceSubmitBtn');
-  const errorDiv = document.getElementById('invoiceFormError');
-
-  // Disable button and show loading state
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Sending...';
-  errorDiv.style.display = 'none';
-
-  const formData = new FormData(form);
-
-  const requestData = {
-    companyName: formData.get('companyName'),
-    contactName: formData.get('contactName'),
-    contactEmail: formData.get('contactEmail'),
-    lookupKey: formData.get('lookupKey'),
-    billingAddress: {
-      line1: formData.get('line1'),
-      line2: formData.get('line2') || undefined,
-      city: formData.get('city'),
-      state: formData.get('state'),
-      postal_code: formData.get('postal_code'),
-      country: formData.get('country'),
-    },
-  };
-
-  try {
-    const response = await fetch('/api/invoice-request', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestData),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || 'Failed to send invoice');
-    }
-
-    // Show success state
-    const modalBody = document.querySelector('.invoice-modal-body');
-    const modalFooter = document.querySelector('.invoice-modal-footer');
-
-    modalBody.innerHTML = `
-      <div class="invoice-success">
-        <div class="invoice-success-icon">&#9989;</div>
-        <h3>Invoice Sent!</h3>
-        <p>We've sent an invoice to <strong>${requestData.contactEmail}</strong>. Please check your email for payment instructions.</p>
-        <p style="font-size: var(--text-sm);">The invoice is due within 30 days. You can pay online via the link in the email.</p>
-      </div>
-    `;
-
-    modalFooter.innerHTML = `
-      <button type="button" class="btn btn-primary" onclick="closeInvoiceRequestModal()">Done</button>
-    `;
-
-  } catch (error) {
-    // Show error
-    errorDiv.textContent = error.message || 'Something went wrong. Please try again or contact finance@agenticadvertising.org';
-    errorDiv.style.display = 'block';
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Send Invoice';
-  }
-}
