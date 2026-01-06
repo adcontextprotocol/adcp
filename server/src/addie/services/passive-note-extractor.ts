@@ -139,7 +139,7 @@ async function storeNote(
   // Get the 'note' insight type ID
   const noteType = await insightsDb.getInsightTypeByName('note');
   if (!noteType) {
-    logger.error('Note insight type not found - run migration 141_note_insight_type.sql');
+    logger.error('Note insight type not found - run migration 142_note_insight_type.sql');
     return;
   }
 
