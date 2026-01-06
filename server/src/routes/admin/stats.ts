@@ -393,14 +393,13 @@ export function setupStatsRoutes(apiRouter: Router): void {
             o.email_domain,
             o.engagement_score,
             o.prospect_status,
-            o.interest_level,
-            (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+            o.interest_level
           FROM organizations o
           JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
             AND o.engagement_score >= 30
           ORDER BY o.engagement_score DESC
           LIMIT 5
@@ -414,8 +413,8 @@ export function setupStatsRoutes(apiRouter: Router): void {
               o.name,
               o.email_domain,
               o.engagement_score,
-              o.next_step,
-              o.next_step_due_date,
+              ns.description as next_step,
+              ns.next_step_due_date,
               (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
               EXTRACT(DAY FROM NOW() - COALESCE(
                 (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
@@ -423,10 +422,19 @@ export function setupStatsRoutes(apiRouter: Router): void {
               )) as days_since_activity
             FROM organizations o
             JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+            LEFT JOIN LATERAL (
+              SELECT description, next_step_due_date
+              FROM org_activities
+              WHERE organization_id = o.workos_organization_id
+                AND is_next_step = TRUE
+                AND next_step_completed_at IS NULL
+              ORDER BY next_step_due_date ASC NULLS LAST
+              LIMIT 1
+            ) ns ON true
             WHERE os.user_id = $1
               AND os.role = 'owner'
               AND o.is_personal IS NOT TRUE
-              AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+              AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
           )
           SELECT *,
             CASE
@@ -467,7 +475,13 @@ export function setupStatsRoutes(apiRouter: Router): void {
             COUNT(*) as total,
             COUNT(CASE WHEN o.engagement_score >= 30 THEN 1 END) as hot,
             COUNT(CASE
-              WHEN (o.next_step_due_date IS NOT NULL AND o.next_step_due_date < CURRENT_DATE)
+              WHEN EXISTS (
+                SELECT 1 FROM org_activities
+                WHERE organization_id = o.workos_organization_id
+                  AND is_next_step = TRUE
+                  AND next_step_completed_at IS NULL
+                  AND next_step_due_date < CURRENT_DATE
+              )
                 OR EXTRACT(DAY FROM NOW() - COALESCE(
                   (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
                   o.created_at
@@ -479,7 +493,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
         `, [userId]),
       ]);
 
