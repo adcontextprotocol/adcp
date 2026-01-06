@@ -41,16 +41,16 @@ function getVersion() {
 }
 
 /**
- * Find the latest released version directory in dist/schemas/
- * Returns null if no released versions exist
+ * Get all released version directories in dist/schemas/
+ * Returns array sorted by semver (descending)
  */
-function findLatestReleasedVersion() {
+function getAllReleasedVersions() {
   if (!fs.existsSync(DIST_DIR)) {
-    return null;
+    return [];
   }
 
   const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
-  const versionDirs = entries
+  return entries
     .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
     .map(e => e.name)
     .sort((a, b) => {
@@ -61,8 +61,34 @@ function findLatestReleasedVersion() {
       if (aMinor !== bMinor) return bMinor - aMinor;
       return bPatch - aPatch;
     });
+}
 
-  return versionDirs[0] || null;
+/**
+ * Find the latest released version directory in dist/schemas/
+ * Returns null if no released versions exist
+ */
+function findLatestReleasedVersion() {
+  const versions = getAllReleasedVersions();
+  return versions[0] || null;
+}
+
+/**
+ * Get the latest patch version for each minor version series
+ * e.g., for [2.6.0, 2.5.1, 2.5.0], returns { '2.6': '2.6.0', '2.5': '2.5.1' }
+ */
+function getLatestPatchPerMinor() {
+  const versions = getAllReleasedVersions();
+  const latestPerMinor = {};
+
+  for (const version of versions) {
+    const minor = getMinorVersion(version);
+    // Since versions are sorted descending, first one wins
+    if (!latestPerMinor[minor]) {
+      latestPerMinor[minor] = version;
+    }
+  }
+
+  return latestPerMinor;
 }
 
 function getMajorVersion(version) {
@@ -126,17 +152,6 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       fs.writeFileSync(targetPath, content);
     }
   }
-}
-
-function createSymlink(target, linkPath) {
-  // Remove existing symlink if it exists
-  if (fs.existsSync(linkPath)) {
-    fs.unlinkSync(linkPath);
-  }
-
-  // Create relative symlink
-  const relativePath = path.relative(path.dirname(linkPath), target);
-  fs.symlinkSync(relativePath, linkPath, 'dir');
 }
 
 function updateSourceRegistry(version) {
@@ -323,15 +338,8 @@ async function main() {
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
 
-    // Update major version symlink (v2 -> 2.5.0)
-    const majorLink = path.join(DIST_DIR, `v${majorVersion}`);
-    console.log(`🔗 Updating symlink: v${majorVersion} → ${version}`);
-    createSymlink(versionDir, majorLink);
-
-    // Update minor version symlink (v2.5 -> 2.5.0)
-    const minorLink = path.join(DIST_DIR, `v${minorVersion}`);
-    console.log(`🔗 Updating symlink: v${minorVersion} → ${version}`);
-    createSymlink(versionDir, minorLink);
+    // Note: Version aliases (v2, v2.5, v1, latest) are handled by HTTP middleware
+    // No symlinks needed - the server rewrites /schemas/v2.5/* to /schemas/2.5.1/*
 
     // Also update latest/ to match the release
     const latestDir = path.join(DIST_DIR, 'latest');
@@ -346,11 +354,6 @@ async function main() {
     const latestBundledDir = path.join(latestDir, 'bundled');
     await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
 
-    // Create v1 symlink pointing to latest/ for backward compatibility
-    const v1Link = path.join(DIST_DIR, 'v1');
-    console.log(`🔗 Creating symlink: v1 → latest (backward compatibility)`);
-    createSymlink(latestDir, v1Link);
-
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
@@ -361,15 +364,21 @@ async function main() {
       console.log(`   (git add skipped - not in git context or git not available)`);
     }
 
+    // Show available paths (aliases are handled by HTTP middleware)
+    const latestPerMinor = getLatestPatchPerMinor();
     console.log('');
     console.log('✅ Release build complete!');
     console.log('');
     console.log('Released paths:');
     console.log(`   /schemas/${version}/          - Exact version (pin for production)`);
     console.log(`   /schemas/${version}/bundled/  - Bundled schemas (no $ref)`);
-    console.log(`   /schemas/v${minorVersion}/            - Minor alias → ${version}`);
-    console.log(`   /schemas/v${majorVersion}/              - Major alias → ${version}`);
     console.log(`   /schemas/latest/           - Development (matches release)`);
+    console.log('');
+    console.log('Version aliases (handled by HTTP middleware):');
+    console.log(`   /schemas/v${majorVersion}/              - Major alias → latest ${majorVersion}.x.x`);
+    for (const [minor, patchVersion] of Object.entries(latestPerMinor)) {
+      console.log(`   /schemas/v${minor}/            - Minor alias → ${patchVersion}`);
+    }
     console.log(`   /schemas/v1/              - Backward compatibility → latest`);
 
   } else {
@@ -392,46 +401,26 @@ async function main() {
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
 
-    // Symlinks for v2, v2.5, v1 should point to the latest RELEASED version
-    // Only create/update these symlinks if we have a released version
-    if (latestReleasedVersion) {
-      const releasedVersionDir = path.join(DIST_DIR, latestReleasedVersion);
-      const releasedMajor = getMajorVersion(latestReleasedVersion);
-      const releasedMinor = getMinorVersion(latestReleasedVersion);
+    // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
+    // No symlinks needed - the server rewrites URLs dynamically
 
-      const majorLink = path.join(DIST_DIR, `v${releasedMajor}`);
-      if (!fs.existsSync(majorLink)) {
-        console.log(`🔗 Creating symlink: v${releasedMajor} → ${latestReleasedVersion}`);
-        createSymlink(releasedVersionDir, majorLink);
-      }
-
-      const minorLink = path.join(DIST_DIR, `v${releasedMinor}`);
-      if (!fs.existsSync(minorLink)) {
-        console.log(`🔗 Creating symlink: v${releasedMinor} → ${latestReleasedVersion}`);
-        createSymlink(releasedVersionDir, minorLink);
-      }
-
-    }
-
-    // v1 always points to latest/ (not a released version)
-    const v1Link = path.join(DIST_DIR, 'v1');
-    if (!fs.existsSync(v1Link)) {
-      console.log(`🔗 Creating symlink: v1 → latest`);
-      createSymlink(latestDir, v1Link);
-    }
-
+    // Show available paths
+    const latestPerMinor = getLatestPatchPerMinor();
     console.log('');
     console.log('✅ Development build complete!');
     console.log('');
     console.log('Available paths:');
     console.log(`   /schemas/latest/           - Development schemas (just rebuilt)`);
-    console.log(`   /schemas/v1/              - Backward compatibility → latest`);
     if (latestReleasedVersion) {
       const releasedMajor = getMajorVersion(latestReleasedVersion);
-      const releasedMinor = getMinorVersion(latestReleasedVersion);
       console.log(`   /schemas/${latestReleasedVersion}/          - Latest release (unchanged)`);
-      console.log(`   /schemas/v${releasedMinor}/            - Minor alias → ${latestReleasedVersion}`);
-      console.log(`   /schemas/v${releasedMajor}/              - Major alias → ${latestReleasedVersion}`);
+      console.log('');
+      console.log('Version aliases (handled by HTTP middleware):');
+      console.log(`   /schemas/v${releasedMajor}/              - Major alias → latest ${releasedMajor}.x.x`);
+      for (const [minor, patchVersion] of Object.entries(latestPerMinor)) {
+        console.log(`   /schemas/v${minor}/            - Minor alias → ${patchVersion}`);
+      }
+      console.log(`   /schemas/v1/              - Backward compatibility → latest`);
     } else {
       console.log('');
       console.log('⚠️  No released versions found. Run with --release to create one:');
