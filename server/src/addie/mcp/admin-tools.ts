@@ -5051,14 +5051,13 @@ Use add_committee_leader to assign a leader.`;
           o.prospect_status,
           o.interest_level,
           o.company_type,
-          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons,
           (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
         FROM organizations o
         JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
         WHERE os.user_id = $1
           AND os.role = 'owner'
           AND o.is_personal IS NOT TRUE
-          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
       `;
 
       if (hotOnly) {
@@ -5090,9 +5089,6 @@ Use add_committee_leader to assign a leader.`;
         if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
         if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
         response += `\n`;
-        if (row.engagement_reasons?.length > 0) {
-          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
-        }
         if (row.last_activity) {
           response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
         }
@@ -5149,7 +5145,7 @@ Use add_committee_leader to assign a leader.`;
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
         )
         SELECT *,
           CASE
@@ -5221,11 +5217,10 @@ Use add_committee_leader to assign a leader.`;
           o.email_domain,
           o.engagement_score,
           o.prospect_status,
-          o.company_type,
-          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+          o.company_type
         FROM organizations o
         WHERE o.is_personal IS NOT TRUE
-          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
           AND o.engagement_score >= $1
           AND NOT EXISTS (
             SELECT 1 FROM org_stakeholders os
@@ -5253,9 +5248,6 @@ Use add_committee_leader to assign a leader.`;
         response += `   Score: ${row.engagement_score || 0}`;
         if (row.company_type) response += ` | Type: ${row.company_type}`;
         response += `\n`;
-        if (row.engagement_reasons?.length > 0) {
-          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
-        }
         response += `   ID: ${row.org_id}\n`;
         response += `\n`;
       }
