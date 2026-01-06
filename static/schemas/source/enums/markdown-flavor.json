@@ -4,5 +4,8 @@
   "title": "Markdown Flavor",
   "description": "Markdown specification flavors supported for text assets",
   "type": "string",
-  "enum": ["commonmark", "gfm"]
+  "enum": [
+    "commonmark",
+    "gfm"
+  ]
 }

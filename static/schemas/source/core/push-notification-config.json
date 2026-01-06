@@ -34,9 +34,15 @@
           "minLength": 32
         }
       },
-      "required": ["schemes", "credentials"],
+      "required": [
+        "schemes",
+        "credentials"
+      ],
       "additionalProperties": false
     }
   },
-  "required": ["url", "authentication"]
+  "required": [
+    "url",
+    "authentication"
+  ]
 }

@@ -20,8 +20,11 @@
           "description": "Optional account identifier on the platform"
         }
       },
-      "required": ["type", "platform"],
-      "additionalProperties": false
+      "required": [
+        "type",
+        "platform"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -40,8 +43,11 @@
           "description": "Optional account identifier on the agent"
         }
       },
-      "required": ["type", "agent_url"],
-      "additionalProperties": false
+      "required": [
+        "type",
+        "agent_url"
+      ],
+      "additionalProperties": true
     }
   ]
 }

@@ -57,9 +57,15 @@
           "description": "Header name for API key (e.g., 'X-API-Key')"
         }
       },
-      "required": ["method"]
+      "required": [
+        "method"
+      ]
     }
   },
-  "required": ["url", "response_type", "security"],
-  "additionalProperties": false
+  "required": [
+    "url",
+    "response_type",
+    "security"
+  ],
+  "additionalProperties": true
 }

@@ -6,12 +6,12 @@
   "type": "string",
   "enum": [
     "submitted",
-    "working", 
+    "working",
     "input-required",
     "completed",
     "canceled",
     "failed",
-    "rejected", 
+    "rejected",
     "auth-required",
     "unknown"
   ],

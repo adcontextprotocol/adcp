@@ -28,18 +28,24 @@
       "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Direct SKU selection for specific products from brand manifest",
       "data": {
-        "manifest_skus": ["SKU-12345", "SKU-67890"]
+        "manifest_skus": [
+          "SKU-12345",
+          "SKU-67890"
+        ]
       }
     },
     {
       "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand manifest",
       "data": {
-        "manifest_tags": ["organic", "sauces"],
+        "manifest_tags": [
+          "organic",
+          "sauces"
+        ],
         "manifest_category": "food/condiments"
       }
     },
@@ -52,7 +58,9 @@
     {
       "description": "Select products by tags",
       "data": {
-        "manifest_tags": ["holiday"]
+        "manifest_tags": [
+          "holiday"
+        ]
       }
     }
   ]

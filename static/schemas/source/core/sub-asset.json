@@ -26,8 +26,13 @@
           "description": "URL for media assets (images, videos, etc.)"
         }
       },
-      "required": ["asset_kind", "asset_type", "asset_id", "content_uri"],
-      "additionalProperties": false
+      "required": [
+        "asset_kind",
+        "asset_type",
+        "asset_id",
+        "content_uri"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -62,8 +67,13 @@
           "description": "Text content for text-based assets like headlines, body text, CTA text, etc."
         }
       },
-      "required": ["asset_kind", "asset_type", "asset_id", "content"],
-      "additionalProperties": false
+      "required": [
+        "asset_kind",
+        "asset_type",
+        "asset_id",
+        "content"
+      ],
+      "additionalProperties": true
     }
   ]
 }

@@ -68,5 +68,5 @@
   "required": [
     "package_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
