@@ -660,6 +660,7 @@ export interface UpdateEventInput {
 
 export interface ListEventsOptions {
   status?: EventStatus;
+  statuses?: EventStatus[];  // Query multiple statuses at once
   event_type?: EventType;
   event_format?: EventFormat;
   upcoming_only?: boolean;
