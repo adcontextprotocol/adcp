@@ -20,6 +20,8 @@ import { OrganizationDatabase } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
+import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
+import { MemberDatabase } from '../../db/member-db.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -1667,6 +1669,33 @@ Returns counts and examples of collected insights by type.`,
         limit: {
           type: 'number',
           description: 'Maximum examples to show per type (default: 5)',
+        },
+      },
+    },
+  },
+
+  // ============================================
+  // MEMBER SEARCH & INTRODUCTION ANALYTICS TOOLS
+  // ============================================
+  {
+    name: 'get_member_search_analytics',
+    description: `Get analytics about member profile searches and introductions made through Addie.
+
+USE THIS when admin asks:
+- "How are member searches performing?"
+- "Show me introduction stats"
+- "What are people searching for?"
+- "Which members are getting the most visibility?"
+- "How many introductions have we made?"
+
+Returns: Search counts, impressions, clicks, introduction requests/sent, top search queries, top members by visibility, and recent introductions with full context.`,
+    usage_hints: 'Use this to monitor the member directory and introduction feature performance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: {
+          type: 'number',
+          description: 'Number of days to look back (default: 30, max: 365)',
         },
       },
     },
@@ -6034,6 +6063,118 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error getting insight summary');
       return '❌ Failed to get insight summary. Please try again.';
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH ANALYTICS HANDLERS
+  // ============================================
+  handlers.set('get_member_search_analytics', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const days = Math.min(Math.max((input.days as number) || 30, 1), 365);
+
+      const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
+      const memberDb = new MemberDatabase();
+
+      // Get global analytics and recent introductions
+      const [globalAnalytics, recentIntroductions] = await Promise.all([
+        memberSearchAnalyticsDb.getGlobalAnalytics(days),
+        memberSearchAnalyticsDb.getRecentIntroductionsGlobal(10),
+      ]);
+
+      // Enrich top members with profile info
+      const enrichedTopMembers = await Promise.all(
+        globalAnalytics.top_members.slice(0, 5).map(async (member) => {
+          const profile = await memberDb.getProfileById(member.member_profile_id);
+          return {
+            display_name: profile?.display_name || 'Unknown',
+            slug: profile?.slug || null,
+            impressions: member.impressions,
+          };
+        })
+      );
+
+      // Enrich recent introductions with profile info
+      const enrichedIntroductions = await Promise.all(
+        recentIntroductions.map(async (intro) => {
+          const profile = await memberDb.getProfileById(intro.member_profile_id);
+          return {
+            event_type: intro.event_type,
+            member_name: profile?.display_name || 'Unknown',
+            member_slug: profile?.slug || null,
+            searcher_name: intro.searcher_name,
+            searcher_email: intro.searcher_email,
+            searcher_company: intro.searcher_company,
+            search_query: intro.search_query,
+            reasoning: intro.reasoning,
+            message: intro.message,
+            created_at: intro.created_at,
+          };
+        })
+      );
+
+      // Build response
+      let response = `## Member Search Analytics (Last ${days} Days)\n\n`;
+
+      response += `### Summary\n`;
+      response += `- **Unique searches:** ${globalAnalytics.total_searches}\n`;
+      response += `- **Total impressions:** ${globalAnalytics.total_impressions}\n`;
+      response += `- **Profile clicks:** ${globalAnalytics.total_clicks}\n`;
+      response += `- **Introduction requests:** ${globalAnalytics.total_intro_requests}\n`;
+      response += `- **Introductions sent:** ${globalAnalytics.total_intros_sent}\n`;
+      response += `- **Unique searchers:** ${globalAnalytics.unique_searchers}\n\n`;
+
+      // Calculate rates
+      if (globalAnalytics.total_impressions > 0) {
+        const clickRate = ((globalAnalytics.total_clicks / globalAnalytics.total_impressions) * 100).toFixed(1);
+        response += `**Click-through rate:** ${clickRate}%\n`;
+      }
+      if (globalAnalytics.total_clicks > 0) {
+        const introRate = ((globalAnalytics.total_intro_requests / globalAnalytics.total_clicks) * 100).toFixed(1);
+        response += `**Introduction rate (from clicks):** ${introRate}%\n`;
+      }
+      response += '\n';
+
+      // Top queries
+      if (globalAnalytics.top_queries.length > 0) {
+        response += `### Top Search Queries\n`;
+        for (const q of globalAnalytics.top_queries.slice(0, 5)) {
+          response += `- "${q.query}" (${q.count} searches)\n`;
+        }
+        response += '\n';
+      }
+
+      // Top members
+      if (enrichedTopMembers.length > 0) {
+        response += `### Top Members by Visibility\n`;
+        for (const m of enrichedTopMembers) {
+          response += `- **${m.display_name}** - ${m.impressions} impressions`;
+          if (m.slug) response += ` ([profile](/members/${m.slug}))`;
+          response += '\n';
+        }
+        response += '\n';
+      }
+
+      // Recent introductions
+      if (enrichedIntroductions.length > 0) {
+        response += `### Recent Introductions\n`;
+        for (const intro of enrichedIntroductions) {
+          const date = new Date(intro.created_at).toLocaleDateString();
+          const status = intro.event_type === 'introduction_sent' ? '✅ Sent' : '📝 Requested';
+          response += `- ${status} **${intro.searcher_name}**`;
+          if (intro.searcher_company) response += ` (${intro.searcher_company})`;
+          response += ` → **${intro.member_name}** on ${date}\n`;
+          if (intro.search_query) response += `  - Searched: "${intro.search_query}"\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error getting member search analytics');
+      return '❌ Failed to get member search analytics. Please try again.';
     }
   });
 

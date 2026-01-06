@@ -14,6 +14,11 @@ import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
+import { MemberDatabase } from "../../db/member-db.js";
+
+const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
+const memberDb = new MemberDatabase();
 
 const logger = createLogger("admin-stats");
 
@@ -493,6 +498,87 @@ export function setupStatsRoutes(apiRouter: Router): void {
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch prospect data",
+      });
+    }
+  });
+
+  // GET /api/admin/member-search-analytics - Get member search analytics for admin dashboard
+  apiRouter.get("/member-search-analytics", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const safeDays = Math.min(Math.max(days, 1), 365);
+
+      // Get global analytics and recent introductions in parallel
+      const [globalAnalytics, recentIntroductions] = await Promise.all([
+        memberSearchAnalyticsDb.getGlobalAnalytics(safeDays),
+        memberSearchAnalyticsDb.getRecentIntroductionsGlobal(20),
+      ]);
+
+      // Enrich top_members with profile info
+      const enrichedTopMembers = await Promise.all(
+        globalAnalytics.top_members.map(async (member) => {
+          try {
+            const profile = await memberDb.getProfileById(member.member_profile_id);
+            return {
+              ...member,
+              display_name: profile?.display_name || 'Unknown',
+              slug: profile?.slug || null,
+            };
+          } catch {
+            return {
+              ...member,
+              display_name: 'Unknown',
+              slug: null,
+            };
+          }
+        })
+      );
+
+      // Enrich recent introductions with profile info
+      const enrichedIntroductions = await Promise.all(
+        recentIntroductions.map(async (intro) => {
+          try {
+            const profile = await memberDb.getProfileById(intro.member_profile_id);
+            return {
+              ...intro,
+              member_display_name: profile?.display_name || 'Unknown',
+              member_slug: profile?.slug || null,
+            };
+          } catch {
+            return {
+              ...intro,
+              member_display_name: 'Unknown',
+              member_slug: null,
+            };
+          }
+        })
+      );
+
+      res.json({
+        period_days: safeDays,
+        summary: {
+          total_searches: globalAnalytics.total_searches,
+          total_impressions: globalAnalytics.total_impressions,
+          total_clicks: globalAnalytics.total_clicks,
+          total_intro_requests: globalAnalytics.total_intro_requests,
+          total_intros_sent: globalAnalytics.total_intros_sent,
+          unique_searchers: globalAnalytics.unique_searchers,
+          click_rate: globalAnalytics.total_impressions > 0
+            ? ((globalAnalytics.total_clicks / globalAnalytics.total_impressions) * 100).toFixed(1) + '%'
+            : '0%',
+          intro_rate: globalAnalytics.total_clicks > 0
+            ? ((globalAnalytics.total_intro_requests / globalAnalytics.total_clicks) * 100).toFixed(1) + '%'
+            : '0%',
+        },
+        top_queries: globalAnalytics.top_queries,
+        top_members: enrichedTopMembers,
+        recent_introductions: enrichedIntroductions,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching member search analytics");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch member search analytics",
       });
     }
   });

@@ -149,6 +149,21 @@ When users set up agents or publishers, walk through the full verification chain
 - get_my_profile: Show user's profile
 - update_my_profile: Update profile fields (user-scoped)
 
+**Find Help / Partner Discovery:**
+- search_members: Search for member organizations that can help with specific needs. USE THIS when users:
+  - Ask about finding vendors, consultants, or partners
+  - Need help implementing AdCP ("who can help me set this up?")
+  - Want managed services ("someone to run a sales agent for me")
+  - Are looking for specific expertise ("CTV advertising", "sustainability")
+  - Say "go agentic" or "get started" and need guidance on partners
+- request_introduction: Request an introduction to a specific member. Use this when:
+  - User explicitly asks to be introduced to or connected with a member
+  - User wants to "talk to" or "contact" a specific member after seeing search results
+  - Collect their name, email, and message before calling this tool
+- get_my_search_analytics: Show the user's profile analytics (search impressions, clicks, intro requests)
+
+When users ask about finding help, use search_members to find relevant organizations, then present options with clear descriptions of what each can offer. After showing results, remind them they can ask for an introduction if they find a good match.
+
 **Content:**
 - list_perspectives: Browse community articles
 

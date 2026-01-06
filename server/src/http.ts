@@ -5666,6 +5666,53 @@ Disallow: /api/admin/
       }
     });
 
+    // POST /api/members/:slug/click - Track a profile click for analytics
+    this.app.post('/api/members/:slug/click', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { search_session_id } = req.body;
+
+        // Import analytics db lazily
+        const { MemberSearchAnalyticsDatabase } = await import('./db/member-search-analytics-db.js');
+        const analyticsDb = new MemberSearchAnalyticsDatabase();
+
+        // Get the profile to get its ID
+        const profile = await memberDb.getProfileBySlug(slug);
+        if (!profile) {
+          return res.status(404).json({ error: 'Member not found' });
+        }
+
+        // Get user ID if authenticated
+        let userId: string | undefined;
+        const sessionCookie = req.cookies?.['wos-session'];
+        if (sessionCookie && AUTH_ENABLED && workos) {
+          try {
+            const result = await workos.userManagement.authenticateWithSessionCookie({
+              sessionData: sessionCookie,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            if (result.authenticated && 'user' in result && result.user) {
+              userId = result.user.id;
+            }
+          } catch {
+            // Not authenticated - that's fine
+          }
+        }
+
+        // Record the click
+        await analyticsDb.recordProfileClick({
+          member_profile_id: profile.id,
+          searcher_user_id: userId,
+          search_session_id,
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Record member click error');
+        res.status(500).json({ error: 'Failed to record click' });
+      }
+    });
+
     // GET /api/public/discover-agent - Public endpoint to discover agent info (for members directory)
     this.app.get('/api/public/discover-agent', async (req, res) => {
       const { url } = req.query;

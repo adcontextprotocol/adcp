@@ -226,6 +226,142 @@
       padding: 16px;
     }
 
+    /* Member cards from search results */
+    .member-cards-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .member-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      padding: 16px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .member-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .member-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .member-card-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      object-fit: contain;
+      background: var(--color-bg-subtle);
+      flex-shrink: 0;
+    }
+
+    .member-card-logo-placeholder {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .member-card-title {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .member-card-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--color-text-heading);
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-card-tagline {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-card-description {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin: 0;
+    }
+
+    .member-card-offerings {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .member-card-offering {
+      font-size: 11px;
+      padding: 2px 8px;
+      background: var(--color-primary-50, #eef2ff);
+      color: var(--color-brand);
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    .member-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .member-card-location {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .member-card-cta {
+      font-size: 12px;
+      color: var(--color-brand);
+      font-weight: 500;
+    }
+
+    @media (max-width: 600px) {
+      .member-cards-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .message-content ul, .message-content ol {
       margin: 8px 0;
       padding-left: 20px;
@@ -1256,6 +1392,18 @@
       // Tab state - persisted to localStorage
       let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
       let currentTabId = 'home'; // 'home' or conversation_id
+
+      // Event delegation for member card clicks (more secure than inline onclick)
+      messagesContainer.addEventListener('click', function(e) {
+        const card = e.target.closest('.member-card');
+        if (card) {
+          const slug = card.dataset.slug;
+          const sessionId = card.dataset.sessionId || null;
+          if (slug) {
+            trackMemberClick(slug, sessionId);
+          }
+        }
+      });
       const originalTitle = document.title;
 
       // Native app auth token (from URL hash, e.g., #token=xxx)
@@ -1840,6 +1988,91 @@
         sendButton.disabled = !hasText || isLoading || !isReady;
       }
 
+      // Track member card clicks for analytics
+      function trackMemberClick(slug, searchSessionId) {
+        // Fire-and-forget analytics tracking
+        fetch(`/api/members/${encodeURIComponent(slug)}/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ search_session_id: searchSessionId }),
+          credentials: 'include',
+        }).catch(() => {
+          // Ignore errors - analytics shouldn't block navigation
+        });
+      }
+
+      // Render member search results as cards
+      function renderMemberCards(data) {
+        const searchSessionId = data.search_session_id || null;
+        const offeringLabels = {
+          buyer_agent: 'Buyer Agent',
+          sales_agent: 'Sales Agent',
+          creative_agent: 'Creative Agent',
+          signals_agent: 'Signals Agent',
+          publisher: 'Publisher',
+          consulting: 'Consulting',
+          managed_services: 'Managed Services',
+          implementation: 'Implementation',
+          other: 'Other',
+        };
+
+        const escapeHtml = (str) => {
+          if (!str) return '';
+          return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        };
+
+        const cards = data.results.map(member => {
+          const logoHtml = member.logo_url
+            ? `<img class="member-card-logo" src="${escapeHtml(member.logo_url)}" alt="${escapeHtml(member.display_name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="member-card-logo-placeholder" style="display:none">${escapeHtml(member.display_name.charAt(0))}</div>`
+            : `<div class="member-card-logo-placeholder">${escapeHtml(member.display_name.charAt(0))}</div>`;
+
+          const taglineHtml = member.tagline
+            ? `<p class="member-card-tagline">${escapeHtml(member.tagline)}</p>`
+            : '';
+
+          const descriptionHtml = member.description
+            ? `<p class="member-card-description">${escapeHtml(member.description)}</p>`
+            : '';
+
+          const offeringsHtml = member.offerings && member.offerings.length > 0
+            ? `<div class="member-card-offerings">${member.offerings.slice(0, 3).map(o =>
+                `<span class="member-card-offering">${escapeHtml(offeringLabels[o] || o)}</span>`
+              ).join('')}</div>`
+            : '';
+
+          const locationHtml = member.headquarters
+            ? `<span class="member-card-location">📍 ${escapeHtml(member.headquarters)}</span>`
+            : '<span></span>';
+
+          // Add onclick handler to track clicks
+          const sessionIdAttr = searchSessionId ? `data-session-id="${escapeHtml(searchSessionId)}"` : '';
+
+          return `
+            <a href="/members/${escapeHtml(member.slug)}" class="member-card" target="_blank" data-slug="${escapeHtml(member.slug)}" ${sessionIdAttr}>
+              <div class="member-card-header">
+                ${logoHtml}
+                <div class="member-card-title">
+                  <p class="member-card-name">${escapeHtml(member.display_name)}</p>
+                  ${taglineHtml}
+                </div>
+              </div>
+              ${descriptionHtml}
+              ${offeringsHtml}
+              <div class="member-card-footer">
+                ${locationHtml}
+                <span class="member-card-cta">View Profile →</span>
+              </div>
+            </a>
+          `;
+        }).join('');
+
+        return `<div class="member-cards-container">${cards}</div>`;
+      }
+
       // Render markdown using marked library
       function renderMessage(text) {
         // Configure marked for security and compatibility
@@ -1855,6 +2088,21 @@
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
 
+        // Check for embedded ADDIE_DATA blocks and extract them
+        const dataBlockRegex = /<!--ADDIE_DATA:([\s\S]*?):ADDIE_DATA-->/g;
+        const dataBlocks = [];
+        let processedText = text.replace(dataBlockRegex, (match, jsonStr) => {
+          try {
+            const data = JSON.parse(jsonStr);
+            const placeholder = `__ADDIE_DATA_PLACEHOLDER_${dataBlocks.length}__`;
+            dataBlocks.push(data);
+            return placeholder;
+          } catch (e) {
+            console.warn('Failed to parse ADDIE_DATA block:', e);
+            return ''; // Remove invalid blocks
+          }
+        });
+
         // Use marked's built-in renderer with custom link and image handling
         const renderer = new marked.Renderer();
         renderer.link = function(href, title, text) {
@@ -1866,9 +2114,12 @@
             text = link.text;
           }
           // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|mailto:|#)/i.test(href) ? href : '#';
+          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
           const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          return `<a href="${escapeAttr(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+          // Use target="_blank" only for external links
+          const isExternal = /^https?:\/\//i.test(href);
+          const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
         };
 
         // Custom image renderer
@@ -1889,7 +2140,22 @@
           return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
-        return marked.parse(text, { renderer });
+        let html = marked.parse(processedText, { renderer });
+
+        // Replace placeholders with rendered components
+        dataBlocks.forEach((data, index) => {
+          const placeholder = `__ADDIE_DATA_PLACEHOLDER_${index}__`;
+          let replacement = '';
+
+          if (data.type === 'member_search_results') {
+            replacement = renderMemberCards(data);
+          }
+          // Add more types here as needed
+
+          html = html.replace(placeholder, replacement);
+        });
+
+        return html;
       }
 
       // Render creative preview (iframe or HTML)
