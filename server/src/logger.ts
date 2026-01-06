@@ -3,14 +3,86 @@
  *
  * Provides a centralized logger instance with appropriate configuration
  * for development and production environments.
+ *
+ * Supports an error hook for sending errors to external services (e.g., PostHog).
  */
 
 import pino from 'pino';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
+/**
+ * Error hook type - called when logger.error() or logger.fatal() is invoked.
+ * Set via setErrorHook() to avoid circular dependencies with PostHog.
+ */
+type ErrorHook = (
+  message: string,
+  error?: Error,
+  context?: Record<string, unknown>
+) => void;
+
+let errorHook: ErrorHook | null = null;
+
+/**
+ * Set the error hook for external error reporting.
+ * Call this after PostHog is initialized to send errors there.
+ */
+export function setErrorHook(hook: ErrorHook): void {
+  errorHook = hook;
+}
+
+// Pino hooks to capture error/fatal logs for external reporting
+const hooks: pino.LoggerOptions['hooks'] = {
+  logMethod(inputArgs, method, level) {
+    // Only process error (50) and fatal (60) levels
+    if (level >= 50 && errorHook) {
+      const args = inputArgs as unknown[];
+      let message = '';
+      let error: Error | undefined;
+      let context: Record<string, unknown> = {};
+
+      // Parse Pino's flexible argument format
+      for (const arg of args) {
+        if (arg instanceof Error) {
+          error = arg;
+        } else if (typeof arg === 'string') {
+          message = arg;
+        } else if (typeof arg === 'object' && arg !== null) {
+          // Context object - extract error if present
+          const obj = arg as Record<string, unknown>;
+          if (obj.err instanceof Error) {
+            error = obj.err;
+          } else if (obj.error instanceof Error) {
+            error = obj.error;
+          }
+          // Copy other context (excluding the error we already extracted)
+          const { err, error: _error, ...rest } = obj;
+          context = { ...context, ...rest };
+        }
+      }
+
+      // If no Error object but we have a message, create one for stack trace
+      if (!error && message) {
+        error = new Error(message);
+      }
+
+      // Call the hook asynchronously to not block logging
+      try {
+        errorHook(message || error?.message || 'Unknown error', error, context);
+      } catch {
+        // Silently ignore hook errors to prevent logging loops
+      }
+    }
+
+    // Always call the original method
+    return method.apply(this, inputArgs);
+  },
+};
+
 export const logger = pino({
   level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
+
+  hooks,
 
   // Use pino-pretty in development for human-readable logs
   transport: isDevelopment

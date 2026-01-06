@@ -7122,27 +7122,18 @@ Disallow: /api/admin/
       }
     });
 
-    // Global error handler - captures unhandled errors to PostHog
+    // Global error handler - logger.error() automatically captures to PostHog via error hook
     this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      // Capture to PostHog if configured
-      import('./utils/posthog.js').then(({ captureException }) => {
-        const userId = req.user?.id || 'anonymous';
-        captureException(err, userId, {
-          path: req.path,
-          method: req.method,
-          query: req.query,
-          userAgent: req.get('user-agent'),
-        });
-      }).catch(() => {
-        // PostHog capture failed silently
-      });
-
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
       res.status(500).json({ error: 'Internal server error' });
     });
   }
 
   async start(port: number = 3000): Promise<void> {
+    // Initialize PostHog error tracking (captures all logger.error() calls)
+    const { initPostHogErrorTracking } = await import('./utils/posthog.js');
+    initPostHogErrorTracking();
+
     // Initialize database
     const { initializeDatabase } = await import("./db/client.js");
     const { runMigrations } = await import("./db/migrate.js");
