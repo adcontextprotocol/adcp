@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/calibrate-content-response.json",
+  "title": "Calibrate Content Response",
+  "description": "Response payload with verdict, detailed explanations, and dialogue support for collaborative calibration",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response with detailed calibration feedback",
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "description": "Dialogue identifier for follow-up questions"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "fail"],
+          "description": "Overall pass/fail verdict for the content evaluation"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Model confidence in the verdict (0-1)"
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Detailed natural language explanation of the decision"
+        },
+        "policy_alignment": {
+          "type": "object",
+          "description": "How the content maps to specific policy criteria",
+          "properties": {
+            "matching_criteria": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Policy statements that this content matches positively"
+            },
+            "violations": {
+              "type": "array",
+              "description": "Policy violations found in the content",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "policy_text": {
+                    "type": "string",
+                    "description": "The policy text that was violated"
+                  },
+                  "violation_reason": {
+                    "type": "string",
+                    "description": "Explanation of how the content violates this policy"
+                  }
+                },
+                "required": ["policy_text", "violation_reason"]
+              }
+            },
+            "no_violations": {
+              "type": "boolean",
+              "description": "True if no policy violations were found"
+            }
+          }
+        },
+        "features": {
+          "type": "array",
+          "description": "Per-feature breakdown with explanations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Which feature was evaluated (e.g., brand_safety, brand_suitability, competitor_adjacency)"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["passed", "failed", "warning", "unevaluated"],
+                "description": "Evaluation status for this feature"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "Human-readable explanation of why this feature passed or failed"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "Actionable suggestion for content that could meet this feature's requirements"
+              }
+            },
+            "required": ["feature_id", "status"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        }
+      },
+      "required": ["context_id", "verdict"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "verdict": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

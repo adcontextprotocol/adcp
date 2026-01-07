@@ -1,0 +1,172 @@
+---
+title: calibrate_content
+sidebar_position: 7
+---
+
+# calibrate_content
+
+Collaborative calibration task for aligning on content standards interpretation. Used during setup to help sellers understand and internalize a buyer's content policies before campaign execution.
+
+Unlike high-volume runtime evaluation, calibration is a **dialogue-based process** where parties exchange examples and explanations until aligned.
+
+## When to Use
+
+- **Seller onboarding**: When a seller first receives content standards from a buyer
+- **Policy clarification**: When a seller needs to understand why specific content passes or fails
+- **Model training**: When building a local model to run against the standards
+- **Drift detection**: Periodic re-calibration to ensure continued alignment
+
+## Request
+
+**Schema**: [calibrate-content-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/calibrate-content-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Standards configuration to calibrate against |
+| `content` | content-context | Yes | Content context to evaluate |
+| `context_id` | string | No | Continue an existing calibration dialogue |
+| `feedback` | string | No | Seller's feedback or disagreement with previous response |
+
+### Content Context
+
+**Schema**: [content-context.json](https://adcontextprotocol.org/schemas/v2/content-standards/content-context.json)
+
+```json
+{
+  "type": "domain",
+  "value": "https://reddit.com/r/fitness/comments/abc123",
+  "language": "en",
+  "title": "Best protein sources for muscle building",
+  "signals": [
+    {"key": "iab_category", "value": "health/fitness", "confidence": 0.92}
+  ],
+  "text_content": [
+    {"type": "heading", "heading": {"level": 1, "text": "Best protein sources for muscle building"}},
+    {"type": "paragraph", "paragraphs": ["Looking for recommendations on high-quality protein sources...", "I've been lifting for 6 months and want to optimize my diet."]}
+  ]
+}
+```
+
+## Response
+
+**Schema**: [calibrate-content-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/calibrate-content-response.json)
+
+### Passing Response
+
+```json
+{
+  "context_id": "calib_abc123",
+  "verdict": "pass",
+  "confidence": 0.95,
+  "explanation": "This content aligns well with the brand's fitness-focused positioning. Health and fitness content is explicitly marked as 'ideal' in the policy. The discussion is constructive and educational.",
+  "policy_alignment": {
+    "matching_criteria": [
+      "Sports and fitness content is ideal",
+      "Lifestyle content about health is good"
+    ],
+    "no_violations": true
+  },
+  "features": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "explanation": "No safety concerns. Content is user-generated but constructive fitness discussion."
+    },
+    {
+      "feature_id": "brand_suitability",
+      "status": "passed",
+      "explanation": "Fitness content matches brand's athletic positioning."
+    }
+  ]
+}
+```
+
+### Failing Response with Detailed Explanation
+
+```json
+{
+  "context_id": "calib_def456",
+  "verdict": "fail",
+  "confidence": 0.88,
+  "explanation": "This content discusses political topics which the policy explicitly excludes. While the article itself is balanced journalism, the brand has requested to avoid all controversial political content regardless of tone.",
+  "policy_alignment": {
+    "matching_criteria": [],
+    "violations": [
+      {
+        "policy_text": "Avoid content about violence, controversial politics, adult themes",
+        "violation_reason": "Article discusses ongoing political controversy"
+      }
+    ]
+  },
+  "features": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "explanation": "No hate speech, illegal content, or explicit material."
+    },
+    {
+      "feature_id": "brand_suitability",
+      "status": "failed",
+      "explanation": "Political content is excluded by brand policy, even when balanced.",
+      "suggestion": "Consider news content focused on sports, entertainment, or lifestyle instead."
+    }
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `context_id` | Dialogue identifier for follow-up questions |
+| `verdict` | Overall `pass` or `fail` decision |
+| `confidence` | Model confidence in the verdict (0-1) |
+| `explanation` | Detailed natural language explanation of the decision |
+| `policy_alignment` | How the content maps to specific policy criteria |
+| `features` | Per-feature breakdown with explanations |
+
+## Dialogue Flow
+
+Calibration supports back-and-forth dialogue via `context_id`:
+
+```python
+# Initial calibration request
+response = verification_agent.calibrate_content(
+    standards_id="nike_brand_safety",
+    content={"type": "domain", "value": "https://reddit.com/r/news/politics"}
+)
+# Response: verdict=fail, context_id="calib_xyz"
+
+# Seller disagrees - continue dialogue
+response = verification_agent.calibrate_content(
+    standards_id="nike_brand_safety",
+    content={"type": "domain", "value": "https://reddit.com/r/news/politics"},
+    context_id="calib_xyz",
+    feedback="This is a factual news article, not opinion. Should balanced journalism be excluded?"
+)
+# Response: Clarifies that brand policy excludes ALL political content regardless of tone
+
+# Seller acknowledges and tries different content
+response = verification_agent.calibrate_content(
+    standards_id="nike_brand_safety",
+    content={"type": "domain", "value": "https://reddit.com/r/running"},
+    context_id="calib_xyz"
+)
+# Response: verdict=pass - now seller understands the boundaries
+```
+
+## Calibration vs Runtime
+
+| Aspect | calibrate_content | Runtime (local model) |
+|--------|-------------------|----------------------|
+| **Purpose** | Alignment & understanding | High-volume decisioning |
+| **Volume** | Low (setup/periodic) | High (every impression) |
+| **Response** | Verbose explanations | Pass/fail only |
+| **Latency** | Seconds acceptable | Milliseconds required |
+| **Dialogue** | Supports back-and-forth | Stateless |
+
+## Related Tasks
+
+- [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Retrieve the policies being calibrated against
+- [list_content_features](/docs/governance/content-standards/tasks/list_content_features) - Discover available features
+- [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) - Post-campaign delivery validation

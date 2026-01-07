@@ -14,6 +14,6 @@ Management tasks:
 - `update_content_standards`: Update an existing configuration
 - `delete_content_standards`: Delete a configuration
 
-Evaluation tasks:
-- `check_content`: Evaluate content context against safety policies
+Calibration & Validation tasks:
+- `calibrate_content`: Collaborative dialogue to align on policy interpretation
 - `validate_content_delivery`: Batch validate delivery records

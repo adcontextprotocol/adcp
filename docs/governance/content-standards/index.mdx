@@ -113,6 +113,63 @@ Buyers typically maintain multiple standards configurations for different contex
 - **countries_all**: ISO country codes - standards apply in ALL listed countries (different jurisdictions have different regulations)
 - **channels_any**: Advertising channels - standards apply to ANY of the listed channels
 
+## Workflow
+
+Content Standards involves three phases with different agents:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           1. SETUP PHASE                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Brand ──────► Verification Agent (e.g., IAS)                               │
+│                    │                                                         │
+│                    │ create_content_standards + calibration examples        │
+│                    ▼                                                         │
+│               ┌──────────────┐                                              │
+│               │ standards_id │ ← Model trained on brand policy              │
+│               └──────────────┘                                              │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                        2. ACTIVATION PHASE                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Brand ──────► Buyer Agent (e.g., Scope3)                                   │
+│                    │                                                         │
+│                    │ "Buy inventory from Reddit, use standards_id X"        │
+│                    ▼                                                         │
+│  Buyer Agent ────► Seller Agent (e.g., Reddit)                              │
+│                    │                                                         │
+│                    │ Pass content_standards reference in media buy          │
+│                    ▼                                                         │
+│  Seller Agent ───► Verification Agent                                       │
+│                    │                                                         │
+│                    │ calibrate_content (back-and-forth dialogue)            │
+│                    │ "Does r/fitness pass?" → "Yes, because..."             │
+│                    │ "Does r/politics pass?" → "No, because..."             │
+│                    ▼                                                         │
+│  Seller says: "I understand the model. Ready to execute."                   │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                         3. RUNTIME PHASE                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Seller runs campaign using local/cached model                              │
+│                    │                                                         │
+│                    │ Periodic: validate_content_delivery                    │
+│                    │ (sample delivery reports → Verification Agent)         │
+│                    ▼                                                         │
+│  Buyer Agent ────► Verification Agent                                       │
+│                    │                                                         │
+│                    │ "How aligned is delivery?"                             │
+│                    ▼                                                         │
+│               Reporting / drift detection                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key insight**: Runtime decisioning happens locally at the seller (for scale), while calibration and validation happen via the verification agent (for alignment).
+
 ## Tasks
 
 ### Discovery
@@ -131,11 +188,11 @@ Buyers typically maintain multiple standards configurations for different contex
 | [update_content_standards](/docs/governance/content-standards/tasks/update_content_standards) | Update an existing standards configuration |
 | [delete_content_standards](/docs/governance/content-standards/tasks/delete_content_standards) | Delete a standards configuration |
 
-### Evaluation
+### Calibration & Validation
 
 | Task | Description |
 |------|-------------|
-| [check_content](/docs/governance/content-standards/tasks/check_content) | Evaluate a single content context |
+| [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) | Collaborative dialogue to align on policy interpretation |
 | [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of delivery records |
 
 ## Typical Providers
@@ -145,41 +202,17 @@ Buyers typically maintain multiple standards configurations for different contex
 - **Scope3** - Sustainability-focused brand safety with prompt-based policies
 - **Custom** - Brand-specific implementations
 
-## Evaluation Results
+## Calibration vs Runtime
 
-Evaluation tasks always return a **pass/fail verdict** and may optionally include feature-level details:
+| Aspect | calibrate_content | Runtime (seller's local model) |
+|--------|-------------------|-------------------------------|
+| **Purpose** | Alignment & understanding | High-volume decisioning |
+| **Volume** | Low (setup/periodic) | High (every impression) |
+| **Response** | Verbose explanations | Pass/fail only |
+| **Latency** | Seconds acceptable | Milliseconds required |
+| **Dialogue** | Supports back-and-forth | Stateless |
 
-```json
-{
-  "verdict": "fail",
-  "features": [
-    {
-      "feature_id": "brand_safety",
-      "status": "passed",
-      "value": "safe"
-    },
-    {
-      "feature_id": "brand_suitability",
-      "status": "failed",
-      "message": "Content tone doesn't match brand guidelines"
-    },
-    {
-      "feature_id": "competitor_adjacency",
-      "status": "failed",
-      "message": "Content mentions competitor brand"
-    }
-  ]
-}
-```
-
-### Why Feature Breakdown Matters
-
-Feature-level results help buyers understand *why* content was blocked:
-
-- **Optimization**: Which rules cause the most blocking? Are your suitability criteria too strict?
-- **Safety vs Suitability**: Distinguish universal brand safety blocks (hate speech, illegal content) from brand-specific suitability blocks (tone, competitive separation)
-- **Debugging**: When using third-party standards like Scope3 Common Sense Brand Standards, identify which specific category caused the issue
-- **Reporting**: Track block rates by feature to inform policy refinement
+The `calibrate_content` task returns detailed explanations of *why* content passes or fails, mapping decisions back to specific policy criteria. This helps sellers build accurate local models.
 
 ## Related
 
