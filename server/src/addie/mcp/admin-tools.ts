@@ -4100,7 +4100,7 @@ export function createAdminToolHandlers(
     if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
-    const userId = (input.user_id as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
     const userEmail = input.user_email as string | undefined;
 
     if (!committeeSlug) {
@@ -4112,6 +4112,19 @@ export function createAdminToolHandlers(
     }
 
     try {
+      // If a Slack user ID was passed (U followed by 8+ alphanumeric chars), resolve to WorkOS user ID
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        } else {
+          // Keep the Slack ID - the display query will look up the name from slack_user_mappings
+          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+        }
+      }
+
       // Find the committee
       const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
       if (!committee) {
@@ -4160,7 +4173,7 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
     if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
-    const userId = (input.user_id as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
 
     if (!committeeSlug) {
       return '❌ Please provide a committee_slug.';
@@ -4171,6 +4184,16 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
     }
 
     try {
+      // If a Slack user ID was passed (U followed by 8+ alphanumeric chars), resolve to WorkOS user ID
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        }
+      }
+
       const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
       if (!committee) {
         return `❌ Committee "${committeeSlug}" not found.`;

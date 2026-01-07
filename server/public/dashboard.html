@@ -2093,7 +2093,7 @@
         if (committees.length === 0) {
           // No committees - hide section and nav item
           if (section) section.style.display = 'none';
-          if (window.DashboardNav) {
+          if (window.DashboardNav?.showLeadershipNav) {
             DashboardNav.showLeadershipNav(false);
           }
           return;
@@ -2101,7 +2101,7 @@
 
         // Show the section and nav item
         if (section) section.style.display = 'block';
-        if (window.DashboardNav) {
+        if (window.DashboardNav?.showLeadershipNav) {
           DashboardNav.showLeadershipNav(true);
         }
 
@@ -2157,7 +2157,7 @@
       } catch (error) {
         console.error('Error loading leadership section:', error);
         if (section) section.style.display = 'none';
-        if (window.DashboardNav) {
+        if (window.DashboardNav?.showLeadershipNav) {
           DashboardNav.showLeadershipNav(false);
         }
       }

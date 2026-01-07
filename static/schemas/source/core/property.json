@@ -32,8 +32,11 @@
             "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
           }
         },
-        "required": ["type", "value"],
-        "additionalProperties": false
+        "required": [
+          "type",
+          "value"
+        ],
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -50,6 +53,10 @@
       "description": "Domain where adagents.json should be checked for authorization validation. Required for list_authorized_properties response. Optional in adagents.json (file location implies domain)."
     }
   },
-  "required": ["property_type", "name", "identifiers"],
-  "additionalProperties": false
+  "required": [
+    "property_type",
+    "name",
+    "identifiers"
+  ],
+  "additionalProperties": true
 }

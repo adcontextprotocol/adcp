@@ -4,7 +4,9 @@
  * Provides a centralized logger instance with appropriate configuration
  * for development and production environments.
  *
- * Supports an error hook for sending errors to external services (e.g., PostHog).
+ * Supports hooks for sending logs to external services:
+ * - Error hook: Sends error/fatal logs to PostHog exceptions
+ * - Log hook: Sends all logs to PostHog via OpenTelemetry
  */
 
 import pino from 'pino';
@@ -21,7 +23,18 @@ type ErrorHook = (
   context?: Record<string, unknown>
 ) => void;
 
+/**
+ * Log hook type - called for all log levels.
+ * Set via setLogHook() for OpenTelemetry integration.
+ */
+type LogHook = (
+  level: number,
+  message: string,
+  attributes: Record<string, unknown>
+) => void;
+
 let errorHook: ErrorHook | null = null;
+let logHook: LogHook | null = null;
 
 /**
  * Set the error hook for external error reporting.
@@ -31,42 +44,69 @@ export function setErrorHook(hook: ErrorHook): void {
   errorHook = hook;
 }
 
-// Pino hooks to capture error/fatal logs for external reporting
+/**
+ * Set the log hook for OpenTelemetry logging.
+ * Call this after OpenTelemetry is initialized.
+ */
+export function setLogHook(hook: LogHook): void {
+  logHook = hook;
+}
+
+// Pino hooks to capture logs for external reporting
 const hooks: pino.LoggerOptions['hooks'] = {
   logMethod(inputArgs, method, level) {
-    // Only process error (50) and fatal (60) levels
-    if (level >= 50 && errorHook) {
-      const args = inputArgs as unknown[];
-      let message = '';
-      let error: Error | undefined;
-      let context: Record<string, unknown> = {};
+    // Early return if no hooks are set to avoid unnecessary processing
+    const needsLogHook = logHook !== null;
+    const needsErrorHook = level >= 50 && errorHook !== null;
+    if (!needsLogHook && !needsErrorHook) {
+      return method.apply(this, inputArgs);
+    }
 
-      // Parse Pino's flexible argument format
-      for (const arg of args) {
-        if (arg instanceof Error) {
-          error = arg;
-        } else if (typeof arg === 'string') {
-          message = arg;
-        } else if (typeof arg === 'object' && arg !== null) {
-          // Context object - extract error if present
-          const obj = arg as Record<string, unknown>;
-          if (obj.err instanceof Error) {
-            error = obj.err;
-          } else if (obj.error instanceof Error) {
-            error = obj.error;
-          }
-          // Copy other context (excluding the error we already extracted)
-          const { err, error: _error, ...rest } = obj;
-          context = { ...context, ...rest };
+    const args = inputArgs as unknown[];
+    let message = '';
+    let error: Error | undefined;
+    let context: Record<string, unknown> = {};
+
+    // Parse Pino's flexible argument format
+    for (const arg of args) {
+      if (arg instanceof Error) {
+        error = arg;
+      } else if (typeof arg === 'string') {
+        message = arg;
+      } else if (typeof arg === 'object' && arg !== null) {
+        // Context object - extract error if present
+        const obj = arg as Record<string, unknown>;
+        if (obj.err instanceof Error) {
+          error = obj.err;
+        } else if (obj.error instanceof Error) {
+          error = obj.error;
         }
+        // Copy other context (excluding the error we already extracted)
+        const { err, error: _error, ...rest } = obj;
+        context = { ...context, ...rest };
       }
+    }
 
+    // Send all logs to OpenTelemetry if hook is set
+    if (logHook) {
+      try {
+        const attributes: Record<string, unknown> = { ...context };
+        if (error) {
+          attributes.err = error;
+        }
+        logHook(level, message || error?.message || '', attributes);
+      } catch {
+        // Silently ignore hook errors to prevent logging loops
+      }
+    }
+
+    // Send error/fatal logs to PostHog error tracking
+    if (level >= 50 && errorHook) {
       // If no Error object but we have a message, create one for stack trace
       if (!error && message) {
         error = new Error(message);
       }
 
-      // Call the hook asynchronously to not block logging
       try {
         errorHook(message || error?.message || 'Unknown error', error, context);
       } catch {

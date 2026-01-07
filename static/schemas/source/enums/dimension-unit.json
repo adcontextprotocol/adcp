@@ -4,5 +4,10 @@
   "title": "Dimension Unit",
   "description": "Units of measurement for creative format dimensions",
   "type": "string",
-  "enum": ["px", "dp", "inches", "cm"]
+  "enum": [
+    "px",
+    "dp",
+    "inches",
+    "cm"
+  ]
 }

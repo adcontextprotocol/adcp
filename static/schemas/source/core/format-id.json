@@ -31,10 +31,17 @@
       "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
     }
   },
-  "required": ["agent_url", "id"],
-  "additionalProperties": false,
+  "required": [
+    "agent_url",
+    "id"
+  ],
+  "additionalProperties": true,
   "dependencies": {
-    "width": ["height"],
-    "height": ["width"]
+    "width": [
+      "height"
+    ],
+    "height": [
+      "width"
+    ]
   }
 }

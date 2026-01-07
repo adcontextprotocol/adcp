@@ -4,5 +4,9 @@
   "title": "Co-Branding Requirement",
   "description": "Co-branding policy for creatives (retailer/publisher brand inclusion)",
   "type": "string",
-  "enum": ["required", "optional", "none"]
+  "enum": [
+    "required",
+    "optional",
+    "none"
+  ]
 }

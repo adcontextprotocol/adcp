@@ -75,8 +75,12 @@
   "architecture": {
     "payload_vs_requirements": {
       "description": "Asset schemas define PAYLOAD structure (what you send), not constraints or requirements",
-      "payload_examples": ["url, width, height, content, duration_ms, format"],
-      "requirement_examples": ["max_file_size, required: true/false, min_duration, max_duration"],
+      "payload_examples": [
+        "url, width, height, content, duration_ms, format"
+      ],
+      "requirement_examples": [
+        "max_file_size, required: true/false, min_duration, max_duration"
+      ],
       "where_requirements_go": "Format specifications contain all constraints in the 'requirements' field of each asset_required item"
     },
     "format_aware_validation": {

@@ -441,6 +441,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         });
       }
 
+      // Update local cache immediately - don't fail the request if cache update fails
+      // (Stripe operation succeeded, webhook will eventually sync)
+      try {
+        const pool = getPool();
+        await pool.query(
+          `UPDATE org_invoices SET status = 'void', voided_at = NOW() WHERE stripe_invoice_id = $1`,
+          [invoiceId]
+        );
+      } catch (cacheError) {
+        logger.warn({ err: cacheError, invoiceId }, "Failed to update local cache after voiding invoice - webhook will sync");
+      }
+
       logger.info(
         {
           invoiceId,
@@ -478,6 +490,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           error: "Failed to delete invoice",
           message: "Stripe may not be configured or invoice is not a draft",
         });
+      }
+
+      // Remove from local cache immediately - don't fail the request if cache update fails
+      // (Stripe operation succeeded, webhook will eventually sync)
+      try {
+        const pool = getPool();
+        await pool.query(
+          `DELETE FROM org_invoices WHERE stripe_invoice_id = $1`,
+          [invoiceId]
+        );
+      } catch (cacheError) {
+        logger.warn({ err: cacheError, invoiceId }, "Failed to remove from local cache after deleting invoice - webhook will sync");
       }
 
       logger.info(
