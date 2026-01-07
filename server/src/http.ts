@@ -7130,7 +7130,14 @@ Disallow: /api/admin/
   }
 
   async start(port: number = 3000): Promise<void> {
-    // Initialize PostHog error tracking (captures all logger.error() calls)
+    // Initialize OpenTelemetry logging for PostHog (all log levels)
+    const { initOtelLogs, emitLog } = await import('./utils/otel-logs.js');
+    const { setLogHook } = await import('./logger.js');
+    if (initOtelLogs()) {
+      setLogHook(emitLog);
+    }
+
+    // Initialize PostHog error tracking (captures all logger.error() calls as exceptions)
     const { initPostHogErrorTracking } = await import('./utils/posthog.js');
     initPostHogErrorTracking();
 
@@ -7510,6 +7517,10 @@ Disallow: /api/admin/
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');
     await shutdownPostHog();
+
+    // Shutdown OpenTelemetry logging (flush pending logs)
+    const { shutdownOtelLogs } = await import('./utils/otel-logs.js');
+    await shutdownOtelLogs();
 
     // Close database connection
     logger.info('Closing database connection');
