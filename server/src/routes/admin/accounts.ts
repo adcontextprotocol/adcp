@@ -513,7 +513,8 @@ export function setupAccountRoutes(
 
       switch (viewName) {
         case "needs_attention":
-          // All accounts needing action: overdue next steps, open invoices, high engagement unowned
+          // Accounts needing action: prospects with overdue tasks/invoices/high engagement,
+          // OR members with real problems (expiring soon)
           query = `
             ${selectFields},
             na.next_step_due_date as next_step_due,
@@ -522,6 +523,8 @@ export function setupAccountRoutes(
               WHEN na.next_step_due_date < CURRENT_DATE THEN 'overdue'
               WHEN na.next_step_due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
+              WHEN o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                AND o.subscription_status = 'active' THEN 'expiring_soon'
               WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
@@ -536,13 +539,25 @@ export function setupAccountRoutes(
               AND oi.status IN ('draft', 'open')
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (
-                na.id IS NOT NULL
-                OR oi.stripe_invoice_id IS NOT NULL
-                OR (
-                  COALESCE(o.engagement_score, 0) >= 50
-                  AND NOT EXISTS (
-                    SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                -- Non-members: show if they have action items
+                (
+                  (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+                  AND (
+                    na.id IS NOT NULL
+                    OR oi.stripe_invoice_id IS NOT NULL
+                    OR (
+                      COALESCE(o.engagement_score, 0) >= 50
+                      AND NOT EXISTS (
+                        SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                      )
+                    )
                   )
+                )
+                OR
+                -- Members: only show if they have a real problem
+                (
+                  o.subscription_status = 'active'
+                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
           `;
@@ -589,7 +604,7 @@ export function setupAccountRoutes(
           break;
 
         case "hot":
-          // High engagement non-members
+          // High engagement non-members (engagement >= 50 OR high/very_high interest)
           query = `
             ${selectFields}
             FROM organizations o
@@ -597,8 +612,10 @@ export function setupAccountRoutes(
               o.subscription_status IS NULL
               OR o.subscription_status NOT IN ('active', 'trialing')
             )
-            AND COALESCE(o.engagement_score, 0) >= 50
-            AND o.interest_level IN ('high', 'very_high')
+            AND (
+              COALESCE(o.engagement_score, 0) >= 50
+              OR o.interest_level IN ('high', 'very_high')
+            )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
           orderBy = ` ORDER BY o.engagement_score DESC NULLS LAST`;
@@ -621,7 +638,7 @@ export function setupAccountRoutes(
           break;
 
         case "new_insights":
-          // Accounts with recent member activity/insights
+          // Accounts with recent member activity/insights (extended to 30 days)
           // Joins through organization_memberships to find orgs with recent Slack activity
           query = `
             ${selectFields},
@@ -632,7 +649,7 @@ export function setupAccountRoutes(
               FROM organization_memberships om
               JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
               WHERE om.workos_organization_id = o.workos_organization_id
-                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             ) latest_activity ON latest_activity.latest_activity_at IS NOT NULL
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
@@ -930,7 +947,7 @@ export function setupAccountRoutes(
           members,
           disqualified,
         ] = await Promise.all([
-          // Needs attention - all accounts needing action
+          // Needs attention - prospects with action items OR members with real problems
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
@@ -942,18 +959,30 @@ export function setupAccountRoutes(
               AND oi.status IN ('draft', 'open')
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (
-                na.id IS NOT NULL
-                OR oi.stripe_invoice_id IS NOT NULL
-                OR (
-                  COALESCE(o.engagement_score, 0) >= 50
-                  AND NOT EXISTS (
-                    SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                -- Non-members: show if they have action items
+                (
+                  (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+                  AND (
+                    na.id IS NOT NULL
+                    OR oi.stripe_invoice_id IS NOT NULL
+                    OR (
+                      COALESCE(o.engagement_score, 0) >= 50
+                      AND NOT EXISTS (
+                        SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                      )
+                    )
                   )
+                )
+                OR
+                -- Members: only show if they have a real problem (expiring soon)
+                (
+                  o.subscription_status = 'active'
+                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
           `),
 
-          // New insights - prospects with recent Slack activity
+          // New insights - prospects with recent Slack activity (30 days)
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
@@ -961,19 +990,21 @@ export function setupAccountRoutes(
               SELECT 1 FROM organization_memberships om
               JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
               WHERE om.workos_organization_id = o.workos_organization_id
-                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
             AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
           `),
 
-          // Hot prospects
+          // Hot prospects (engagement >= 50 OR high interest)
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
             WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
-              AND COALESCE(o.engagement_score, 0) >= 50
-              AND o.interest_level IN ('high', 'very_high')
+              AND (
+                COALESCE(o.engagement_score, 0) >= 50
+                OR o.interest_level IN ('high', 'very_high')
+              )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
 
@@ -1050,6 +1081,163 @@ export function setupAccountRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch view counts",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/activity-feed - Unified activity stream across all sources
+  apiRouter.get(
+    "/activity-feed",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { limit: limitParam, offset: offsetParam, source } = req.query;
+
+        const limit = Math.min(Math.max(parseInt(limitParam as string) || 50, 1), 200);
+        const offset = Math.max(parseInt(offsetParam as string) || 0, 0);
+
+        // Build source filter if provided - validate against allowed sources
+        const ALLOWED_SOURCES = ['slack', 'email', 'event', 'payment', 'working_group'];
+        const sourceFilter = source && typeof source === "string"
+          ? source.split(",").map(s => s.trim()).filter(s => ALLOWED_SOURCES.includes(s))
+          : null;
+
+        // Unified activity query with multiple sources
+        const query = `
+          WITH activity_stream AS (
+            -- Slack activity
+            SELECT
+              'slack' as source,
+              sa.activity_timestamp as timestamp,
+              sa.activity_type as action,
+              COALESCE(sm.slack_display_name, sm.slack_real_name, 'Unknown') as actor_name,
+              o.name as org_name,
+              o.workos_organization_id as org_id,
+              NULL as description,
+              NULL as metadata
+            FROM slack_activities sa
+            JOIN slack_user_mappings sm ON sm.slack_user_id = sa.slack_user_id
+            LEFT JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+            LEFT JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+            WHERE sa.activity_timestamp > NOW() - INTERVAL '7 days'
+              AND sa.activity_type IN ('message', 'thread_reply', 'channel_join')
+
+            UNION ALL
+
+            -- Email contact activity
+            SELECT
+              'email' as source,
+              eca.email_date as timestamp,
+              'email_received' as action,
+              COALESCE(ec.name, ec.email) as actor_name,
+              o.name as org_name,
+              o.workos_organization_id as org_id,
+              eca.subject as description,
+              NULL as metadata
+            FROM email_contact_activities eca
+            JOIN email_activity_contacts eac ON eac.activity_id = eca.id AND eac.is_primary = true
+            JOIN email_contacts ec ON ec.id = eac.contact_id
+            LEFT JOIN organizations o ON o.workos_organization_id = ec.organization_id
+            WHERE eca.email_date > NOW() - INTERVAL '7 days'
+
+            UNION ALL
+
+            -- Event registrations
+            SELECT
+              'event' as source,
+              COALESCE(er.registered_at, er.created_at) as timestamp,
+              CASE
+                WHEN er.attended THEN 'attended'
+                ELSE er.registration_status
+              END as action,
+              COALESCE(ec.name, u.first_name || ' ' || u.last_name, ec.email, 'Unknown') as actor_name,
+              e.title as org_name,
+              NULL as org_id,
+              e.title as description,
+              NULL as metadata
+            FROM event_registrations er
+            JOIN events e ON e.id = er.event_id
+            LEFT JOIN email_contacts ec ON ec.id = er.email_contact_id
+            LEFT JOIN users u ON u.workos_user_id = er.workos_user_id
+            WHERE COALESCE(er.registered_at, er.created_at) > NOW() - INTERVAL '7 days'
+
+            UNION ALL
+
+            -- Revenue events (payments)
+            SELECT
+              'payment' as source,
+              re.created_at as timestamp,
+              re.revenue_type as action,
+              o.name as actor_name,
+              o.name as org_name,
+              o.workos_organization_id as org_id,
+              re.product_name as description,
+              jsonb_build_object('amount', re.amount_paid, 'currency', re.currency) as metadata
+            FROM revenue_events re
+            JOIN organizations o ON o.workos_organization_id = re.workos_organization_id
+            WHERE re.created_at > NOW() - INTERVAL '30 days'
+
+            UNION ALL
+
+            -- Working group membership changes
+            SELECT
+              'working_group' as source,
+              wgm.joined_at as timestamp,
+              'joined_group' as action,
+              o.name as actor_name,
+              wg.name as org_name,
+              o.workos_organization_id as org_id,
+              wg.name as description,
+              NULL as metadata
+            FROM working_group_memberships wgm
+            JOIN working_groups wg ON wg.id = wgm.working_group_id
+            JOIN organizations o ON o.workos_organization_id = wgm.workos_organization_id
+            WHERE wgm.joined_at > NOW() - INTERVAL '30 days'
+              AND wgm.status = 'active'
+          )
+          SELECT *
+          FROM activity_stream
+          WHERE timestamp IS NOT NULL
+            ${sourceFilter ? `AND source = ANY($3)` : ''}
+          ORDER BY timestamp DESC
+          LIMIT $1 OFFSET $2
+        `;
+
+        const params: (number | string[])[] = [limit, offset];
+        if (sourceFilter) {
+          params.push(sourceFilter);
+        }
+
+        const result = await pool.query(query, params);
+
+        // Format response
+        const activities = result.rows.map(row => ({
+          source: row.source,
+          timestamp: row.timestamp,
+          action: row.action,
+          actor_name: row.actor_name,
+          org_name: row.org_name,
+          org_id: row.org_id,
+          description: row.description,
+          metadata: row.metadata,
+        }));
+
+        res.json({
+          activities,
+          pagination: {
+            limit,
+            offset,
+            has_more: activities.length === limit,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching activity feed");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch activity feed",
         });
       }
     }
