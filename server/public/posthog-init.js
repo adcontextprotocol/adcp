@@ -93,4 +93,25 @@
       is_admin: user.isAdmin,
     });
   }
+
+  // Flush any errors that occurred before PostHog loaded
+  if (window.__earlyErrors && window.__earlyErrors.length) {
+    window.__earlyErrors.forEach(function(err) {
+      if (err.type === 'unhandledrejection') {
+        posthog.captureException(err.reason || new Error('Unhandled rejection'), {
+          type: 'unhandledrejection',
+          early_capture: true,
+        });
+      } else {
+        posthog.captureException(err.error || new Error(err.message || 'Unknown error'), {
+          source: err.source,
+          lineno: err.lineno,
+          colno: err.colno,
+          early_capture: true,
+        });
+      }
+    });
+    window.__earlyErrors = [];
+    window.onerror = null; // Clear early capture handler
+  }
 })();
