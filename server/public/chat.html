@@ -795,11 +795,79 @@
       flex-direction: column;
       flex-shrink: 0;
       height: 100%;
+      transition: width 0.2s ease;
+      position: relative;
     }
 
     /* Hide sidebar for unauthenticated users */
     .chat-sidebar:not(.visible) {
       display: none;
+    }
+
+    /* Collapsed sidebar state */
+    .chat-sidebar.collapsed {
+      width: 56px;
+    }
+
+    .chat-sidebar.collapsed .sidebar-nav {
+      padding: 8px;
+    }
+
+    .chat-sidebar.collapsed .sidebar-tab {
+      justify-content: center;
+      padding: 10px;
+    }
+
+    .chat-sidebar.collapsed .sidebar-tab-text {
+      display: none;
+    }
+
+    .chat-sidebar.collapsed .sidebar-section,
+    .chat-sidebar.collapsed .sidebar-history {
+      display: none;
+    }
+
+    .chat-sidebar.collapsed .sidebar-collapse-btn svg {
+      transform: rotate(180deg);
+    }
+
+    /* Sidebar collapse button */
+    .sidebar-collapse-btn {
+      position: absolute;
+      top: var(--space-2);
+      right: calc(-1 * var(--space-4));
+      width: var(--space-8);
+      height: var(--space-8);
+      border-radius: 50%;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      box-shadow: var(--shadow-sm);
+      transition: background var(--duration-fast, 0.15s);
+    }
+
+    .sidebar-collapse-btn:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .sidebar-collapse-btn:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+    }
+
+    .sidebar-collapse-btn:focus:not(:focus-visible) {
+      outline: none;
+    }
+
+    .sidebar-collapse-btn svg {
+      width: 16px;
+      height: 16px;
+      color: var(--color-text-muted);
+      transition: transform var(--duration-normal, 0.2s);
     }
 
     /* Sidebar navigation tabs */
@@ -1145,8 +1213,8 @@
       font-weight: 600;
     }
 
-    /* Show toggle button on mobile for authenticated users */
-    @media (max-width: 768px) {
+    /* Mobile: use drawer overlay pattern on very small screens */
+    @media (max-width: 500px) {
       .chat-sidebar.visible {
         position: fixed;
         left: 0;
@@ -1154,6 +1222,7 @@
         bottom: 0;
         z-index: 1000;
         box-shadow: var(--shadow-lg);
+        width: 280px;
       }
 
       .chat-sidebar.visible:not(.mobile-open) {
@@ -1162,6 +1231,10 @@
 
       .chat-sidebar.visible.mobile-open {
         display: flex;
+      }
+
+      .chat-sidebar.visible .sidebar-collapse-btn {
+        display: none;
       }
 
       .sidebar-toggle-btn.visible {
@@ -1181,8 +1254,8 @@
       }
     }
 
-    /* Desktop: always show sidebar for authenticated users */
-    @media (min-width: 769px) {
+    /* Tablet and up: always show sidebar (expanded or collapsed) */
+    @media (min-width: 501px) {
       .chat-sidebar.visible {
         display: flex;
       }
@@ -1217,19 +1290,13 @@
       padding-top: calc(12px + env(safe-area-inset-top, 0px));
     }
 
-    /* Native app mobile - ensure sidebar works with safe areas */
-    @media (max-width: 768px) {
-      body.native-app .chat-sidebar.visible {
-        padding-left: env(safe-area-inset-left, 0px);
-      }
+    /* Native app uses same collapsible pattern as web */
+    body.native-app .chat-sidebar.visible {
+      display: flex;
+    }
 
-      body.native-app .sidebar-overlay {
-        /* Extend overlay behind safe areas */
-        top: calc(-1 * env(safe-area-inset-top, 0px));
-        left: calc(-1 * env(safe-area-inset-left, 0px));
-        right: calc(-1 * env(safe-area-inset-right, 0px));
-        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
-      }
+    body.native-app .sidebar-toggle-btn {
+      display: none !important;
     }
 
     /* Native app mode - adjust input area for safe areas */
@@ -1259,19 +1326,29 @@
     <div class="chat-sidebar" id="chatSidebar">
       <!-- Navigation tabs -->
       <div class="sidebar-nav">
+        <!-- Collapse toggle button -->
+        <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+                aria-expanded="true"
+                aria-controls="chatSidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
         <button class="sidebar-tab active" id="homeTab">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
-          Home
+          <span class="sidebar-tab-text">Home</span>
         </button>
         <button class="sidebar-tab sidebar-tab--new" id="newChatBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          New Chat
+          <span class="sidebar-tab-text">New Chat</span>
         </button>
       </div>
 
@@ -1379,6 +1456,7 @@
       const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
       const sidebarOverlay = document.getElementById('sidebarOverlay');
       const sidebarBadge = document.getElementById('sidebarBadge');
+      const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
 
       // State
       let conversationId = null;
@@ -1388,6 +1466,12 @@
       let isAuthenticated = false;
       let threads = [];
       let mobileMenuOpen = false;
+      let sidebarCollapsed = false;
+      try {
+        sidebarCollapsed = localStorage.getItem('addie-sidebar-collapsed') === 'true';
+      } catch (e) {
+        // localStorage may be unavailable in private browsing
+      }
 
       // Tab state - persisted to localStorage
       let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
@@ -1717,6 +1801,31 @@
           closeMobileSidebar();
         } else {
           openMobileSidebar();
+        }
+      }
+
+      // Sidebar collapse/expand functions
+      function toggleSidebarCollapse() {
+        sidebarCollapsed = !sidebarCollapsed;
+        chatSidebar.classList.toggle('collapsed', sidebarCollapsed);
+        const label = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+        sidebarCollapseBtn.title = label;
+        sidebarCollapseBtn.setAttribute('aria-label', label);
+        sidebarCollapseBtn.setAttribute('aria-expanded', !sidebarCollapsed);
+        try {
+          localStorage.setItem('addie-sidebar-collapsed', sidebarCollapsed);
+        } catch (e) {
+          // localStorage may be unavailable in private browsing
+        }
+      }
+
+      // Apply initial sidebar collapsed state
+      function applySidebarCollapsedState() {
+        if (sidebarCollapsed) {
+          chatSidebar.classList.add('collapsed');
+          sidebarCollapseBtn.title = 'Expand sidebar';
+          sidebarCollapseBtn.setAttribute('aria-label', 'Expand sidebar');
+          sidebarCollapseBtn.setAttribute('aria-expanded', 'false');
         }
       }
 
@@ -2727,6 +2836,7 @@
       // Sidebar event listeners
       sidebarToggleBtn.addEventListener('click', toggleMobileSidebar);
       sidebarOverlay.addEventListener('click', closeMobileSidebar);
+      sidebarCollapseBtn.addEventListener('click', toggleSidebarCollapse);
       newChatBtn.addEventListener('click', startNewConversation);
       homeTab.addEventListener('click', switchToHome);
       historyToggle.addEventListener('click', toggleHistorySection);
@@ -2783,6 +2893,7 @@
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash
+      applySidebarCollapsedState(); // Restore sidebar collapsed state from localStorage
       checkStatus();
       checkImpersonation();
       // Check for prompt in URL after status check
