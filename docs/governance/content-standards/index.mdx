@@ -50,9 +50,6 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
         "artifact_id": "nba_championship_recap_2024",
         "language": "en",
         "title": "Championship Game Recap",
-        "signals": [
-          {"key": "iab_category", "value": "sports/basketball", "confidence": 1.0}
-        ],
         "assets": [
           {"type": "text", "role": "heading", "content": "Lakers Defeat Celtics in Thrilling Overtime", "heading_level": 1},
           {"type": "text", "role": "paragraph", "content": "In an exciting conclusion to the championship series..."},
@@ -63,11 +60,14 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
         "property_id": {"type": "domain", "value": "healthline.com"},
         "artifact_id": "fitness_landing",
         "language": "en",
-        "signals": [{"key": "iab_category", "value": "health/fitness", "confidence": 0.95}]
+        "title": "Fitness Tips and Workouts"
       },
       {
         "property_id": {"type": "apple_podcast_id", "value": "1234567890"},
-        "artifact_id": "episode_42_segment_2"
+        "artifact_id": "episode_42_segment_2",
+        "assets": [
+          {"type": "audio", "url": "https://cdn.example.com/podcasts/ep42_seg2.mp3", "transcript": "Today we're discussing marathon training..."}
+        ]
       },
       {
         "property_id": {"type": "domain", "value": "fitnesschannel.tv"},
@@ -80,11 +80,15 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
         "property_id": {"type": "domain", "value": "tabloid.example.com"},
         "artifact_id": "scandal_story_123",
         "language": "en",
-        "signals": [{"key": "brand_safety", "value": "controversial", "confidence": 0.85}]
+        "title": "Celebrity Scandal Exposed",
+        "assets": [
+          {"type": "text", "role": "paragraph", "content": "Shocking revelations about..."}
+        ]
       },
       {
         "property_id": {"type": "rss_url", "value": "https://controversy.example.com/feed.xml"},
-        "artifact_id": "episode_latest"
+        "artifact_id": "episode_latest",
+        "title": "Political Hot Takes"
       },
       {
         "property_id": {"type": "domain", "value": "news.example.com"},
@@ -96,14 +100,41 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
 }
 ```
 
-The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. Artifacts are identified by property + artifact_id and represented as collections of assets:
+The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. You send the artifact content, and the verification agent evaluates it - no pre-classification required:
 
 - **property_id** - Identifies the property where this artifact appears (using standard identifier types)
 - **artifact_id** - Unique identifier within the property (property owner defines the scheme)
-- **format_id** - Optional reference to format registry (same as creative formats)
 - **assets** - Artifact assets in document order (text blocks, images, video, audio)
-- **signals** - Pre-computed classifications (IAB category, ratings, scores) with confidence levels
+- **format_id** - Optional reference to format registry (same as creative formats)
 - **metadata** - Rich metadata (Open Graph, JSON-LD, author info)
+
+### Secured Asset Access
+
+Asset URLs may require authentication - for private content like AI-generated images, internal documents, or content behind paywalls. Assets support authenticated access:
+
+```json
+{
+  "property_id": {"type": "app_id", "value": "chatgpt"},
+  "artifact_id": "conversation_abc123_image_1",
+  "assets": [
+    {
+      "type": "image",
+      "url": "https://cdn.openai.com/secured/img_abc123.png",
+      "access": {
+        "method": "bearer_token",
+        "token": "eyJhbGciOiJIUzI1NiIs..."
+      }
+    }
+  ]
+}
+```
+
+Supported access methods:
+- **bearer_token** - OAuth2 bearer token in Authorization header
+- **service_account** - GCP/AWS service account credentials
+- **signed_url** - Pre-signed URL with embedded credentials (URL itself is the credential)
+
+For large assets or real-time content, the verification agent may need to fetch the content. The caller is responsible for ensuring the agent has access - either through pre-signed URLs, shared service accounts, or token exchange.
 
 ## Scoped Standards
 

@@ -107,6 +107,10 @@
                 "format": "uri",
                 "description": "Image URL"
               },
+              "access": {
+                "$ref": "#/$defs/asset_access",
+                "description": "Authentication for secured URLs"
+              },
               "alt_text": {
                 "type": "string",
                 "description": "Alt text or image description"
@@ -135,6 +139,10 @@
                 "type": "string",
                 "format": "uri",
                 "description": "Video URL"
+              },
+              "access": {
+                "$ref": "#/$defs/asset_access",
+                "description": "Authentication for secured URLs"
               },
               "duration_ms": {
                 "type": "integer",
@@ -167,6 +175,10 @@
                 "format": "uri",
                 "description": "Audio URL"
               },
+              "access": {
+                "$ref": "#/$defs/asset_access",
+                "description": "Authentication for secured URLs"
+              },
               "duration_ms": {
                 "type": "integer",
                 "description": "Audio duration in milliseconds"
@@ -184,48 +196,6 @@
             "required": ["type", "url"]
           }
         ]
-      }
-    },
-    "signals": {
-      "type": "array",
-      "description": "Pre-computed signals including categories, classifiers, and ratings",
-      "items": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "Signal identifier (e.g., 'iab_category', 'violence_score', 'mpaa_rating')"
-          },
-          "value": {
-            "description": "Signal value - can be string, number, or boolean",
-            "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" }
-            ]
-          },
-          "confidence": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "Confidence score for probabilistic signals (0-1)"
-          },
-          "version": {
-            "type": "string",
-            "description": "Version of the classifier or model that generated this signal"
-          },
-          "source": {
-            "type": "string",
-            "description": "Who generated this signal (e.g., 'publisher_classifier', 'human_moderator')"
-          },
-          "reasons": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Array of reason codes for ratings or classifications"
-          }
-        },
-        "required": ["key", "value"],
-        "additionalProperties": false
       }
     },
     "metadata": {
@@ -293,5 +263,51 @@
     }
   },
   "required": ["property_id", "artifact_id"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "$defs": {
+    "asset_access": {
+      "type": "object",
+      "description": "Authentication for accessing secured asset URLs",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Bearer token authentication",
+          "properties": {
+            "method": { "type": "string", "const": "bearer_token" },
+            "token": {
+              "type": "string",
+              "description": "OAuth2 bearer token for Authorization header"
+            }
+          },
+          "required": ["method", "token"]
+        },
+        {
+          "type": "object",
+          "description": "Service account authentication (GCP, AWS)",
+          "properties": {
+            "method": { "type": "string", "const": "service_account" },
+            "provider": {
+              "type": "string",
+              "enum": ["gcp", "aws"],
+              "description": "Cloud provider"
+            },
+            "credentials": {
+              "type": "object",
+              "description": "Service account credentials",
+              "additionalProperties": true
+            }
+          },
+          "required": ["method", "provider"]
+        },
+        {
+          "type": "object",
+          "description": "Pre-signed URL (credentials embedded in URL)",
+          "properties": {
+            "method": { "type": "string", "const": "signed_url" }
+          },
+          "required": ["method"]
+        }
+      ]
+    }
+  }
 }
