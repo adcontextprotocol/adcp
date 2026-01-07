@@ -303,7 +303,10 @@ export class OutboundPlanner {
     }
 
     // PRIORITY 4: Working group discovery (for engaged users with none)
-    if (caps && caps.account_linked && caps.working_group_count === 0 && caps.slack_message_count_30d > 5) {
+    // Skip for committee leaders - they lead working groups even if not counted as members
+    // Note: Leaders are now included in working_group_count via the query, but this explicit
+    // check is kept for clarity and defense against query changes
+    if (caps && caps.account_linked && !caps.is_committee_leader && caps.working_group_count === 0 && caps.slack_message_count_30d > 5) {
       const wgGoal = goals.find(g =>
         g.name.toLowerCase().includes('working group') && g.category === 'education'
       );
