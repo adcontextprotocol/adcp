@@ -26,6 +26,9 @@
       "minItems": 1
     }
   },
-  "required": ["placement_id", "name"],
-  "additionalProperties": false
+  "required": [
+    "placement_id",
+    "name"
+  ],
+  "additionalProperties": true
 }

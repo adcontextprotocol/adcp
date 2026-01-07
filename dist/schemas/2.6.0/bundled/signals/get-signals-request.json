@@ -40,7 +40,7 @@
                   "type",
                   "platform"
                 ],
-                "additionalProperties": false
+                "additionalProperties": true
               },
               {
                 "type": "object",
@@ -63,7 +63,7 @@
                   "type",
                   "agent_url"
                 ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             ]
           },
@@ -82,7 +82,7 @@
         "deployments",
         "countries"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "filters": {
       "title": "Signal Filters",
@@ -122,7 +122,7 @@
           "maximum": 100
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "max_results": {
       "type": "integer",
@@ -146,9 +146,9 @@
     "signal_spec",
     "deliver_to"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.451Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.842Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

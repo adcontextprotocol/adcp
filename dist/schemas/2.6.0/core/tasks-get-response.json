@@ -69,7 +69,7 @@
           "description": "Current step number"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "error": {
       "type": "object",
@@ -112,7 +112,7 @@
         "code",
         "message"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "history": {
       "type": "array",
@@ -144,7 +144,7 @@
           "type",
           "data"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": {
@@ -162,5 +162,5 @@
     "created_at",
     "updated_at"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

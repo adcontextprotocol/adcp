@@ -87,7 +87,7 @@
         "previews",
         "expires_at"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "PreviewCreativeBatchResponse",
@@ -239,7 +239,7 @@
         "response_type",
         "results"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

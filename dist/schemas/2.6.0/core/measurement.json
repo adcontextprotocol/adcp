@@ -8,24 +8,41 @@
     "type": {
       "type": "string",
       "description": "Type of measurement",
-      "examples": ["incremental_sales_lift", "brand_lift", "foot_traffic"]
+      "examples": [
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic"
+      ]
     },
     "attribution": {
       "type": "string",
       "description": "Attribution methodology",
-      "examples": ["deterministic_purchase", "probabilistic"]
+      "examples": [
+        "deterministic_purchase",
+        "probabilistic"
+      ]
     },
     "window": {
       "type": "string",
       "description": "Attribution window",
-      "examples": ["30_days", "7_days"]
+      "examples": [
+        "30_days",
+        "7_days"
+      ]
     },
     "reporting": {
       "type": "string",
       "description": "Reporting frequency and format",
-      "examples": ["weekly_dashboard", "real_time_api"]
+      "examples": [
+        "weekly_dashboard",
+        "real_time_api"
+      ]
     }
   },
-  "required": ["type", "attribution", "reporting"],
-  "additionalProperties": false
+  "required": [
+    "type",
+    "attribution",
+    "reporting"
+  ],
+  "additionalProperties": true
 }

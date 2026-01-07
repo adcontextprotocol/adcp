@@ -34,7 +34,7 @@
         "start",
         "end"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "performance_index": {
       "type": "number",
@@ -84,5 +84,5 @@
       ]
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

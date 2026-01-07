@@ -4,5 +4,8 @@
   "title": "DAAST Version",
   "description": "Supported DAAST (Digital Audio Ad Serving Template) specification versions",
   "type": "string",
-  "enum": ["1.0", "1.1"]
+  "enum": [
+    "1.0",
+    "1.1"
+  ]
 }

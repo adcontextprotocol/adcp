@@ -17,8 +17,11 @@
           "description": "The platform-specific segment identifier to use in campaign targeting"
         }
       },
-      "required": ["type", "segment_id"],
-      "additionalProperties": false
+      "required": [
+        "type",
+        "segment_id"
+      ],
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -36,8 +39,12 @@
           "description": "The targeting parameter value"
         }
       },
-      "required": ["type", "key", "value"],
-      "additionalProperties": false
+      "required": [
+        "type",
+        "key",
+        "value"
+      ],
+      "additionalProperties": true
     }
   ]
 }

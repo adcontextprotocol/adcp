@@ -4,7 +4,10 @@
   "title": "Delivery Type",
   "description": "Type of inventory delivery",
   "type": "string",
-  "enum": ["guaranteed", "non_guaranteed"],
+  "enum": [
+    "guaranteed",
+    "non_guaranteed"
+  ],
   "enumDescriptions": {
     "guaranteed": "Reserved inventory with guaranteed delivery",
     "non_guaranteed": "Auction-based inventory without delivery guarantees"

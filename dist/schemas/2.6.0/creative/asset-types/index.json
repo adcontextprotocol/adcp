@@ -4,7 +4,7 @@
   "title": "AdCP Asset Type Registry",
   "description": "Registry of asset types used in AdCP creative manifests. Each asset type defines the structure of actual content payloads (what you send), not requirements or constraints (which belong in format specifications).",
   "version": "1.0.0",
-  "lastUpdated": "2026-01-05",
+  "lastUpdated": "2026-01-07",
   "asset_types": {
     "image": {
       "description": "Static image asset (JPG, PNG, GIF, WebP, SVG)",
@@ -99,5 +99,8 @@
     "example_flow": "Format says 'hero_image' must be type 'image' with width 1200, height 627. Manifest provides hero_image: {url: '...', width: 1200, height: 627}. The format spec tells us it's an image type."
   },
   "adcp_version": "2.6.0",
-  "baseUrl": "/schemas/2.6.0"
+  "baseUrl": "/schemas/2.6.0",
+  "versioning": {
+    "note": "AdCP uses build-time versioning. This directory contains schemas for AdCP 2.6.0. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest release: /schemas/v2/ → /schemas/2.6.0/."
+  }
 }

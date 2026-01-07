@@ -91,7 +91,7 @@
                             "type",
                             "segment_id"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         },
                         {
                           "properties": {
@@ -114,7 +114,7 @@
                             "key",
                             "value"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       ]
                     },
@@ -134,7 +134,7 @@
                     "platform",
                     "is_live"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "type": "object",
@@ -178,7 +178,7 @@
                             "type",
                             "segment_id"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         },
                         {
                           "properties": {
@@ -201,7 +201,7 @@
                             "key",
                             "value"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       ]
                     },
@@ -221,7 +221,7 @@
                     "agent_url",
                     "is_live"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               ]
             }
@@ -245,7 +245,7 @@
               "cpm",
               "currency"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "required": [
@@ -258,7 +258,7 @@
           "deployments",
           "pricing"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "errors": {
@@ -291,14 +291,16 @@
             "minimum": 0
           },
           "details": {
-            "description": "Additional task-specific error details"
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
           }
         },
         "required": [
           "code",
           "message"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": {
@@ -317,9 +319,9 @@
   "required": [
     "signals"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.452Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.842Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

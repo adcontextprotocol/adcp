@@ -4,5 +4,8 @@
   "title": "Authentication Scheme",
   "description": "Authentication schemes for push notification endpoints",
   "type": "string",
-  "enum": ["Bearer", "HMAC-SHA256"]
+  "enum": [
+    "Bearer",
+    "HMAC-SHA256"
+  ]
 }

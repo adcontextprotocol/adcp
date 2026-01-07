@@ -4,5 +4,10 @@
   "title": "Update Frequency",
   "description": "Frequency of product catalog updates",
   "type": "string",
-  "enum": ["realtime", "hourly", "daily", "weekly"]
+  "enum": [
+    "realtime",
+    "hourly",
+    "daily",
+    "weekly"
+  ]
 }
