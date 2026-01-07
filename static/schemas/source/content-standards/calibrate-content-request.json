@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/content-standards/calibrate-content-request.json",
   "title": "Calibrate Content Request",
-  "description": "Request parameters for collaborative calibration dialogue to align on content standards interpretation",
+  "description": "Request parameters for evaluating content context during calibration. Multi-turn dialogue is handled at the protocol layer via contextId.",
   "type": "object",
   "properties": {
     "standards_id": {
@@ -12,14 +12,6 @@
     "content": {
       "$ref": "/schemas/content-standards/content-context.json",
       "description": "Content context to evaluate"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Continue an existing calibration dialogue. Omit to start a new dialogue."
-    },
-    "feedback": {
-      "type": "string",
-      "description": "Seller's feedback or disagreement with previous response. Use with context_id to continue dialogue."
     }
   },
   "required": ["standards_id", "content"]

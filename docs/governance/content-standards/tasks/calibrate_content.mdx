@@ -24,8 +24,6 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | Standards configuration to calibrate against |
 | `content` | content-context | Yes | Content context to evaluate |
-| `context_id` | string | No | Continue an existing calibration dialogue |
-| `feedback` | string | No | Seller's feedback or disagreement with previous response |
 
 ### Content Context
 
@@ -55,7 +53,6 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 
 ```json
 {
-  "context_id": "calib_abc123",
   "verdict": "pass",
   "confidence": 0.95,
   "explanation": "This content aligns well with the brand's fitness-focused positioning. Health and fitness content is explicitly marked as 'ideal' in the policy. The discussion is constructive and educational.",
@@ -85,7 +82,6 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 
 ```json
 {
-  "context_id": "calib_def456",
   "verdict": "fail",
   "confidence": 0.88,
   "explanation": "This content discusses political topics which the policy explicitly excludes. While the article itself is balanced journalism, the brand has requested to avoid all controversial political content regardless of tone.",
@@ -118,7 +114,6 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 
 | Field | Description |
 |-------|-------------|
-| `context_id` | Dialogue identifier for follow-up questions |
 | `verdict` | Overall `pass` or `fail` decision |
 | `confidence` | Model confidence in the verdict (0-1) |
 | `explanation` | Detailed natural language explanation of the decision |
@@ -127,33 +122,92 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 
 ## Dialogue Flow
 
-Calibration supports back-and-forth dialogue via `context_id`:
+Calibration supports back-and-forth dialogue using the protocol's conversation management. The seller sends content, the verification agent responds with an evaluation and explanation, and the seller can respond with questions or try different content - all within the same conversation context.
 
-```python
-# Initial calibration request
-response = verification_agent.calibrate_content(
-    standards_id="nike_brand_safety",
-    content={"type": "domain", "value": "https://reddit.com/r/news/politics"}
-)
-# Response: verdict=fail, context_id="calib_xyz"
+### A2A Example
 
-# Seller disagrees - continue dialogue
-response = verification_agent.calibrate_content(
-    standards_id="nike_brand_safety",
-    content={"type": "domain", "value": "https://reddit.com/r/news/politics"},
-    context_id="calib_xyz",
-    feedback="This is a factual news article, not opinion. Should balanced journalism be excluded?"
-)
-# Response: Clarifies that brand policy excludes ALL political content regardless of tone
+```javascript
+// Seller sends content to evaluate
+const response1 = await a2a.send({
+  message: {
+    parts: [
+      { kind: "text", text: "Does this content pass our standards?" },
+      {
+        kind: "data",
+        data: {
+          skill: "calibrate_content",
+          parameters: {
+            standards_id: "nike_brand_safety",
+            content: { type: "domain", value: "https://reddit.com/r/news/politics" }
+          }
+        }
+      }
+    ]
+  }
+});
+// Response: verdict=fail with explanation
 
-# Seller acknowledges and tries different content
-response = verification_agent.calibrate_content(
-    standards_id="nike_brand_safety",
-    content={"type": "domain", "value": "https://reddit.com/r/running"},
-    context_id="calib_xyz"
-)
-# Response: verdict=pass - now seller understands the boundaries
+// Seller disagrees - continue dialogue in same context
+const response2 = await a2a.send({
+  contextId: response1.contextId,
+  message: {
+    parts: [{
+      kind: "text",
+      text: "This is factual news, not opinion. Should balanced journalism be excluded?"
+    }]
+  }
+});
+// Verification agent clarifies that brand policy excludes ALL political content
+
+// Seller tries different content
+const response3 = await a2a.send({
+  contextId: response1.contextId,
+  message: {
+    parts: [
+      { kind: "text", text: "What about this fitness content?" },
+      {
+        kind: "data",
+        data: {
+          skill: "calibrate_content",
+          parameters: {
+            standards_id: "nike_brand_safety",
+            content: { type: "domain", value: "https://reddit.com/r/running" }
+          }
+        }
+      }
+    ]
+  }
+});
+// Response: verdict=pass - now seller understands the boundaries
 ```
+
+### MCP Example
+
+```javascript
+// Initial calibration request
+const response1 = await mcp.call('calibrate_content', {
+  standards_id: "nike_brand_safety",
+  content: { type: "domain", value: "https://reddit.com/r/news/politics" }
+});
+// Response includes context_id for conversation continuity
+
+// Continue dialogue with follow-up question
+const response2 = await mcp.call('calibrate_content', {
+  context_id: response1.context_id,
+  standards_id: "nike_brand_safety",
+  content: { type: "domain", value: "https://reddit.com/r/news/politics" }
+});
+// Include text message in the protocol envelope asking about balanced journalism
+
+// Try different content in same conversation
+const response3 = await mcp.call('calibrate_content', {
+  context_id: response1.context_id,
+  standards_id: "nike_brand_safety",
+  content: { type: "domain", value: "https://reddit.com/r/running" }
+});
+```
+
+The key insight is that the dialogue happens at the **protocol layer**, not the task layer. The verification agent maintains conversation context and can respond to follow-up questions, disagreements, or requests for clarification - just like any agent-to-agent conversation.
 
 ## Calibration vs Runtime
 
@@ -163,7 +217,7 @@ response = verification_agent.calibrate_content(
 | **Volume** | Low (setup/periodic) | High (every impression) |
 | **Response** | Verbose explanations | Pass/fail only |
 | **Latency** | Seconds acceptable | Milliseconds required |
-| **Dialogue** | Supports back-and-forth | Stateless |
+| **Dialogue** | Multi-turn conversation | Stateless |
 
 ## Related Tasks
 

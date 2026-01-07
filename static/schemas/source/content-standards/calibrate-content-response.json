@@ -2,17 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/content-standards/calibrate-content-response.json",
   "title": "Calibrate Content Response",
-  "description": "Response payload with verdict, detailed explanations, and dialogue support for collaborative calibration",
+  "description": "Response payload with verdict and detailed explanations for collaborative calibration",
   "type": "object",
   "oneOf": [
     {
       "type": "object",
       "description": "Success response with detailed calibration feedback",
       "properties": {
-        "context_id": {
-          "type": "string",
-          "description": "Dialogue identifier for follow-up questions"
-        },
         "verdict": {
           "type": "string",
           "enum": ["pass", "fail"],
@@ -93,7 +89,7 @@
           "description": "Field must not be present in success response"
         }
       },
-      "required": ["context_id", "verdict"]
+      "required": ["verdict"]
     },
     {
       "type": "object",
