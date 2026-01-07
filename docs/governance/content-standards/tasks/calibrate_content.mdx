@@ -53,15 +53,7 @@ An artifact represents content adjacent to an ad placement - identified by `prop
 ```json
 {
   "verdict": "pass",
-  "confidence": 0.95,
   "explanation": "This content aligns well with the brand's fitness-focused positioning. Health and fitness content is explicitly marked as 'ideal' in the policy. The discussion is constructive and educational.",
-  "policy_alignment": {
-    "matching_criteria": [
-      "Sports and fitness content is ideal",
-      "Lifestyle content about health is good"
-    ],
-    "no_violations": true
-  },
   "features": [
     {
       "feature_id": "brand_safety",
@@ -82,17 +74,7 @@ An artifact represents content adjacent to an ad placement - identified by `prop
 ```json
 {
   "verdict": "fail",
-  "confidence": 0.88,
   "explanation": "This content discusses political topics which the policy explicitly excludes. While the article itself is balanced journalism, the brand has requested to avoid all controversial political content regardless of tone.",
-  "policy_alignment": {
-    "matching_criteria": [],
-    "violations": [
-      {
-        "policy_text": "Avoid content about violence, controversial politics, adult themes",
-        "violation_reason": "Article discusses ongoing political controversy"
-      }
-    ]
-  },
   "features": [
     {
       "feature_id": "brand_safety",
@@ -102,8 +84,7 @@ An artifact represents content adjacent to an ad placement - identified by `prop
     {
       "feature_id": "brand_suitability",
       "status": "failed",
-      "explanation": "Political content is excluded by brand policy, even when balanced.",
-      "suggestion": "Consider news content focused on sports, entertainment, or lifestyle instead."
+      "explanation": "Political content is excluded by brand policy, even when balanced."
     }
   ]
 }
@@ -111,13 +92,12 @@ An artifact represents content adjacent to an ad placement - identified by `prop
 
 ### Response Fields
 
-| Field | Description |
-|-------|-------------|
-| `verdict` | Overall `pass` or `fail` decision |
-| `confidence` | Model confidence in the verdict (0-1) |
-| `explanation` | Detailed natural language explanation of the decision |
-| `policy_alignment` | How the content maps to specific policy criteria |
-| `features` | Per-feature breakdown with explanations |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `verdict` | Yes | Overall `pass` or `fail` decision |
+| `explanation` | No | Detailed natural language explanation of the decision |
+| `features` | No | Per-feature breakdown with explanations |
+| `confidence` | No | Model confidence in the verdict (0-1), when available |
 
 ## Dialogue Flow
 
@@ -129,30 +109,27 @@ Calibration supports back-and-forth dialogue using the protocol's conversation m
 // Seller sends artifact to evaluate
 const response1 = await a2a.send({
   message: {
-    parts: [
-      { kind: "text", text: "Does this artifact pass our standards?" },
-      {
-        kind: "data",
-        data: {
-          skill: "calibrate_content",
-          parameters: {
-            standards_id: "nike_brand_safety",
-            artifact: {
-              property_id: { type: "domain", value: "reddit.com" },
-              artifact_id: "r_news_politics_123",
-              assets: [
-                { type: "text", role: "title", content: "Political News Article" }
-              ]
-            }
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "calibrate_content",
+        parameters: {
+          standards_id: "nike_brand_safety",
+          artifact: {
+            property_id: { type: "domain", value: "reddit.com" },
+            artifact_id: "r_news_politics_123",
+            assets: [
+              { type: "text", role: "title", content: "Political News Article" }
+            ]
           }
         }
       }
-    ]
+    }]
   }
 });
-// Response: verdict=fail with explanation
+// Response: verdict=fail with feature breakdown
 
-// Seller disagrees - continue dialogue in same context
+// Seller asks follow-up question about the decision
 const response2 = await a2a.send({
   contextId: response1.contextId,
   message: {
@@ -168,25 +145,22 @@ const response2 = await a2a.send({
 const response3 = await a2a.send({
   contextId: response1.contextId,
   message: {
-    parts: [
-      { kind: "text", text: "What about this fitness content?" },
-      {
-        kind: "data",
-        data: {
-          skill: "calibrate_content",
-          parameters: {
-            standards_id: "nike_brand_safety",
-            artifact: {
-              property_id: { type: "domain", value: "reddit.com" },
-              artifact_id: "r_running_tips_456",
-              assets: [
-                { type: "text", role: "title", content: "Running Tips" }
-              ]
-            }
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "calibrate_content",
+        parameters: {
+          standards_id: "nike_brand_safety",
+          artifact: {
+            property_id: { type: "domain", value: "reddit.com" },
+            artifact_id: "r_running_tips_456",
+            assets: [
+              { type: "text", role: "title", content: "Running Tips" }
+            ]
           }
         }
       }
-    ]
+    }]
   }
 });
 // Response: verdict=pass - now seller understands the boundaries

@@ -24,39 +24,6 @@
           "type": "string",
           "description": "Detailed natural language explanation of the decision"
         },
-        "policy_alignment": {
-          "type": "object",
-          "description": "How the content maps to specific policy criteria",
-          "properties": {
-            "matching_criteria": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Policy statements that this content matches positively"
-            },
-            "violations": {
-              "type": "array",
-              "description": "Policy violations found in the content",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "policy_text": {
-                    "type": "string",
-                    "description": "The policy text that was violated"
-                  },
-                  "violation_reason": {
-                    "type": "string",
-                    "description": "Explanation of how the content violates this policy"
-                  }
-                },
-                "required": ["policy_text", "violation_reason"]
-              }
-            },
-            "no_violations": {
-              "type": "boolean",
-              "description": "True if no policy violations were found"
-            }
-          }
-        },
         "features": {
           "type": "array",
           "description": "Per-feature breakdown with explanations",
@@ -75,10 +42,6 @@
               "explanation": {
                 "type": "string",
                 "description": "Human-readable explanation of why this feature passed or failed"
-              },
-              "suggestion": {
-                "type": "string",
-                "description": "Actionable suggestion for content that could meet this feature's requirements"
               }
             },
             "required": ["feature_id", "status"]
