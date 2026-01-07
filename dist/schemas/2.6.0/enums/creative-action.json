@@ -4,5 +4,11 @@
   "title": "Creative Action",
   "description": "Action taken on a creative during sync operation",
   "type": "string",
-  "enum": ["created", "updated", "unchanged", "failed", "deleted"]
+  "enum": [
+    "created",
+    "updated",
+    "unchanged",
+    "failed",
+    "deleted"
+  ]
 }

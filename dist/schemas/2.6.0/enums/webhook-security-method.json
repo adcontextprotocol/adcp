@@ -4,5 +4,9 @@
   "title": "Webhook Security Method",
   "description": "Security methods for authenticating webhook requests",
   "type": "string",
-  "enum": ["hmac_sha256", "api_key", "none"]
+  "enum": [
+    "hmac_sha256",
+    "api_key",
+    "none"
+  ]
 }

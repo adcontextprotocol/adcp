@@ -51,7 +51,7 @@
           "agent_url",
           "id"
         ],
-        "additionalProperties": false,
+        "additionalProperties": true,
         "dependencies": {
           "width": [
             "height"
@@ -148,10 +148,10 @@
           "required": [
             "suppress_minutes"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "creative_ids": {
       "type": "array",
@@ -211,7 +211,7 @@
               "agent_url",
               "id"
             ],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "dependencies": {
               "width": [
                 "height"
@@ -261,7 +261,7 @@
                       "width",
                       "height"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "Video Asset",
@@ -303,7 +303,7 @@
                       "width",
                       "height"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "Audio Asset",
@@ -333,7 +333,7 @@
                     "required": [
                       "url"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "Text Asset",
@@ -352,7 +352,7 @@
                     "required": [
                       "content"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "HTML Asset",
@@ -371,7 +371,7 @@
                     "required": [
                       "content"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "CSS Asset",
@@ -390,7 +390,7 @@
                     "required": [
                       "content"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "JavaScript Asset",
@@ -415,7 +415,7 @@
                     "required": [
                       "content"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   },
                   {
                     "title": "VAST Asset",
@@ -487,7 +487,7 @@
                           "delivery_type",
                           "url"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": true
                       },
                       {
                         "type": "object",
@@ -554,7 +554,7 @@
                           "delivery_type",
                           "content"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": true
                       }
                     ]
                   },
@@ -620,7 +620,7 @@
                           "delivery_type",
                           "url"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": true
                       },
                       {
                         "type": "object",
@@ -679,7 +679,7 @@
                           "delivery_type",
                           "content"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": true
                       }
                     ]
                   },
@@ -880,7 +880,7 @@
                                     "asset_type",
                                     "url"
                                   ],
-                                  "additionalProperties": false
+                                  "additionalProperties": true
                                 }
                               },
                               "product_catalog": {
@@ -928,7 +928,7 @@
                                 "required": [
                                   "feed_url"
                                 ],
-                                "additionalProperties": false
+                                "additionalProperties": true
                               },
                               "disclaimers": {
                                 "type": "array",
@@ -1002,7 +1002,7 @@
                             "required": [
                               "name"
                             ],
-                            "additionalProperties": false,
+                            "additionalProperties": true,
                             "examples": [
                               {
                                 "description": "Example with both URL and name",
@@ -1166,7 +1166,7 @@
                             "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
                           }
                         },
-                        "additionalProperties": false,
+                        "additionalProperties": true,
                         "examples": [
                           {
                             "description": "Direct SKU selection for specific products from brand manifest",
@@ -1230,7 +1230,7 @@
                           "required": [
                             "name"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       },
                       "asset_selectors": {
@@ -1272,13 +1272,13 @@
                             }
                           }
                         },
-                        "additionalProperties": false
+                        "additionalProperties": true
                       }
                     },
                     "required": [
                       "brand_manifest"
                     ],
-                    "additionalProperties": false,
+                    "additionalProperties": true,
                     "examples": [
                       {
                         "brand_manifest": {
@@ -1331,12 +1331,12 @@
                     "required": [
                       "url"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 ]
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "inputs": {
             "type": "array",
@@ -1363,7 +1363,7 @@
               "required": [
                 "name"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "tags": {
@@ -1398,7 +1398,7 @@
           "format_id",
           "assets"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "maxItems": 100
     },
@@ -1415,9 +1415,9 @@
     "budget",
     "pricing_option_id"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.434Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.836Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

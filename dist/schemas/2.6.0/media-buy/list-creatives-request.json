@@ -23,7 +23,7 @@
           "description": "Sort direction"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "pagination": {
       "type": "object",
@@ -43,7 +43,7 @@
           "description": "Number of creatives to skip"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "include_assignments": {
       "type": "boolean",
@@ -86,7 +86,7 @@
       "$ref": "/schemas/2.6.0/core/ext.json"
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "List all approved video creatives",

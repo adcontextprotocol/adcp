@@ -53,7 +53,7 @@
         "start",
         "end"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "currency": {
       "type": "string",
@@ -95,7 +95,7 @@
         "spend",
         "media_buy_count"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "media_buy_deliveries": {
       "type": "array",
@@ -317,11 +317,11 @@
                             "venue_id",
                             "impressions"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       }
                     },
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true
@@ -507,11 +507,11 @@
                               "venue_id",
                               "impressions"
                             ],
-                            "additionalProperties": false
+                            "additionalProperties": true
                           }
                         }
                       },
-                      "additionalProperties": false
+                      "additionalProperties": true
                     }
                   },
                   "additionalProperties": true
@@ -619,7 +619,7 @@
                 "impressions",
                 "spend"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },
@@ -629,7 +629,7 @@
           "totals",
           "by_package"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "errors": {
@@ -662,14 +662,16 @@
             "minimum": 0
           },
           "details": {
-            "description": "Additional task-specific error details"
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
           }
         },
         "required": [
           "code",
           "message"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": {
@@ -690,9 +692,9 @@
     "currency",
     "media_buy_deliveries"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.419Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.828Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

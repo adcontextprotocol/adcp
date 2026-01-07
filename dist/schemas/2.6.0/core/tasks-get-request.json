@@ -24,7 +24,7 @@
   "required": [
     "task_id"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Check task status",

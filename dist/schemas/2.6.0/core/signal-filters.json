@@ -31,5 +31,5 @@
       "maximum": 100
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

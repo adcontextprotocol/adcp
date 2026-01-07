@@ -58,5 +58,5 @@
     "total_budget",
     "packages"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

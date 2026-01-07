@@ -4,5 +4,9 @@
   "title": "JavaScript Module Type",
   "description": "JavaScript module format types for creative assets",
   "type": "string",
-  "enum": ["esm", "commonjs", "script"]
+  "enum": [
+    "esm",
+    "commonjs",
+    "script"
+  ]
 }

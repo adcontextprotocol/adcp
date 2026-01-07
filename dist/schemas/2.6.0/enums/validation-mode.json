@@ -4,5 +4,8 @@
   "title": "Validation Mode",
   "description": "Creative validation strictness levels",
   "type": "string",
-  "enum": ["strict", "lenient"]
+  "enum": [
+    "strict",
+    "lenient"
+  ]
 }
