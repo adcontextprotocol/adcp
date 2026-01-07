@@ -38,8 +38,11 @@
           "description": "Tracking events supported by this VAST tag"
         }
       },
-      "required": ["delivery_type", "url"],
-      "additionalProperties": false
+      "required": [
+        "delivery_type",
+        "url"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -74,8 +77,11 @@
           "description": "Tracking events supported by this VAST tag"
         }
       },
-      "required": ["delivery_type", "content"],
-      "additionalProperties": false
+      "required": [
+        "delivery_type",
+        "content"
+      ],
+      "additionalProperties": true
     }
   ]
 }

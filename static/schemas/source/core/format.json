@@ -91,10 +91,17 @@
                 "type": "object",
                 "description": "Indicates which dimensions are responsive/fluid",
                 "properties": {
-                  "width": {"type": "boolean"},
-                  "height": {"type": "boolean"}
+                  "width": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "type": "boolean"
+                  }
                 },
-                "required": ["width", "height"]
+                "required": [
+                  "width",
+                  "height"
+                ]
               },
               "aspect_ratio": {
                 "type": "string",
@@ -104,16 +111,34 @@
             }
           }
         },
-        "required": ["role"],
+        "required": [
+          "role"
+        ],
         "oneOf": [
           {
-            "required": ["dimensions"],
-            "not": {"required": ["parameters_from_format_id"]}
+            "required": [
+              "dimensions"
+            ],
+            "not": {
+              "required": [
+                "parameters_from_format_id"
+              ]
+            }
           },
           {
-            "required": ["parameters_from_format_id"],
-            "properties": {"parameters_from_format_id": {"const": true}},
-            "not": {"required": ["dimensions"]}
+            "required": [
+              "parameters_from_format_id"
+            ],
+            "properties": {
+              "parameters_from_format_id": {
+                "const": true
+              }
+            },
+            "not": {
+              "required": [
+                "dimensions"
+              ]
+            }
           }
         ]
       },
@@ -144,7 +169,7 @@
               },
               "asset_role": {
                 "type": "string",
-                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests\u2014use asset_id instead. This field is for human-readable documentation and UI display only."
               },
               "required": {
                 "type": "boolean",
@@ -156,7 +181,11 @@
                 "additionalProperties": true
               }
             },
-            "required": ["item_type", "asset_id", "asset_type"]
+            "required": [
+              "item_type",
+              "asset_id",
+              "asset_type"
+            ]
           },
           {
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
@@ -197,7 +226,7 @@
                     },
                     "asset_role": {
                       "type": "string",
-                      "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+                      "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests\u2014use asset_id instead. This field is for human-readable documentation and UI display only."
                     },
                     "required": {
                       "type": "boolean",
@@ -209,11 +238,20 @@
                       "additionalProperties": true
                     }
                   },
-                  "required": ["asset_id", "asset_type"]
+                  "required": [
+                    "asset_id",
+                    "asset_type"
+                  ]
                 }
               }
             },
-            "required": ["item_type", "asset_group_id", "min_count", "max_count", "assets"]
+            "required": [
+              "item_type",
+              "asset_group_id",
+              "min_count",
+              "max_count",
+              "assets"
+            ]
           }
         ]
       }
@@ -354,8 +392,11 @@
           "additionalProperties": true
         }
       },
-      "required": ["format_id", "manifest"],
-      "additionalProperties": false
+      "required": [
+        "format_id",
+        "manifest"
+      ],
+      "additionalProperties": true
     },
     "format_card_detailed": {
       "type": "object",
@@ -371,10 +412,17 @@
           "additionalProperties": true
         }
       },
-      "required": ["format_id", "manifest"],
-      "additionalProperties": false
+      "required": [
+        "format_id",
+        "manifest"
+      ],
+      "additionalProperties": true
     }
   },
-  "required": ["format_id", "name", "type"],
-  "additionalProperties": false
+  "required": [
+    "format_id",
+    "name",
+    "type"
+  ],
+  "additionalProperties": true
 }

@@ -58,7 +58,7 @@
           ]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -68,5 +68,5 @@
     "format_id",
     "assets"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

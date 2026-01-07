@@ -31,6 +31,7 @@ import {
   mapIndustryToCompanyType,
   mapRevenueToTier,
 } from "../services/lusha.js";
+import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
@@ -627,14 +628,8 @@ export function createPublicBillingRouter(): Router {
         const { orgId } = req.params;
         const { company_type, revenue_tier } = req.body;
 
-        // Validate inputs - must match CompanyType in organization-db.ts
-        const validCompanyTypes = [
-          "brand",
-          "publisher",
-          "agency",
-          "adtech",
-          "other",
-        ];
+        // Validate inputs - use centralized company types config
+        const validCompanyTypes = COMPANY_TYPE_VALUES;
         const validRevenueTiers = [
           "under_1m",
           "1m_5m",

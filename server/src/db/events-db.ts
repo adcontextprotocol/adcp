@@ -202,7 +202,12 @@ export class EventsDatabase {
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    if (options.status) {
+    // Support querying multiple statuses at once
+    if (options.statuses && options.statuses.length > 0) {
+      const placeholders = options.statuses.map(() => `$${paramIndex++}`).join(', ');
+      conditions.push(`status IN (${placeholders})`);
+      params.push(...options.statuses);
+    } else if (options.status) {
       conditions.push(`status = $${paramIndex++}`);
       params.push(options.status);
     }
@@ -362,9 +367,27 @@ export class EventsDatabase {
   }
 
   /**
-   * Get registrations by user
+   * Get registrations by user (matches by workos_user_id OR by user's email)
+   * This allows registrations created via Luma import (which only have email)
+   * to be associated with a user who later signs up with that email.
+   *
+   * Security note: This intentionally associates registrations by email to support
+   * the workflow where external registrations (Luma) are imported by email, and
+   * users later sign up with the same email to see their history.
    */
-  async getUserRegistrations(workosUserId: string): Promise<EventRegistration[]> {
+  async getUserRegistrations(workosUserId: string, userEmail?: string): Promise<EventRegistration[]> {
+    // If we have an email, also match registrations by email
+    // This handles Luma imports where workos_user_id wasn't set
+    if (userEmail) {
+      const result = await query<EventRegistration>(
+        `SELECT * FROM event_registrations
+         WHERE workos_user_id = $1 OR LOWER(email) = LOWER($2)
+         ORDER BY registered_at DESC`,
+        [workosUserId, userEmail]
+      );
+      return result.rows.map(row => this.deserializeRegistration(row));
+    }
+
     const result = await query<EventRegistration>(
       `SELECT * FROM event_registrations
        WHERE workos_user_id = $1
@@ -390,9 +413,20 @@ export class EventsDatabase {
   }
 
   /**
-   * Check if user is registered for an event
+   * Check if user is registered for an event (by workos_user_id or email)
    */
-  async isUserRegistered(eventId: string, workosUserId: string): Promise<boolean> {
+  async isUserRegistered(eventId: string, workosUserId: string, userEmail?: string): Promise<boolean> {
+    if (userEmail) {
+      const result = await query(
+        `SELECT 1 FROM event_registrations
+         WHERE event_id = $1 AND (workos_user_id = $2 OR LOWER(email) = LOWER($3))
+         AND registration_status != 'cancelled'
+         LIMIT 1`,
+        [eventId, workosUserId, userEmail]
+      );
+      return result.rows.length > 0;
+    }
+
     const result = await query(
       `SELECT 1 FROM event_registrations
        WHERE event_id = $1 AND workos_user_id = $2

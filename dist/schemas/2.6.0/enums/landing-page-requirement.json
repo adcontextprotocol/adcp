@@ -4,5 +4,9 @@
   "title": "Landing Page Requirement",
   "description": "Landing page policy for creative click-through destinations",
   "type": "string",
-  "enum": ["any", "retailer_site_only", "must_include_retailer"]
+  "enum": [
+    "any",
+    "retailer_site_only",
+    "must_include_retailer"
+  ]
 }

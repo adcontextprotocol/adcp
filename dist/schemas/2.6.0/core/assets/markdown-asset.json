@@ -24,6 +24,8 @@
       "description": "Whether raw HTML blocks are allowed in the markdown. False recommended for security."
     }
   },
-  "required": ["content"],
-  "additionalProperties": false
+  "required": [
+    "content"
+  ],
+  "additionalProperties": true
 }

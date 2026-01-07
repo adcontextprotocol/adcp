@@ -50,7 +50,7 @@
                 "agent_url",
                 "id"
               ],
-              "additionalProperties": false,
+              "additionalProperties": true,
               "dependencies": {
                 "width": [
                   "height"
@@ -104,7 +104,7 @@
                         "width",
                         "height"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "Video Asset",
@@ -146,7 +146,7 @@
                         "width",
                         "height"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "Audio Asset",
@@ -176,7 +176,7 @@
                       "required": [
                         "url"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "VAST Asset",
@@ -248,7 +248,7 @@
                             "delivery_type",
                             "url"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         },
                         {
                           "type": "object",
@@ -315,7 +315,7 @@
                             "delivery_type",
                             "content"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       ]
                     },
@@ -336,7 +336,7 @@
                       "required": [
                         "content"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "URL Asset",
@@ -366,7 +366,7 @@
                       "required": [
                         "url"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "HTML Asset",
@@ -385,7 +385,7 @@
                       "required": [
                         "content"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "JavaScript Asset",
@@ -410,7 +410,7 @@
                       "required": [
                         "content"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "Webhook Asset",
@@ -497,7 +497,7 @@
                         "response_type",
                         "security"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "CSS Asset",
@@ -516,7 +516,7 @@
                       "required": [
                         "content"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     {
                       "title": "DAAST Asset",
@@ -580,7 +580,7 @@
                             "delivery_type",
                             "url"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         },
                         {
                           "type": "object",
@@ -639,7 +639,7 @@
                             "delivery_type",
                             "content"
                           ],
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       ]
                     },
@@ -840,7 +840,7 @@
                                       "asset_type",
                                       "url"
                                     ],
-                                    "additionalProperties": false
+                                    "additionalProperties": true
                                   }
                                 },
                                 "product_catalog": {
@@ -888,7 +888,7 @@
                                   "required": [
                                     "feed_url"
                                   ],
-                                  "additionalProperties": false
+                                  "additionalProperties": true
                                 },
                                 "disclaimers": {
                                   "type": "array",
@@ -962,7 +962,7 @@
                               "required": [
                                 "name"
                               ],
-                              "additionalProperties": false,
+                              "additionalProperties": true,
                               "examples": [
                                 {
                                   "description": "Example with both URL and name",
@@ -1126,7 +1126,7 @@
                               "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
                             }
                           },
-                          "additionalProperties": false,
+                          "additionalProperties": true,
                           "examples": [
                             {
                               "description": "Direct SKU selection for specific products from brand manifest",
@@ -1190,7 +1190,7 @@
                             "required": [
                               "name"
                             ],
-                            "additionalProperties": false
+                            "additionalProperties": true
                           }
                         },
                         "asset_selectors": {
@@ -1232,13 +1232,13 @@
                               }
                             }
                           },
-                          "additionalProperties": false
+                          "additionalProperties": true
                         }
                       },
                       "required": [
                         "brand_manifest"
                       ],
-                      "additionalProperties": false,
+                      "additionalProperties": true,
                       "examples": [
                         {
                           "brand_manifest": {
@@ -1266,7 +1266,7 @@
                   ]
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "ext": {
               "title": "Extension Object",
@@ -1279,7 +1279,7 @@
             "format_id",
             "assets"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "context": {
           "title": "Context Object",
@@ -1297,7 +1297,7 @@
       "required": [
         "creative_manifest"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "errors"
@@ -1339,14 +1339,16 @@
                 "minimum": 0
               },
               "details": {
-                "description": "Additional task-specific error details"
+                "type": "object",
+                "description": "Additional task-specific error details",
+                "additionalProperties": true
               }
             },
             "required": [
               "code",
               "message"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1
         },
@@ -1366,7 +1368,7 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "creative_manifest"
@@ -1375,7 +1377,7 @@
     }
   ],
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.404Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.825Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

@@ -66,5 +66,5 @@
   "required": [
     "publisher_domains"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

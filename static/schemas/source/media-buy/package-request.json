@@ -66,5 +66,5 @@
     "budget",
     "pricing_option_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

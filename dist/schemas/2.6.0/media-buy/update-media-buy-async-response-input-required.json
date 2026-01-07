@@ -20,6 +20,5 @@
       "$ref": "/schemas/2.6.0/core/ext.json"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
-

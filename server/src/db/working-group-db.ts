@@ -514,7 +514,13 @@ export class WorkingGroupDatabase {
        FROM working_group_memberships wgm
        LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgm.workos_user_id = om.workos_user_id
+       LEFT JOIN LATERAL (
+         SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
+         FROM organization_memberships om
+         WHERE om.workos_user_id = wgm.workos_user_id
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
        ORDER BY user_name, user_email`,
@@ -562,7 +568,8 @@ export class WorkingGroupDatabase {
     // 1. working_group_memberships (if they're a member with cached name)
     // 2. users table (canonical user data synced from WorkOS)
     // 3. organization_memberships (older sync table)
-    // 4. Falls back to user_id if no name found
+    // 4. slack_user_mappings (if user_id is a Slack ID)
+    // 5. Falls back to user_id if no name found
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
@@ -572,6 +579,8 @@ export class WorkingGroupDatabase {
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
+           NULLIF(sm.slack_real_name, ''),
+           sm.slack_email,
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
@@ -580,8 +589,15 @@ export class WorkingGroupDatabase {
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN users u ON wgl.user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN LATERAL (
+         SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
+         FROM organization_memberships om
+         WHERE om.workos_user_id = wgl.user_id
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = $1
        ORDER BY wgl.created_at`,
       [workingGroupId]
@@ -608,6 +624,8 @@ export class WorkingGroupDatabase {
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
+           NULLIF(sm.slack_real_name, ''),
+           sm.slack_email,
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
@@ -616,8 +634,15 @@ export class WorkingGroupDatabase {
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN users u ON wgl.user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN LATERAL (
+         SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
+         FROM organization_memberships om
+         WHERE om.workos_user_id = wgl.user_id
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = ANY($1)
        ORDER BY wgl.created_at`,
       [workingGroupIds]

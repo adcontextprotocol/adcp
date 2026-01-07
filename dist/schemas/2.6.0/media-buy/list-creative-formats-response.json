@@ -57,5 +57,5 @@
   "required": [
     "formats"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

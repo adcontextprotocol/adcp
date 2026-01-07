@@ -63,7 +63,7 @@
               "cpm",
               "currency"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "required": [
@@ -76,7 +76,7 @@
           "deployments",
           "pricing"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "errors": {
@@ -96,5 +96,5 @@
   "required": [
     "signals"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

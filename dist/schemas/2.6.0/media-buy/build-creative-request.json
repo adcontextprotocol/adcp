@@ -27,5 +27,5 @@
   "required": [
     "target_format_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

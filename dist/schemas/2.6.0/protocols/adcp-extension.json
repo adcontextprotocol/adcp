@@ -14,13 +14,20 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["media_buy", "creative", "signals"]
+        "enum": [
+          "media_buy",
+          "creative",
+          "signals"
+        ]
       },
       "minItems": 1,
       "uniqueItems": true,
       "description": "AdCP protocol domains supported by this agent. At least one must be specified."
     }
   },
-  "required": ["adcp_version", "protocols_supported"],
-  "additionalProperties": false
+  "required": [
+    "adcp_version",
+    "protocols_supported"
+  ],
+  "additionalProperties": true
 }

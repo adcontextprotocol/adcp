@@ -4,5 +4,8 @@
   "title": "AdCP Domain",
   "description": "AdCP protocol domains for task categorization",
   "type": "string",
-  "enum": ["media-buy", "signals"]
+  "enum": [
+    "media-buy",
+    "signals"
+  ]
 }

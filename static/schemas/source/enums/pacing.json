@@ -4,7 +4,11 @@
   "title": "Pacing",
   "description": "Budget pacing strategy",
   "type": "string",
-  "enum": ["even", "asap", "front_loaded"],
+  "enum": [
+    "even",
+    "asap",
+    "front_loaded"
+  ],
   "enumDescriptions": {
     "even": "Allocate remaining budget evenly over remaining campaign duration (default)",
     "asap": "Spend remaining budget as quickly as possible",

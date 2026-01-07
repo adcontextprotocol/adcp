@@ -475,10 +475,12 @@ async function createOrUpdateRssKnowledge(
       title, category, content, source_url, fetch_url, source_type,
       fetch_status, last_fetched_at, summary, key_insights, addie_notes,
       relevance_tags, quality_score, mentions_agentic, mentions_adcp,
-      notification_channel_ids, discovery_source, discovery_context, created_by
+      notification_channel_ids, discovery_source, discovery_context, created_by,
+      published_at
     ) VALUES (
       $1, $2, $3, $4, $4, 'rss', 'success', NOW(), $5, $6, $7,
-      $8, $9, $10, $11, $12, 'rss_feed', $13, 'system'
+      $8, $9, $10, $11, $12, 'rss_feed', $13, 'system',
+      $14
     )
     ON CONFLICT (source_url) DO UPDATE SET
       content = EXCLUDED.content,
@@ -492,7 +494,8 @@ async function createOrUpdateRssKnowledge(
       notification_channel_ids = EXCLUDED.notification_channel_ids,
       fetch_status = 'success',
       last_fetched_at = NOW(),
-      updated_at = NOW()`,
+      updated_at = NOW(),
+      published_at = COALESCE(EXCLUDED.published_at, addie_knowledge.published_at)`,
     [
       perspective.title,
       perspective.category || 'Industry News',
@@ -507,6 +510,7 @@ async function createOrUpdateRssKnowledge(
       checkMentionsAdcp(data.content, data.summary || ''),
       data.notification_channel_ids || [],
       JSON.stringify({ perspective_id: perspective.id, feed_id: perspective.feed_id }),
+      perspective.published_at || null,
     ]
   );
 }

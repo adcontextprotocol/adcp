@@ -29,9 +29,15 @@ import {
   createFeedProposal,
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
+import { MemberDatabase } from '../../db/member-db.js';
+import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
+import { sendIntroductionEmail } from '../../notifications/email.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const adagentsManager = new AdAgentsManager();
+const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
+const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -635,6 +641,89 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['url'],
+    },
+  },
+
+  // ============================================
+  // MEMBER SEARCH / FIND HELP
+  // ============================================
+  {
+    name: 'search_members',
+    description:
+      'Search for member organizations that can help with specific needs. Searches member names, descriptions, taglines, offerings, and tags using natural language. Use this when users ask about finding vendors, consultants, implementation partners, managed services, or anyone who can help them with AdCP adoption. Returns public member profiles with contact info.',
+    usage_hints: 'use for "find someone to run a sales agent", "who can help me implement AdCP", "find a CTV partner", "looking for managed services", "need a consultant"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'What the user is looking for in natural language (e.g., "run a sales agent for me", "help implementing AdCP", "CTV advertising expertise", "managed services for publishers")',
+        },
+        offerings: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'],
+          },
+          description: 'Optional: filter by specific service offerings',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default 5, max 10)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'request_introduction',
+    description:
+      'Send an introduction email connecting a user with a member organization. Addie sends the email directly on behalf of the requester. Use this when a user explicitly asks to be introduced to or connected with a specific member after seeing search results.',
+    usage_hints: 'use for "introduce me to X", "connect me with X", "I\'d like to talk to X", "can you put me in touch with X"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        member_slug: {
+          type: 'string',
+          description: 'The slug (URL identifier) of the member to be introduced to',
+        },
+        requester_name: {
+          type: 'string',
+          description: 'Full name of the person requesting the introduction',
+        },
+        requester_email: {
+          type: 'string',
+          description: 'Email address of the person requesting the introduction',
+        },
+        requester_company: {
+          type: 'string',
+          description: 'Company/organization of the person requesting the introduction (optional)',
+        },
+        message: {
+          type: 'string',
+          description: 'Brief message from the requester explaining what they\'re looking for or why they want to connect',
+        },
+        search_query: {
+          type: 'string',
+          description: 'The original search query the user used to find this member (if applicable)',
+        },
+        reasoning: {
+          type: 'string',
+          description: 'Addie\'s explanation of why this member is a good fit for what the requester is looking for. Be specific about matching capabilities.',
+        },
+      },
+      required: ['member_slug', 'requester_name', 'requester_email', 'message', 'reasoning'],
+    },
+  },
+  {
+    name: 'get_my_search_analytics',
+    description:
+      'Get search analytics for the user\'s member profile. Shows how many times their profile appeared in searches, profile clicks, and introduction requests. Only works for members with a public profile.',
+    usage_hints: 'use for "how is my profile performing?", "how many people have seen my profile?", "search analytics", "introduction stats"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
     },
   },
 ];
@@ -1814,6 +1903,286 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, url }, 'Error creating feed proposal');
       return '❌ Failed to submit the proposal. Please try again.';
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH / FIND HELP
+  // ============================================
+  handlers.set('search_members', async (input) => {
+    const searchQuery = input.query as string;
+    const offeringsFilter = input.offerings as string[] | undefined;
+    const requestedLimit = (input.limit as number) || 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 10);
+
+    // Generate a session ID for this search operation to correlate analytics
+    const searchSessionId = uuidv4();
+
+    try {
+      // Search public member profiles
+      // The MemberDatabase.listProfiles supports text search across name, tagline, description, tags
+      const profiles = await memberDb.listProfiles({
+        is_public: true,
+        search: searchQuery,
+        offerings: offeringsFilter as any,
+        limit: limit + 5, // Get extra to allow for relevance filtering
+      });
+
+      if (profiles.length === 0) {
+        let response = `No members found matching "${searchQuery}".\n\n`;
+        response += `This could mean:\n`;
+        response += `- No members have published profiles matching your needs yet\n`;
+        response += `- Try broader search terms\n\n`;
+        response += `You can also:\n`;
+        response += `- Browse all members at https://agenticadvertising.org/members\n`;
+        response += `- Ask me for general guidance on getting started with AdCP`;
+        return response;
+      }
+
+      const displayProfiles = profiles.slice(0, limit);
+
+      // Track search impressions for analytics (fire-and-forget)
+      const searcherUserId = memberContext?.workos_user?.workos_user_id;
+      memberSearchAnalyticsDb
+        .recordSearchImpressionsBatch(
+          displayProfiles.map((profile, index) => ({
+            member_profile_id: profile.id,
+            search_query: searchQuery,
+            search_session_id: searchSessionId,
+            searcher_user_id: searcherUserId,
+            context: {
+              position: index + 1,
+              total_results: profiles.length,
+              offerings_filter: offeringsFilter,
+            },
+          }))
+        )
+        .catch((err) => {
+          logger.warn({ error: err, searchSessionId }, 'Failed to record search impressions');
+        });
+
+      // Return structured data that chat UI can render as cards
+      // The format is: intro text + special JSON block + follow-up text
+      const memberCards = displayProfiles.map((profile) => ({
+        id: profile.id,
+        slug: profile.slug,
+        display_name: profile.display_name,
+        tagline: profile.tagline || null,
+        description: profile.description
+          ? profile.description.length > 200
+            ? profile.description.substring(0, 200) + '...'
+            : profile.description
+          : null,
+        logo_url: profile.logo_url || profile.logo_light_url || null,
+        offerings: profile.offerings || [],
+        headquarters: profile.headquarters || null,
+        contact_website: profile.contact_website || null,
+      }));
+
+      // Embed structured data in a special format the chat UI will recognize
+      const structuredData = {
+        type: 'member_search_results',
+        query: searchQuery,
+        search_session_id: searchSessionId,
+        results: memberCards,
+        total_found: profiles.length,
+      };
+
+      // Build response with intro, embedded data block, and follow-up
+      let response = `Found ${displayProfiles.length} member${displayProfiles.length !== 1 ? 's' : ''} who can help:\n\n`;
+      response += `<!--ADDIE_DATA:${JSON.stringify(structuredData)}:ADDIE_DATA-->\n\n`;
+
+      if (profiles.length > limit) {
+        response += `_Showing top ${limit} of ${profiles.length} results. [Browse all members](/members) for more options._\n\n`;
+      }
+
+      response += `Click on a card to see their full profile, or ask me to introduce you to someone.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query: searchQuery }, 'Addie: search_members failed');
+      return `Failed to search members: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // INTRODUCTION REQUESTS
+  // ============================================
+  handlers.set('request_introduction', async (input) => {
+    const memberSlug = input.member_slug as string;
+    const requesterName = input.requester_name as string;
+    const requesterEmail = input.requester_email as string;
+    const requesterCompany = input.requester_company as string | undefined;
+    const message = input.message as string;
+    const searchQuery = input.search_query as string | undefined;
+    const reasoning = input.reasoning as string;
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!requesterEmail || !emailRegex.test(requesterEmail)) {
+      return 'Please provide a valid email address for the introduction request.';
+    }
+
+    try {
+      // Get the member profile
+      const profile = await memberDb.getProfileBySlug(memberSlug);
+      if (!profile) {
+        return `I couldn't find a member with the identifier "${memberSlug}". Please check the name and try again, or use search_members to find the right member.`;
+      }
+
+      if (!profile.is_public) {
+        return `This member's profile is not currently public. They may not be accepting introductions at this time.`;
+      }
+
+      // Check if the member has a contact email
+      if (!profile.contact_email) {
+        let response = `**${profile.display_name}** doesn't have a contact email listed in their profile.\n\n`;
+        if (profile.contact_website) {
+          response += `You can reach them through their website: ${profile.contact_website}`;
+        } else if (profile.linkedin_url) {
+          response += `You can connect with them on LinkedIn: ${profile.linkedin_url}`;
+        } else {
+          response += `You may want to visit their profile page at https://agenticadvertising.org/members/${profile.slug} for more information.`;
+        }
+        return response;
+      }
+
+      // Record the introduction request for analytics
+      const searcherUserId = memberContext?.workos_user?.workos_user_id;
+      await memberSearchAnalyticsDb.recordIntroductionRequest({
+        member_profile_id: profile.id,
+        searcher_user_id: searcherUserId,
+        searcher_email: requesterEmail,
+        searcher_name: requesterName,
+        searcher_company: requesterCompany,
+        context: {
+          message,
+          search_query: searchQuery,
+          reasoning,
+        },
+      });
+
+      // Send the introduction email
+      const emailResult = await sendIntroductionEmail({
+        memberEmail: profile.contact_email,
+        memberName: profile.display_name,
+        memberSlug: profile.slug,
+        requesterName,
+        requesterEmail,
+        requesterCompany,
+        requesterMessage: message,
+        searchQuery,
+        addieReasoning: reasoning,
+      });
+
+      if (!emailResult.success) {
+        // Email failed but we recorded the request - let user know to follow up manually
+        logger.warn({ error: emailResult.error, memberSlug, requesterEmail }, 'Introduction email failed to send');
+        let response = `I recorded your introduction request to **${profile.display_name}**, but there was an issue sending the email.\n\n`;
+        response += `Please reach out to them directly at: **${profile.contact_email}**\n\n`;
+        response += `Here's a suggested message:\n\n---\n\n`;
+        response += `Hi ${profile.display_name.split(' ')[0] || 'there'},\n\n`;
+        response += `I found your profile on AgenticAdvertising.org. ${message}\n\n`;
+        response += `${requesterName}`;
+        if (requesterCompany) response += `\n${requesterCompany}`;
+        response += `\n${requesterEmail}\n\n---`;
+        return response;
+      }
+
+      // Record that the email was sent
+      await memberSearchAnalyticsDb.recordIntroductionSent({
+        member_profile_id: profile.id,
+        searcher_email: requesterEmail,
+        searcher_name: requesterName,
+        context: { email_id: emailResult.messageId },
+      });
+
+      logger.info(
+        { memberSlug, requesterEmail, memberProfileId: profile.id, emailId: emailResult.messageId },
+        'Introduction email sent'
+      );
+
+      // Build a nice confirmation message
+      let response = `## Introduction Sent!\n\n`;
+      response += `I've sent an introduction email to **${profile.display_name}** on your behalf.\n\n`;
+      response += `**What happens next:**\n`;
+      response += `- ${profile.display_name} will receive an email with your message and contact info\n`;
+      response += `- When they reply, it will go directly to ${requesterEmail}\n`;
+      response += `- The email explains why you're a good match for what you're looking for\n\n`;
+      response += `Good luck with your conversation!`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, memberSlug }, 'Addie: request_introduction failed');
+      return `Failed to process introduction request: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH ANALYTICS
+  // ============================================
+  handlers.set('get_my_search_analytics', async () => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your search analytics. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const orgId = memberContext.organization?.workos_organization_id;
+    if (!orgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    try {
+      // Get the member profile for this organization
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (!profile) {
+        return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one!";
+      }
+
+      if (!profile.is_public) {
+        return "Your profile is not public yet. Make your profile public to appear in searches and see analytics.\n\nVisit https://agenticadvertising.org/member-profile to update your visibility settings.";
+      }
+
+      // Get analytics summary
+      const analytics = await memberSearchAnalyticsDb.getAnalyticsSummary(profile.id);
+
+      let response = `## Search Analytics for ${profile.display_name}\n\n`;
+
+      // Summary stats
+      response += `### Last 30 Days\n`;
+      response += `- **Search impressions:** ${analytics.impressions_last_30_days}\n`;
+      response += `- **Profile clicks:** ${analytics.clicks_last_30_days}\n`;
+      response += `- **Introduction requests:** ${analytics.intro_requests_last_30_days}\n\n`;
+
+      response += `### Last 7 Days\n`;
+      response += `- **Search impressions:** ${analytics.impressions_last_7_days}\n`;
+      response += `- **Profile clicks:** ${analytics.clicks_last_7_days}\n`;
+      response += `- **Introduction requests:** ${analytics.intro_requests_last_7_days}\n\n`;
+
+      response += `### All Time\n`;
+      response += `- **Total impressions:** ${analytics.total_impressions}\n`;
+      response += `- **Total clicks:** ${analytics.total_clicks}\n`;
+      response += `- **Total introduction requests:** ${analytics.total_intro_requests}\n`;
+      response += `- **Introductions sent:** ${analytics.total_intros_sent}\n\n`;
+
+      // Conversion insights
+      if (analytics.total_impressions > 0) {
+        const clickRate = ((analytics.total_clicks / analytics.total_impressions) * 100).toFixed(1);
+        response += `### Insights\n`;
+        response += `- **Click-through rate:** ${clickRate}%\n`;
+        if (analytics.total_clicks > 0) {
+          const introRate = ((analytics.total_intro_requests / analytics.total_clicks) * 100).toFixed(1);
+          response += `- **Introduction request rate:** ${introRate}% (of profile views)\n`;
+        }
+      }
+
+      if (analytics.total_impressions === 0) {
+        response += `\n💡 **Tip:** Your profile hasn't appeared in any searches yet. Make sure your description includes keywords that describe your services. Check your profile at https://agenticadvertising.org/member-profile`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Addie: get_my_search_analytics failed');
+      return `Failed to fetch analytics: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

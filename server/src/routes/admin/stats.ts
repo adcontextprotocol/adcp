@@ -14,6 +14,11 @@ import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
+import { MemberDatabase } from "../../db/member-db.js";
+
+const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
+const memberDb = new MemberDatabase();
 
 const logger = createLogger("admin-stats");
 
@@ -388,14 +393,13 @@ export function setupStatsRoutes(apiRouter: Router): void {
             o.email_domain,
             o.engagement_score,
             o.prospect_status,
-            o.interest_level,
-            (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+            o.interest_level
           FROM organizations o
           JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
             AND o.engagement_score >= 30
           ORDER BY o.engagement_score DESC
           LIMIT 5
@@ -409,8 +413,8 @@ export function setupStatsRoutes(apiRouter: Router): void {
               o.name,
               o.email_domain,
               o.engagement_score,
-              o.next_step,
-              o.next_step_due_date,
+              ns.description as next_step,
+              ns.next_step_due_date,
               (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
               EXTRACT(DAY FROM NOW() - COALESCE(
                 (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
@@ -418,10 +422,19 @@ export function setupStatsRoutes(apiRouter: Router): void {
               )) as days_since_activity
             FROM organizations o
             JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+            LEFT JOIN LATERAL (
+              SELECT description, next_step_due_date
+              FROM org_activities
+              WHERE organization_id = o.workos_organization_id
+                AND is_next_step = TRUE
+                AND next_step_completed_at IS NULL
+              ORDER BY next_step_due_date ASC NULLS LAST
+              LIMIT 1
+            ) ns ON true
             WHERE os.user_id = $1
               AND os.role = 'owner'
               AND o.is_personal IS NOT TRUE
-              AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+              AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
           )
           SELECT *,
             CASE
@@ -462,7 +475,13 @@ export function setupStatsRoutes(apiRouter: Router): void {
             COUNT(*) as total,
             COUNT(CASE WHEN o.engagement_score >= 30 THEN 1 END) as hot,
             COUNT(CASE
-              WHEN (o.next_step_due_date IS NOT NULL AND o.next_step_due_date < CURRENT_DATE)
+              WHEN EXISTS (
+                SELECT 1 FROM org_activities
+                WHERE organization_id = o.workos_organization_id
+                  AND is_next_step = TRUE
+                  AND next_step_completed_at IS NULL
+                  AND next_step_due_date < CURRENT_DATE
+              )
                 OR EXTRACT(DAY FROM NOW() - COALESCE(
                   (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
                   o.created_at
@@ -474,7 +493,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
         `, [userId]),
       ]);
 
@@ -493,6 +512,87 @@ export function setupStatsRoutes(apiRouter: Router): void {
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch prospect data",
+      });
+    }
+  });
+
+  // GET /api/admin/member-search-analytics - Get member search analytics for admin dashboard
+  apiRouter.get("/member-search-analytics", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const safeDays = Math.min(Math.max(days, 1), 365);
+
+      // Get global analytics and recent introductions in parallel
+      const [globalAnalytics, recentIntroductions] = await Promise.all([
+        memberSearchAnalyticsDb.getGlobalAnalytics(safeDays),
+        memberSearchAnalyticsDb.getRecentIntroductionsGlobal(20),
+      ]);
+
+      // Enrich top_members with profile info
+      const enrichedTopMembers = await Promise.all(
+        globalAnalytics.top_members.map(async (member) => {
+          try {
+            const profile = await memberDb.getProfileById(member.member_profile_id);
+            return {
+              ...member,
+              display_name: profile?.display_name || 'Unknown',
+              slug: profile?.slug || null,
+            };
+          } catch {
+            return {
+              ...member,
+              display_name: 'Unknown',
+              slug: null,
+            };
+          }
+        })
+      );
+
+      // Enrich recent introductions with profile info
+      const enrichedIntroductions = await Promise.all(
+        recentIntroductions.map(async (intro) => {
+          try {
+            const profile = await memberDb.getProfileById(intro.member_profile_id);
+            return {
+              ...intro,
+              member_display_name: profile?.display_name || 'Unknown',
+              member_slug: profile?.slug || null,
+            };
+          } catch {
+            return {
+              ...intro,
+              member_display_name: 'Unknown',
+              member_slug: null,
+            };
+          }
+        })
+      );
+
+      res.json({
+        period_days: safeDays,
+        summary: {
+          total_searches: globalAnalytics.total_searches,
+          total_impressions: globalAnalytics.total_impressions,
+          total_clicks: globalAnalytics.total_clicks,
+          total_intro_requests: globalAnalytics.total_intro_requests,
+          total_intros_sent: globalAnalytics.total_intros_sent,
+          unique_searchers: globalAnalytics.unique_searchers,
+          click_rate: globalAnalytics.total_impressions > 0
+            ? ((globalAnalytics.total_clicks / globalAnalytics.total_impressions) * 100).toFixed(1) + '%'
+            : '0%',
+          intro_rate: globalAnalytics.total_clicks > 0
+            ? ((globalAnalytics.total_intro_requests / globalAnalytics.total_clicks) * 100).toFixed(1) + '%'
+            : '0%',
+        },
+        top_queries: globalAnalytics.top_queries,
+        top_members: enrichedTopMembers,
+        recent_introductions: enrichedIntroductions,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching member search analytics");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch member search analytics",
       });
     }
   });

@@ -3,10 +3,12 @@
  *
  * Provides server-side event tracking and error capture.
  * Only initializes if POSTHOG_API_KEY is set.
+ *
+ * Integrates with the logger to automatically capture all error/fatal logs.
  */
 
 import { PostHog } from 'posthog-node';
-import { createLogger } from '../logger.js';
+import { createLogger, setErrorHook } from '../logger.js';
 
 const logger = createLogger('posthog');
 
@@ -25,13 +27,18 @@ export function getPostHog(): PostHog | null {
   }
 
   if (!posthogClient) {
-    posthogClient = new PostHog(POSTHOG_API_KEY, {
-      host: POSTHOG_HOST,
-      // Flush events in batches
-      flushAt: 20,
-      flushInterval: 10000, // 10 seconds
-    });
-    logger.info('PostHog client initialized');
+    try {
+      posthogClient = new PostHog(POSTHOG_API_KEY, {
+        host: POSTHOG_HOST,
+        // Flush events in batches
+        flushAt: 20,
+        flushInterval: 10000, // 10 seconds
+      });
+      logger.info('PostHog client initialized');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to initialize PostHog client');
+      return null;
+    }
   }
 
   return posthogClient;
@@ -114,4 +121,79 @@ export async function shutdownPostHog(): Promise<void> {
     posthogClient = null;
     logger.info('PostHog client shut down');
   }
+}
+
+// Rate limiting for error capture to prevent flooding PostHog
+const ERROR_RATE_LIMIT_MS = 100; // Min 100ms between errors
+const ERROR_DEDUP_WINDOW_MS = 5000; // Dedupe same error within 5 seconds
+let lastErrorTime = 0;
+const recentErrors = new Map<string, number>(); // message -> timestamp
+
+/**
+ * Initialize PostHog error tracking integration with the logger.
+ * Call this once at server startup to capture all logger.error() and logger.fatal() calls.
+ *
+ * Includes rate limiting to prevent flooding PostHog during error storms.
+ *
+ * @returns true if PostHog error tracking was enabled, false if POSTHOG_API_KEY is not set
+ */
+export function initPostHogErrorTracking(): boolean {
+  if (!POSTHOG_API_KEY) {
+    return false;
+  }
+
+  // Ensure client is initialized
+  getPostHog();
+
+  // Set up the error hook in the logger
+  setErrorHook((message, error, context) => {
+    const client = getPostHog();
+    if (!client) return;
+
+    const now = Date.now();
+
+    // Rate limit: skip if too soon after last error
+    if (now - lastErrorTime < ERROR_RATE_LIMIT_MS) {
+      return;
+    }
+
+    // Dedupe: skip if same error message within window
+    const errorKey = `${message}:${error?.name || 'Error'}`;
+    const lastSeen = recentErrors.get(errorKey);
+    if (lastSeen && now - lastSeen < ERROR_DEDUP_WINDOW_MS) {
+      return;
+    }
+
+    lastErrorTime = now;
+    recentErrors.set(errorKey, now);
+
+    // Clean up old entries periodically
+    if (recentErrors.size > 100) {
+      const cutoff = now - ERROR_DEDUP_WINDOW_MS;
+      for (const [key, time] of recentErrors) {
+        if (time < cutoff) recentErrors.delete(key);
+      }
+    }
+
+    // Extract module from context if available (set by createLogger)
+    const module = (context?.module as string) || 'unknown';
+
+    client.capture({
+      distinctId: 'server-logs',
+      event: '$exception',
+      properties: {
+        $exception_message: message,
+        $exception_type: error?.name || 'Error',
+        $exception_stack_trace_raw: error?.stack,
+        // Include context for debugging
+        module,
+        ...context,
+        $lib: 'posthog-node',
+        source: 'server-logger',
+      },
+    });
+  });
+
+  logger.info('PostHog error tracking initialized - all logger.error() calls will be captured');
+  return true;
 }

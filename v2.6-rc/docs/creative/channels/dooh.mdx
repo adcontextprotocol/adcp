@@ -1,0 +1,252 @@
+---
+title: DOOH (Digital Out-of-Home)
+---
+
+
+This guide covers how AdCP represents Digital Out-of-Home advertising formats for digital billboards, transit screens, and venue displays.
+
+## DOOH Format Characteristics
+
+DOOH formats differ from other digital formats:
+- Display on physical screens in public spaces
+- Include venue context (airport, mall, highway, etc.)
+- Use venue-based impression tracking instead of device identifiers
+- No clickthrough URLs (use QR codes instead)
+- Often display without audio
+
+## Standard DOOH Formats
+
+### Digital Billboard (Landscape)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_billboard_1920x1080"
+  },
+  "type": "dooh",
+  "assets_required": [
+    {
+      "asset_id": "billboard_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 1920,
+        "height": 1080,
+        "file_types": ["jpg", "png"],
+        "max_file_size_kb": 1000
+      }
+    },
+    {
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "url_type": "tracker",
+      "required": true
+    }
+  ]
+}
+```
+
+### Transit Screen (Portrait)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_transit_1080x1920"
+  },
+  "type": "dooh",
+  "assets_required": [
+    {
+      "asset_id": "screen_image",
+      "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
+      "requirements": {
+        "width": 1080,
+        "height": 1920,
+        "aspect_ratio": "9:16",
+        "file_types": ["jpg", "png"]
+      }
+    },
+    {
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "url_type": "tracker",
+      "required": true
+    }
+  ]
+}
+```
+
+### Video Billboard
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_video_15s"
+  },
+  "type": "dooh",
+  "assets_required": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "required": true,
+      "requirements": {
+        "duration": "15s",
+        "width": 1920,
+        "height": 1080,
+        "format": ["MP4"],
+        "audio_required": false,
+        "max_file_size_mb": 50
+      }
+    },
+    {
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "url_type": "tracker",
+      "required": true
+    }
+  ]
+}
+```
+
+## Impression Tracking for DOOH
+
+DOOH formats use impression trackers (often called "proof-of-play") to verify when creatives display on physical screens. These are standard URL assets with DOOH-specific macros:
+
+```json
+{
+  "asset_id": "impression_tracker",
+  "asset_type": "url",
+  "url_type": "tracker",
+  "required": true,
+  "requirements": {
+    "required_macros": [
+      "SCREEN_ID",
+      "PLAY_TIMESTAMP",
+      "VENUE_LAT",
+      "VENUE_LONG"
+    ]
+  }
+}
+```
+
+The mechanics are identical to digital impression tracking - it's just a URL that fires when the ad displays. The difference is the macros capture physical venue context instead of device identifiers.
+
+## Creative Manifests
+
+### Static Billboard Manifest
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_billboard_1920x1080"
+  },
+  "assets": {
+    "billboard_image": {
+      "asset_type": "image",
+      "url": "https://cdn.brand.com/dooh_billboard.jpg",
+      "width": 1920,
+      "height": 1080
+    },
+    "impression_tracker": {
+      "asset_type": "url",
+      "url_type": "tracker",
+      "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&long={VENUE_LONG}"
+    }
+  }
+}
+```
+
+### Video Billboard Manifest
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_video_15s"
+  },
+  "assets": {
+    "video_file": {
+      "asset_type": "video",
+      "url": "https://cdn.brand.com/dooh_15s.mp4",
+      "duration": 15,
+      "width": 1920,
+      "height": 1080,
+      "audio": false
+    },
+    "impression_tracker": {
+      "asset_type": "url",
+      "url_type": "tracker",
+      "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&ts={PLAY_TIMESTAMP}"
+    }
+  }
+}
+```
+
+## DOOH-Specific Macros
+
+In addition to [universal macros](/docs/creative/universal-macros), DOOH formats support:
+
+### Venue Information
+- `{SCREEN_ID}` - Unique screen identifier
+- `{VENUE_TYPE}` - airport, mall, transit, highway, retail
+- `{VENUE_NAME}` - Specific venue name
+- `{VENUE_LAT}` / `{VENUE_LONG}` - GPS coordinates
+
+### Play Information
+- `{PLAY_TIMESTAMP}` - When creative displayed (Unix timestamp)
+- `{DWELL_TIME}` - Average dwell time at this location (seconds)
+- `{LOOP_LENGTH}` - Total ad rotation duration (seconds)
+
+**Example impression tracking URL:**
+```
+https://track.brand.com/imp?
+  buy={MEDIA_BUY_ID}&
+  screen={SCREEN_ID}&
+  venue={VENUE_TYPE}&
+  venue_name={VENUE_NAME}&
+  ts={PLAY_TIMESTAMP}&
+  lat={VENUE_LAT}&
+  long={VENUE_LONG}&
+  dwell={DWELL_TIME}
+```
+
+## Common Aspect Ratios
+
+- **16:9** (1920x1080) - Landscape billboards and highway screens
+- **9:16** (1080x1920) - Portrait transit and retail displays
+- **1:1** (1080x1080) - Square formats
+
+## Impression Verification
+
+DOOH impression trackers confirm:
+- Creative actually displayed on physical screen
+- Exact timestamp of display
+- Specific screen location and venue context
+
+**Example impression data captured:**
+```json
+{
+  "media_buy_id": "mb_dooh_q1",
+  "screen_id": "LAX_T1_GATE24",
+  "venue_type": "airport",
+  "venue_lat": "33.9416",
+  "venue_long": "-118.4085",
+  "play_timestamp": "1704067200",
+  "dwell_time_seconds": "45"
+}
+```
+
+This is functionally identical to impression tracking in other channels - the URL fires when the ad displays, providing verification for billing and reporting.
+
+## Related Documentation
+
+- [Universal Macros](/docs/creative/universal-macros) - Complete macro reference including DOOH macros
+- [Creative Manifests](/docs/creative/creative-manifests) - Manifest structure and examples
+- [Asset Types](/docs/creative/asset-types) - URL asset specifications

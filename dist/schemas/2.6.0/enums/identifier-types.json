@@ -6,7 +6,7 @@
   "type": "string",
   "enum": [
     "domain",
-    "subdomain", 
+    "subdomain",
     "network_id",
     "ios_bundle",
     "android_package",
@@ -27,7 +27,7 @@
   ],
   "examples": [
     "domain",
-    "ios_bundle", 
+    "ios_bundle",
     "venue_id",
     "apple_podcast_id"
   ]

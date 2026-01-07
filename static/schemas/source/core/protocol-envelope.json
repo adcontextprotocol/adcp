@@ -40,7 +40,7 @@
     "status",
     "payload"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Synchronous task response with immediate results",
@@ -57,7 +57,7 @@
               "description": "Premium connected TV inventory across California",
               "pricing": {
                 "model": "cpm",
-                "amount": 45.00,
+                "amount": 45.0,
                 "currency": "USD"
               }
             }
@@ -76,7 +76,9 @@
         "push_notification_config": {
           "url": "https://buyer.example.com/webhooks/adcp",
           "authentication": {
-            "schemes": ["HMAC-SHA256"],
+            "schemes": [
+              "HMAC-SHA256"
+            ],
             "credentials": "shared_secret_exchanged_during_onboarding_min_32_chars"
           }
         },

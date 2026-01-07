@@ -4,5 +4,9 @@
   "title": "Reporting Frequency",
   "description": "Available frequencies for delivery reports and metrics updates",
   "type": "string",
-  "enum": ["hourly", "daily", "monthly"]
+  "enum": [
+    "hourly",
+    "daily",
+    "monthly"
+  ]
 }

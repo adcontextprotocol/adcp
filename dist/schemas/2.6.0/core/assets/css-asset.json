@@ -14,6 +14,8 @@
       "description": "CSS media query context (e.g., 'screen', 'print')"
     }
   },
-  "required": ["content"],
-  "additionalProperties": false
+  "required": [
+    "content"
+  ],
+  "additionalProperties": true
 }

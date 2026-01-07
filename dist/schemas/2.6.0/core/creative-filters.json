@@ -107,5 +107,5 @@
       "description": "Filter creatives that have performance data when true"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

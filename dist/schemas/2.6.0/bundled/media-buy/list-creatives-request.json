@@ -139,7 +139,7 @@
           "description": "Filter creatives that have performance data when true"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "sort": {
       "type": "object",
@@ -170,7 +170,7 @@
           "default": "desc"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "pagination": {
       "type": "object",
@@ -190,7 +190,7 @@
           "description": "Number of creatives to skip"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "include_assignments": {
       "type": "boolean",
@@ -239,7 +239,7 @@
       "additionalProperties": true
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "List all approved video creatives",
@@ -288,7 +288,7 @@
     }
   ],
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.426Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.834Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

@@ -34,7 +34,7 @@
               "description": "Number of signals tasks in results"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "status_breakdown": {
           "type": "object",
@@ -70,14 +70,14 @@
             "field",
             "direction"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": [
         "total_matching",
         "returned"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "tasks": {
       "type": "array",
@@ -133,7 +133,7 @@
           "created_at",
           "updated_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "pagination": {
@@ -165,7 +165,7 @@
         "offset",
         "has_more"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -179,5 +179,5 @@
     "tasks",
     "pagination"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -18,6 +18,7 @@ import {
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "../db/organization-db.js";
+import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -747,11 +748,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate company_type if provided
-      const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech', 'other'];
-      if (company_type && !validCompanyTypes.includes(company_type)) {
+      if (company_type && !COMPANY_TYPE_VALUES.includes(company_type)) {
         return res.status(400).json({
           error: 'Invalid company type',
-          message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
+          message: `company_type must be one of: ${COMPANY_TYPE_VALUES.join(', ')}`,
         });
       }
 
@@ -1083,11 +1083,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate company_type if provided
-      const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech', 'other'];
-      if (company_type !== undefined && company_type !== null && !validCompanyTypes.includes(company_type)) {
+      if (company_type !== undefined && company_type !== null && !COMPANY_TYPE_VALUES.includes(company_type)) {
         return res.status(400).json({
           error: 'Invalid company type',
-          message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
+          message: `company_type must be one of: ${COMPANY_TYPE_VALUES.join(', ')}`,
         });
       }
 

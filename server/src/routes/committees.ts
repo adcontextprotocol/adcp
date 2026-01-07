@@ -15,6 +15,7 @@ import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyWorkingGroupPost } from "../notifications/slack.js";
+import { decodeHtmlEntities } from "../utils/html-entities.js";
 
 const logger = createLogger("committee-routes");
 
@@ -38,20 +39,6 @@ const workos = AUTH_ENABLED
       clientId: process.env.WORKOS_CLIENT_ID!,
     })
   : null;
-
-/**
- * Helper to decode HTML entities from fetched pages
- */
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
 
 /**
  * Fetch and extract metadata from a URL (for link posts)

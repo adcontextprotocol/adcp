@@ -156,12 +156,15 @@
                 "minimum": 0
               }
             },
-            "required": ["venue_id", "impressions"],
-            "additionalProperties": false
+            "required": [
+              "venue_id",
+              "impressions"
+            ],
+            "additionalProperties": true
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

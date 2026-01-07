@@ -538,8 +538,9 @@ async function runTests() {
     return true;
   });
 
-  // Test 5: Verify unknown fields at top level still rejected
-  await test('Product rejects unknown top-level fields', async () => {
+  // Test 5: Verify unknown fields at top level are ALLOWED for forward compatibility
+  // This enables clients to receive new fields from upgraded servers without breaking
+  await test('Product accepts unknown top-level fields (forward compatibility)', async () => {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'core/product.json'));
 
     const product = {
@@ -565,12 +566,12 @@ async function runTests() {
         rate: 10.00,
         currency: 'USD'
       }],
-      unknown_top_level_field: 'should be rejected'  // This should fail validation
+      future_field_from_v26: 'should be allowed'  // Forward compatibility: accept unknown fields
     };
 
     const valid = validate(product);
-    if (valid) {
-      throw new Error('Should have rejected unknown top-level field');
+    if (!valid) {
+      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
     }
     return true;
   });
