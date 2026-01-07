@@ -105,6 +105,7 @@
             "group": "Content Standards Protocol",
             "pages": [
               "docs/governance/content-standards/index",
+              "docs/governance/content-standards/artifacts",
               {
                 "group": "Tasks",
                 "pages": [

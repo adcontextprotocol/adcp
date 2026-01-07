@@ -15,28 +15,108 @@ Content Standards agents evaluate placement contexts against brand policies. Thi
 - **Brand suitability** - Is this content appropriate for *my* brand? (brand-specific preferences and tone)
 - **Competitive separation** - Avoid appearing near competitor content
 
-## Reference Pattern
+## Key Concepts
 
-When placing a media buy, reference your content standards:
+Content standards evaluation involves four key questions that buyers and sellers negotiate:
+
+1. **What content?** - What [artifacts](/docs/governance/content-standards/artifacts) to evaluate (the ad-adjacent content)
+2. **How much adjacency?** - How many artifacts around the ad slot to consider
+3. **What sampling rate?** - What percentage of traffic to evaluate
+4. **How to calibrate?** - How to align on policy interpretation before runtime
+
+These parameters are negotiated between buyer and seller during product discovery and media buy creation.
+
+## Workflow
+
+```mermaid
+sequenceDiagram
+    participant Brand
+    participant Buyer as Buyer Agent
+    participant Seller as Seller Agent
+    participant Verifier as Verification Agent
+
+    Note over Brand,Verifier: 1. SETUP PHASE
+    Brand->>Verifier: create_content_standards (policy + calibration examples)
+    Verifier-->>Brand: standards_id
+
+    Note over Brand,Verifier: 2. ACTIVATION PHASE
+    Brand->>Buyer: "Buy inventory from Reddit, use standards_id X"
+    Buyer->>Seller: create_media_buy (includes content_standards reference)
+
+    Seller->>Verifier: calibrate_content (sample artifacts)
+    Verifier-->>Seller: verdict + explanation
+    Seller->>Verifier: "What about this edge case?"
+    Verifier-->>Seller: clarification
+    Note over Seller: Seller builds local model
+
+    Note over Brand,Verifier: 3. RUNTIME PHASE
+    loop High-volume decisioning
+        Note over Seller: Local model evaluates artifacts
+    end
+
+    Seller->>Verifier: validate_content_delivery (sampled records)
+    Verifier-->>Seller: alignment report
+    Verifier-->>Buyer: drift detection alerts
+```
+
+**Key insight**: Runtime decisioning happens locally at the seller (for scale), while calibration and validation happen via the verification agent (for alignment).
+
+## Adjacency
+
+How much content around the ad slot should be evaluated?
+
+| Context | Adjacency Examples |
+|---------|-------------------|
+| **News article** | The article where the ad appears |
+| **Social feed** | 1-2 posts above and below the ad slot |
+| **Podcast** | The segment before and after the ad break |
+| **CTV** | 1-2 scenes before and after the ad pod |
+| **Infinite scroll** | Posts within the visible viewport |
+
+Adjacency requirements are defined by the seller in their product catalog (`get_products`). The buyer can filter products based on adjacency guarantees:
 
 ```json
 {
-  "campaign": {...},
-  "governance": {
-    "content_standards": {
-      "agent_url": "https://safety.ias.com/adcp",
-      "standards_id": "nike_brand_safety",
-      "token": "..."
+  "product_id": "reddit_feed_standard",
+  "content_standards": {
+    "adjacency": {
+      "before": 2,
+      "after": 2,
+      "unit": "posts"
     }
   }
 }
 ```
 
-- **agent_url** - The Content Standards service
-- **standards_id** - Which standards configuration to use
-- **token** - Access token (may be optional for public standards)
+Different products may offer different adjacency guarantees at different price points.
 
-## Prompt-Based Policies
+## Sampling Rate
+
+What percentage of traffic should be evaluated by the verification agent?
+
+| Rate | Use Case |
+|------|----------|
+| **100%** | Premium brand safety - every impression validated |
+| **10-25%** | Standard monitoring - statistical confidence |
+| **1-5%** | Spot checking - drift detection only |
+
+Sampling rate is negotiated in the media buy:
+
+```json
+{
+  "governance": {
+    "content_standards": {
+      "agent_url": "https://safety.ias.com/adcp",
+      "standards_id": "nike_brand_safety",
+      "sampling_rate": 0.25
+    }
+  }
+}
+```
+
+Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage.
+
+## Policies
 
 Content Standards uses **natural language prompts** rather than rigid keyword lists:
 
@@ -48,93 +128,23 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
       {
         "property_id": {"type": "domain", "value": "espn.com"},
         "artifact_id": "nba_championship_recap_2024",
-        "language": "en",
-        "title": "Championship Game Recap",
-        "assets": [
-          {"type": "text", "role": "heading", "content": "Lakers Defeat Celtics in Thrilling Overtime", "heading_level": 1},
-          {"type": "text", "role": "paragraph", "content": "In an exciting conclusion to the championship series..."},
-          {"type": "image", "url": "https://cdn.espn.com/game-photo.jpg", "alt_text": "Championship celebration"}
-        ]
-      },
-      {
-        "property_id": {"type": "domain", "value": "healthline.com"},
-        "artifact_id": "fitness_landing",
-        "language": "en",
-        "title": "Fitness Tips and Workouts"
-      },
-      {
-        "property_id": {"type": "apple_podcast_id", "value": "1234567890"},
-        "artifact_id": "episode_42_segment_2",
-        "assets": [
-          {"type": "audio", "url": "https://cdn.example.com/podcasts/ep42_seg2.mp3", "transcript": "Today we're discussing marathon training..."}
-        ]
-      },
-      {
-        "property_id": {"type": "domain", "value": "fitnesschannel.tv"},
-        "artifact_id": "workout_tutorial_ep15",
-        "assets": [{"type": "video", "url": "https://cdn.fitnesschannel.tv/videos/ep15.mp4"}]
+        "title": "Championship Game Recap"
       }
     ],
     "unacceptable": [
       {
         "property_id": {"type": "domain", "value": "tabloid.example.com"},
         "artifact_id": "scandal_story_123",
-        "language": "en",
-        "title": "Celebrity Scandal Exposed",
-        "assets": [
-          {"type": "text", "role": "paragraph", "content": "Shocking revelations about..."}
-        ]
-      },
-      {
-        "property_id": {"type": "rss_url", "value": "https://controversy.example.com/feed.xml"},
-        "artifact_id": "episode_latest",
-        "title": "Political Hot Takes"
-      },
-      {
-        "property_id": {"type": "domain", "value": "news.example.com"},
-        "artifact_id": "controversial_podcast_ep42",
-        "assets": [{"type": "audio", "url": "https://cdn.news.example.com/podcasts/ep42.mp3"}]
+        "title": "Celebrity Scandal Exposed"
       }
     ]
   }
 }
 ```
 
-The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. You send the artifact content, and the verification agent evaluates it - no pre-classification required:
+The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly.
 
-- **property_id** - Identifies the property where this artifact appears (using standard identifier types)
-- **artifact_id** - Unique identifier within the property (property owner defines the scheme)
-- **assets** - Artifact assets in document order (text blocks, images, video, audio)
-- **format_id** - Optional reference to format registry (same as creative formats)
-- **metadata** - Rich metadata (Open Graph, JSON-LD, author info)
-
-### Secured Asset Access
-
-Asset URLs may require authentication - for private content like AI-generated images, internal documents, or content behind paywalls. Assets support authenticated access:
-
-```json
-{
-  "property_id": {"type": "app_id", "value": "chatgpt"},
-  "artifact_id": "conversation_abc123_image_1",
-  "assets": [
-    {
-      "type": "image",
-      "url": "https://cdn.openai.com/secured/img_abc123.png",
-      "access": {
-        "method": "bearer_token",
-        "token": "eyJhbGciOiJIUzI1NiIs..."
-      }
-    }
-  ]
-}
-```
-
-Supported access methods:
-- **bearer_token** - OAuth2 bearer token in Authorization header
-- **service_account** - GCP/AWS service account credentials
-- **signed_url** - Pre-signed URL with embedded credentials (URL itself is the credential)
-
-For large assets or real-time content, the verification agent may need to fetch the content. The caller is responsible for ensuring the agent has access - either through pre-signed URLs, shared service accounts, or token exchange.
+See [Artifacts](/docs/governance/content-standards/artifacts) for details on artifact structure and secured asset access.
 
 ## Scoped Standards
 
@@ -150,68 +160,41 @@ Buyers typically maintain multiple standards configurations for different contex
 }
 ```
 
-**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves. These fields define where this standards configuration applies:
+**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves.
 
-- **brand_ids**: References to brand identifiers defined in the [Brand Manifest](/docs/creative/brand-manifest). Brand names may differ across countries, so we use stable IDs rather than display names.
-- **countries_all**: ISO country codes - standards apply in ALL listed countries (different jurisdictions have different regulations)
-- **channels_any**: Advertising channels - standards apply to ANY of the listed channels
+## Calibration
 
-## Workflow
+Before running campaigns, sellers calibrate their local models against the verification agent. This is a **dialogue-based process**:
 
-Content Standards involves three phases with different agents:
+1. Seller sends sample artifacts to the verification agent
+2. Verification agent returns verdicts with detailed explanations
+3. Seller asks follow-up questions about edge cases
+4. Process repeats until alignment is achieved
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           1. SETUP PHASE                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Brand ──────► Verification Agent (e.g., IAS)                               │
-│                    │                                                         │
-│                    │ create_content_standards + calibration examples        │
-│                    ▼                                                         │
-│               ┌──────────────┐                                              │
-│               │ standards_id │ ← Model trained on brand policy              │
-│               └──────────────┘                                              │
-│                                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                        2. ACTIVATION PHASE                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Brand ──────► Buyer Agent (e.g., Scope3)                                   │
-│                    │                                                         │
-│                    │ "Buy inventory from Reddit, use standards_id X"        │
-│                    ▼                                                         │
-│  Buyer Agent ────► Seller Agent (e.g., Reddit)                              │
-│                    │                                                         │
-│                    │ Pass content_standards reference in media buy          │
-│                    ▼                                                         │
-│  Seller Agent ───► Verification Agent                                       │
-│                    │                                                         │
-│                    │ calibrate_content (back-and-forth dialogue)            │
-│                    │ "Does r/fitness pass?" → "Yes, because..."             │
-│                    │ "Does r/politics pass?" → "No, because..."             │
-│                    ▼                                                         │
-│  Seller says: "I understand the model. Ready to execute."                   │
-│                                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                         3. RUNTIME PHASE                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Seller runs campaign using local/cached model                              │
-│                    │                                                         │
-│                    │ Periodic: validate_content_delivery                    │
-│                    │ (sample delivery reports → Verification Agent)         │
-│                    ▼                                                         │
-│  Buyer Agent ────► Verification Agent                                       │
-│                    │                                                         │
-│                    │ "How aligned is delivery?"                             │
-│                    ▼                                                         │
-│               Reporting / drift detection                                   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```json
+// Seller: "Does this pass?"
+{
+  "artifact": {
+    "property_id": {"type": "domain", "value": "reddit.com"},
+    "artifact_id": "r_news_politics_123",
+    "title": "Political News Article"
+  }
+}
+
+// Verification agent: "No, because..."
+{
+  "verdict": "fail",
+  "explanation": "Political content is excluded by brand policy, even when balanced.",
+  "policy_alignment": {
+    "violations": [{
+      "policy_text": "Avoid content about controversial politics",
+      "violation_reason": "Article discusses ongoing political controversy"
+    }]
+  }
+}
 ```
 
-**Key insight**: Runtime decisioning happens locally at the seller (for scale), while calibration and validation happen via the verification agent (for alignment).
+See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) for the full task specification.
 
 ## Tasks
 
@@ -245,18 +228,7 @@ Content Standards involves three phases with different agents:
 - **Scope3** - Sustainability-focused brand safety with prompt-based policies
 - **Custom** - Brand-specific implementations
 
-## Calibration vs Runtime
-
-| Aspect | calibrate_content | Runtime (seller's local model) |
-|--------|-------------------|-------------------------------|
-| **Purpose** | Alignment & understanding | High-volume decisioning |
-| **Volume** | Low (setup/periodic) | High (every impression) |
-| **Response** | Verbose explanations | Pass/fail only |
-| **Latency** | Seconds acceptable | Milliseconds required |
-| **Dialogue** | Supports back-and-forth | Stateless |
-
-The `calibrate_content` task returns detailed explanations of *why* content passes or fails, mapping decisions back to specific policy criteria. This helps sellers build accurate local models.
-
 ## Related
 
+- [Artifacts](/docs/governance/content-standards/artifacts) - What artifacts are and how to structure them
 - [Brand Manifest](/docs/creative/brand-manifest) - Static brand identity that can link to standards agents

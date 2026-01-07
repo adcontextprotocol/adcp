@@ -1,0 +1,223 @@
+---
+title: Artifacts
+sidebar_position: 2
+---
+
+# Artifacts
+
+An **artifact** is a unit of content adjacent to an ad placement. When evaluating brand safety and suitability, you're asking: "Is this artifact appropriate for my brand's ads?"
+
+## What Is an Artifact?
+
+Artifacts represent the content context where an ad appears:
+
+- A **news article** on a website
+- A **podcast segment** between ad breaks
+- A **video chapter** in a YouTube video
+- A **social media post** in a feed
+- A **scene** in a CTV show
+- An **AI-generated image** in a chat conversation
+
+Artifacts are identified by `property_id` + `artifact_id` - the property defines where the content lives, and the artifact_id is the property owner's identifier for that specific piece of content.
+
+## Structure
+
+**Schema**: [artifact.json](https://adcontextprotocol.org/schemas/v2/content-standards/artifact.json)
+
+```json
+{
+  "property_id": {"type": "domain", "value": "reddit.com"},
+  "artifact_id": "r_fitness_post_abc123",
+  "language": "en",
+  "title": "Best protein sources for muscle building",
+  "assets": [
+    {"type": "text", "role": "heading", "content": "Best protein sources for muscle building", "heading_level": 1},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources..."},
+    {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
+  ]
+}
+```
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| `property_id` | Where this artifact lives - uses standard identifier types (`domain`, `app_id`, `apple_podcast_id`, etc.) |
+| `artifact_id` | Unique identifier within the property - the property owner defines their scheme |
+
+### Optional Fields
+
+| Field | Description |
+|-------|-------------|
+| `assets` | Content in document order - text blocks, images, video, audio |
+| `title` | Artifact title or headline |
+| `language` | BCP 47 language tag |
+| `format_id` | Reference to format registry (same as creative formats) |
+| `metadata` | Rich metadata (Open Graph, JSON-LD, author info) |
+
+## Asset Types
+
+Assets represent the actual content within an artifact:
+
+### Text
+
+```json
+{"type": "text", "role": "heading", "content": "Article Title", "heading_level": 1}
+{"type": "text", "role": "paragraph", "content": "The article body text..."}
+{"type": "text", "role": "quote", "content": "A quoted statement"}
+```
+
+Roles: `paragraph`, `heading`, `caption`, `quote`, `list_item`
+
+### Image
+
+```json
+{
+  "type": "image",
+  "url": "https://cdn.example.com/photo.jpg",
+  "alt_text": "Description of the image"
+}
+```
+
+### Video
+
+```json
+{
+  "type": "video",
+  "url": "https://cdn.example.com/video.mp4",
+  "transcript": "Full transcript of the video content...",
+  "duration_ms": 180000
+}
+```
+
+### Audio
+
+```json
+{
+  "type": "audio",
+  "url": "https://cdn.example.com/podcast.mp3",
+  "transcript": "Today we're discussing...",
+  "duration_ms": 3600000
+}
+```
+
+## Secured Asset Access
+
+Many assets aren't publicly accessible - AI-generated images, private conversations, paywalled content. The artifact schema supports authenticated access.
+
+### Pre-Configuration (Recommended)
+
+For ongoing partnerships, configure access once during onboarding rather than per-request:
+
+1. **Service account sharing** - Grant the verification agent access to your cloud storage
+2. **OAuth client credentials** - Set up machine-to-machine authentication
+3. **API key exchange** - Share long-lived API keys during setup
+
+This happens during the activation phase when the seller first receives content standards from a buyer.
+
+### Per-Asset Authentication
+
+When pre-configuration isn't possible, include access credentials with individual assets:
+
+```json
+{
+  "type": "image",
+  "url": "https://cdn.openai.com/secured/img_abc123.png",
+  "access": {
+    "method": "bearer_token",
+    "token": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+### Access Methods
+
+| Method | Use Case |
+|--------|----------|
+| `bearer_token` | OAuth2 bearer token in Authorization header |
+| `service_account` | GCP/AWS service account credentials |
+| `signed_url` | Pre-signed URL with embedded credentials (URL itself is the credential) |
+
+### Service Account Setup
+
+For GCP:
+
+```json
+{
+  "access": {
+    "method": "service_account",
+    "provider": "gcp",
+    "credentials": {
+      "type": "service_account",
+      "project_id": "my-project",
+      "private_key_id": "...",
+      "private_key": "-----BEGIN PRIVATE KEY-----\n...",
+      "client_email": "verification-agent@my-project.iam.gserviceaccount.com"
+    }
+  }
+}
+```
+
+For AWS:
+
+```json
+{
+  "access": {
+    "method": "service_account",
+    "provider": "aws",
+    "credentials": {
+      "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+      "secret_access_key": "...",
+      "region": "us-east-1"
+    }
+  }
+}
+```
+
+### Pre-Signed URLs
+
+For one-off access without sharing credentials:
+
+```json
+{
+  "type": "video",
+  "url": "https://storage.googleapis.com/bucket/video.mp4?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=...&X-Goog-Signature=...",
+  "access": {
+    "method": "signed_url"
+  }
+}
+```
+
+The URL itself contains the credentials - no additional authentication needed.
+
+## Property Identifier Types
+
+The `property_id` uses standard identifier types from the AdCP property schema:
+
+| Type | Example | Use Case |
+|------|---------|----------|
+| `domain` | `reddit.com` | Websites |
+| `app_id` | `com.spotify.music` | Mobile apps |
+| `apple_podcast_id` | `1234567890` | Apple Podcasts |
+| `spotify_show_id` | `4rOoJ6Egrf8K2IrywzwOMk` | Spotify podcasts |
+| `youtube_channel_id` | `UCddiUEpeqJcYeBxX1IVBKvQ` | YouTube channels |
+| `rss_url` | `https://feeds.example.com/podcast.xml` | RSS feeds |
+
+## Artifact ID Schemes
+
+The property owner defines their artifact_id scheme. Examples:
+
+| Property Type | Artifact ID Pattern | Example |
+|---------------|---------------------|---------|
+| News website | `article_{id}` | `article_12345` |
+| Reddit | `r_{subreddit}_{post_id}` | `r_fitness_abc123` |
+| Podcast | `episode_{num}_segment_{num}` | `episode_42_segment_2` |
+| CTV | `show_{id}_s{season}e{episode}_scene_{num}` | `show_abc_s3e5_scene_12` |
+| Social feed | `post_{id}` | `post_xyz789` |
+
+The verification agent doesn't need to understand the scheme - it's opaque. The property owner uses it to correlate artifacts with their content.
+
+## Related
+
+- [Content Standards Overview](/docs/governance/content-standards) - How artifacts fit into the content standards workflow
+- [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) - Sending artifacts for calibration
