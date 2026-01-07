@@ -51,13 +51,13 @@
           "properties": {
             "acceptable": {
               "type": "array",
-              "items": { "$ref": "/schemas/content-standards/content-context.json" },
-              "description": "Content contexts that are acceptable"
+              "items": { "$ref": "/schemas/content-standards/content.json" },
+              "description": "Content that is acceptable"
             },
             "unacceptable": {
               "type": "array",
-              "items": { "$ref": "/schemas/content-standards/content-context.json" },
-              "description": "Content contexts that are unacceptable"
+              "items": { "$ref": "/schemas/content-standards/content.json" },
+              "description": "Content that is unacceptable"
             }
           }
         },

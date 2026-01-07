@@ -565,9 +565,9 @@
     "content-standards": {
       "description": "Content Standards protocol task request/response schemas for content safety and suitability evaluation",
       "models": {
-        "content-context": {
-          "$ref": "/schemas/content-standards/content-context.json",
-          "description": "Content context for evaluation or calibration - supports domains, text, media URLs, and podcast identifiers"
+        "content": {
+          "$ref": "/schemas/content-standards/content.json",
+          "description": "Content for evaluation or calibration - a collection of assets (text, images, video, audio) plus metadata and signals"
         }
       },
       "tasks": {
@@ -591,14 +591,14 @@
             "description": "Response payload with content safety policies"
           }
         },
-        "check-content": {
+        "calibrate-content": {
           "request": {
-            "$ref": "/schemas/content-standards/check-content-request.json",
-            "description": "Request parameters for evaluating content context against safety policies"
+            "$ref": "/schemas/content-standards/calibrate-content-request.json",
+            "description": "Request parameters for collaborative calibration dialogue"
           },
           "response": {
-            "$ref": "/schemas/content-standards/check-content-response.json",
-            "description": "Response payload with per-feature evaluation results"
+            "$ref": "/schemas/content-standards/calibrate-content-response.json",
+            "description": "Response payload with detailed explanations for policy alignment"
           }
         },
         "validate-content-delivery": {

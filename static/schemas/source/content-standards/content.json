@@ -1,0 +1,264 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/content.json",
+  "title": "Content",
+  "description": "Content for safety and suitability evaluation. Content is represented as a collection of assets (text, images, video, audio) plus metadata and signals.",
+  "type": "object",
+  "properties": {
+    "content_id": {
+      "type": "string",
+      "description": "Unique identifier for this content"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Primary URL for this content (web page, podcast feed, video page, etc.)"
+    },
+    "language": {
+      "type": "string",
+      "description": "BCP 47 language tag (e.g., 'en', 'en-US', 'es-MX')"
+    },
+    "title": {
+      "type": "string",
+      "description": "Content title or headline"
+    },
+    "description": {
+      "type": "string",
+      "description": "Content description or summary"
+    },
+    "published_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the content was published (ISO 8601 format)"
+    },
+    "last_update_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the content was last modified (ISO 8601 format)"
+    },
+    "assets": {
+      "type": "array",
+      "description": "Content assets in document flow order - text blocks, images, video, audio",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Text block (paragraph, heading, etc.)",
+            "properties": {
+              "type": { "type": "string", "const": "text" },
+              "role": {
+                "type": "string",
+                "enum": ["paragraph", "heading", "caption", "quote", "list_item"],
+                "description": "Role of this text in the document"
+              },
+              "content": {
+                "type": "string",
+                "description": "Text content"
+              },
+              "heading_level": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 6,
+                "description": "Heading level (1-6), only for role=heading"
+              }
+            },
+            "required": ["type", "content"]
+          },
+          {
+            "type": "object",
+            "description": "Image asset",
+            "properties": {
+              "type": { "type": "string", "const": "image" },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Image URL"
+              },
+              "alt_text": {
+                "type": "string",
+                "description": "Alt text or image description"
+              },
+              "caption": {
+                "type": "string",
+                "description": "Image caption"
+              },
+              "width": {
+                "type": "integer",
+                "description": "Image width in pixels"
+              },
+              "height": {
+                "type": "integer",
+                "description": "Image height in pixels"
+              }
+            },
+            "required": ["type", "url"]
+          },
+          {
+            "type": "object",
+            "description": "Video asset",
+            "properties": {
+              "type": { "type": "string", "const": "video" },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Video URL"
+              },
+              "duration_ms": {
+                "type": "integer",
+                "description": "Video duration in milliseconds"
+              },
+              "transcript": {
+                "type": "string",
+                "description": "Video transcript"
+              },
+              "transcript_source": {
+                "type": "string",
+                "enum": ["original_script", "subtitles", "closed_captions", "dub", "generated"],
+                "description": "How the transcript was generated"
+              },
+              "thumbnail_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Video thumbnail URL"
+              }
+            },
+            "required": ["type", "url"]
+          },
+          {
+            "type": "object",
+            "description": "Audio asset",
+            "properties": {
+              "type": { "type": "string", "const": "audio" },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Audio URL"
+              },
+              "duration_ms": {
+                "type": "integer",
+                "description": "Audio duration in milliseconds"
+              },
+              "transcript": {
+                "type": "string",
+                "description": "Audio transcript"
+              },
+              "transcript_source": {
+                "type": "string",
+                "enum": ["original_script", "closed_captions", "generated"],
+                "description": "How the transcript was generated"
+              }
+            },
+            "required": ["type", "url"]
+          }
+        ]
+      }
+    },
+    "signals": {
+      "type": "array",
+      "description": "Pre-computed signals including categories, classifiers, and ratings",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Signal identifier (e.g., 'iab_category', 'violence_score', 'mpaa_rating')"
+          },
+          "value": {
+            "description": "Signal value - can be string, number, or boolean",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score for probabilistic signals (0-1)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the classifier or model that generated this signal"
+          },
+          "source": {
+            "type": "string",
+            "description": "Who generated this signal (e.g., 'publisher_classifier', 'human_moderator')"
+          },
+          "reasons": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Array of reason codes for ratings or classifications"
+          }
+        },
+        "required": ["key", "value"],
+        "additionalProperties": false
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Rich metadata extracted from the content",
+      "properties": {
+        "canonical": {
+          "type": "string",
+          "format": "uri",
+          "description": "Canonical URL"
+        },
+        "author": {
+          "type": "string",
+          "description": "Content author name"
+        },
+        "keywords": {
+          "type": "string",
+          "description": "Content keywords"
+        },
+        "open_graph": {
+          "type": "object",
+          "description": "Open Graph protocol metadata",
+          "additionalProperties": true
+        },
+        "twitter_card": {
+          "type": "object",
+          "description": "Twitter Card metadata",
+          "additionalProperties": true
+        },
+        "json_ld": {
+          "type": "array",
+          "description": "JSON-LD structured data (schema.org)",
+          "items": { "type": "object" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "identifiers": {
+      "type": "object",
+      "description": "Platform-specific identifiers for this content",
+      "properties": {
+        "apple_podcast_id": {
+          "type": "string",
+          "description": "Apple Podcasts ID"
+        },
+        "spotify_show_id": {
+          "type": "string",
+          "description": "Spotify show ID"
+        },
+        "podcast_guid": {
+          "type": "string",
+          "description": "Podcast GUID (from RSS feed)"
+        },
+        "youtube_video_id": {
+          "type": "string",
+          "description": "YouTube video ID"
+        },
+        "rss_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "RSS feed URL"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["url"],
+  "additionalProperties": true
+}

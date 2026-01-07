@@ -46,52 +46,58 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
   "calibration": {
     "acceptable": [
       {
-        "type": "domain",
-        "value": "https://espn.com/nba/story/_/championship-recap",
+        "url": "https://espn.com/nba/story/_/championship-recap",
         "language": "en",
         "title": "Championship Game Recap",
         "signals": [
           {"key": "iab_category", "value": "sports/basketball", "confidence": 1.0}
         ],
-        "text_content": [
-          {"type": "heading", "heading": {"level": 1, "text": "Lakers Defeat Celtics in Thrilling Overtime"}},
-          {"type": "paragraph", "paragraphs": ["In an exciting conclusion to the championship series..."]}
+        "assets": [
+          {"type": "text", "role": "heading", "content": "Lakers Defeat Celtics in Thrilling Overtime", "heading_level": 1},
+          {"type": "text", "role": "paragraph", "content": "In an exciting conclusion to the championship series..."},
+          {"type": "image", "url": "https://cdn.espn.com/game-photo.jpg", "alt_text": "Championship celebration"}
         ]
       },
       {
-        "type": "domain",
-        "value": "healthline.com",
+        "url": "https://healthline.com/fitness",
         "language": "en",
         "signals": [{"key": "iab_category", "value": "health/fitness", "confidence": 0.95}]
       },
-      {"type": "apple_podcast_id", "value": "1234567890", "language": "en"},
-      {"type": "text", "value": "Championship game recap: Lakers defeat Celtics in thrilling overtime finish", "language": "en"},
-      {"type": "image_url", "value": "https://cdn.example.com/sports/basketball-game.jpg"},
-      {"type": "video_url", "value": "https://cdn.example.com/fitness/workout-tutorial.mp4"}
+      {
+        "url": "https://podcasts.apple.com/podcast/id1234567890",
+        "identifiers": {"apple_podcast_id": "1234567890"}
+      },
+      {
+        "url": "https://cdn.example.com/fitness/workout-tutorial.mp4",
+        "assets": [{"type": "video", "url": "https://cdn.example.com/fitness/workout-tutorial.mp4"}]
+      }
     ],
     "unacceptable": [
       {
-        "type": "domain",
-        "value": "tabloid.example.com",
+        "url": "https://tabloid.example.com/scandal",
         "language": "en",
         "signals": [{"key": "brand_safety", "value": "controversial", "confidence": 0.85}]
       },
-      {"type": "rss_url", "value": "https://controversy.example.com/feed.xml", "language": "en"},
-      {"type": "text", "value": "Political scandal rocks the nation as allegations surface", "language": "en"},
-      {"type": "audio_url", "value": "https://cdn.example.com/news/controversial-podcast.mp3"}
+      {
+        "url": "https://controversy.example.com",
+        "identifiers": {"rss_url": "https://controversy.example.com/feed.xml"}
+      },
+      {
+        "url": "https://cdn.example.com/news/controversial-podcast.mp3",
+        "assets": [{"type": "audio", "url": "https://cdn.example.com/news/controversial-podcast.mp3"}]
+      }
     ]
   }
 }
 ```
 
-The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. Content contexts can include:
+The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. Content is represented as a collection of assets with metadata:
 
-- **Domains** - Website identifiers with optional structured content
-- **Podcast/RSS** - Audio content identifiers
-- **Text snippets** - Sample headlines or content for NLP evaluation
-- **Media URLs** - Links to images, audio, or video for multimodal evaluation
-- **Signals** - Pre-computed classifications (IAB category, ratings, scores) with confidence levels
-- **Structured content** - Headings, paragraphs, embedded media in document order
+- **url** - Primary URL for this content (web page, podcast, video page)
+- **assets** - Content assets in document order (text blocks, images, video, audio)
+- **signals** - Pre-computed classifications (IAB category, ratings, scores) with confidence levels
+- **identifiers** - Platform-specific IDs (apple_podcast_id, spotify_show_id, youtube_video_id)
+- **metadata** - Rich metadata (Open Graph, JSON-LD, author info)
 
 ## Scoped Standards
 

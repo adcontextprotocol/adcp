@@ -23,24 +23,27 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | Standards configuration to calibrate against |
-| `content` | content-context | Yes | Content context to evaluate |
+| `content` | content | Yes | Content to evaluate |
 
-### Content Context
+### Content
 
-**Schema**: [content-context.json](https://adcontextprotocol.org/schemas/v2/content-standards/content-context.json)
+**Schema**: [content.json](https://adcontextprotocol.org/schemas/v2/content-standards/content.json)
+
+Content is represented as a collection of assets (text, images, video, audio) plus metadata and signals:
 
 ```json
 {
-  "type": "domain",
-  "value": "https://reddit.com/r/fitness/comments/abc123",
+  "url": "https://reddit.com/r/fitness/comments/abc123",
   "language": "en",
   "title": "Best protein sources for muscle building",
   "signals": [
     {"key": "iab_category", "value": "health/fitness", "confidence": 0.92}
   ],
-  "text_content": [
-    {"type": "heading", "heading": {"level": 1, "text": "Best protein sources for muscle building"}},
-    {"type": "paragraph", "paragraphs": ["Looking for recommendations on high-quality protein sources...", "I've been lifting for 6 months and want to optimize my diet."]}
+  "assets": [
+    {"type": "text", "role": "heading", "content": "Best protein sources for muscle building", "heading_level": 1},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources..."},
+    {"type": "text", "role": "paragraph", "content": "I've been lifting for 6 months and want to optimize my diet."},
+    {"type": "image", "url": "https://cdn.example.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
   ]
 }
 ```
@@ -138,7 +141,7 @@ const response1 = await a2a.send({
           skill: "calibrate_content",
           parameters: {
             standards_id: "nike_brand_safety",
-            content: { type: "domain", value: "https://reddit.com/r/news/politics" }
+            content: { url: "https://reddit.com/r/news/politics", title: "Political News Article" }
           }
         }
       }
@@ -171,7 +174,7 @@ const response3 = await a2a.send({
           skill: "calibrate_content",
           parameters: {
             standards_id: "nike_brand_safety",
-            content: { type: "domain", value: "https://reddit.com/r/running" }
+            content: { url: "https://reddit.com/r/running", title: "Running Tips" }
           }
         }
       }
@@ -187,7 +190,7 @@ const response3 = await a2a.send({
 // Initial calibration request
 const response1 = await mcp.call('calibrate_content', {
   standards_id: "nike_brand_safety",
-  content: { type: "domain", value: "https://reddit.com/r/news/politics" }
+  content: { url: "https://reddit.com/r/news/politics", title: "Political News Article" }
 });
 // Response includes context_id for conversation continuity
 
@@ -195,7 +198,7 @@ const response1 = await mcp.call('calibrate_content', {
 const response2 = await mcp.call('calibrate_content', {
   context_id: response1.context_id,
   standards_id: "nike_brand_safety",
-  content: { type: "domain", value: "https://reddit.com/r/news/politics" }
+  content: { url: "https://reddit.com/r/news/politics", title: "Political News Article" }
 });
 // Include text message in the protocol envelope asking about balanced journalism
 
@@ -203,7 +206,7 @@ const response2 = await mcp.call('calibrate_content', {
 const response3 = await mcp.call('calibrate_content', {
   context_id: response1.context_id,
   standards_id: "nike_brand_safety",
-  content: { type: "domain", value: "https://reddit.com/r/running" }
+  content: { url: "https://reddit.com/r/running", title: "Running Tips" }
 });
 ```
 
