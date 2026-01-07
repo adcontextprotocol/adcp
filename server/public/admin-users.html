@@ -1228,7 +1228,7 @@
               ${account.open_action_items > 0 ? `⚠️ ${account.open_action_items} action items` : '✓ No pending actions'}
             </div>
             <div style="margin-top: var(--space-3); display: flex; gap: var(--space-2);">
-              <button class="btn btn-info btn-small" onclick="showUserContext('${escapeHtml(account.account_id)}', '${account.account_type === 'user' ? 'workos' : 'org'}', '${escapeHtml(account.account_name || 'Account')}')">View</button>
+              <button class="btn btn-info btn-small" onclick="showUserContext('${escapeJs(account.account_id)}', '${account.account_type === 'user' ? 'workos' : 'org'}', '${escapeJs(account.account_name || 'Account')}')">View</button>
             </div>
           </div>
         `;
@@ -1455,7 +1455,7 @@
         const contextUserId = user.workos_user_id || user.slack_user_id;
         const contextType = user.workos_user_id ? 'workos' : 'slack';
         if (contextUserId) {
-          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${escapeHtml(contextUserId)}', '${contextType}', '${escapeHtml(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
+          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${escapeJs(contextUserId)}', '${contextType}', '${escapeJs(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
         }
 
         if (user.mapping_status === 'suggested_match') {
@@ -1472,7 +1472,7 @@
 
         // Make name clickable if user has context (reuse contextUserId/contextType from above)
         const nameHtml = contextUserId
-          ? `<a href="#" class="user-name-link" onclick="showUserContext('${escapeHtml(contextUserId)}', '${contextType}', '${escapeHtml(displayName)}', event); return false;">${escapeHtml(displayName)}</a>`
+          ? `<a href="#" class="user-name-link" onclick="showUserContext('${escapeJs(contextUserId)}', '${contextType}', '${escapeJs(displayName)}', event); return false;">${escapeHtml(displayName)}</a>`
           : escapeHtml(displayName);
 
         return `
@@ -1623,6 +1623,17 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // Escape for use in JavaScript string literals within onclick attributes
+    function escapeJs(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
     }
 
     function formatInsightLabel(typeName) {
@@ -1780,7 +1791,7 @@
         modalBody.innerHTML = `
           <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
             <p>Failed to load context.</p>
-            <button class="btn btn-secondary btn-small" onclick="showUserContext('${escapeHtml(userId)}', '${type}', '${escapeHtml(userName)}')">Retry</button>
+            <button class="btn btn-secondary btn-small" onclick="showUserContext('${escapeJs(userId)}', '${type}', '${escapeJs(userName)}')">Retry</button>
           </div>
         `;
       }

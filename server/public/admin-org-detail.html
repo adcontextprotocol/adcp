@@ -1652,12 +1652,13 @@
       list.innerHTML = orgData.members.map(member => {
         const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email;
         const escapedName = escapeHtml(name);
+        const escapedNameJs = escapeJs(name);
         const escapedEmail = escapeHtml(member.email);
         const memberId = member.id;
         return `
           <li>
             ${memberId
-              ? `<a href="#" class="member-name-link" onclick="showUserContext('${escapeHtml(memberId)}', 'workos', '${escapedName}'); return false;">${escapedName}</a>`
+              ? `<a href="#" class="member-name-link" onclick="showUserContext('${escapeJs(memberId)}', 'workos', '${escapedNameJs}'); return false;">${escapedName}</a>`
               : escapedName}
             <span class="member-role">${escapeHtml(member.role)}</span>
             <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapedEmail}</span>
@@ -2575,6 +2576,17 @@
       return div.innerHTML;
     }
 
+    // Escape for use in JavaScript string literals within onclick attributes
+    function escapeJs(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+    }
+
     // Helper to refresh domains list
     async function refreshDomains() {
       const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
@@ -2978,7 +2990,7 @@
         modalBody.innerHTML = `
           <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
             <p>Failed to load context.</p>
-            <button class="btn btn-secondary" onclick="showUserContext('${escapeHtml(userId)}', '${escapeHtml(type)}', '${escapeHtml(userName)}')">Retry</button>
+            <button class="btn btn-secondary" onclick="showUserContext('${escapeJs(userId)}', '${escapeJs(type)}', '${escapeJs(userName)}')">Retry</button>
           </div>
         `;
       }
