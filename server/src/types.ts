@@ -250,6 +250,7 @@ export interface MemberProfile {
   is_public: boolean;
   show_in_carousel: boolean;
   featured: boolean;
+  is_founding_member: boolean;
   created_at: Date;
   updated_at: Date;
 }

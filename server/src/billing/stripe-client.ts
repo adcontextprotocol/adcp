@@ -1304,7 +1304,17 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       limit: 10,
     });
 
-    const allInvoices = [...openInvoices.data, ...draftInvoices.data];
+    // Combine and deduplicate invoices by ID (in case an invoice appears in both lists)
+    const invoiceMap = new Map<string, typeof openInvoices.data[0]>();
+    for (const inv of openInvoices.data) {
+      invoiceMap.set(inv.id, inv);
+    }
+    for (const inv of draftInvoices.data) {
+      if (!invoiceMap.has(inv.id)) {
+        invoiceMap.set(inv.id, inv);
+      }
+    }
+    const allInvoices = Array.from(invoiceMap.values());
 
     for (const invoice of allInvoices) {
       // Get product name from first line item
@@ -1465,7 +1475,8 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
   }
 
   try {
-    const openInvoices: OpenInvoiceWithCustomer[] = [];
+    // Use a Map to deduplicate invoices by ID
+    const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
 
     // Query Stripe directly for all open invoices (sent, waiting for payment)
     for await (const invoice of stripe.invoices.list({
@@ -1474,29 +1485,30 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
       expand: ['data.customer', 'data.lines.data.price.product'],
     })) {
       const parsed = parseStripeInvoice(invoice);
-      if (parsed) {
-        openInvoices.push(parsed);
-        if (openInvoices.length >= limit) break;
+      if (parsed && !invoiceMap.has(parsed.id)) {
+        invoiceMap.set(parsed.id, parsed);
+        if (invoiceMap.size >= limit) break;
       }
     }
 
     // Also get draft invoices (not yet sent)
-    if (openInvoices.length < limit) {
+    if (invoiceMap.size < limit) {
       for await (const invoice of stripe.invoices.list({
         status: 'draft',
         limit: 100,
         expand: ['data.customer', 'data.lines.data.price.product'],
       })) {
         const parsed = parseStripeInvoice(invoice);
-        if (parsed) {
-          openInvoices.push(parsed);
-          if (openInvoices.length >= limit) break;
+        if (parsed && !invoiceMap.has(parsed.id)) {
+          invoiceMap.set(parsed.id, parsed);
+          if (invoiceMap.size >= limit) break;
         }
       }
     }
 
-    logger.info({ count: openInvoices.length }, 'Fetched all open invoices from Stripe');
-    return openInvoices;
+    const allInvoices = Array.from(invoiceMap.values());
+    logger.info({ count: allInvoices.length }, 'Fetched all open invoices from Stripe');
+    return allInvoices;
   } catch (error) {
     logger.error({ err: error }, 'Error fetching all open invoices');
     return [];

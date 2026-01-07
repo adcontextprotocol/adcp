@@ -274,6 +274,107 @@
     .all-members-link a:hover {
       text-decoration: underline;
     }
+    .loading-placeholder {
+      color: var(--color-text-muted);
+      font-size: 0.9rem;
+    }
+    .member-logo-link {
+      display: inline-flex;
+      text-decoration: none;
+      transition: transform 0.2s;
+    }
+    .member-logo-link:hover {
+      transform: scale(1.05);
+    }
+    .member-logo-link:hover .member-logo {
+      opacity: 1;
+    }
+    .member-name-link {
+      color: var(--color-text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .member-name-link:hover {
+      color: var(--color-brand);
+    }
+
+    /* Go Agentic Section */
+    .go-agentic {
+      padding: 4rem 2rem;
+      background: linear-gradient(135deg, var(--color-primary-50, #eef2ff) 0%, var(--color-primary-100, #e0e7ff) 100%);
+    }
+    .go-agentic-container {
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .go-agentic h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 0.75rem;
+    }
+    .go-agentic-subtitle {
+      font-size: 1.15rem;
+      color: var(--color-text-muted);
+      margin-bottom: 2rem;
+    }
+    .prompt-hints {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+    .prompt-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: white;
+      border: 1px solid var(--color-border, #d1d5db);
+      border-radius: 24px;
+      padding: 0.75rem 1.5rem;
+      font-size: 0.95rem;
+      color: var(--color-text-heading);
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .prompt-hint:hover {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.25);
+    }
+    .prompt-hint::before {
+      content: '→';
+      font-weight: bold;
+    }
+    .go-agentic-footer {
+      font-size: 0.9rem;
+      color: var(--color-text-muted);
+    }
+    .go-agentic-footer a {
+      color: var(--color-brand);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .go-agentic-footer a:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 768px) {
+      .go-agentic {
+        padding: 3rem 1.5rem;
+      }
+      .prompt-hints {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .prompt-hint {
+        justify-content: center;
+      }
+    }
 
     /* CTA Section */
     .cta {
@@ -362,6 +463,21 @@
     </div>
   </section>
 
+  <!-- Go Agentic Section -->
+  <section class="go-agentic">
+    <div class="go-agentic-container">
+      <h2>Go Agentic</h2>
+      <p class="go-agentic-subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
+      <div class="prompt-hints">
+        <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="prompt-hint">Find someone to run a sales agent for me</a>
+        <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="prompt-hint">Help me set up adagents.json</a>
+        <a href="/chat?prompt=Find%20AdCP-enabled%20publishers%20I%20can%20buy%20from" class="prompt-hint">Find publishers I can buy from</a>
+        <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="prompt-hint">Build a buyer agent for my campaigns</a>
+      </div>
+      <p class="go-agentic-footer">Or <a href="/members">browse all members</a> to see what's possible</p>
+    </div>
+  </section>
+
   <!-- Projects Section -->
   <section class="projects">
     <div class="projects-container">
@@ -422,45 +538,46 @@
       <h2 class="section-title">Our Members</h2>
       <p class="section-subtitle">Industry leaders building the future of advertising together</p>
 
-      <!-- Founding Members with Logos -->
-      <div class="member-tier">
+      <!-- Founding Members with Logos (static until Jan 15, then dynamic) -->
+      <div class="member-tier" id="founding-members-tier">
         <div class="tier-label">Founding Members</div>
-        <div class="member-logos">
-          <img src="/img/members/ebiquity.png" alt="Ebiquity" class="member-logo">
-          <img src="/img/members/optable.png" alt="Optable" class="member-logo">
-          <img src="/img/members/pubmatic.png" alt="PubMatic" class="member-logo">
-          <img src="/img/members/scope3-bright.png" alt="Scope3" class="member-logo">
-          <img src="/img/members/swivel.png" alt="Swivel" class="member-logo">
-          <img src="/img/members/triton-digital.png" alt="Triton Digital" class="member-logo">
-          <img src="/img/members/yahoo-purple.png" alt="Yahoo" class="member-logo">
+        <div class="member-logos" id="founding-member-logos">
+          <!-- Static logos - shown until cutoff date -->
+          <a href="/members/ebiquity" class="member-logo-link"><img src="/img/members/ebiquity.png" alt="Ebiquity" class="member-logo"></a>
+          <a href="/members/optable" class="member-logo-link"><img src="/img/members/optable.png" alt="Optable" class="member-logo"></a>
+          <a href="/members/pubmatic" class="member-logo-link"><img src="/img/members/pubmatic.png" alt="PubMatic" class="member-logo"></a>
+          <a href="/members/scope3" class="member-logo-link"><img src="/img/members/scope3-bright.png" alt="Scope3" class="member-logo"></a>
+          <a href="/members/swivel" class="member-logo-link"><img src="/img/members/swivel.png" alt="Swivel" class="member-logo"></a>
+          <a href="/members/triton-digital" class="member-logo-link"><img src="/img/members/triton-digital.png" alt="Triton Digital" class="member-logo"></a>
+          <a href="/members/yahoo" class="member-logo-link"><img src="/img/members/yahoo-purple.png" alt="Yahoo" class="member-logo"></a>
         </div>
       </div>
 
-      <!-- Launch Members as Text -->
-      <div class="member-tier">
+      <!-- Launch Members as Text (static until Jan 15, then dynamic) -->
+      <div class="member-tier" id="other-members-tier">
         <div class="tier-label">Launch Members</div>
-        <div class="launch-members">
-          <span class="launch-member">Accuweather</span>
-          <span class="launch-member">Adgent</span>
-          <span class="launch-member">Bidcliq</span>
-          <span class="launch-member">Butler/Till</span>
-          <span class="launch-member">Classify</span>
-          <span class="launch-member">HYPD</span>
-          <span class="launch-member">Kargo</span>
-          <span class="launch-member">Kiln</span>
-          <span class="launch-member">LG Ad Solutions</span>
-          <span class="launch-member">Locala</span>
-          <span class="launch-member">Magnite</span>
-          <span class="launch-member">Media.net</span>
-          <span class="launch-member">MiQ</span>
-          <span class="launch-member">Nativo</span>
-          <span class="launch-member">Newton Research</span>
-          <span class="launch-member">OpenAds</span>
-          <span class="launch-member">Raptive</span>
-          <span class="launch-member">Samba TV</span>
-          <span class="launch-member">Scribd</span>
-          <span class="launch-member">The Product Counsel</span>
-          <span class="launch-member">The Weather Company</span>
+        <div class="launch-members" id="other-member-names">
+          <a href="/members/accuweather" class="launch-member member-name-link">Accuweather</a>
+          <a href="/members/adgent" class="launch-member member-name-link">Adgent</a>
+          <a href="/members/bidcliq" class="launch-member member-name-link">Bidcliq</a>
+          <a href="/members/butler-till" class="launch-member member-name-link">Butler/Till</a>
+          <a href="/members/classify" class="launch-member member-name-link">Classify</a>
+          <a href="/members/hypd" class="launch-member member-name-link">HYPD</a>
+          <a href="/members/kargo" class="launch-member member-name-link">Kargo</a>
+          <a href="/members/kiln" class="launch-member member-name-link">Kiln</a>
+          <a href="/members/lg-ad-solutions" class="launch-member member-name-link">LG Ad Solutions</a>
+          <a href="/members/locala" class="launch-member member-name-link">Locala</a>
+          <a href="/members/magnite" class="launch-member member-name-link">Magnite</a>
+          <a href="/members/medianet" class="launch-member member-name-link">Media.net</a>
+          <a href="/members/miq" class="launch-member member-name-link">MiQ</a>
+          <a href="/members/nativo" class="launch-member member-name-link">Nativo</a>
+          <a href="/members/newton-research" class="launch-member member-name-link">Newton Research</a>
+          <a href="/members/openads" class="launch-member member-name-link">OpenAds</a>
+          <a href="/members/raptive" class="launch-member member-name-link">Raptive</a>
+          <a href="/members/samba-tv" class="launch-member member-name-link">Samba TV</a>
+          <a href="/members/scribd" class="launch-member member-name-link">Scribd</a>
+          <a href="/members/the-product-counsel" class="launch-member member-name-link">The Product Counsel</a>
+          <a href="/members/the-weather-company" class="launch-member member-name-link">The Weather Company</a>
         </div>
       </div>
 
@@ -484,5 +601,62 @@
 
   <!-- Shared Footer -->
   <div id="adcp-footer"></div>
+
+  <script>
+  // Switch to dynamic member display after cutoff date
+  // Until then, static logos are shown (they're hardcoded in the HTML above)
+  const DYNAMIC_MEMBERS_CUTOFF = new Date('2026-01-15T00:00:00Z');
+
+  // Escape HTML to prevent XSS
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Only load dynamic members after cutoff date
+    if (new Date() < DYNAMIC_MEMBERS_CUTOFF) {
+      return; // Keep static content
+    }
+
+    try {
+      const response = await fetch('/api/members?limit=100');
+      if (!response.ok) throw new Error('Failed to load members');
+
+      const data = await response.json();
+      const members = data.members || [];
+
+      // Separate founding members (with logos) from others
+      const foundingMembers = members.filter(m => m.is_founding_member && m.show_in_carousel && m.logo_url);
+      const otherMembers = members.filter(m => !m.is_founding_member || !m.show_in_carousel || !m.logo_url);
+
+      // Render founding members with logos
+      const foundingLogosEl = document.getElementById('founding-member-logos');
+      if (foundingMembers.length > 0) {
+        foundingLogosEl.innerHTML = foundingMembers.map(member => `
+          <a href="/members/${encodeURIComponent(member.slug)}" class="member-logo-link" title="${escapeHtml(member.display_name)}">
+            <img src="${escapeHtml(member.logo_url)}" alt="${escapeHtml(member.display_name)}" class="member-logo">
+          </a>
+        `).join('');
+      }
+
+      // Render other members as text links
+      const otherNamesEl = document.getElementById('other-member-names');
+      const otherMembersTier = document.getElementById('other-members-tier');
+      if (otherMembers.length > 0) {
+        // Update tier label to "Members" (not "Launch Members")
+        otherMembersTier.querySelector('.tier-label').textContent = 'Members';
+        otherNamesEl.innerHTML = otherMembers.map(member => `
+          <a href="/members/${encodeURIComponent(member.slug)}" class="launch-member member-name-link">${escapeHtml(member.display_name)}</a>
+        `).join('');
+      }
+    } catch (error) {
+      console.debug('Failed to load dynamic members, keeping static content:', error);
+      // Keep static content on error
+    }
+  });
+  </script>
 </body>
 </html>
