@@ -253,27 +253,40 @@
     background-color: rgba(26, 54, 180, 0.1) !important;
   }
 
+  /* Compact Hero */
+  .heroBanner_compact {
+    padding-top: 3rem;
+    padding-bottom: 2.5rem;
+  }
+  .heroBanner_compact .heroTitle_qg2I {
+    font-size: 2.25rem;
+    margin-bottom: 0.75rem;
+  }
+  .heroBanner_compact .heroSubtitle_jFu1 {
+    margin-bottom: 1.5rem;
+  }
+
   /* Go Agentic Section */
   .goAgenticSection_AdCP {
-    padding: 3rem 0;
+    padding: 2rem 0;
     background: white;
     border-top: 1px solid var(--ifm-color-emphasis-200, #e5e7eb);
   }
   .goAgenticCard_AdCP {
     background: linear-gradient(135deg, var(--color-primary-50, #eef2ff) 0%, var(--color-primary-100, #e0e7ff) 100%);
     border-radius: 12px;
-    padding: 2.5rem;
+    padding: 2rem;
     text-align: center;
   }
   .goAgenticCard_AdCP h3 {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
     margin-bottom: 0.5rem;
     color: var(--ifm-heading-color);
   }
   .goAgenticCard_AdCP .subtitle {
-    font-size: 1.1rem;
+    font-size: 1rem;
     color: var(--ifm-color-emphasis-700);
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
   }
   .promptHints_AdCP {
     display: flex;
@@ -287,11 +300,11 @@
     align-items: center;
     gap: 0.5rem;
     background: white;
-    border: 1px solid var(--ifm-color-emphasis-300, #d1d5db);
+    border: 1px solid var(--color-border, #d1d5db);
     border-radius: 24px;
-    padding: 0.625rem 1.25rem;
-    font-size: 0.9rem;
-    color: var(--ifm-color-emphasis-800);
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+    color: var(--color-text-heading, #2d3748);
     text-decoration: none;
     transition: all 0.2s;
     cursor: pointer;
@@ -300,8 +313,13 @@
     background: var(--color-brand, #1a36b4);
     color: white;
     border-color: var(--color-brand, #1a36b4);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(26, 54, 180, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(26, 54, 180, 0.25);
+  }
+  .promptHint_AdCP:focus,
+  .promptHint_AdCP:focus-visible {
+    outline: 2px solid var(--color-brand, #1a36b4);
+    outline-offset: 2px;
   }
   .promptHint_AdCP::before {
     content: '→';
@@ -346,26 +364,12 @@
   <div id="__docusaurus_skipToContent_fallback" class="theme-layout-main main-wrapper mainWrapper_z2l0">
 
     <!-- Hero Section -->
-    <header class="hero heroBanner_qdFl">
+    <header class="hero heroBanner_qdFl heroBanner_compact">
       <div class="container">
         <div class="row">
           <div class="col col--8 col--offset-2">
             <h1 class="heroTitle_qg2I">AdCP: The Open Standard for Agentic Advertising</h1>
             <p class="heroSubtitle_jFu1">From brief to buy, helping agents advertise anywhere: from CTV to chat, from tiny blog to the World Cup.</p>
-            <div class="heroPoints_gRrZ">
-              <div class="point__uAb">
-                <div class="pointIcon_AYD6">🎯</div>
-                <div class="pointText_BlCe"><strong>Built for outcomes</strong><br>Buy the way you want to grow</div>
-              </div>
-              <div class="point__uAb">
-                <div class="pointIcon_AYD6">🤖</div>
-                <div class="pointText_BlCe"><strong>Built for agents</strong><br>Supports MCP and A2A protocols</div>
-              </div>
-              <div class="point__uAb">
-                <div class="pointIcon_AYD6">🌍</div>
-                <div class="pointText_BlCe"><strong>Built for everyone</strong><br>A diverse ecosystem of tech and content</div>
-              </div>
-            </div>
             <div class="buttons_AeoN">
               <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">Start Building</a>
               <a href="/chat.html?prompt=Try%20AdCP%20with%20a%20test%20agent" class="button button--secondary button--lg margin-right--md">Test with Addie</a>
@@ -387,6 +391,27 @@
           </div>
         </div>
       </div>
+
+      <!-- Go Agentic Section -->
+      <section class="goAgenticSection_AdCP">
+        <div class="container">
+          <div class="row">
+            <div class="col col--10 col--offset-1">
+              <div class="goAgenticCard_AdCP">
+                <h3>Go Agentic</h3>
+                <p class="subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
+                <div class="promptHints_AdCP">
+                  <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="promptHint_AdCP">Build a buyer agent for my campaigns</a>
+                  <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="promptHint_AdCP">Find a sales agent for my inventory</a>
+                  <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="promptHint_AdCP">Set up adagents.json for my site</a>
+                  <a href="/chat?prompt=What%20can%20I%20do%20with%20AdCP%3F" class="promptHint_AdCP">What can I do with AdCP?</a>
+                </div>
+                <p class="goAgenticFooter_AdCP">Or <a href="/members">browse all members</a> to see what's possible</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <!-- Problem Section -->
       <section class="problemSection_YnFw">
@@ -439,27 +464,6 @@
                     <p style="font-size: 0.85rem; color: var(--ifm-color-emphasis-600); margin-top: 0.75rem; margin-bottom: 0;"><strong>Limited time:</strong> Founding member pricing ends March 31, 2026</p>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Go Agentic Section -->
-      <section class="goAgenticSection_AdCP">
-        <div class="container">
-          <div class="row">
-            <div class="col col--10 col--offset-1">
-              <div class="goAgenticCard_AdCP">
-                <h3>Go Agentic</h3>
-                <p class="subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
-                <div class="promptHints_AdCP">
-                  <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="promptHint_AdCP">Find someone to run a sales agent for me</a>
-                  <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="promptHint_AdCP">Help me set up adagents.json</a>
-                  <a href="/chat?prompt=Find%20AdCP-enabled%20publishers%20I%20can%20buy%20from" class="promptHint_AdCP">Find publishers I can buy from</a>
-                  <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="promptHint_AdCP">Build a buyer agent for my campaigns</a>
-                </div>
-                <p class="goAgenticFooter_AdCP">Or <a href="/members">browse all members</a> to see what's possible</p>
               </div>
             </div>
           </div>

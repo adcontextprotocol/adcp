@@ -43,7 +43,7 @@
     .hero {
       background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
       color: white;
-      padding: 5rem 2rem 4rem;
+      padding: 3.5rem 2rem 3rem;
       text-align: center;
       position: relative;
       overflow: hidden;
@@ -69,23 +69,23 @@
       z-index: 1;
     }
     .hero-logo {
-      margin-bottom: 2rem;
+      margin-bottom: 1.25rem;
     }
     .aao-logo {
-      height: 80px;
+      height: 64px;
       width: auto;
       filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
     }
     .hero h1 {
-      font-size: 2.75rem;
+      font-size: 2.5rem;
       font-weight: 700;
-      margin-bottom: 1.25rem;
+      margin-bottom: 1rem;
       line-height: 1.15;
     }
     .hero-subtitle {
-      font-size: 1.25rem;
+      font-size: 1.15rem;
       opacity: 0.95;
-      margin-bottom: 2.5rem;
+      margin-bottom: 2rem;
       line-height: 1.6;
       max-width: 600px;
       margin-left: auto;
@@ -123,22 +123,6 @@
     .btn-secondary:hover {
       background: rgba(255,255,255,0.1);
       border-color: white;
-    }
-
-    /* Mission Statement */
-    .mission {
-      padding: 4rem 2rem;
-      background: var(--color-bg-subtle);
-      text-align: center;
-    }
-    .mission-container {
-      max-width: 700px;
-      margin: 0 auto;
-    }
-    .mission p {
-      font-size: 1.25rem;
-      color: var(--color-text-heading);
-      line-height: 1.8;
     }
 
     /* Projects Section */
@@ -300,7 +284,7 @@
 
     /* Go Agentic Section */
     .go-agentic {
-      padding: 4rem 2rem;
+      padding: 2.5rem 2rem;
       background: linear-gradient(135deg, var(--color-primary-50, #eef2ff) 0%, var(--color-primary-100, #e0e7ff) 100%);
     }
     .go-agentic-container {
@@ -309,15 +293,15 @@
       text-align: center;
     }
     .go-agentic h2 {
-      font-size: 2rem;
+      font-size: 1.5rem;
       font-weight: 700;
       color: var(--color-text-heading);
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.5rem;
     }
     .go-agentic-subtitle {
-      font-size: 1.15rem;
+      font-size: 1rem;
       color: var(--color-text-muted);
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
     }
     .prompt-hints {
       display: flex;
@@ -347,6 +331,11 @@
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(26, 54, 180, 0.25);
     }
+    .prompt-hint:focus,
+    .prompt-hint:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+    }
     .prompt-hint::before {
       content: '→';
       font-weight: bold;
@@ -365,7 +354,7 @@
     }
     @media (max-width: 768px) {
       .go-agentic {
-        padding: 3rem 1.5rem;
+        padding: 2rem 1.5rem;
       }
       .prompt-hints {
         flex-direction: column;
@@ -454,25 +443,16 @@
     </div>
   </section>
 
-  <!-- Mission Statement -->
-  <section class="mission">
-    <div class="mission-container">
-      <p>
-        We bring together brands, agencies, publishers, and technology providers to ensure AI advertising develops as shared infrastructure that benefits the entire ecosystem.
-      </p>
-    </div>
-  </section>
-
   <!-- Go Agentic Section -->
   <section class="go-agentic">
     <div class="go-agentic-container">
       <h2>Go Agentic</h2>
       <p class="go-agentic-subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
       <div class="prompt-hints">
-        <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="prompt-hint">Find someone to run a sales agent for me</a>
-        <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="prompt-hint">Help me set up adagents.json</a>
-        <a href="/chat?prompt=Find%20AdCP-enabled%20publishers%20I%20can%20buy%20from" class="prompt-hint">Find publishers I can buy from</a>
         <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="prompt-hint">Build a buyer agent for my campaigns</a>
+        <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="prompt-hint">Find a sales agent for my inventory</a>
+        <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="prompt-hint">Set up adagents.json for my site</a>
+        <a href="/chat?prompt=What%20can%20I%20do%20with%20AdCP%3F" class="prompt-hint">What can I do with AdCP?</a>
       </div>
       <p class="go-agentic-footer">Or <a href="/members">browse all members</a> to see what's possible</p>
     </div>
