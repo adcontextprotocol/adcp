@@ -514,7 +514,13 @@ export class WorkingGroupDatabase {
        FROM working_group_memberships wgm
        LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgm.workos_user_id = om.workos_user_id
+       LEFT JOIN LATERAL (
+         SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
+         FROM organization_memberships om
+         WHERE om.workos_user_id = wgm.workos_user_id
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
        ORDER BY user_name, user_email`,
@@ -583,7 +589,13 @@ export class WorkingGroupDatabase {
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN users u ON wgl.user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN LATERAL (
+         SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
+         FROM organization_memberships om
+         WHERE om.workos_user_id = wgl.user_id
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = $1
@@ -622,7 +634,13 @@ export class WorkingGroupDatabase {
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN users u ON wgl.user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
-       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN LATERAL (
+         SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
+         FROM organization_memberships om
+         WHERE om.workos_user_id = wgl.user_id
+         ORDER BY om.created_at DESC
+         LIMIT 1
+       ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = ANY($1)

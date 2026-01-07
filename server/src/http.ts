@@ -1304,6 +1304,7 @@ export class HTTPServer {
       }
 
       const user = req.user ? {
+        id: req.user.id,
         email: req.user.email,
         firstName: req.user.firstName,
         lastName: req.user.lastName,
