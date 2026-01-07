@@ -54,12 +54,12 @@ sequenceDiagram
         Note over Seller: Local model evaluates artifacts
     end
 
-    Seller->>Verifier: validate_content_delivery (sampled records)
-    Verifier-->>Seller: alignment report
-    Verifier-->>Buyer: drift detection alerts
+    Seller->>Buyer: Delivery records (get_media_buy_delivery)
+    Buyer->>Verifier: validate_content_delivery (sampled)
+    Verifier-->>Buyer: Validation results
 ```
 
-**Key insight**: Runtime decisioning happens locally at the seller (for scale), while calibration and validation happen via the verification agent (for alignment).
+**Key insight**: Runtime decisioning happens locally at the seller (for scale). Delivery records flow through the buyer, who validates samples against the verification agent.
 
 ## Adjacency
 
