@@ -969,7 +969,7 @@ export function createCommitteeRouters(): {
         });
       }
 
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       if (isLeader) {
         return res.status(403).json({
           error: 'Cannot leave',
@@ -1023,7 +1023,7 @@ export function createCommitteeRouters(): {
         });
       }
 
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
 
       if (!title || !post_slug) {
@@ -1136,7 +1136,7 @@ export function createCommitteeRouters(): {
       }
 
       const post = existing.rows[0];
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       const isAuthor = post.author_user_id === user.id;
 
       if (!isAuthor && !isLeader) {
@@ -1240,7 +1240,7 @@ export function createCommitteeRouters(): {
       }
 
       const post = existing.rows[0];
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       const isAuthor = post.author_user_id === user.id;
 
       if (!isAuthor && !isLeader) {
