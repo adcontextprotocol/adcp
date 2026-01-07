@@ -663,10 +663,12 @@
 
     function renderHistory() {
       const tbody = document.getElementById('history-body');
-      tbody.innerHTML = history.map(item => `
+      tbody.innerHTML = history.map(item => {
+        const userName = item.slack_display_name || item.slack_real_name || item.slack_user_id;
+        return `
         <tr>
           <td>${formatDate(item.sent_at)}</td>
-          <td>${escapeHtml(item.slack_user_id)}</td>
+          <td>${escapeHtml(userName)}</td>
           <td><span class="badge badge-info">${item.outreach_type}</span></td>
           <td>${item.tone ? `${item.tone} / ${item.approach}` : '—'}</td>
           <td>
@@ -680,7 +682,7 @@
             </span>
           </td>
         </tr>
-      `).join('');
+      `}).join('');
     }
 
     async function loadVariants() {

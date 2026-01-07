@@ -117,6 +117,11 @@ export interface ResponseAnalysis {
   analysisNote: string;
 }
 
+export interface MemberOutreachWithUser extends MemberOutreach {
+  slack_display_name: string | null;
+  slack_real_name: string | null;
+}
+
 // Input types
 export interface CreateInsightTypeInput {
   name: string;
@@ -1295,9 +1300,13 @@ export class InsightsDatabase {
   /**
    * Get recent outreach history for admin dashboard
    */
-  async getRecentOutreach(limit = 50): Promise<MemberOutreach[]> {
-    const result = await query<MemberOutreach>(
-      'SELECT * FROM member_outreach ORDER BY sent_at DESC LIMIT $1',
+  async getRecentOutreach(limit = 50): Promise<MemberOutreachWithUser[]> {
+    const result = await query<MemberOutreachWithUser>(
+      `SELECT mo.*, sm.slack_display_name, sm.slack_real_name
+       FROM member_outreach mo
+       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = mo.slack_user_id
+       ORDER BY mo.sent_at DESC
+       LIMIT $1`,
       [limit]
     );
     return result.rows;
