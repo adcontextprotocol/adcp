@@ -184,7 +184,7 @@
               <select id="billingChannel" disabled>
                 <option value="">Loading channels...</option>
               </select>
-              <small>Only public channels the bot has access to are shown</small>
+              <small>Only private channels are shown. Invite Addie to your billing channel first.</small>
             </div>
             <button class="btn btn-primary" id="saveBtn" onclick="saveBillingChannel()" disabled>
               Save
@@ -243,14 +243,19 @@
 
         // Build options
         let html = '<option value="">-- No channel (disabled) --</option>';
-        slackChannels.forEach(ch => {
-          const selected = currentSettings?.billing_channel?.channel_id === ch.id ? 'selected' : '';
-          html += `<option value="${ch.id}" ${selected}>#${escapeHtml(ch.name)}</option>`;
-        });
-
-        select.innerHTML = html;
-        select.disabled = false;
-        document.getElementById('saveBtn').disabled = false;
+        if (slackChannels.length === 0) {
+          html = '<option value="">No private channels found - invite Addie first</option>';
+          select.innerHTML = html;
+          showStatusMessage('Addie is not in any private channels. Invite @Addie to your billing channel and refresh.', 'error');
+        } else {
+          slackChannels.forEach(ch => {
+            const selected = currentSettings?.billing_channel?.channel_id === ch.id ? 'selected' : '';
+            html += `<option value="${ch.id}" ${selected}>#${escapeHtml(ch.name)}</option>`;
+          });
+          select.innerHTML = html;
+          select.disabled = false;
+          document.getElementById('saveBtn').disabled = false;
+        }
       } catch (error) {
         console.error('Error loading Slack channels:', error);
         select.innerHTML = '<option value="">Error loading channels</option>';
