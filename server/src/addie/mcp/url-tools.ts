@@ -11,11 +11,29 @@
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 
-// Maximum content size to prevent memory issues (500KB)
+// Maximum content size to prevent memory issues (500KB for text, 20MB for images/PDFs)
 const MAX_CONTENT_SIZE = 500 * 1024;
+const MAX_BINARY_SIZE = 20 * 1024 * 1024; // 20MB for images/PDFs (Claude's limit)
 
 // Maximum time to wait for fetch (10 seconds)
 const FETCH_TIMEOUT_MS = 10000;
+
+/**
+ * Result from reading a file - can be text or multimodal content
+ */
+export interface FileReadResult {
+  type: 'text' | 'image' | 'document';
+  /** For text type: the text content */
+  text?: string;
+  /** For image/document type: base64-encoded data */
+  data?: string;
+  /** MIME type for binary content */
+  media_type?: string;
+  /** Original filename */
+  filename?: string;
+  /** Error message if failed */
+  error?: string;
+}
 
 /**
  * Tool definitions for URL/file fetching
@@ -262,19 +280,20 @@ function convertHtmlToMarkdown(html: string): string {
 
 /**
  * Read a file from Slack using the bot token
+ * Returns structured data for multimodal content (images, PDFs)
  */
 async function readSlackFile(
   fileUrl: string,
   fileName?: string,
   botToken?: string
-): Promise<string> {
+): Promise<FileReadResult> {
   if (!botToken) {
-    return 'Error: Slack bot token not available for file access';
+    return { type: 'text', error: 'Slack bot token not available for file access' };
   }
 
   // Validate it's a Slack URL
   if (!fileUrl.includes('slack.com') && !fileUrl.includes('files.slack.com')) {
-    return 'Error: Not a valid Slack file URL';
+    return { type: 'text', error: 'Not a valid Slack file URL' };
   }
 
   try {
@@ -293,21 +312,16 @@ async function readSlackFile(
 
     if (!response.ok) {
       if (response.status === 404) {
-        return 'Error: File not found or no longer available';
+        return { type: 'text', error: 'File not found or no longer available' };
       }
       if (response.status === 403) {
-        return 'Error: Access denied - bot may not have permission to access this file';
+        return { type: 'text', error: 'Access denied - bot may not have permission to access this file' };
       }
-      return `Error: HTTP ${response.status} ${response.statusText}`;
-    }
-
-    // Check content length
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > MAX_CONTENT_SIZE) {
-      return `Error: File too large (${Math.round(parseInt(contentLength) / 1024)}KB > ${MAX_CONTENT_SIZE / 1024}KB limit)`;
+      return { type: 'text', error: `HTTP ${response.status} ${response.statusText}` };
     }
 
     const contentType = response.headers.get('content-type') || '';
+    const contentLength = response.headers.get('content-length');
     const ext = fileName?.split('.').pop()?.toLowerCase() || '';
 
     // Handle text-based files
@@ -317,34 +331,135 @@ async function readSlackFile(
       contentType.includes('application/xml') ||
       ['txt', 'md', 'json', 'xml', 'csv', 'log', 'yaml', 'yml', 'html', 'htm', 'js', 'ts', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'css', 'sql'].includes(ext)
     ) {
+      // Check size for text files
+      if (contentLength && parseInt(contentLength) > MAX_CONTENT_SIZE) {
+        return { type: 'text', error: `File too large (${Math.round(parseInt(contentLength) / 1024)}KB > ${MAX_CONTENT_SIZE / 1024}KB limit)` };
+      }
       const text = await response.text();
       if (text.length > MAX_CONTENT_SIZE) {
-        return `File content (first ${MAX_CONTENT_SIZE / 1024}KB):\n\n${text.substring(0, MAX_CONTENT_SIZE)}...\n\n[Content truncated]`;
+        return {
+          type: 'text',
+          text: `File content (first ${MAX_CONTENT_SIZE / 1024}KB):\n\n${text.substring(0, MAX_CONTENT_SIZE)}...\n\n[Content truncated]`,
+          filename: fileName,
+        };
       }
-      return `File content:\n\n${text}`;
+      return { type: 'text', text: `File content:\n\n${text}`, filename: fileName };
     }
 
-    // Handle PDF - we can't read these directly, but we can acknowledge them
+    // Handle PDF - return as document for Claude's native PDF support
     if (contentType.includes('application/pdf') || ext === 'pdf') {
-      return `This is a PDF file (${fileName || 'unnamed'}). I cannot read PDF content directly, but I can see it was shared. If you need me to understand the content, please copy and paste the relevant text.`;
+      // Check size for binary files
+      if (contentLength && parseInt(contentLength) > MAX_BINARY_SIZE) {
+        return { type: 'text', error: `PDF too large (${Math.round(parseInt(contentLength) / 1024 / 1024)}MB > ${MAX_BINARY_SIZE / 1024 / 1024}MB limit)` };
+      }
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      logger.info({ fileName, size: buffer.byteLength }, 'Addie: Loaded PDF for multimodal processing');
+      return {
+        type: 'document',
+        data: base64,
+        media_type: 'application/pdf',
+        filename: fileName,
+      };
     }
 
-    // Handle images - acknowledge but can't read
-    if (contentType.includes('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-      return `This is an image file (${fileName || 'unnamed'}). I can see it was shared but cannot view image contents directly.`;
+    // Handle images - return as image for Claude's vision
+    if (contentType.includes('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+      // Check size for binary files
+      if (contentLength && parseInt(contentLength) > MAX_BINARY_SIZE) {
+        return { type: 'text', error: `Image too large (${Math.round(parseInt(contentLength) / 1024 / 1024)}MB > ${MAX_BINARY_SIZE / 1024 / 1024}MB limit)` };
+      }
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      // Determine proper media type
+      let mediaType = contentType.split(';')[0].trim();
+      if (!mediaType.startsWith('image/')) {
+        // Infer from extension
+        const extToMime: Record<string, string> = {
+          png: 'image/png',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          gif: 'image/gif',
+          webp: 'image/webp',
+        };
+        mediaType = extToMime[ext] || 'image/png';
+      }
+      logger.info({ fileName, size: buffer.byteLength, mediaType }, 'Addie: Loaded image for vision processing');
+      return {
+        type: 'image',
+        data: base64,
+        media_type: mediaType,
+        filename: fileName,
+      };
+    }
+
+    // Handle Word documents - extract text using mammoth (if available) or return error
+    if (
+      contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+      contentType.includes('application/msword') ||
+      ['docx', 'doc'].includes(ext)
+    ) {
+      // Check size
+      if (contentLength && parseInt(contentLength) > MAX_BINARY_SIZE) {
+        return { type: 'text', error: `Word document too large (${Math.round(parseInt(contentLength) / 1024 / 1024)}MB > ${MAX_BINARY_SIZE / 1024 / 1024}MB limit)` };
+      }
+      const buffer = await response.arrayBuffer();
+      try {
+        // Try to import mammoth dynamically
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+        logger.info({ fileName, textLength: result.value.length }, 'Addie: Extracted text from Word document');
+        return {
+          type: 'text',
+          text: `Word document content:\n\n${result.value}`,
+          filename: fileName,
+        };
+      } catch (mammothError) {
+        logger.warn({ error: mammothError, fileName }, 'Addie: mammoth not available for Word doc extraction');
+        return {
+          type: 'text',
+          error: `This is a Word document (${fileName || 'unnamed'}). Word document processing is not currently available. Please copy and paste the relevant text.`,
+        };
+      }
     }
 
     // Handle other binary files
-    return `This is a ${contentType || 'binary'} file (${fileName || 'unnamed'}). I cannot read the contents of this file type directly.`;
+    return {
+      type: 'text',
+      error: `This is a ${contentType || 'binary'} file (${fileName || 'unnamed'}). I cannot read the contents of this file type directly.`,
+    };
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
-        return `Error: Request timed out after ${FETCH_TIMEOUT_MS / 1000} seconds`;
+        return { type: 'text', error: `Request timed out after ${FETCH_TIMEOUT_MS / 1000} seconds` };
       }
-      return `Error: ${error.message}`;
+      return { type: 'text', error: error.message };
     }
-    return 'Error: Unknown error reading file';
+    return { type: 'text', error: 'Unknown error reading file' };
   }
+}
+
+/**
+ * Format a FileReadResult as a string for the tool response
+ * For multimodal content, returns a special marker that the handler will process
+ */
+function formatFileResult(result: FileReadResult): string {
+  if (result.error) {
+    return `Error: ${result.error}`;
+  }
+
+  if (result.type === 'text') {
+    return result.text || 'No content';
+  }
+
+  // For images and documents, return a special JSON marker that the message handler will process
+  // This allows the multimodal content to be passed to Claude as proper content blocks
+  return `__MULTIMODAL_CONTENT__${JSON.stringify({
+    type: result.type,
+    data: result.data,
+    media_type: result.media_type,
+    filename: result.filename,
+  })}__END_MULTIMODAL__`;
 }
 
 /**
@@ -375,13 +490,36 @@ export function createUrlToolHandlers(slackBotToken?: string): Record<string, (i
       logger.info({ fileUrl, fileName }, 'Addie: Reading Slack file');
 
       const result = await readSlackFile(fileUrl, fileName, slackBotToken);
+      const formatted = formatFileResult(result);
 
-      // Truncate if too long
-      if (result.length > 10000) {
-        return result.substring(0, 10000) + '\n\n[Content truncated to 10,000 characters]';
+      // Only truncate text content, not multimodal markers
+      if (!formatted.startsWith('__MULTIMODAL_CONTENT__') && formatted.length > 10000) {
+        return formatted.substring(0, 10000) + '\n\n[Content truncated to 10,000 characters]';
       }
 
-      return result;
+      return formatted;
     },
   };
+}
+
+/**
+ * Check if a tool result contains multimodal content
+ */
+export function isMultimodalContent(content: string): boolean {
+  return content.startsWith('__MULTIMODAL_CONTENT__') && content.includes('__END_MULTIMODAL__');
+}
+
+/**
+ * Extract multimodal content from a tool result
+ */
+export function extractMultimodalContent(content: string): FileReadResult | null {
+  if (!isMultimodalContent(content)) {
+    return null;
+  }
+  try {
+    const jsonStr = content.replace('__MULTIMODAL_CONTENT__', '').replace('__END_MULTIMODAL__', '');
+    return JSON.parse(jsonStr) as FileReadResult;
+  } catch {
+    return null;
+  }
 }

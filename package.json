@@ -60,6 +60,7 @@
     "free-email-domains": "^1.2.21",
     "jsonwebtoken": "^9.0.3",
     "linkedom": "^0.18.12",
+    "mammoth": "^1.11.0",
     "marked": "^17.0.1",
     "pg": "^8.16.3",
     "pino": "^9.14.0",

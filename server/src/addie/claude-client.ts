@@ -12,6 +12,7 @@ import { ADDIE_SYSTEM_PROMPT, buildMessageTurns } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
+import { isMultimodalContent, extractMultimodalContent, type FileReadResult } from './mcp/url-tools.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -517,9 +518,11 @@ export class AddieClaudeClient {
           };
         }
 
+        // Tool results can contain multimodal content (images, PDFs)
+        type ToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
         interface ToolResult {
           tool_use_id: string;
-          content: string;
+          content: ToolResultContent;
           is_error?: boolean;
         }
 
@@ -559,16 +562,82 @@ export class AddieClaudeClient {
           try {
             const result = await handler(toolInput);
             const durationMs = Date.now() - startTime;
-            toolResults.push({ tool_use_id: toolUseId, content: result });
-            toolExecutions.push({
-              tool_name: toolName,
-              parameters: toolInput,
-              result,
-              result_summary: this.summarizeToolResult(toolName, result),
-              is_error: false,
-              duration_ms: durationMs,
-              sequence: executionSequence,
-            });
+
+            // Check if result contains multimodal content (images, PDFs)
+            if (isMultimodalContent(result)) {
+              const multimodal = extractMultimodalContent(result);
+              if (multimodal && multimodal.data) {
+                // Convert to Claude content blocks
+                const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
+
+                if (multimodal.type === 'image') {
+                  contentBlocks.push({
+                    type: 'image',
+                    source: {
+                      type: 'base64',
+                      media_type: multimodal.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                      data: multimodal.data,
+                    },
+                  });
+                  // Add context text
+                  contentBlocks.push({
+                    type: 'text',
+                    text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
+                  });
+                } else if (multimodal.type === 'document') {
+                  // For PDFs, use document content block
+                  contentBlocks.push({
+                    type: 'document',
+                    source: {
+                      type: 'base64',
+                      media_type: 'application/pdf',
+                      data: multimodal.data,
+                    },
+                  });
+                  // Add context text
+                  contentBlocks.push({
+                    type: 'text',
+                    text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
+                  });
+                }
+
+                toolResults.push({ tool_use_id: toolUseId, content: contentBlocks });
+                const summaryText = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
+                toolExecutions.push({
+                  tool_name: toolName,
+                  parameters: toolInput,
+                  result: summaryText,
+                  result_summary: summaryText,
+                  is_error: false,
+                  duration_ms: durationMs,
+                  sequence: executionSequence,
+                });
+                logger.info({ toolName, multimodalType: multimodal.type, filename: multimodal.filename }, 'Addie: Processed multimodal tool result');
+              } else {
+                // Failed to parse multimodal content
+                toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
+                toolExecutions.push({
+                  tool_name: toolName,
+                  parameters: toolInput,
+                  result: 'Error: Failed to process file content',
+                  is_error: true,
+                  duration_ms: durationMs,
+                  sequence: executionSequence,
+                });
+              }
+            } else {
+              // Regular text result
+              toolResults.push({ tool_use_id: toolUseId, content: result });
+              toolExecutions.push({
+                tool_name: toolName,
+                parameters: toolInput,
+                result,
+                result_summary: this.summarizeToolResult(toolName, result),
+                is_error: false,
+                duration_ms: durationMs,
+                sequence: executionSequence,
+              });
+            }
           } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -815,9 +884,11 @@ export class AddieClaudeClient {
             return;
           }
 
+          // Tool results can contain multimodal content (images, PDFs)
+          type StreamToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
           interface ToolResult {
             tool_use_id: string;
-            content: string;
+            content: StreamToolResultContent;
             is_error?: boolean;
           }
 
@@ -862,17 +933,81 @@ export class AddieClaudeClient {
             try {
               const result = await handler(toolInput);
               const durationMs = Date.now() - startTime;
-              toolResults.push({ tool_use_id: toolUseId, content: result });
-              toolExecutions.push({
-                tool_name: toolName,
-                parameters: toolInput,
-                result,
-                result_summary: this.summarizeToolResult(toolName, result),
-                is_error: false,
-                duration_ms: durationMs,
-                sequence: executionSequence,
-              });
-              yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+
+              // Check if result contains multimodal content (images, PDFs)
+              if (isMultimodalContent(result)) {
+                const multimodal = extractMultimodalContent(result);
+                if (multimodal && multimodal.data) {
+                  // Convert to Claude content blocks
+                  const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
+
+                  if (multimodal.type === 'image') {
+                    contentBlocks.push({
+                      type: 'image',
+                      source: {
+                        type: 'base64',
+                        media_type: multimodal.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                        data: multimodal.data,
+                      },
+                    });
+                    contentBlocks.push({
+                      type: 'text',
+                      text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
+                    });
+                  } else if (multimodal.type === 'document') {
+                    contentBlocks.push({
+                      type: 'document',
+                      source: {
+                        type: 'base64',
+                        media_type: 'application/pdf',
+                        data: multimodal.data,
+                      },
+                    });
+                    contentBlocks.push({
+                      type: 'text',
+                      text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
+                    });
+                  }
+
+                  toolResults.push({ tool_use_id: toolUseId, content: contentBlocks });
+                  const summaryText = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
+                  toolExecutions.push({
+                    tool_name: toolName,
+                    parameters: toolInput,
+                    result: summaryText,
+                    result_summary: summaryText,
+                    is_error: false,
+                    duration_ms: durationMs,
+                    sequence: executionSequence,
+                  });
+                  yield { type: 'tool_end', tool_name: toolName, result: summaryText, is_error: false };
+                  logger.info({ toolName, multimodalType: multimodal.type, filename: multimodal.filename }, 'Addie Stream: Processed multimodal tool result');
+                } else {
+                  toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
+                  toolExecutions.push({
+                    tool_name: toolName,
+                    parameters: toolInput,
+                    result: 'Error: Failed to process file content',
+                    is_error: true,
+                    duration_ms: durationMs,
+                    sequence: executionSequence,
+                  });
+                  yield { type: 'tool_end', tool_name: toolName, result: 'Error: Failed to process file content', is_error: true };
+                }
+              } else {
+                // Regular text result
+                toolResults.push({ tool_use_id: toolUseId, content: result });
+                toolExecutions.push({
+                  tool_name: toolName,
+                  parameters: toolInput,
+                  result,
+                  result_summary: this.summarizeToolResult(toolName, result),
+                  is_error: false,
+                  duration_ms: durationMs,
+                  sequence: executionSequence,
+                });
+                yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+              }
             } catch (error) {
               const durationMs = Date.now() - startTime;
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
