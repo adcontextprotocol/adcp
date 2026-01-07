@@ -13,6 +13,7 @@
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { decodeHtmlEntities } from '../../utils/html-entities.js';
 import {
   getAllFeedsWithStats,
   getFeedById,
@@ -24,6 +25,7 @@ import {
   getFeedStats,
   enableFeedEmail,
   disableFeedEmail,
+  type RecentArticle,
 } from '../../db/industry-feeds-db.js';
 import { fetchSingleFeed } from '../../addie/services/feed-fetcher.js';
 
@@ -169,7 +171,13 @@ export function createAdminFeedsRouter(): Router {
       }
 
       const recentArticles = await getRecentArticlesForFeed(feedId, 10);
-      res.json({ feed, recentArticles });
+      // Decode HTML entities in article titles and summaries
+      const decodedArticles = recentArticles.map((article: RecentArticle) => ({
+        ...article,
+        title: decodeHtmlEntities(article.title),
+        summary: article.summary ? decodeHtmlEntities(article.summary) : null,
+      }));
+      res.json({ feed, recentArticles: decodedArticles });
     } catch (error) {
       logger.error({ err: error }, 'Get feed error');
       res.status(500).json({

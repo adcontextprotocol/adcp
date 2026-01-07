@@ -7,6 +7,7 @@
 
 import Parser from 'rss-parser';
 import { logger } from '../../logger.js';
+import { decodeHtmlEntities } from '../../utils/html-entities.js';
 import {
   getFeedsToFetch,
   getFeedById,
@@ -16,33 +17,6 @@ import {
   type IndustryFeed,
   type RssArticleInput,
 } from '../../db/industry-feeds-db.js';
-
-/**
- * Decode HTML entities in RSS feed content.
- * Handles both named entities and numeric character references.
- */
-function decodeHtmlEntities(text: string): string {
-  return text
-    // Numeric character references (decimal) - must come first
-    // Use fromCodePoint to handle code points beyond BMP (emoji, etc.)
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
-    // Numeric character references (hex)
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-    // Named entities
-    .replace(/&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&ndash;/g, '\u2013')
-    .replace(/&mdash;/g, '\u2014')
-    .replace(/&lsquo;/g, '\u2018')
-    .replace(/&rsquo;/g, '\u2019')
-    .replace(/&ldquo;/g, '\u201C')
-    .replace(/&rdquo;/g, '\u201D')
-    .replace(/&hellip;/g, '\u2026');
-}
 
 const parser = new Parser({
   timeout: 30000,
