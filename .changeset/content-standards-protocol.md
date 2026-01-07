@@ -4,8 +4,16 @@
 
 Add Content Standards Protocol for content safety and suitability evaluation.
 
-Provides four tasks:
+Discovery tasks:
 - `list_content_features`: Discover available content safety features
+- `list_content_standards`: List available standards configurations
 - `get_content_standards`: Retrieve content safety policies
+
+Management tasks:
+- `create_content_standards`: Create a new standards configuration
+- `update_content_standards`: Update an existing configuration
+- `delete_content_standards`: Delete a configuration
+
+Evaluation tasks:
 - `check_content`: Evaluate content context against safety policies
 - `validate_content_delivery`: Batch validate delivery records
