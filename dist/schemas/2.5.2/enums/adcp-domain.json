@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.2/enums/adcp-domain.json",
+  "title": "AdCP Domain",
+  "description": "AdCP protocol domains for task categorization",
+  "type": "string",
+  "enum": [
+    "media-buy",
+    "signals"
+  ]
+}

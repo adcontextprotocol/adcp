@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.2/enums/markdown-flavor.json",
+  "title": "Markdown Flavor",
+  "description": "Markdown specification flavors supported for text assets",
+  "type": "string",
+  "enum": [
+    "commonmark",
+    "gfm"
+  ]
+}
