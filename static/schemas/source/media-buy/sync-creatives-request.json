@@ -33,7 +33,7 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "delete_missing": {
       "type": "boolean",
@@ -64,7 +64,7 @@
   "required": [
     "creatives"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Full sync with hosted video creative",
@@ -135,7 +135,10 @@
     {
       "description": "Scoped update using creative_ids filter",
       "data": {
-        "creative_ids": ["hero_video_30s", "banner_300x250"],
+        "creative_ids": [
+          "hero_video_30s",
+          "banner_300x250"
+        ],
         "creatives": [
           {
             "creative_id": "hero_video_30s",

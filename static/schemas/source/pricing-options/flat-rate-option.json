@@ -23,7 +23,12 @@
       "type": "string",
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP", "JPY"]
+      "examples": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
     },
     "is_fixed": {
       "type": "boolean",
@@ -69,7 +74,7 @@
           "description": "Specific daypart for time-based pricing (e.g., 'morning_commute', 'evening_prime', 'overnight')"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "min_spend_per_package": {
       "type": "number",
@@ -77,6 +82,12 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "is_fixed", "rate"],
-  "additionalProperties": false
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency",
+    "is_fixed",
+    "rate"
+  ],
+  "additionalProperties": true
 }

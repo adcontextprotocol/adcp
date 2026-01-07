@@ -13,10 +13,7 @@ import { logger } from '../../logger.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import type { SlackBlock } from '../../slack/types.js';
 import { query } from '../../db/client.js';
-import {
-  recordPerspectiveAlert,
-  hasAlertedPerspective,
-} from '../../db/industry-feeds-db.js';
+import { recordPerspectiveAlert } from '../../db/industry-feeds-db.js';
 import {
   getActiveChannels,
   isWebsiteOnlyChannel,
@@ -295,11 +292,6 @@ export async function processAlerts(): Promise<{
 
     if (!article) {
       logger.debug({ channelId, channelName: channel.name, isQuiet }, 'No article ready for channel');
-      continue;
-    }
-
-    // Skip if already alerted (race condition protection)
-    if (await hasAlertedPerspective(article.perspective_id)) {
       continue;
     }
 

@@ -4,5 +4,9 @@
   "title": "Signal Catalog Type",
   "description": "Types of signal catalogs available for audience targeting",
   "type": "string",
-  "enum": ["marketplace", "custom", "owned"]
+  "enum": [
+    "marketplace",
+    "custom",
+    "owned"
+  ]
 }

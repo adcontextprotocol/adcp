@@ -27,7 +27,7 @@
       "required": [
         "deployments"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "errors"
@@ -57,7 +57,7 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "deployments"

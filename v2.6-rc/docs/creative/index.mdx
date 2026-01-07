@@ -1,0 +1,151 @@
+---
+title: Overview
+---
+
+
+This guide explains how creatives work in AdCP, from defining format requirements to assembling and delivering ads.
+
+## The Four Key Concepts
+
+### 1. **Assets**
+The individual building blocks: images, videos, text, HTML, JavaScript, tracking URLs.
+
+**Example**: A product image, a headline, a 30-second video file, a VAST tag.
+
+### 2. **Formats**
+Specifications that define what assets are required and how they should be assembled.
+
+**Example**: "video_30s" format requires a 30-second MP4 video file with specific dimensions and codec.
+
+### 3. **Manifests**
+Packages that provide the actual assets to fulfill a format's requirements.
+
+**Example**: A manifest for "video_30s" provides the URL to your actual 30-second video file, plus tracking pixels and landing page URL.
+
+### 4. **Creative Agents**
+Services that:
+- Define and document formats (authoritative source)
+- Explain how to render each format
+- Validate manifests against format requirements
+- Generate previews showing how creatives will look
+- Optionally: build manifests from natural language briefs
+
+## How They Fit Together
+
+```
+Format Definition (by Creative Agent)
+  ↓
+  "video_30s format requires:
+   - One video file asset (MP4, 30s, 1920x1080)
+   - One clickthrough URL"
+
+Creative Manifest (by Buyer)
+  ↓
+  "Here's my actual video file:
+   https://cdn.brand.com/spring_30s.mp4
+   Landing page: https://brand.com/spring-sale"
+
+Sales Agent (validates & delivers)
+  ↓
+  - Checks: Is this really 30 seconds? Is it MP4?
+  - Adds: Impression tracking, click tracking
+  - Delivers: Creative to ad server
+```
+
+## The Workflow
+
+### 1. **Discovery** - "What formats do you support?"
+
+Buyers call `list_creative_formats` on sales or creative agents to discover available formats with full specifications. The `agent_url` field identifies the creative agent authoritative for each format.
+
+See [Creative Formats](/docs/creative/formats) for format discovery details.
+
+### 2. **Assembly** - "Here are my assets"
+
+Buyers create manifests providing assets that fulfill format requirements. Manifests pair format specifications with actual asset URLs and content.
+
+See [Creative Manifests](/docs/creative/creative-manifests) for manifest structure details.
+
+### 3. **Validation** - "Does this match the requirements?"
+
+Creative agents validate manifests:
+- Are all required assets provided?
+- Do they meet technical specs (duration, dimensions, file size)?
+- Are tracking macros formatted correctly?
+
+### 4. **Delivery** - "Traffic this to the ad server"
+
+Sales agents deliver validated creatives to their ad servers, translating AdCP universal concepts to platform-specific formats.
+
+## Core Concepts
+
+### Assets & Asset Types
+Assets are the raw materials. Each has a type that determines its purpose:
+- **image**: Static images (JPEG, PNG, WebP)
+- **video**: Video files (MP4, WebM) or VAST tags
+- **audio**: Audio files (MP3, M4A) or DAAST tags
+- **text**: Headlines, descriptions, CTAs
+- **html**: HTML5 creatives or third-party tags
+- **javascript**: JavaScript tags
+- **url**: Tracking pixels, clickthrough URLs, webhooks
+
+See [Asset Types](/docs/creative/asset-types) for detailed specifications.
+
+### Formats & Format Authority
+Each format has an authoritative source - the creative agent that defines it (indicated by `agent_url`). That agent:
+- Hosts the definitive documentation
+- Explains how to assemble assets
+- Describes how the format renders
+- Provides validation rules
+
+**Standard vs. Custom Formats:**
+- **Standard formats** are hosted by the reference creative agent (`https://creative.adcontextprotocol.org`) and based on IAB specifications
+- **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
+- Technically, both work the same way - the `agent_url` field identifies which agent is authoritative for each format
+
+See the [Channel Guides](/docs/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
+
+### Manifests
+Manifests are JSON structures pairing asset IDs from the format with actual asset content. They provide the URLs, text, and tracking pixels needed to assemble a complete creative.
+
+See [Creative Manifests](/docs/creative/creative-manifests) for detailed documentation.
+
+### Universal Macros
+Macros are placeholders in tracking URLs that get replaced with actual values at impression time (e.g., `{MEDIA_BUY_ID}`, `{DEVICE_ID}`, `{CACHEBUSTER}`). AdCP defines universal macros that work across all platforms - sales agents translate them to their ad server's syntax.
+
+See [Universal Macros](/docs/creative/universal-macros) for complete reference.
+
+## Common Patterns
+
+### Third-Party Tags
+For third-party served ads, formats specify HTML or JavaScript asset requirements. See the [Display Channel Guide](/docs/creative/channels/display) for third-party tag format examples.
+
+### Repeatable Asset Groups
+For carousels, slideshows, stories, playlists - anything with multiple repetitions of the same structure. See the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for complete documentation on repeatable asset groups.
+
+### DOOH Impression Tracking
+Digital Out-of-Home formats use impression tracking with venue-specific macros instead of device identifiers. See the [DOOH Channel Guide](/docs/creative/channels/dooh) for DOOH-specific macro details.
+
+## Channel-Specific Information
+
+For detailed information on specific ad formats and channels, see the [Creative Manifests](/docs/creative/creative-manifests) documentation which covers:
+
+- **Video Ads** - VAST, hosted video, CTV formats
+- **Display Ads** - Banners, third-party tags, responsive formats
+- **Audio Ads** - Streaming audio formats
+- **DOOH** - Digital billboards, venue targeting, venue-based impression tracking
+- **Repeatable Asset Groups** - Carousels, slideshows, story formats
+
+## Getting Started
+
+1. **Discover formats**: Call `list_creative_formats` to see what's available
+2. **Choose your channel guide**: Pick the guide that matches your campaign type
+3. **Build your manifest**: Follow the format requirements
+4. **Use universal macros**: Add tracking with standardized macros
+5. **Preview**: Use `preview_creative` to see how it looks
+6. **Submit**: Include manifests in your `create_media_buy` request
+
+## Additional Resources
+
+- [Creative Task Reference](/docs/creative/task-reference/list_creative_formats) - API documentation for creative tasks
+- [Generative Creative](/docs/creative/generative-creative) - AI-powered creative generation guide

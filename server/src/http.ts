@@ -58,6 +58,7 @@ import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
+import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -449,7 +450,163 @@ export class HTTPServer {
     const distPath = process.env.NODE_ENV === 'production'
       ? __dirname
       : path.join(__dirname, "../../dist");
-    this.app.use('/schemas', express.static(path.join(distPath, 'schemas')));
+    const schemasPath = path.join(distPath, 'schemas');
+
+    // Cache for schema version directories (refreshed every 60 seconds)
+    let versionCache: { versions: string[], timestamp: number } | null = null;
+    const CACHE_TTL_MS = 60 * 1000;
+
+    async function getSchemaVersions(): Promise<string[]> {
+      const now = Date.now();
+      if (versionCache && (now - versionCache.timestamp) < CACHE_TTL_MS) {
+        return versionCache.versions;
+      }
+
+      const entries = await fs.readdir(schemasPath, { withFileTypes: true });
+      const versions = entries
+        .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+        .map(e => e.name)
+        .sort((a, b) => {
+          // Sort by semver (descending)
+          const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
+          const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
+          if (aMajor !== bMajor) return bMajor - aMajor;
+          if (aMinor !== bMinor) return bMinor - aMinor;
+          return bPatch - aPatch;
+        });
+
+      versionCache = { versions, timestamp: now };
+      return versions;
+    }
+
+    function parseSemver(version: string): { major: number, minor: number, patch: number } {
+      const [major, minor, patch] = version.split('.').map(Number);
+      return { major, minor, patch };
+    }
+
+    function findMatchingVersion(versions: string[], requestedMajor: number, requestedMinor?: number): string | undefined {
+      // Find the latest version that matches the requested major (and optionally minor)
+      return versions.find(v => {
+        const { major, minor } = parseSemver(v);
+        if (major !== requestedMajor) return false;
+        if (requestedMinor !== undefined && minor !== requestedMinor) return false;
+        return true;
+      });
+    }
+
+    // Middleware to resolve version aliases (e.g., v2.5 → 2.5.1)
+    // This handles cases where symlinks don't exist (e.g., in Docker)
+    this.app.use('/schemas', async (req, res, next) => {
+      // Match version alias patterns: /v2/, /v2.5/, /v2.6/, /v1/
+      const versionMatch = req.path.match(/^\/v(\d+)(?:\.(\d+))?(\/.*)?$/);
+      if (!versionMatch) {
+        return next();
+      }
+
+      const requestedMajor = parseInt(versionMatch[1], 10);
+      const requestedMinor = versionMatch[2] ? parseInt(versionMatch[2], 10) : undefined;
+      const restOfPath = versionMatch[3] || '/';
+
+      // Special case: v1 always points to latest
+      if (requestedMajor === 1 && requestedMinor === undefined) {
+        req.url = '/latest' + restOfPath;
+        return next();
+      }
+
+      try {
+        const versions = await getSchemaVersions();
+        const targetVersion = findMatchingVersion(versions, requestedMajor, requestedMinor);
+
+        if (targetVersion) {
+          req.url = '/' + targetVersion + restOfPath;
+        }
+      } catch {
+        // If we can't read the directory, let static middleware handle it
+      }
+      next();
+    });
+
+    // Redirect version directory requests to index.json
+    // e.g., /schemas/2.6.0/ → /schemas/2.6.0/index.json
+    this.app.use('/schemas', (req, res, next) => {
+      // Match paths like /2.6.0/ or /latest/ (directory requests)
+      if (req.path.match(/^\/(\d+\.\d+\.\d+|latest)\/$/)) {
+        return res.redirect(req.path + 'index.json');
+      }
+      next();
+    });
+
+    // Schema discovery endpoint - returns available versions and aliases
+    this.app.get('/schemas/', async (req, res) => {
+      try {
+        const versions = await getSchemaVersions();
+        const latestPerMinor: Record<string, string> = {};
+        let latestMajorVersion: string | undefined;
+
+        for (const version of versions) {
+          const { major, minor } = parseSemver(version);
+          const minorKey = `${major}.${minor}`;
+
+          // First version in sorted list is the overall latest
+          if (!latestMajorVersion) {
+            latestMajorVersion = version;
+          }
+
+          // Track latest patch for each minor
+          if (!latestPerMinor[minorKey]) {
+            latestPerMinor[minorKey] = version;
+          }
+        }
+
+        // Build aliases list
+        const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
+
+        // v1 -> latest (backward compatibility)
+        aliases.push({
+          alias: "v1",
+          resolves_to: "latest",
+          path: "/schemas/v1/"
+        });
+
+        // Major version aliases (e.g., v2 -> 2.6.0)
+        if (latestMajorVersion) {
+          const { major } = parseSemver(latestMajorVersion);
+          aliases.push({
+            alias: `v${major}`,
+            resolves_to: latestMajorVersion,
+            path: `/schemas/v${major}/`
+          });
+        }
+
+        // Minor version aliases (e.g., v2.5 -> 2.5.1)
+        for (const [minorKey, version] of Object.entries(latestPerMinor)) {
+          aliases.push({
+            alias: `v${minorKey}`,
+            resolves_to: version,
+            path: `/schemas/v${minorKey}/`
+          });
+        }
+
+        // Sort aliases for consistent output
+        aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
+
+        res.json({
+          versions: versions.map(v => ({
+            version: v,
+            path: `/schemas/${v}/`
+          })),
+          aliases,
+          latest: {
+            path: "/schemas/latest/",
+            note: "Development version, may differ from released versions"
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to list schema versions" });
+      }
+    });
+
+    this.app.use('/schemas', express.static(schemasPath));
 
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
@@ -1147,6 +1304,7 @@ export class HTTPServer {
       }
 
       const user = req.user ? {
+        id: req.user.id,
         email: req.user.email,
         firstName: req.user.firstName,
         lastName: req.user.lastName,
@@ -3165,18 +3323,6 @@ export class HTTPServer {
           || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
         const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
           || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-
-        // Helper to decode HTML entities
-        const decodeHtmlEntities = (text: string): string => {
-          return text
-            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-            .replace(/&quot;/g, '"')
-            .replace(/&apos;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-        };
 
         // Determine title (prefer og:title, then <title>)
         let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
@@ -5666,6 +5812,53 @@ Disallow: /api/admin/
       }
     });
 
+    // POST /api/members/:slug/click - Track a profile click for analytics
+    this.app.post('/api/members/:slug/click', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { search_session_id } = req.body;
+
+        // Import analytics db lazily
+        const { MemberSearchAnalyticsDatabase } = await import('./db/member-search-analytics-db.js');
+        const analyticsDb = new MemberSearchAnalyticsDatabase();
+
+        // Get the profile to get its ID
+        const profile = await memberDb.getProfileBySlug(slug);
+        if (!profile) {
+          return res.status(404).json({ error: 'Member not found' });
+        }
+
+        // Get user ID if authenticated
+        let userId: string | undefined;
+        const sessionCookie = req.cookies?.['wos-session'];
+        if (sessionCookie && AUTH_ENABLED && workos) {
+          try {
+            const result = await workos.userManagement.authenticateWithSessionCookie({
+              sessionData: sessionCookie,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            if (result.authenticated && 'user' in result && result.user) {
+              userId = result.user.id;
+            }
+          } catch {
+            // Not authenticated - that's fine
+          }
+        }
+
+        // Record the click
+        await analyticsDb.recordProfileClick({
+          member_profile_id: profile.id,
+          searcher_user_id: userId,
+          search_session_id,
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Record member click error');
+        res.status(500).json({ error: 'Failed to record click' });
+      }
+    });
+
     // GET /api/public/discover-agent - Public endpoint to discover agent info (for members directory)
     this.app.get('/api/public/discover-agent', async (req, res) => {
       const { url } = req.query;
@@ -6924,27 +7117,25 @@ Disallow: /api/admin/
       }
     });
 
-    // Global error handler - captures unhandled errors to PostHog
+    // Global error handler - logger.error() automatically captures to PostHog via error hook
     this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      // Capture to PostHog if configured
-      import('./utils/posthog.js').then(({ captureException }) => {
-        const userId = req.user?.id || 'anonymous';
-        captureException(err, userId, {
-          path: req.path,
-          method: req.method,
-          query: req.query,
-          userAgent: req.get('user-agent'),
-        });
-      }).catch(() => {
-        // PostHog capture failed silently
-      });
-
       logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
       res.status(500).json({ error: 'Internal server error' });
     });
   }
 
   async start(port: number = 3000): Promise<void> {
+    // Initialize OpenTelemetry logging for PostHog (all log levels)
+    const { initOtelLogs, emitLog } = await import('./utils/otel-logs.js');
+    const { setLogHook } = await import('./logger.js');
+    if (initOtelLogs()) {
+      setLogHook(emitLog);
+    }
+
+    // Initialize PostHog error tracking (captures all logger.error() calls as exceptions)
+    const { initPostHogErrorTracking } = await import('./utils/posthog.js');
+    initPostHogErrorTracking();
+
     // Initialize database
     const { initializeDatabase } = await import("./db/client.js");
     const { runMigrations } = await import("./db/migrate.js");
@@ -7321,6 +7512,10 @@ Disallow: /api/admin/
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');
     await shutdownPostHog();
+
+    // Shutdown OpenTelemetry logging (flush pending logs)
+    const { shutdownOtelLogs } = await import('./utils/otel-logs.js');
+    await shutdownOtelLogs();
 
     // Close database connection
     logger.info('Closing database connection');

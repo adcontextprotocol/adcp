@@ -4,5 +4,10 @@
   "title": "Notification Type",
   "description": "Type of delivery notification for media buy reporting",
   "type": "string",
-  "enum": ["scheduled", "final", "delayed", "adjusted"]
+  "enum": [
+    "scheduled",
+    "final",
+    "delayed",
+    "adjusted"
+  ]
 }

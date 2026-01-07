@@ -4,5 +4,10 @@
   "title": "Webhook Response Type",
   "description": "Expected response content type from webhook endpoints",
   "type": "string",
-  "enum": ["html", "json", "xml", "javascript"]
+  "enum": [
+    "html",
+    "json",
+    "xml",
+    "javascript"
+  ]
 }

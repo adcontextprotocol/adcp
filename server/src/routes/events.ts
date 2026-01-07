@@ -912,7 +912,7 @@ export function createEventsRouter(): {
   // PUBLIC API ROUTES (mounted at /api/events)
   // =========================================================================
 
-  // GET /api/events - List published upcoming events
+  // GET /api/events - List public events (published or completed)
   publicApiRouter.get("/", async (req: Request, res: Response) => {
     try {
       const event_type = req.query.event_type as EventType | undefined;
@@ -920,13 +920,25 @@ export function createEventsRouter(): {
       const upcoming_only = req.query.upcoming !== "false"; // Default to upcoming only
       const past_only = req.query.past === "true";
 
+      // For past events, include both "published" and "completed" status
+      // For upcoming events, only show "published"
+      const statuses: EventStatus[] = past_only
+        ? ["published", "completed"]
+        : ["published"];
+
       const events = await eventsDb.listEvents({
-        status: "published",
+        statuses,
         event_type,
         event_format,
         upcoming_only: past_only ? false : upcoming_only,
         past_only,
       });
+
+      // Sort by start_time (ascending for upcoming, descending for past)
+      // Database returns ASC by default, so only re-sort for past events (DESC)
+      if (past_only) {
+        events.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+      }
 
       res.json({ events });
     } catch (error) {
@@ -1012,8 +1024,8 @@ export function createEventsRouter(): {
         });
       }
 
-      // Check if already registered
-      const alreadyRegistered = await eventsDb.isUserRegistered(event.id, user.id);
+      // Check if already registered (by user ID or email)
+      const alreadyRegistered = await eventsDb.isUserRegistered(event.id, user.id, user.email);
       if (alreadyRegistered) {
         return res.status(400).json({
           error: "Already registered",
@@ -1072,7 +1084,7 @@ export function createEventsRouter(): {
         });
       }
 
-      const registrations = await eventsDb.getUserRegistrations(user.id);
+      const registrations = await eventsDb.getUserRegistrations(user.id, user.email);
       const registration = registrations.find((r) => r.event_id === event.id);
 
       res.json({ registration: registration || null });
@@ -1102,7 +1114,7 @@ export function createEventsRouter(): {
           });
         }
 
-        const registrations = await eventsDb.getUserRegistrations(user.id);
+        const registrations = await eventsDb.getUserRegistrations(user.id, user.email);
         const registration = registrations.find((r) => r.event_id === event.id);
 
         if (!registration) {

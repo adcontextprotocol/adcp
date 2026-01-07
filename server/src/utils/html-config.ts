@@ -71,6 +71,18 @@ export function getAppConfigScript(user?: AppUser | null): string {
 }
 
 /**
+ * Inline script that buffers errors before PostHog loads.
+ * Must run synchronously before any other scripts.
+ */
+const EARLY_ERROR_BUFFER_SCRIPT = `<script>
+(function(){
+  window.__earlyErrors=[];
+  window.onerror=function(m,u,l,c,e){window.__earlyErrors.push({message:m,source:u,lineno:l,colno:c,error:e});};
+  window.addEventListener('unhandledrejection',function(e){window.__earlyErrors.push({type:'unhandledrejection',reason:e.reason});});
+})();
+</script>`;
+
+/**
  * Inject app config into HTML string.
  * Inserts before </head> or before <body if no </head> found.
  * Also injects PostHog script if configured.
@@ -78,12 +90,12 @@ export function getAppConfigScript(user?: AppUser | null): string {
 export function injectConfigIntoHtml(html: string, user?: AppUser | null): string {
   const configScript = getAppConfigScript(user);
 
-  // Add PostHog script if API key is configured
-  const posthogScript = POSTHOG_API_KEY
-    ? `<script src="/posthog-init.js" defer></script>`
+  // Add early error buffer (sync) and PostHog script (deferred) if API key is configured
+  const posthogScripts = POSTHOG_API_KEY
+    ? `${EARLY_ERROR_BUFFER_SCRIPT}\n<script src="/posthog-init.js" defer></script>`
     : '';
 
-  const injectedScripts = `${configScript}\n${posthogScript}`;
+  const injectedScripts = `${configScript}\n${posthogScripts}`;
 
   if (html.includes("</head>")) {
     return html.replace("</head>", `${injectedScripts}\n</head>`);

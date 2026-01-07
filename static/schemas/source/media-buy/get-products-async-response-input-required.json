@@ -34,6 +34,5 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
-

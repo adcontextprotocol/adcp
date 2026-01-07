@@ -1,0 +1,799 @@
+---
+sidebar_position: 3.5
+title: A2A Response Format
+description: Canonical structure for AdCP responses transmitted over A2A protocol
+keywords: [A2A response format, artifacts, DataPart, response structure, canonical format]
+---
+
+
+This document defines the **canonical structure** for AdCP responses transmitted over the A2A protocol.
+
+## Required Structure
+
+### Final Responses (status: "completed")
+
+**AdCP responses over A2A MUST:**
+- Include at least one `DataPart` (kind: 'data') containing the task response payload
+- Use single artifact with multiple parts (not multiple artifacts)
+- Use the last `DataPart` as authoritative when multiple data parts exist
+- NOT wrap AdCP payloads in custom framework objects (no `{ response: {...} }` wrappers)
+
+**Recommended pattern:**
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "name": "task_result",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Found 12 video products perfect for pet food campaigns"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "products": [...],
+          "total": 12
+        }
+      }
+    ]
+  }]
+}
+```
+
+- **TextPart** (kind: 'text'): Human-readable summary - **recommended** but optional
+- **DataPart** (kind: 'data'): Structured AdCP response payload - **required**
+- **FilePart** (kind: 'file'): Optional file references (previews, reports)
+
+**Multiple artifacts:** Only for fundamentally distinct deliverables (e.g., creative asset + separate trafficking report). Rare in AdCP - prefer single artifact with multiple parts.
+
+### Interim Responses (working, submitted, input-required)
+
+Interim status responses can include optional AdCP-structured data for progress tracking.
+
+```json
+{
+  "status": "working",
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Processing your request. Analyzing 50,000 inventory records..."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "percentage": 45,
+          "current_step": "analyzing_inventory"
+        }
+      }
+    ]
+  }]
+}
+```
+
+**Interim response characteristics:**
+- **TextPart** is recommended for human-readable status
+- **DataPart** is optional but follows AdCP schemas when provided
+- Interim status schemas (`*-async-response-working.json`, `*-async-response-input-required.json`, etc.) are work-in-progress and may evolve
+- Implementors may choose to handle interim data more loosely given schema evolution
+
+**When final status is reached** (`status: "completed"` or `status: "failed"`), DataPart with full AdCP task response becomes required in `.artifacts`.
+
+### Framework Wrappers (NOT PERMITTED)
+
+**CRITICAL**: DataPart content MUST be the direct AdCP response payload, not wrapped in framework-specific objects.
+
+```json
+// ❌ WRONG - Wrapped in custom object
+{
+  "kind": "data",
+  "data": {
+    "response": {           // ← Framework wrapper
+      "products": [...]
+    }
+  }
+}
+
+// ✅ CORRECT - Direct AdCP payload
+{
+  "kind": "data",
+  "data": {
+    "products": [...]       // ← Direct schema-compliant response
+  }
+}
+```
+
+**Why this matters:**
+- Breaks schema validation (clients expect `products` at root, not `response.products`)
+- Adds unnecessary nesting layer
+- Violates protocol-agnostic design (wrapper is framework-specific)
+- Complicates client extraction code
+
+**If your implementation adds wrappers**, this is a bug that should be fixed in the framework layer, not worked around in client code.
+
+## Canonical Client Behavior
+
+This section defines EXACTLY how clients MUST extract AdCP responses from A2A protocol responses.
+
+### Quick Reference
+
+| Status | Webhook Type | Data Location | Schema Required? | Returns |
+|--------|--------------|---------------|-----------------|---------|
+| `working` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
+| `submitted` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
+| `input-required` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
+| `completed` | `Task` | **`.artifacts[]` only** | ✅ Required | `{ status, taskId, message, data }` |
+| `failed` | `Task` | **`.artifacts[]` only** | ✅ Required | `{ status, taskId, message, data }` |
+
+**Key Insights**:
+- **Final statuses** use `Task` object with data in `.artifacts`
+- **Interim statuses** use `TaskStatusUpdateEvent` with optional data in `status.message.parts[]`
+- All statuses use AdCP schemas when data is present
+- Interim status schemas are work-in-progress and may evolve
+
+### Rule 1: Status-Based Handling
+
+Clients MUST branch on `status` field to determine the correct data extraction location:
+
+```javascript
+function handleA2aResponse(response) {
+  const status = response.status;
+
+  // INTERIM STATUSES - Extract from status.message.parts (TaskStatusUpdateEvent)
+  if (['working', 'submitted', 'input-required'].includes(status)) {
+    return {
+      status: status,
+      taskId: response.taskId,
+      contextId: response.contextId,
+      message: extractTextPartFromMessage(response),
+      data: extractDataPartFromMessage(response),  // Optional AdCP data
+    };
+  }
+
+  // FINAL STATUSES - Extract from .artifacts (Task object)
+  if (['completed', 'failed'].includes(status)) {
+    return {
+      status: status,
+      taskId: response.taskId,
+      contextId: response.contextId,
+      message: extractTextPartFromArtifacts(response),
+      data: extractDataPartFromArtifacts(response),  // Required AdCP payload
+    };
+  }
+
+  throw new Error(`Unknown A2A status: ${status}`);
+}
+```
+
+**Critical**:
+- **Interim statuses** use `TaskStatusUpdateEvent` → extract from `status.message.parts[]`
+- **Final statuses** use `Task` object → extract from `.artifacts[0].parts[]`
+
+### Rule 2: Data Extraction Helpers
+
+Extract data from the appropriate location based on webhook type:
+
+```javascript
+// For FINAL statuses (Task object) - extract from .artifacts
+function extractDataPartFromArtifacts(response) {
+  const dataParts = response.artifacts?.[0]?.parts
+    ?.filter(p => p.kind === 'data') || [];
+
+  if (dataParts.length === 0) {
+    throw new Error('Final response (completed/failed) missing required DataPart in artifacts');
+  }
+
+  // Use LAST data part as authoritative
+  const lastDataPart = dataParts[dataParts.length - 1];
+  const payload = lastDataPart.data;
+
+  // CRITICAL: Payload MUST be direct AdCP response
+  if (payload.response !== undefined && typeof payload.response === 'object') {
+    throw new Error(
+      'Invalid response format: DataPart contains wrapper object. ' +
+      'Expected direct AdCP payload (e.g., {products: [...]}) ' +
+      'but received {response: {products: [...]}}. ' +
+      'This is a server-side bug that must be fixed.'
+    );
+  }
+
+  return payload;
+}
+
+function extractTextPartFromArtifacts(response) {
+  const textPart = response.artifacts?.[0]?.parts?.find(p => p.kind === 'text');
+  return textPart?.text || null;
+}
+
+// For INTERIM statuses (TaskStatusUpdateEvent) - extract from status.message.parts
+function extractDataPartFromMessage(response) {
+  const dataPart = response.status?.message?.parts?.find(p => p.data);
+  return dataPart?.data || null;
+}
+
+function extractTextPartFromMessage(response) {
+  const textPart = response.status?.message?.parts?.find(p => p.text);
+  return textPart?.text || null;
+}
+```
+
+### Rule 3: Schema Validation
+
+All AdCP responses use schemas, but validation approach varies by status:
+
+```javascript
+function validateResponse(response, taskName) {
+  const status = response.status;
+  let data, schemaName;
+
+  // Extract data and determine schema based on status
+  if (['working', 'submitted', 'input-required'].includes(status)) {
+    // INTERIM: Optional data from status.message.parts
+    data = extractDataPartFromMessage(response);
+
+    if (data) {
+      // Interim status has its own schema (work-in-progress)
+      schemaName = `${taskName}-async-response-${status}.json`;
+
+      // Optional: Implementors may skip interim validation as schemas evolve
+      if (STRICT_VALIDATION_MODE) {
+        validateAgainstSchema(data, loadSchema(schemaName));
+      }
+    }
+  } else if (['completed', 'failed'].includes(status)) {
+    // FINAL: Required data from .artifacts
+    data = extractDataPartFromArtifacts(response);
+    schemaName = `${taskName}-response.json`;
+
+    // Required: Final responses must validate
+    if (!validateAgainstSchema(data, loadSchema(schemaName))) {
+      throw new Error(
+        `Response payload does not match ${taskName} schema. ` +
+        `Ensure DataPart contains direct AdCP response structure.`
+      );
+    }
+  }
+}
+```
+
+**Schema Evolution Note**: Interim status schemas (`*-async-response-working.json`, etc.) are work-in-progress. Implementors may choose to handle these more loosely while schemas stabilize.
+
+### Complete Example
+
+Putting it all together with proper handling of both Task and TaskStatusUpdateEvent payloads:
+
+```javascript
+async function executeTask(taskName, params) {
+  const response = await a2aClient.send({
+    task: taskName,
+    params: params
+  });
+
+  // 1. Status-based handling (extracts from correct location)
+  const result = handleA2aResponse(response);
+
+  // 2. Schema validation
+  validateResponse(response, taskName);
+
+  return result;
+}
+
+// Usage
+const result = await executeTask('get_products', {
+  brief: 'CTV inventory in California'
+});
+
+// Handle different response types
+if (result.status === 'working') {
+  // TaskStatusUpdateEvent - data from status.message.parts
+  console.log('Processing:', result.message);
+  if (result.data) {
+    console.log('Progress:', result.data.percentage + '%');
+  }
+} else if (result.status === 'input-required') {
+  // TaskStatusUpdateEvent - data from status.message.parts
+  console.log('Input needed:', result.message);
+  console.log('Reason:', result.data?.reason);
+} else if (result.status === 'completed') {
+  // Task object - data from .artifacts
+  console.log('Success:', result.message);
+  console.log('Products:', result.data.products); // Full AdCP response
+}
+```
+
+## Last Data Part Authority Pattern
+
+<details>
+<summary><strong>Why this pattern?</strong></summary>
+
+During streaming operations, intermediate responses may include old progress data:
+
+```json
+// Working status with progress
+{
+  "status": "working",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Searching inventory..."},
+      {"kind": "data", "data": {"progress": 25}}
+    ]
+  }]
+}
+
+// Completed - last data part is authoritative
+{
+  "status": "completed",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Found 12 products"},
+      {"kind": "data", "data": {"progress": 25}},           // Old
+      {"kind": "data", "data": {"products": [...], "total": 12}}  // ← Authoritative
+    ]
+  }]
+}
+```
+
+**Note:** This is an AdCP-specific convention, not required by A2A protocol. Document this in your Agent Card when serving non-AdCP clients.
+</details>
+
+## Test Cases
+
+### ✅ Correct Behavior
+
+```javascript
+// Test 1: Working status (TaskStatusUpdateEvent) - extract from status.message.parts
+const workingResponse = {
+  status: 'working',
+  taskId: 'task_123',
+  contextId: 'ctx_456',
+  status: {
+    state: 'working',
+    message: {
+      role: 'agent',
+      parts: [
+        { text: 'Processing inventory...' },
+        { data: { percentage: 50, current_step: 'analyzing' } }
+      ]
+    }
+  }
+};
+
+const result1 = handleA2aResponse(workingResponse);
+assert(result1.data.percentage === 50, 'Should extract data from status.message.parts');
+assert(result1.message === 'Processing inventory...', 'Should extract text from status.message.parts');
+
+// Test 2: Completed status (Task) - extract from .artifacts
+const completedResponse = {
+  status: 'completed',
+  taskId: 'task_123',
+  contextId: 'ctx_456',
+  status: {
+    state: 'completed',
+    timestamp: '2025-01-22T10:30:00Z'
+  },
+  artifacts: [{
+    parts: [
+      { kind: 'text', text: 'Found 3 products' },
+      { kind: 'data', data: { products: [...], total: 3 } }
+    ]
+  }]
+};
+
+const result2 = handleA2aResponse(completedResponse);
+assert(result2.data !== undefined, 'Completed status must have data');
+assert(Array.isArray(result2.data.products), 'Data should be direct AdCP payload');
+
+// Test 3: Wrapper detection (should reject)
+const wrappedResponse = {
+  status: 'completed',
+  taskId: 'task_123',
+  artifacts: [{
+    parts: [
+      { kind: 'data', data: { response: { products: [...] } } }
+    ]
+  }]
+};
+
+assert.throws(() => {
+  extractDataPartFromArtifacts(wrappedResponse);
+}, /Invalid response format.*wrapper/);
+```
+
+### ❌ Incorrect Behavior (Common Mistakes)
+
+```javascript
+// WRONG: Extracting from wrong location for interim status
+function badHandleWorking(response) {
+  // ❌ TaskStatusUpdateEvent doesn't have .artifacts - data is in status.message.parts
+  const data = response.artifacts?.[0]?.parts?.find(p => p.kind === 'data')?.data;
+  return { status: 'working', data }; // Will be null/undefined!
+}
+
+// WRONG: Extracting from wrong location for completed status
+function badHandleCompleted(response) {
+  // ❌ Task object has data in .artifacts, not in status.message.parts
+  const data = response.status?.message?.parts?.find(p => p.data)?.data;
+  return { status: 'completed', data }; // Will be null/undefined!
+}
+
+// WRONG: Not checking for wrappers
+function badExtraction(response) {
+  const payload = response.artifacts[0].parts[0].data;
+  // ❌ Returns { response: { products: [...] } } instead of { products: [...] }
+  return payload; // Client receives wrong structure!
+}
+
+// WRONG: Accessing nested response field
+function badClientUsage(result) {
+  // ❌ Client code shouldn't need to do this
+  const products = result.data.response.products;
+  // Should be: result.data.products
+}
+```
+
+## Error Handling
+
+### Task-Level Errors (Partial Failures)
+
+Task executed but couldn't complete fully. Use `errors` array in DataPart with `status: "completed"`:
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_123",
+  "artifacts": [{
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Signal discovery completed with partial results"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "signals": [...],
+          "errors": [{
+            "code": "NO_DATA_IN_REGION",
+            "message": "No signal data available for Australia",
+            "field": "deliver_to.countries[1]",
+            "details": {
+              "requested_country": "AU",
+              "available_countries": ["US", "CA", "GB"]
+            }
+          }]
+        }
+      }
+    ]
+  }]
+}
+```
+
+**When to use errors array:**
+- Platform authorization issues (`PLATFORM_UNAUTHORIZED`)
+- Partial data availability
+- Validation issues in subset of data
+
+### Protocol-Level Errors (Fatal)
+
+Task couldn't execute. Use `status: "failed"` with message:
+
+```json
+{
+  "taskId": "task_456",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Authentication failed: Invalid or expired API token"
+    }]
+  }
+}
+```
+
+**When to use status: failed:**
+- Authentication failures (invalid credentials, expired tokens)
+- Invalid request parameters (malformed JSON, missing required fields)
+- Resource not found (unknown taskId, expired context)
+- System errors (database unavailable, internal service failure)
+
+## Status Mapping
+
+AdCP uses A2A's TaskState enum directly:
+
+| A2A Status | Payload Type | Data Location | AdCP Usage |
+|------------|--------------|---------------|------------|
+| `completed` | `Task` | `.artifacts` | Task finished successfully, data in DataPart, optional errors array |
+| `failed` | `Task` | `.artifacts` | Fatal error preventing completion, optional error details |
+| `input-required` | `TaskStatusUpdateEvent` | `status.message.parts` | Need user input/approval, data + text explaining what's needed |
+| `working` | `TaskStatusUpdateEvent` | `status.message.parts` | Processing (< 120s), optional progress data |
+| `submitted` | `TaskStatusUpdateEvent` | `status.message.parts` | Long-running (hours/days), minimal data, use webhooks/polling |
+
+## Webhook Payloads
+
+Async operations (`status: "submitted"`) deliver the same artifact structure in webhooks:
+
+```json
+POST /webhook-endpoint
+{
+  "taskId": "task_123",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Media buy approved and live"},
+      {"kind": "data", "data": {
+        "media_buy_id": "mb_456",
+        "packages": [...],
+        "creative_deadline": "2025-01-30T23:59:59Z"
+      }}
+    ]
+  }]
+}
+```
+
+Extract AdCP data using the same last-DataPart pattern. **For webhook authentication, retry patterns, and security**, see [Core Concepts - Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability).
+
+## File Parts in Responses
+
+Creative operations MAY include file references:
+
+```json
+{
+  "status": "completed",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Creative uploaded and preview generated"},
+      {"kind": "data", "data": {
+        "creative_id": "cr_789",
+        "format_id": {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        },
+        "status": "ready"
+      }},
+      {"kind": "file", "uri": "https://cdn.example.com/cr_789/preview.mp4", "name": "preview.mp4", "mimeType": "video/mp4"}
+    ]
+  }]
+}
+```
+
+**File part usage:** Preview URLs, generated assets, trafficking reports. **Not for** raw AdCP response data (always use DataPart).
+
+## Retry and Idempotency
+
+### TaskId-Based Deduplication
+
+A2A's `taskId` enables retry detection. Agents SHOULD:
+- Return cached response if `taskId` matches a completed operation (within TTL window)
+- Reject duplicate `taskId` submission if operation is still in progress
+
+```json
+// Duplicate taskId during active operation
+{
+  "taskId": "task_123",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Task 'task_123' is already in progress. Use tasks/get to check status."
+    }]
+  }
+}
+```
+
+## Examples
+
+<details>
+<summary><strong>Product Discovery Success</strong></summary>
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_001",
+  "contextId": "ctx_abc",
+  "artifacts": [{
+    "name": "product_catalog",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Found 8 CTV products targeting sports fans under $50 CPM"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "products": [
+            {
+              "product_id": "ctv_sports_premium",
+              "name": "Premium Sports CTV"
+            }
+            // ... 7 more products
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Media Buy with Approval Required</strong></summary>
+
+```json
+{
+  "status": "input-required",
+  "taskId": "task_002",
+  "contextId": "ctx_def",
+  "artifacts": [{
+    "name": "approval_request",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "media_buy_id": "mb_pending_456",
+          "buyer_ref": "nike_q1_campaign_2024",
+          "packages": [
+            {
+              "package_id": "pkg_pending_001",
+              "buyer_ref": "nike_ctv_package",
+              "status": "pending_approval"
+            },
+            {
+              "package_id": "pkg_pending_002",
+              "buyer_ref": "nike_audio_package",
+              "status": "pending_approval"
+            }
+          ],
+          "creative_deadline": "2025-02-01T23:59:59Z"
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Signal Discovery with Partial Failure</strong></summary>
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_003",
+  "contextId": "ctx_ghi",
+  "artifacts": [{
+    "name": "signal_results",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Found 3 signals for luxury automotive. Note: No data available for Australia region."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "signals": [
+            {
+              "signal_id": "lux_auto_us",
+              "name": "Luxury Auto Intenders - US",
+              "reach": 2500000
+            }
+          ],
+          "total": 3,
+          "errors": [{
+            "code": "NO_DATA_IN_REGION",
+            "message": "No signal data available for requested region: Australia",
+            "field": "deliver_to.countries[1]",
+            "details": {
+              "requested_country": "AU",
+              "available_countries": ["US", "CA", "GB"]
+            }
+          }]
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Platform Authorization Issue (Task-Level Error)</strong></summary>
+
+Platform/operation-specific authorization failures are task-level errors:
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_004",
+  "contextId": "ctx_jkl",
+  "artifacts": [{
+    "name": "signal_activation_result",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Signal activation failed: Account not authorized for Peer39 data on PubMatic"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "errors": [{
+            "code": "PLATFORM_UNAUTHORIZED",
+            "message": "Account 'brand-456-pm' not authorized for Peer39 data on PubMatic. Contact your PubMatic account manager to enable access.",
+            "details": {
+              "platform": "pubmatic",
+              "account_id": "brand-456-pm",
+              "data_provider": "peer39"
+            }
+          }]
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Protocol-Level Failure (Fatal)</strong></summary>
+
+Authentication failures are protocol-level errors:
+
+```json
+{
+  "taskId": "task_005",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Authentication failed: Invalid or expired API token. Please refresh your credentials and retry."
+    }]
+  }
+}
+```
+</details>
+
+## Implementation Checklist
+
+When implementing A2A responses for AdCP:
+
+**Final Responses (status: "completed" or "failed") - Use `Task` object:**
+- [ ] **Always include status field** from TaskState enum
+- [ ] **Use `.artifacts` array with at least one DataPart** containing AdCP response payload
+- [ ] **Include TextPart** with human-readable message (recommended for UX)
+- [ ] **Use single artifact with multiple parts** (not multiple artifacts)
+- [ ] **Use last DataPart as authoritative** if multiple exist
+- [ ] **Never nest AdCP data in custom wrappers** (no `{ response: {...} }` objects)
+- [ ] **DataPart content MUST match AdCP schemas** (validate against `[task]-response.json`)
+
+**Interim Responses (status: "working", "submitted", "input-required") - Use `TaskStatusUpdateEvent`:**
+- [ ] **Use `status.message.parts[]` for optional data** (not `.artifacts`)
+- [ ] **TextPart** is recommended for human-readable status updates
+- [ ] **DataPart** is optional but follows AdCP schemas when provided (`[task]-async-response-[status].json`)
+- [ ] **Interim schemas are work-in-progress** - clients may handle more loosely
+- [ ] **Include progress indicators** when applicable (percentage, current_step, ETA)
+
+**Error Handling:**
+- [ ] **Use `status: "failed"` for protocol errors only** (auth, invalid params, system errors)
+- [ ] **Use `errors` array for task failures** (platform auth, partial data) with `status: "completed"`
+
+**General:**
+- [ ] **Include taskId and contextId** for tracking
+- [ ] **Follow discriminated union patterns** for task responses (check schemas)
+- [ ] **Use correct payload type**: `Task` for final states, `TaskStatusUpdateEvent` for interim
+- [ ] **Support taskId-based deduplication** for retry detection
+
+## See Also
+
+- [A2A Guide](/docs/protocols/a2a-guide) - Complete A2A integration guide
+- [Core Concepts](/docs/protocols/core-concepts) - Status handling patterns
+- [Error Handling](/docs/protocols/error-handling) - Fatal vs non-fatal errors
+- [Protocol Comparison](/docs/protocols/protocol-comparison) - MCP vs A2A differences

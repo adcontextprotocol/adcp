@@ -250,6 +250,7 @@ export interface MemberProfile {
   is_public: boolean;
   show_in_carousel: boolean;
   featured: boolean;
+  is_founding_member: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -660,6 +661,7 @@ export interface UpdateEventInput {
 
 export interface ListEventsOptions {
   status?: EventStatus;
+  statuses?: EventStatus[];  // Query multiple statuses at once
   event_type?: EventType;
   event_format?: EventFormat;
   upcoming_only?: boolean;

@@ -64,25 +64,25 @@
     capture_exceptions: true,
   });
 
-  // Capture unhandled errors
-  window.onerror = function(message, source, lineno, colno, error) {
+  // Capture unhandled errors (using addEventListener to not overwrite existing handlers)
+  window.addEventListener('error', function(event) {
     if (window.posthog && window.posthog.captureException) {
-      posthog.captureException(error || new Error(message), {
-        source: source,
-        lineno: lineno,
-        colno: colno,
+      posthog.captureException(event.error || new Error(event.message), {
+        source: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
       });
     }
-  };
+  });
 
   // Capture unhandled promise rejections
-  window.onunhandledrejection = function(event) {
+  window.addEventListener('unhandledrejection', function(event) {
     if (window.posthog && window.posthog.captureException) {
       posthog.captureException(event.reason, {
         type: 'unhandledrejection',
       });
     }
-  };
+  });
 
   // Identify user if logged in
   const user = config.user;
@@ -92,5 +92,26 @@
       name: [user.firstName, user.lastName].filter(Boolean).join(' ') || undefined,
       is_admin: user.isAdmin,
     });
+  }
+
+  // Flush any errors that occurred before PostHog loaded
+  if (window.__earlyErrors && window.__earlyErrors.length) {
+    window.__earlyErrors.forEach(function(err) {
+      if (err.type === 'unhandledrejection') {
+        posthog.captureException(err.reason || new Error('Unhandled rejection'), {
+          type: 'unhandledrejection',
+          early_capture: true,
+        });
+      } else {
+        posthog.captureException(err.error || new Error(err.message || 'Unknown error'), {
+          source: err.source,
+          lineno: err.lineno,
+          colno: err.colno,
+          early_capture: true,
+        });
+      }
+    });
+    window.__earlyErrors = [];
+    window.onerror = null; // Clear early capture handler
   }
 })();

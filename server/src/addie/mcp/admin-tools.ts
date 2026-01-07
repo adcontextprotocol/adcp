@@ -20,6 +20,8 @@ import { OrganizationDatabase } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
+import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
+import { MemberDatabase } from '../../db/member-db.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -38,6 +40,7 @@ import {
   isLushaConfigured,
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
+import { COMPANY_TYPE_VALUES } from '../../config/company-types.js';
 import { createProspect } from '../../services/prospect.js';
 import {
   getAllFeedsWithStats,
@@ -395,8 +398,8 @@ This replaces find_prospect and lookup_organization with a unified view.`,
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
-          description: 'Type of company (adtech, agency, brand, publisher, or other)',
+          enum: COMPANY_TYPE_VALUES,
+          description: 'Type of company',
         },
         domain: {
           type: 'string',
@@ -455,7 +458,7 @@ This replaces find_prospect and lookup_organization with a unified view.`,
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
+          enum: COMPANY_TYPE_VALUES,
           description: 'Type of company',
         },
         status: {
@@ -525,7 +528,7 @@ This replaces find_prospect and lookup_organization with a unified view.`,
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
+          enum: COMPANY_TYPE_VALUES,
           description: 'Filter by company type',
         },
         limit: {
@@ -1667,6 +1670,33 @@ Returns counts and examples of collected insights by type.`,
         limit: {
           type: 'number',
           description: 'Maximum examples to show per type (default: 5)',
+        },
+      },
+    },
+  },
+
+  // ============================================
+  // MEMBER SEARCH & INTRODUCTION ANALYTICS TOOLS
+  // ============================================
+  {
+    name: 'get_member_search_analytics',
+    description: `Get analytics about member profile searches and introductions made through Addie.
+
+USE THIS when admin asks:
+- "How are member searches performing?"
+- "Show me introduction stats"
+- "What are people searching for?"
+- "Which members are getting the most visibility?"
+- "How many introductions have we made?"
+
+Returns: Search counts, impressions, clicks, introduction requests/sent, top search queries, top members by visibility, and recent introductions with full context.`,
+    usage_hints: 'Use this to monitor the member directory and introduction feature performance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: {
+          type: 'number',
+          description: 'Number of days to look back (default: 30, max: 365)',
         },
       },
     },
@@ -4070,7 +4100,7 @@ export function createAdminToolHandlers(
     if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
-    const userId = (input.user_id as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
     const userEmail = input.user_email as string | undefined;
 
     if (!committeeSlug) {
@@ -4082,6 +4112,19 @@ export function createAdminToolHandlers(
     }
 
     try {
+      // If a Slack user ID was passed (U followed by 8+ alphanumeric chars), resolve to WorkOS user ID
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        } else {
+          // Keep the Slack ID - the display query will look up the name from slack_user_mappings
+          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+        }
+      }
+
       // Find the committee
       const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
       if (!committee) {
@@ -4130,7 +4173,7 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
     if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
-    const userId = (input.user_id as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
 
     if (!committeeSlug) {
       return '❌ Please provide a committee_slug.';
@@ -4141,6 +4184,16 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
     }
 
     try {
+      // If a Slack user ID was passed (U followed by 8+ alphanumeric chars), resolve to WorkOS user ID
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        }
+      }
+
       const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
       if (!committee) {
         return `❌ Committee "${committeeSlug}" not found.`;
@@ -5021,14 +5074,13 @@ Use add_committee_leader to assign a leader.`;
           o.prospect_status,
           o.interest_level,
           o.company_type,
-          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons,
           (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
         FROM organizations o
         JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
         WHERE os.user_id = $1
           AND os.role = 'owner'
           AND o.is_personal IS NOT TRUE
-          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
       `;
 
       if (hotOnly) {
@@ -5060,9 +5112,6 @@ Use add_committee_leader to assign a leader.`;
         if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
         if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
         response += `\n`;
-        if (row.engagement_reasons?.length > 0) {
-          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
-        }
         if (row.last_activity) {
           response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
         }
@@ -5119,7 +5168,7 @@ Use add_committee_leader to assign a leader.`;
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
         )
         SELECT *,
           CASE
@@ -5191,11 +5240,10 @@ Use add_committee_leader to assign a leader.`;
           o.email_domain,
           o.engagement_score,
           o.prospect_status,
-          o.company_type,
-          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+          o.company_type
         FROM organizations o
         WHERE o.is_personal IS NOT TRUE
-          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
           AND o.engagement_score >= $1
           AND NOT EXISTS (
             SELECT 1 FROM org_stakeholders os
@@ -5223,9 +5271,6 @@ Use add_committee_leader to assign a leader.`;
         response += `   Score: ${row.engagement_score || 0}`;
         if (row.company_type) response += ` | Type: ${row.company_type}`;
         response += `\n`;
-        if (row.engagement_reasons?.length > 0) {
-          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
-        }
         response += `   ID: ${row.org_id}\n`;
         response += `\n`;
       }
@@ -6034,6 +6079,118 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error getting insight summary');
       return '❌ Failed to get insight summary. Please try again.';
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH ANALYTICS HANDLERS
+  // ============================================
+  handlers.set('get_member_search_analytics', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const days = Math.min(Math.max((input.days as number) || 30, 1), 365);
+
+      const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
+      const memberDb = new MemberDatabase();
+
+      // Get global analytics and recent introductions
+      const [globalAnalytics, recentIntroductions] = await Promise.all([
+        memberSearchAnalyticsDb.getGlobalAnalytics(days),
+        memberSearchAnalyticsDb.getRecentIntroductionsGlobal(10),
+      ]);
+
+      // Enrich top members with profile info
+      const enrichedTopMembers = await Promise.all(
+        globalAnalytics.top_members.slice(0, 5).map(async (member) => {
+          const profile = await memberDb.getProfileById(member.member_profile_id);
+          return {
+            display_name: profile?.display_name || 'Unknown',
+            slug: profile?.slug || null,
+            impressions: member.impressions,
+          };
+        })
+      );
+
+      // Enrich recent introductions with profile info
+      const enrichedIntroductions = await Promise.all(
+        recentIntroductions.map(async (intro) => {
+          const profile = await memberDb.getProfileById(intro.member_profile_id);
+          return {
+            event_type: intro.event_type,
+            member_name: profile?.display_name || 'Unknown',
+            member_slug: profile?.slug || null,
+            searcher_name: intro.searcher_name,
+            searcher_email: intro.searcher_email,
+            searcher_company: intro.searcher_company,
+            search_query: intro.search_query,
+            reasoning: intro.reasoning,
+            message: intro.message,
+            created_at: intro.created_at,
+          };
+        })
+      );
+
+      // Build response
+      let response = `## Member Search Analytics (Last ${days} Days)\n\n`;
+
+      response += `### Summary\n`;
+      response += `- **Unique searches:** ${globalAnalytics.total_searches}\n`;
+      response += `- **Total impressions:** ${globalAnalytics.total_impressions}\n`;
+      response += `- **Profile clicks:** ${globalAnalytics.total_clicks}\n`;
+      response += `- **Introduction requests:** ${globalAnalytics.total_intro_requests}\n`;
+      response += `- **Introductions sent:** ${globalAnalytics.total_intros_sent}\n`;
+      response += `- **Unique searchers:** ${globalAnalytics.unique_searchers}\n\n`;
+
+      // Calculate rates
+      if (globalAnalytics.total_impressions > 0) {
+        const clickRate = ((globalAnalytics.total_clicks / globalAnalytics.total_impressions) * 100).toFixed(1);
+        response += `**Click-through rate:** ${clickRate}%\n`;
+      }
+      if (globalAnalytics.total_clicks > 0) {
+        const introRate = ((globalAnalytics.total_intro_requests / globalAnalytics.total_clicks) * 100).toFixed(1);
+        response += `**Introduction rate (from clicks):** ${introRate}%\n`;
+      }
+      response += '\n';
+
+      // Top queries
+      if (globalAnalytics.top_queries.length > 0) {
+        response += `### Top Search Queries\n`;
+        for (const q of globalAnalytics.top_queries.slice(0, 5)) {
+          response += `- "${q.query}" (${q.count} searches)\n`;
+        }
+        response += '\n';
+      }
+
+      // Top members
+      if (enrichedTopMembers.length > 0) {
+        response += `### Top Members by Visibility\n`;
+        for (const m of enrichedTopMembers) {
+          response += `- **${m.display_name}** - ${m.impressions} impressions`;
+          if (m.slug) response += ` ([profile](/members/${m.slug}))`;
+          response += '\n';
+        }
+        response += '\n';
+      }
+
+      // Recent introductions
+      if (enrichedIntroductions.length > 0) {
+        response += `### Recent Introductions\n`;
+        for (const intro of enrichedIntroductions) {
+          const date = new Date(intro.created_at).toLocaleDateString();
+          const status = intro.event_type === 'introduction_sent' ? '✅ Sent' : '📝 Requested';
+          response += `- ${status} **${intro.searcher_name}**`;
+          if (intro.searcher_company) response += ` (${intro.searcher_company})`;
+          response += ` → **${intro.member_name}** on ${date}\n`;
+          if (intro.search_query) response += `  - Searched: "${intro.search_query}"\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error getting member search analytics');
+      return '❌ Failed to get member search analytics. Please try again.';
     }
   });
 
