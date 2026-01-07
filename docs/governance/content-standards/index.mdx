@@ -78,15 +78,24 @@ Adjacency requirements are defined by the seller in their product catalog (`get_
 ```json
 {
   "product_id": "reddit_feed_standard",
-  "content_standards": {
-    "adjacency": {
-      "before": 2,
-      "after": 2,
-      "unit": "posts"
-    }
+  "content_standards_adjacency_definition": {
+    "before": 2,
+    "after": 2,
+    "unit": "posts"
   }
 }
 ```
+
+### Adjacency Units
+
+| Unit | Use Case |
+|------|----------|
+| `posts` | Social feeds, forums, comment threads |
+| `scenes` | CTV, streaming video content |
+| `segments` | Podcasts, audio content |
+| `seconds` | Time-based adjacency in video/audio |
+| `viewports` | Infinite scroll contexts |
+| `articles` | News sites, content aggregators |
 
 Different products may offer different adjacency guarantees at different price points.
 
@@ -164,12 +173,14 @@ Buyers typically maintain multiple standards configurations for different contex
 
 ## Calibration
 
-Before running campaigns, sellers calibrate their local models against the verification agent. This is a **dialogue-based process**:
+Before running campaigns, sellers calibrate their local models against the verification agent. This is a **dialogue-based process** that may involve human review on either side:
 
 1. Seller sends sample artifacts to the verification agent
 2. Verification agent returns verdicts with detailed explanations
 3. Seller asks follow-up questions about edge cases
 4. Process repeats until alignment is achieved
+
+**Human-in-the-loop**: Calibration often involves humans on both sides. A brand safety specialist at the buyer might review edge cases flagged by the verification agent. A content operations team at the seller might curate calibration samples and validate the local model's learning. The protocol supports async workflows where either party can pause for human review before responding.
 
 ```json
 // Seller: "Does this pass?"
