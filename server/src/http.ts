@@ -58,6 +58,7 @@ import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
+import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -3321,18 +3322,6 @@ export class HTTPServer {
           || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
         const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
           || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-
-        // Helper to decode HTML entities
-        const decodeHtmlEntities = (text: string): string => {
-          return text
-            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-            .replace(/&quot;/g, '"')
-            .replace(/&apos;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-        };
 
         // Determine title (prefer og:title, then <title>)
         let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
