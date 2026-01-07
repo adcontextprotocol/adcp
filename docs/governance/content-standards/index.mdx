@@ -128,14 +128,14 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
       {
         "property_id": {"type": "domain", "value": "espn.com"},
         "artifact_id": "nba_championship_recap_2024",
-        "title": "Championship Game Recap"
+        "assets": [{"type": "text", "role": "title", "content": "Championship Game Recap"}]
       }
     ],
     "unacceptable": [
       {
         "property_id": {"type": "domain", "value": "tabloid.example.com"},
         "artifact_id": "scandal_story_123",
-        "title": "Celebrity Scandal Exposed"
+        "assets": [{"type": "text", "role": "title", "content": "Celebrity Scandal Exposed"}]
       }
     ]
   }
@@ -177,7 +177,7 @@ Before running campaigns, sellers calibrate their local models against the verif
   "artifact": {
     "property_id": {"type": "domain", "value": "reddit.com"},
     "artifact_id": "r_news_politics_123",
-    "title": "Political News Article"
+    "assets": [{"type": "text", "role": "title", "content": "Political News Article"}]
   }
 }
 

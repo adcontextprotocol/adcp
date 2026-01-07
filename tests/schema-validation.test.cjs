@@ -130,33 +130,38 @@ function validateSchemaStructure(schemaPath, schema) {
 function validateCrossReferences(schemas) {
   const schemaIds = new Set(schemas.map(([_, schema]) => schema.$id));
   const missingRefs = [];
-  
+
   for (const [schemaPath, schema] of schemas) {
     // Find all $ref occurrences
     const refs = JSON.stringify(schema).match(/"\$ref":\s*"([^"]+)"/g) || [];
-    
+
     for (const refMatch of refs) {
       const ref = refMatch.match(/"\$ref":\s*"([^"]+)"/)[1];
-      
+
       // Skip external references (http://, https://)
       if (ref.startsWith('http://') || ref.startsWith('https://')) {
         continue;
       }
-      
+
+      // Skip internal references (#/$defs/..., #/properties/..., etc.)
+      if (ref.startsWith('#/')) {
+        continue;
+      }
+
       // Check if referenced schema exists
       if (!schemaIds.has(ref)) {
         missingRefs.push({ schema: schemaPath, ref });
       }
     }
   }
-  
+
   if (missingRefs.length > 0) {
-    const errorMsg = missingRefs.map(({ schema, ref }) => 
+    const errorMsg = missingRefs.map(({ schema, ref }) =>
       `${path.basename(schema)} -> ${ref}`
     ).join(', ');
     return `Missing referenced schemas: ${errorMsg}`;
   }
-  
+
   return true;
 }
 

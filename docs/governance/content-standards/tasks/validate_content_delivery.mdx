@@ -29,7 +29,9 @@ Validate delivery records against content safety policies. Designed for batch au
   "artifact": {
     "property_id": {"type": "domain", "value": "example.com"},
     "artifact_id": "article_12345",
-    "title": "Article Title"
+    "assets": [
+      {"type": "text", "role": "title", "content": "Article Title"}
+    ]
   },
   "creative_id": "creative_abc"
 }

@@ -28,11 +28,9 @@ Artifacts are identified by `property_id` + `artifact_id` - the property defines
 {
   "property_id": {"type": "domain", "value": "reddit.com"},
   "artifact_id": "r_fitness_post_abc123",
-  "language": "en",
-  "title": "Best protein sources for muscle building",
   "assets": [
-    {"type": "text", "role": "heading", "content": "Best protein sources for muscle building", "heading_level": 1},
-    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources..."},
+    {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
     {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
   ]
 }
@@ -44,30 +42,80 @@ Artifacts are identified by `property_id` + `artifact_id` - the property defines
 |-------|-------------|
 | `property_id` | Where this artifact lives - uses standard identifier types (`domain`, `app_id`, `apple_podcast_id`, etc.) |
 | `artifact_id` | Unique identifier within the property - the property owner defines their scheme |
+| `assets` | Content in document order - text blocks, images, video, audio |
 
 ### Optional Fields
 
 | Field | Description |
 |-------|-------------|
-| `assets` | Content in document order - text blocks, images, video, audio |
-| `title` | Artifact title or headline |
-| `language` | BCP 47 language tag |
+| `variant_id` | Identifies a specific variant (A/B test, translation, temporal version) |
 | `format_id` | Reference to format registry (same as creative formats) |
-| `metadata` | Rich metadata (Open Graph, JSON-LD, author info) |
+| `url` | Web URL if the artifact has one |
+| `metadata` | Artifact-level metadata (Open Graph, JSON-LD, author info) |
+| `published_time` | When the artifact was published |
+| `last_update_time` | When the artifact was last modified |
+
+## Variants
+
+The same artifact may have multiple variants:
+
+- **Translations** - English version vs Spanish version
+- **A/B tests** - Different headlines being tested
+- **Temporal versions** - Content that changed on Wednesday
+
+Use `variant_id` to distinguish between them:
+
+```json
+// English version
+{
+  "property_id": {"type": "domain", "value": "nytimes.com"},
+  "artifact_id": "article_12345",
+  "variant_id": "en",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Breaking News Story", "language": "en"}
+  ]
+}
+
+// Spanish translation
+{
+  "property_id": {"type": "domain", "value": "nytimes.com"},
+  "artifact_id": "article_12345",
+  "variant_id": "es",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Noticia de última hora", "language": "es"}
+  ]
+}
+
+// A/B test variant
+{
+  "property_id": {"type": "domain", "value": "nytimes.com"},
+  "artifact_id": "article_12345",
+  "variant_id": "headline_test_b",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Alternative Headline Being Tested", "language": "en"}
+  ]
+}
+```
+
+The combination of `artifact_id` + `variant_id` must be unique within a property. This lets you track which variant a user saw and correlate it with delivery reports.
 
 ## Asset Types
 
-Assets represent the actual content within an artifact:
+Assets are the actual content within an artifact. Everything is an asset - titles, paragraphs, images, videos.
 
 ### Text
 
 ```json
-{"type": "text", "role": "heading", "content": "Article Title", "heading_level": 1}
-{"type": "text", "role": "paragraph", "content": "The article body text..."}
+{"type": "text", "role": "title", "content": "Article Title", "language": "en"}
+{"type": "text", "role": "paragraph", "content": "The article body text...", "language": "en"}
+{"type": "text", "role": "description", "content": "A summary of the article", "language": "en"}
+{"type": "text", "role": "heading", "content": "Section Header", "heading_level": 2}
 {"type": "text", "role": "quote", "content": "A quoted statement"}
 ```
 
-Roles: `paragraph`, `heading`, `caption`, `quote`, `list_item`
+Roles: `title`, `description`, `paragraph`, `heading`, `caption`, `quote`, `list_item`
+
+Each text asset can have its own `language` tag for mixed-language content.
 
 ### Image
 
@@ -100,6 +148,31 @@ Roles: `paragraph`, `heading`, `caption`, `quote`, `list_item`
   "duration_ms": 3600000
 }
 ```
+
+## Metadata
+
+Artifact-level metadata describes the artifact as a whole, not individual assets:
+
+```json
+{
+  "metadata": {
+    "author": "Jane Smith",
+    "canonical": "https://example.com/article/12345",
+    "open_graph": {
+      "og:type": "article",
+      "og:site_name": "Example News"
+    },
+    "json_ld": [
+      {
+        "@type": "NewsArticle",
+        "datePublished": "2025-01-15"
+      }
+    ]
+  }
+}
+```
+
+This is separate from assets because it's about the artifact container, not the content itself.
 
 ## Secured Asset Access
 

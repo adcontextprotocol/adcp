@@ -35,12 +35,10 @@ An artifact represents content adjacent to an ad placement - identified by `prop
 {
   "property_id": {"type": "domain", "value": "reddit.com"},
   "artifact_id": "r_fitness_abc123",
-  "language": "en",
-  "title": "Best protein sources for muscle building",
   "assets": [
-    {"type": "text", "role": "heading", "content": "Best protein sources for muscle building", "heading_level": 1},
-    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources..."},
-    {"type": "text", "role": "paragraph", "content": "I've been lifting for 6 months and want to optimize my diet."},
+    {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "I've been lifting for 6 months and want to optimize my diet.", "language": "en"},
     {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
   ]
 }
@@ -142,7 +140,9 @@ const response1 = await a2a.send({
             artifact: {
               property_id: { type: "domain", value: "reddit.com" },
               artifact_id: "r_news_politics_123",
-              title: "Political News Article"
+              assets: [
+                { type: "text", role: "title", content: "Political News Article" }
+              ]
             }
           }
         }
@@ -179,7 +179,9 @@ const response3 = await a2a.send({
             artifact: {
               property_id: { type: "domain", value: "reddit.com" },
               artifact_id: "r_running_tips_456",
-              title: "Running Tips"
+              assets: [
+                { type: "text", role: "title", content: "Running Tips" }
+              ]
             }
           }
         }
@@ -199,7 +201,9 @@ const response1 = await mcp.call('calibrate_content', {
   artifact: {
     property_id: { type: "domain", value: "reddit.com" },
     artifact_id: "r_news_politics_123",
-    title: "Political News Article"
+    assets: [
+      { type: "text", role: "title", content: "Political News Article" }
+    ]
   }
 });
 // Response includes context_id for conversation continuity
@@ -211,7 +215,9 @@ const response2 = await mcp.call('calibrate_content', {
   artifact: {
     property_id: { type: "domain", value: "reddit.com" },
     artifact_id: "r_news_politics_123",
-    title: "Political News Article"
+    assets: [
+      { type: "text", role: "title", content: "Political News Article" }
+    ]
   }
 });
 // Include text message in the protocol envelope asking about balanced journalism
@@ -223,7 +229,9 @@ const response3 = await mcp.call('calibrate_content', {
   artifact: {
     property_id: { type: "domain", value: "reddit.com" },
     artifact_id: "r_running_tips_456",
-    title: "Running Tips"
+    assets: [
+      { type: "text", role: "title", content: "Running Tips" }
+    ]
   }
 });
 ```

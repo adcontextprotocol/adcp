@@ -25,6 +25,10 @@
       "type": "string",
       "description": "Identifier for this artifact within the property. The property owner defines the scheme (e.g., 'article_12345', 'episode_42_segment_3', 'post_abc123')."
     },
+    "variant_id": {
+      "type": "string",
+      "description": "Identifies a specific variant of this artifact. Use for A/B tests, translations, or temporal versions. Examples: 'en', 'es-MX', 'v2', 'headline_test_b'. The combination of artifact_id + variant_id must be unique."
+    },
     "format_id": {
       "type": "object",
       "description": "Optional reference to a format definition. Uses the same format registry as creative formats.",
@@ -46,18 +50,6 @@
       "type": "string",
       "format": "uri",
       "description": "Optional URL for this artifact (web page, podcast feed, video page). Not all artifacts have URLs (e.g., Instagram content, podcast segments, TV scenes)."
-    },
-    "language": {
-      "type": "string",
-      "description": "BCP 47 language tag (e.g., 'en', 'en-US', 'es-MX')"
-    },
-    "title": {
-      "type": "string",
-      "description": "Artifact title or headline"
-    },
-    "description": {
-      "type": "string",
-      "description": "Artifact description or summary"
     },
     "published_time": {
       "type": "string",
@@ -81,12 +73,16 @@
               "type": { "type": "string", "const": "text" },
               "role": {
                 "type": "string",
-                "enum": ["paragraph", "heading", "caption", "quote", "list_item"],
-                "description": "Role of this text in the document"
+                "enum": ["title", "paragraph", "heading", "caption", "quote", "list_item", "description"],
+                "description": "Role of this text in the document. Use 'title' for the main artifact title, 'description' for summaries."
               },
               "content": {
                 "type": "string",
                 "description": "Text content"
+              },
+              "language": {
+                "type": "string",
+                "description": "BCP 47 language tag for this text (e.g., 'en', 'es-MX'). Useful when artifact contains mixed-language content."
               },
               "heading_level": {
                 "type": "integer",
@@ -262,7 +258,7 @@
       "additionalProperties": true
     }
   },
-  "required": ["property_id", "artifact_id"],
+  "required": ["property_id", "artifact_id", "assets"],
   "additionalProperties": true,
   "$defs": {
     "asset_access": {
