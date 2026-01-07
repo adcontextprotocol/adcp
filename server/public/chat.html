@@ -1511,6 +1511,12 @@
 
       // === Tab Management Functions ===
 
+      // Clear only chat messages from the container (preserves static elements like home/welcome)
+      function clearChatMessages() {
+        const messages = messagesContainer.querySelectorAll('.message');
+        messages.forEach(msg => msg.remove());
+      }
+
       // Debounced thread refresh (avoids excessive API calls when sending multiple messages)
       let loadThreadsTimer = null;
       function scheduleLoadThreads() {
@@ -1681,11 +1687,13 @@
         renderActiveTabs();
 
         // Show home content
-        messagesContainer.innerHTML = '';
+        clearChatMessages();
         if (isAuthenticated) {
           addieHomeContainer.classList.add('visible');
+          welcomeMessage.style.display = 'none';
           loadAddieHome();
         } else {
+          addieHomeContainer.classList.remove('visible');
           welcomeMessage.style.display = 'block';
         }
 
@@ -1767,8 +1775,8 @@
         // Update active tabs UI
         renderActiveTabs();
 
-        // Clear current messages
-        messagesContainer.innerHTML = '';
+        // Clear current messages and hide static content
+        clearChatMessages();
         welcomeMessage.style.display = 'none';
         addieHomeContainer.classList.remove('visible');
 
@@ -1822,13 +1830,15 @@
         currentTabId = 'home'; // New chat starts from home
 
         // Clear messages and show home
-        messagesContainer.innerHTML = '';
+        clearChatMessages();
 
         // Show welcome or Addie Home based on auth
         if (isAuthenticated) {
           addieHomeContainer.classList.add('visible');
+          welcomeMessage.style.display = 'none';
           loadAddieHome();
         } else {
+          addieHomeContainer.classList.remove('visible');
           welcomeMessage.style.display = 'block';
         }
 
@@ -2187,10 +2197,11 @@
 
       // Add message to chat
       function addMessage(content, role, messageId = null) {
-        // Hide welcome message
+        // Hide welcome/home content when showing messages
         if (welcomeMessage) {
           welcomeMessage.style.display = 'none';
         }
+        addieHomeContainer.classList.remove('visible');
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message--${role}`;
@@ -2363,10 +2374,11 @@
 
       // Create a streaming message element that can be updated
       function createStreamingMessage() {
-        // Hide welcome message
+        // Hide welcome/home content when showing messages
         if (welcomeMessage) {
           welcomeMessage.style.display = 'none';
         }
+        addieHomeContainer.classList.remove('visible');
 
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message message--assistant';
