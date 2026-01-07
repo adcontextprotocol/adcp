@@ -46,7 +46,8 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
   "calibration": {
     "acceptable": [
       {
-        "url": "https://espn.com/nba/story/_/championship-recap",
+        "property_id": {"type": "domain", "value": "espn.com"},
+        "artifact_id": "nba_championship_recap_2024",
         "language": "en",
         "title": "Championship Game Recap",
         "signals": [
@@ -59,44 +60,49 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
         ]
       },
       {
-        "url": "https://healthline.com/fitness",
+        "property_id": {"type": "domain", "value": "healthline.com"},
+        "artifact_id": "fitness_landing",
         "language": "en",
         "signals": [{"key": "iab_category", "value": "health/fitness", "confidence": 0.95}]
       },
       {
-        "url": "https://podcasts.apple.com/podcast/id1234567890",
-        "identifiers": {"apple_podcast_id": "1234567890"}
+        "property_id": {"type": "apple_podcast_id", "value": "1234567890"},
+        "artifact_id": "episode_42_segment_2"
       },
       {
-        "url": "https://cdn.example.com/fitness/workout-tutorial.mp4",
-        "assets": [{"type": "video", "url": "https://cdn.example.com/fitness/workout-tutorial.mp4"}]
+        "property_id": {"type": "domain", "value": "fitnesschannel.tv"},
+        "artifact_id": "workout_tutorial_ep15",
+        "assets": [{"type": "video", "url": "https://cdn.fitnesschannel.tv/videos/ep15.mp4"}]
       }
     ],
     "unacceptable": [
       {
-        "url": "https://tabloid.example.com/scandal",
+        "property_id": {"type": "domain", "value": "tabloid.example.com"},
+        "artifact_id": "scandal_story_123",
         "language": "en",
         "signals": [{"key": "brand_safety", "value": "controversial", "confidence": 0.85}]
       },
       {
-        "url": "https://controversy.example.com",
-        "identifiers": {"rss_url": "https://controversy.example.com/feed.xml"}
+        "property_id": {"type": "rss_url", "value": "https://controversy.example.com/feed.xml"},
+        "artifact_id": "episode_latest"
       },
       {
-        "url": "https://cdn.example.com/news/controversial-podcast.mp3",
-        "assets": [{"type": "audio", "url": "https://cdn.example.com/news/controversial-podcast.mp3"}]
+        "property_id": {"type": "domain", "value": "news.example.com"},
+        "artifact_id": "controversial_podcast_ep42",
+        "assets": [{"type": "audio", "url": "https://cdn.news.example.com/podcasts/ep42.mp3"}]
       }
     ]
   }
 }
 ```
 
-The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. Content is represented as a collection of assets with metadata:
+The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly. Artifacts are identified by property + artifact_id and represented as collections of assets:
 
-- **url** - Primary URL for this content (web page, podcast, video page)
-- **assets** - Content assets in document order (text blocks, images, video, audio)
+- **property_id** - Identifies the property where this artifact appears (using standard identifier types)
+- **artifact_id** - Unique identifier within the property (property owner defines the scheme)
+- **format_id** - Optional reference to format registry (same as creative formats)
+- **assets** - Artifact assets in document order (text blocks, images, video, audio)
 - **signals** - Pre-computed classifications (IAB category, ratings, scores) with confidence levels
-- **identifiers** - Platform-specific IDs (apple_podcast_id, spotify_show_id, youtube_video_id)
 - **metadata** - Rich metadata (Open Graph, JSON-LD, author info)
 
 ## Scoped Standards

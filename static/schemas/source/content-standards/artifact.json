@@ -1,18 +1,51 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/content-standards/content.json",
-  "title": "Content",
-  "description": "Content for safety and suitability evaluation. Content is represented as a collection of assets (text, images, video, audio) plus metadata and signals.",
+  "$id": "/schemas/content-standards/artifact.json",
+  "title": "Artifact",
+  "description": "Content artifact for safety and suitability evaluation. An artifact represents content adjacent to an ad placement - a news article, podcast segment, video chapter, or social post. Artifacts are collections of assets (text, images, video, audio) plus metadata and signals.",
   "type": "object",
   "properties": {
-    "content_id": {
+    "property_id": {
+      "type": "object",
+      "description": "Identifier for the property where this artifact appears",
+      "properties": {
+        "type": {
+          "$ref": "/schemas/enums/identifier-types.json",
+          "description": "Type of property identifier"
+        },
+        "value": {
+          "type": "string",
+          "description": "The identifier value"
+        }
+      },
+      "required": ["type", "value"],
+      "additionalProperties": false
+    },
+    "artifact_id": {
       "type": "string",
-      "description": "Unique identifier for this content"
+      "description": "Identifier for this artifact within the property. The property owner defines the scheme (e.g., 'article_12345', 'episode_42_segment_3', 'post_abc123')."
+    },
+    "format_id": {
+      "type": "object",
+      "description": "Optional reference to a format definition. Uses the same format registry as creative formats.",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL of the agent that defines this format"
+        },
+        "id": {
+          "type": "string",
+          "description": "Format identifier within that agent's registry"
+        }
+      },
+      "required": ["agent_url", "id"],
+      "additionalProperties": false
     },
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "Primary URL for this content (web page, podcast feed, video page, etc.)"
+      "description": "Optional URL for this artifact (web page, podcast feed, video page). Not all artifacts have URLs (e.g., Instagram content, podcast segments, TV scenes)."
     },
     "language": {
       "type": "string",
@@ -20,25 +53,25 @@
     },
     "title": {
       "type": "string",
-      "description": "Content title or headline"
+      "description": "Artifact title or headline"
     },
     "description": {
       "type": "string",
-      "description": "Content description or summary"
+      "description": "Artifact description or summary"
     },
     "published_time": {
       "type": "string",
       "format": "date-time",
-      "description": "When the content was published (ISO 8601 format)"
+      "description": "When the artifact was published (ISO 8601 format)"
     },
     "last_update_time": {
       "type": "string",
       "format": "date-time",
-      "description": "When the content was last modified (ISO 8601 format)"
+      "description": "When the artifact was last modified (ISO 8601 format)"
     },
     "assets": {
       "type": "array",
-      "description": "Content assets in document flow order - text blocks, images, video, audio",
+      "description": "Artifact assets in document flow order - text blocks, images, video, audio",
       "items": {
         "oneOf": [
           {
@@ -197,7 +230,7 @@
     },
     "metadata": {
       "type": "object",
-      "description": "Rich metadata extracted from the content",
+      "description": "Rich metadata extracted from the artifact",
       "properties": {
         "canonical": {
           "type": "string",
@@ -206,11 +239,11 @@
         },
         "author": {
           "type": "string",
-          "description": "Content author name"
+          "description": "Artifact author name"
         },
         "keywords": {
           "type": "string",
-          "description": "Content keywords"
+          "description": "Artifact keywords"
         },
         "open_graph": {
           "type": "object",
@@ -232,7 +265,7 @@
     },
     "identifiers": {
       "type": "object",
-      "description": "Platform-specific identifiers for this content",
+      "description": "Platform-specific identifiers for this artifact",
       "properties": {
         "apple_podcast_id": {
           "type": "string",
@@ -259,6 +292,6 @@
       "additionalProperties": true
     }
   },
-  "required": ["url"],
+  "required": ["property_id", "artifact_id"],
   "additionalProperties": true
 }

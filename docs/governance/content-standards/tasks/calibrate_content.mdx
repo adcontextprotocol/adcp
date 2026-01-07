@@ -23,17 +23,18 @@ Unlike high-volume runtime evaluation, calibration is a **dialogue-based process
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | Standards configuration to calibrate against |
-| `content` | content | Yes | Content to evaluate |
+| `artifact` | artifact | Yes | Artifact to evaluate |
 
-### Content
+### Artifact
 
-**Schema**: [content.json](https://adcontextprotocol.org/schemas/v2/content-standards/content.json)
+**Schema**: [artifact.json](https://adcontextprotocol.org/schemas/v2/content-standards/artifact.json)
 
-Content is represented as a collection of assets (text, images, video, audio) plus metadata and signals:
+An artifact represents content adjacent to an ad placement - identified by `property_id` + `artifact_id` and represented as a collection of assets:
 
 ```json
 {
-  "url": "https://reddit.com/r/fitness/comments/abc123",
+  "property_id": {"type": "domain", "value": "reddit.com"},
+  "artifact_id": "r_fitness_abc123",
   "language": "en",
   "title": "Best protein sources for muscle building",
   "signals": [
@@ -43,7 +44,7 @@ Content is represented as a collection of assets (text, images, video, audio) pl
     {"type": "text", "role": "heading", "content": "Best protein sources for muscle building", "heading_level": 1},
     {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources..."},
     {"type": "text", "role": "paragraph", "content": "I've been lifting for 6 months and want to optimize my diet."},
-    {"type": "image", "url": "https://cdn.example.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
+    {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
   ]
 }
 ```
@@ -130,18 +131,22 @@ Calibration supports back-and-forth dialogue using the protocol's conversation m
 ### A2A Example
 
 ```javascript
-// Seller sends content to evaluate
+// Seller sends artifact to evaluate
 const response1 = await a2a.send({
   message: {
     parts: [
-      { kind: "text", text: "Does this content pass our standards?" },
+      { kind: "text", text: "Does this artifact pass our standards?" },
       {
         kind: "data",
         data: {
           skill: "calibrate_content",
           parameters: {
             standards_id: "nike_brand_safety",
-            content: { url: "https://reddit.com/r/news/politics", title: "Political News Article" }
+            artifact: {
+              property_id: { type: "domain", value: "reddit.com" },
+              artifact_id: "r_news_politics_123",
+              title: "Political News Article"
+            }
           }
         }
       }
@@ -162,7 +167,7 @@ const response2 = await a2a.send({
 });
 // Verification agent clarifies that brand policy excludes ALL political content
 
-// Seller tries different content
+// Seller tries different artifact
 const response3 = await a2a.send({
   contextId: response1.contextId,
   message: {
@@ -174,7 +179,11 @@ const response3 = await a2a.send({
           skill: "calibrate_content",
           parameters: {
             standards_id: "nike_brand_safety",
-            content: { url: "https://reddit.com/r/running", title: "Running Tips" }
+            artifact: {
+              property_id: { type: "domain", value: "reddit.com" },
+              artifact_id: "r_running_tips_456",
+              title: "Running Tips"
+            }
           }
         }
       }
@@ -190,7 +199,11 @@ const response3 = await a2a.send({
 // Initial calibration request
 const response1 = await mcp.call('calibrate_content', {
   standards_id: "nike_brand_safety",
-  content: { url: "https://reddit.com/r/news/politics", title: "Political News Article" }
+  artifact: {
+    property_id: { type: "domain", value: "reddit.com" },
+    artifact_id: "r_news_politics_123",
+    title: "Political News Article"
+  }
 });
 // Response includes context_id for conversation continuity
 
@@ -198,15 +211,23 @@ const response1 = await mcp.call('calibrate_content', {
 const response2 = await mcp.call('calibrate_content', {
   context_id: response1.context_id,
   standards_id: "nike_brand_safety",
-  content: { url: "https://reddit.com/r/news/politics", title: "Political News Article" }
+  artifact: {
+    property_id: { type: "domain", value: "reddit.com" },
+    artifact_id: "r_news_politics_123",
+    title: "Political News Article"
+  }
 });
 // Include text message in the protocol envelope asking about balanced journalism
 
-// Try different content in same conversation
+// Try different artifact in same conversation
 const response3 = await mcp.call('calibrate_content', {
   context_id: response1.context_id,
   standards_id: "nike_brand_safety",
-  content: { url: "https://reddit.com/r/running", title: "Running Tips" }
+  artifact: {
+    property_id: { type: "domain", value: "reddit.com" },
+    artifact_id: "r_running_tips_456",
+    title: "Running Tips"
+  }
 });
 ```
 

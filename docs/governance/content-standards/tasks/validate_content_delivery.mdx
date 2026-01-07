@@ -26,10 +26,14 @@ Validate delivery records against content safety policies. Designed for batch au
 {
   "record_id": "imp_12345",
   "timestamp": "2025-01-15T10:30:00Z",
-  "content": {
-    "url": "https://example.com/article",
+  "artifact": {
+    "property_id": {"type": "domain", "value": "example.com"},
+    "artifact_id": "article_12345",
     "title": "Article Title",
-    "categories": ["news", "sports"]
+    "signals": [
+      {"key": "iab_category", "value": "news", "confidence": 0.9},
+      {"key": "iab_category", "value": "sports", "confidence": 0.85}
+    ]
   },
   "creative_id": "creative_abc"
 }

@@ -9,10 +9,10 @@
       "type": "string",
       "description": "Standards configuration to calibrate against"
     },
-    "content": {
-      "$ref": "/schemas/content-standards/content.json",
-      "description": "Content to evaluate"
+    "artifact": {
+      "$ref": "/schemas/content-standards/artifact.json",
+      "description": "Artifact to evaluate"
     }
   },
-  "required": ["standards_id", "content"]
+  "required": ["standards_id", "artifact"]
 }

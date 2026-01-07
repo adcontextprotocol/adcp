@@ -565,9 +565,9 @@
     "content-standards": {
       "description": "Content Standards protocol task request/response schemas for content safety and suitability evaluation",
       "models": {
-        "content": {
-          "$ref": "/schemas/content-standards/content.json",
-          "description": "Content for evaluation or calibration - a collection of assets (text, images, video, audio) plus metadata and signals"
+        "artifact": {
+          "$ref": "/schemas/content-standards/artifact.json",
+          "description": "Content artifact for evaluation or calibration - represents content adjacent to an ad placement, identified by property_id + artifact_id"
         }
       },
       "tasks": {

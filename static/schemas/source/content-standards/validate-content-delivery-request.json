@@ -25,24 +25,16 @@
             "format": "date-time",
             "description": "When the delivery occurred"
           },
-          "content": {
-            "type": "object",
-            "description": "Content context where ad was delivered",
-            "properties": {
-              "url": { "type": "string", "format": "uri" },
-              "title": { "type": "string" },
-              "categories": {
-                "type": "array",
-                "items": { "type": "string" }
-              }
-            }
+          "artifact": {
+            "$ref": "/schemas/content-standards/artifact.json",
+            "description": "Artifact where ad was delivered"
           },
           "creative_id": {
             "type": "string",
             "description": "Which creative was delivered"
           }
         },
-        "required": ["record_id", "content"]
+        "required": ["record_id", "artifact"]
       }
     },
     "feature_ids": {
