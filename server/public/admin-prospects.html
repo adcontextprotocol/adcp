@@ -3632,11 +3632,9 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         document.getElementById('invoiceContactEmail').value = prospect.prospect_contact_email || '';
       }
 
-      // Reset step to product selection
-      document.querySelector('.invoice-step[data-step="1"]').classList.add('active');
-      document.querySelector('.invoice-step[data-step="2"]').classList.remove('active');
-      document.getElementById('invoiceStep1').classList.add('active');
-      document.getElementById('invoiceStep2').classList.remove('active');
+      // Reset form to product selection view
+      document.getElementById('invoiceProductSection').style.display = 'block';
+      document.getElementById('invoiceBillingSection').style.display = 'none';
       document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
       document.getElementById('invoiceModal').style.display = 'block';
 
