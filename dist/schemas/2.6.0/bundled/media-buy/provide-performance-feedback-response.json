@@ -31,7 +31,7 @@
       "required": [
         "success"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "errors"
@@ -73,14 +73,16 @@
                 "minimum": 0
               },
               "details": {
-                "description": "Additional task-specific error details"
+                "type": "object",
+                "description": "Additional task-specific error details",
+                "additionalProperties": true
               }
             },
             "required": [
               "code",
               "message"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1
         },
@@ -100,7 +102,7 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "success"
@@ -109,7 +111,7 @@
     }
   ],
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.435Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.837Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

@@ -29,6 +29,10 @@
       "description": "Alternative text for accessibility"
     }
   },
-  "required": ["url", "width", "height"],
-  "additionalProperties": false
+  "required": [
+    "url",
+    "width",
+    "height"
+  ],
+  "additionalProperties": true
 }

@@ -201,7 +201,7 @@
                   "asset_type",
                   "url"
                 ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "product_catalog": {
@@ -249,7 +249,7 @@
               "required": [
                 "feed_url"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "disclaimers": {
               "type": "array",
@@ -323,7 +323,7 @@
           "required": [
             "name"
           ],
-          "additionalProperties": false,
+          "additionalProperties": true,
           "examples": [
             {
               "description": "Example with both URL and name",
@@ -537,7 +537,7 @@
               "agent_url",
               "id"
             ],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "dependencies": {
               "width": [
                 "height"
@@ -602,7 +602,7 @@
               ]
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "countries": {
           "type": "array",
@@ -633,7 +633,7 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "context": {
       "title": "Context Object",
@@ -649,9 +649,9 @@
     }
   },
   "required": [],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.420Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.829Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

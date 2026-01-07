@@ -53,7 +53,7 @@
         "start",
         "end"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "currency": {
       "type": "string",
@@ -95,7 +95,7 @@
         "spend",
         "media_buy_count"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "media_buy_deliveries": {
       "type": "array",
@@ -249,7 +249,7 @@
                 "impressions",
                 "spend"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },
@@ -259,7 +259,7 @@
           "totals",
           "by_package"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "errors": {
@@ -281,5 +281,5 @@
     "currency",
     "media_buy_deliveries"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -39,8 +39,12 @@
           "description": "Timestamp when activation completed (if is_live=true)"
         }
       },
-      "required": ["type", "platform", "is_live"],
-      "additionalProperties": false
+      "required": [
+        "type",
+        "platform",
+        "is_live"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -78,8 +82,12 @@
           "description": "Timestamp when activation completed (if is_live=true)"
         }
       },
-      "required": ["type", "agent_url", "is_live"],
-      "additionalProperties": false
+      "required": [
+        "type",
+        "agent_url",
+        "is_live"
+      ],
+      "additionalProperties": true
     }
   ]
 }

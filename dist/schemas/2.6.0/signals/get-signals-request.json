@@ -34,7 +34,7 @@
         "deployments",
         "countries"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "filters": {
       "$ref": "/schemas/2.6.0/core/signal-filters.json"
@@ -55,5 +55,5 @@
     "signal_spec",
     "deliver_to"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

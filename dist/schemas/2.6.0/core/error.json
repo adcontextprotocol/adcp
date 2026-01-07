@@ -27,9 +27,14 @@
       "minimum": 0
     },
     "details": {
-      "description": "Additional task-specific error details"
+      "type": "object",
+      "description": "Additional task-specific error details",
+      "additionalProperties": true
     }
   },
-  "required": ["code", "message"],
-  "additionalProperties": false
+  "required": [
+    "code",
+    "message"
+  ],
+  "additionalProperties": true
 }

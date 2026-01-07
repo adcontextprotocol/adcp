@@ -4,7 +4,12 @@
   "title": "Media Buy Status",
   "description": "Status of a media buy",
   "type": "string",
-  "enum": ["pending_activation", "active", "paused", "completed"],
+  "enum": [
+    "pending_activation",
+    "active",
+    "paused",
+    "completed"
+  ],
   "enumDescriptions": {
     "pending_activation": "Media buy created but not yet activated",
     "active": "Media buy is currently running",

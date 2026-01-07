@@ -4,5 +4,8 @@
   "title": "Preview Output Format",
   "description": "Output format for creative previews",
   "type": "string",
-  "enum": ["url", "html"]
+  "enum": [
+    "url",
+    "html"
+  ]
 }

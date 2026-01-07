@@ -28,5 +28,5 @@
     "signal_agent_segment_id",
     "deployments"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

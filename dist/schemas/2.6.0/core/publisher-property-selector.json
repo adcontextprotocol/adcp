@@ -22,8 +22,11 @@
           "description": "Discriminator indicating all properties from this publisher are included"
         }
       },
-      "required": ["publisher_domain", "selection_type"],
-      "additionalProperties": false
+      "required": [
+        "publisher_domain",
+        "selection_type"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -48,8 +51,12 @@
           "minItems": 1
         }
       },
-      "required": ["publisher_domain", "selection_type", "property_ids"],
-      "additionalProperties": false
+      "required": [
+        "publisher_domain",
+        "selection_type",
+        "property_ids"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -74,8 +81,12 @@
           "minItems": 1
         }
       },
-      "required": ["publisher_domain", "selection_type", "property_tags"],
-      "additionalProperties": false
+      "required": [
+        "publisher_domain",
+        "selection_type",
+        "property_tags"
+      ],
+      "additionalProperties": true
     }
   ]
 }

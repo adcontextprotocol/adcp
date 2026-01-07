@@ -43,7 +43,7 @@
           "agent_url",
           "id"
         ],
-        "additionalProperties": false,
+        "additionalProperties": true,
         "dependencies": {
           "width": [
             "height"
@@ -129,9 +129,9 @@
       "additionalProperties": true
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.423Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.831Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

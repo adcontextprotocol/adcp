@@ -136,10 +136,10 @@
                     "required": [
                       "suppress_minutes"
                     ],
-                    "additionalProperties": false
+                    "additionalProperties": true
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "creative_assignments": {
                 "type": "array",
@@ -171,7 +171,7 @@
                   "required": [
                     "creative_id"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "format_ids_to_provide": {
@@ -212,7 +212,7 @@
                     "agent_url",
                     "id"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": true,
                   "dependencies": {
                     "width": [
                       "height"
@@ -238,7 +238,7 @@
             "required": [
               "package_id"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "context": {
@@ -258,7 +258,7 @@
         "media_buy_id",
         "buyer_ref"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "required": [
           "errors"
@@ -300,14 +300,16 @@
                 "minimum": 0
               },
               "details": {
-                "description": "Additional task-specific error details"
+                "type": "object",
+                "description": "Additional task-specific error details",
+                "additionalProperties": true
               }
             },
             "required": [
               "code",
               "message"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1
         },
@@ -327,7 +329,7 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": {
         "anyOf": [
           {
@@ -350,7 +352,7 @@
     }
   ],
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.447Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.841Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

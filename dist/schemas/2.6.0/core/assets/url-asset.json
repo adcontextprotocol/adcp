@@ -19,6 +19,8 @@
       "description": "Description of what this URL points to"
     }
   },
-  "required": ["url"],
-  "additionalProperties": false
+  "required": [
+    "url"
+  ],
+  "additionalProperties": true
 }

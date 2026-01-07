@@ -37,8 +37,10 @@
             }
           }
         },
-        "required": ["name"],
-        "additionalProperties": false
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
       }
     },
     "asset_selectors": {
@@ -57,7 +59,19 @@
           "description": "Filter by asset type (e.g., ['image', 'video'])",
           "items": {
             "type": "string",
-            "enum": ["image", "video", "audio", "vast", "daast", "text", "url", "html", "css", "javascript", "webhook"]
+            "enum": [
+              "image",
+              "video",
+              "audio",
+              "vast",
+              "daast",
+              "text",
+              "url",
+              "html",
+              "css",
+              "javascript",
+              "webhook"
+            ]
           }
         },
         "exclude_tags": {
@@ -68,11 +82,13 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
-  "required": ["brand_manifest"],
-  "additionalProperties": false,
+  "required": [
+    "brand_manifest"
+  ],
+  "additionalProperties": true,
   "examples": [
     {
       "brand_manifest": {
@@ -80,11 +96,19 @@
         "url": "https://brand.com"
       },
       "product_selectors": {
-        "manifest_skus": ["SKU-123", "SKU-456"]
+        "manifest_skus": [
+          "SKU-123",
+          "SKU-456"
+        ]
       },
       "asset_selectors": {
-        "tags": ["holiday"],
-        "asset_types": ["image", "video"]
+        "tags": [
+          "holiday"
+        ],
+        "asset_types": [
+          "image",
+          "video"
+        ]
       }
     }
   ]

@@ -4,5 +4,8 @@
   "title": "HTTP Method",
   "description": "HTTP methods supported for webhook requests",
   "type": "string",
-  "enum": ["GET", "POST"]
+  "enum": [
+    "GET",
+    "POST"
+  ]
 }

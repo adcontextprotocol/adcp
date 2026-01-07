@@ -79,7 +79,7 @@
           "description": "Filter tasks that have webhook configuration when true"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "sort": {
       "type": "object",
@@ -103,7 +103,7 @@
           "description": "Sort direction"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "pagination": {
       "type": "object",
@@ -123,7 +123,7 @@
           "description": "Number of tasks to skip"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "include_history": {
       "type": "boolean",
@@ -137,7 +137,7 @@
       "$ref": "/schemas/2.6.0/core/ext.json"
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "List all pending tasks across domains",

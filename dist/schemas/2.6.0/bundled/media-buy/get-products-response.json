@@ -54,7 +54,7 @@
                     "publisher_domain",
                     "selection_type"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "type": "object",
@@ -93,7 +93,7 @@
                     "selection_type",
                     "property_ids"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "type": "object",
@@ -134,7 +134,7 @@
                     "selection_type",
                     "property_tags"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               ]
             },
@@ -178,7 +178,7 @@
                 "agent_url",
                 "id"
               ],
-              "additionalProperties": false,
+              "additionalProperties": true,
               "dependencies": {
                 "width": [
                   "height"
@@ -247,7 +247,7 @@
                       "agent_url",
                       "id"
                     ],
-                    "additionalProperties": false,
+                    "additionalProperties": true,
                     "dependencies": {
                       "width": [
                         "height"
@@ -264,7 +264,7 @@
                 "placement_id",
                 "name"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "minItems": 1
           },
@@ -336,7 +336,7 @@
                     "currency",
                     "is_fixed"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "CPM Auction Pricing Option",
@@ -415,7 +415,7 @@
                     "currency",
                     "is_fixed"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "vCPM Fixed Rate Pricing Option",
@@ -465,7 +465,7 @@
                     "currency",
                     "is_fixed"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "vCPM Auction Pricing Option",
@@ -544,7 +544,7 @@
                     "price_guidance",
                     "is_fixed"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "CPC Pricing Option",
@@ -594,7 +594,7 @@
                     "currency",
                     "is_fixed"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "CPCV Pricing Option",
@@ -644,7 +644,7 @@
                     "currency",
                     "is_fixed"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "CPV Pricing Option",
@@ -706,7 +706,7 @@
                               "required": [
                                 "duration_seconds"
                               ],
-                              "additionalProperties": false
+                              "additionalProperties": true
                             }
                           ]
                         }
@@ -714,7 +714,7 @@
                       "required": [
                         "view_threshold"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     "min_spend_per_package": {
                       "type": "number",
@@ -730,7 +730,7 @@
                     "is_fixed",
                     "parameters"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "CPP Pricing Option",
@@ -785,7 +785,7 @@
                       "required": [
                         "demographic"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     "min_spend_per_package": {
                       "type": "number",
@@ -801,7 +801,7 @@
                     "is_fixed",
                     "parameters"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 {
                   "title": "Flat Rate Pricing Option",
@@ -877,7 +877,7 @@
                           "description": "Specific daypart for time-based pricing (e.g., 'morning_commute', 'evening_prime', 'overnight')"
                         }
                       },
-                      "additionalProperties": false
+                      "additionalProperties": true
                     },
                     "min_spend_per_package": {
                       "type": "number",
@@ -892,7 +892,7 @@
                     "is_fixed",
                     "rate"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               ]
             },
@@ -947,7 +947,7 @@
               "attribution",
               "reporting"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "delivery_measurement": {
             "type": "object",
@@ -1053,7 +1053,7 @@
               "supports_webhooks",
               "available_metrics"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "creative_policy": {
             "title": "Creative Policy",
@@ -1090,7 +1090,7 @@
               "landing_page",
               "templates_available"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "is_custom": {
             "type": "boolean",
@@ -1144,7 +1144,7 @@
                   "agent_url",
                   "id"
                 ],
-                "additionalProperties": false,
+                "additionalProperties": true,
                 "dependencies": {
                   "width": [
                     "height"
@@ -1164,7 +1164,7 @@
               "format_id",
               "manifest"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "product_card_detailed": {
             "type": "object",
@@ -1205,7 +1205,7 @@
                   "agent_url",
                   "id"
                 ],
-                "additionalProperties": false,
+                "additionalProperties": true,
                 "dependencies": {
                   "width": [
                     "height"
@@ -1225,7 +1225,7 @@
               "format_id",
               "manifest"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "ext": {
             "title": "Extension Object",
@@ -1244,7 +1244,7 @@
           "delivery_measurement",
           "pricing_options"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "errors": {
@@ -1277,14 +1277,16 @@
             "minimum": 0
           },
           "details": {
-            "description": "Additional task-specific error details"
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
           }
         },
         "required": [
           "code",
           "message"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": {
@@ -1303,9 +1305,9 @@
   "required": [
     "products"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-05T18:19:47.422Z",
-    "note": "This is a bundled schema with all $ref resolved inline."
+    "generatedAt": "2026-01-07T19:56:54.830Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }
