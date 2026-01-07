@@ -54,12 +54,13 @@ sequenceDiagram
         Note over Seller: Local model evaluates artifacts
     end
 
-    Seller->>Buyer: Delivery records (get_media_buy_delivery)
-    Buyer->>Verifier: validate_content_delivery (sampled)
+    Buyer->>Seller: get_media_buy_artifacts (sampled)
+    Seller-->>Buyer: Content artifacts
+    Buyer->>Verifier: validate_content_delivery
     Verifier-->>Buyer: Validation results
 ```
 
-**Key insight**: Runtime decisioning happens locally at the seller (for scale). Delivery records flow through the buyer, who validates samples against the verification agent.
+**Key insight**: Runtime decisioning happens locally at the seller (for scale). Buyers pull content samples from sellers and validate against the verification agent.
 
 ## Adjacency
 
@@ -230,7 +231,8 @@ See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_conte
 | Task | Description |
 |------|-------------|
 | [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) | Collaborative dialogue to align on policy interpretation |
-| [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of delivery records |
+| [get_media_buy_artifacts](/docs/governance/content-standards/tasks/get_media_buy_artifacts) | Retrieve content artifacts from a media buy |
+| [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of content artifacts |
 
 ## Typical Providers
 

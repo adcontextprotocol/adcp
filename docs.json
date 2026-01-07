@@ -116,6 +116,7 @@
                   "docs/governance/content-standards/tasks/update_content_standards",
                   "docs/governance/content-standards/tasks/delete_content_standards",
                   "docs/governance/content-standards/tasks/calibrate_content",
+                  "docs/governance/content-standards/tasks/get_media_buy_artifacts",
                   "docs/governance/content-standards/tasks/validate_content_delivery"
                 ]
               }

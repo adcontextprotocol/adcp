@@ -11,29 +11,28 @@ Validate delivery records against content safety policies. Designed for batch au
 
 ## Data Flow
 
-Delivery validation follows the same path as delivery reporting:
+Content artifacts are separate from delivery metrics. Use `get_media_buy_artifacts` to retrieve content for validation:
 
 ```mermaid
 sequenceDiagram
-    participant Seller as Seller Agent
     participant Buyer as Buyer Agent
+    participant Seller as Seller Agent
     participant Verifier as Verification Agent
 
-    Seller->>Buyer: Delivery records (via get_media_buy_delivery)
-    Note over Buyer: Buyer aggregates delivery data
-    Buyer->>Verifier: validate_content_delivery (sampled records)
+    Buyer->>Seller: get_media_buy_artifacts (sampled)
+    Seller-->>Buyer: Artifacts with content
+    Buyer->>Verifier: validate_content_delivery
     Verifier-->>Buyer: Validation results
-    Note over Buyer: Buyer tracks compliance
 ```
 
 **Why through the buyer?**
 
 - The **buyer** owns the media buy and knows which `standards_id` applies
-- The **buyer** aggregates delivery data from multiple sellers
+- The **buyer** requests artifacts from sellers (separate from performance metrics)
 - The **buyer** is accountable for brand safety compliance
 - The **verification agent** works on behalf of the buyer
 
-Sellers send delivery records to buyers via `get_media_buy_delivery`. The buyer then samples and validates against the verification agent. This keeps the seller's responsibility simple: report what was delivered.
+This keeps responsibilities clear: sellers provide content samples via `get_media_buy_artifacts`, buyers validate samples against the verification agent.
 
 ## Request
 
@@ -175,6 +174,7 @@ for result in response["results"]:
 
 ## Related Tasks
 
+- [get_media_buy_artifacts](/docs/governance/content-standards/tasks/get_media_buy_artifacts) - Get content artifacts from seller
+- [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) - Understand why artifacts pass/fail
 - [list_content_features](/docs/governance/content-standards/tasks/list_content_features) - Discover available features
-- [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) - Collaborative calibration dialogue
 - [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Retrieve the policies

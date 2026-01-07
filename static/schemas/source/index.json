@@ -610,6 +610,16 @@
             "$ref": "/schemas/content-standards/validate-content-delivery-response.json",
             "description": "Response payload with batch validation results"
           }
+        },
+        "get-media-buy-artifacts": {
+          "request": {
+            "$ref": "/schemas/content-standards/get-media-buy-artifacts-request.json",
+            "description": "Request parameters for retrieving content artifacts from a media buy"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/get-media-buy-artifacts-response.json",
+            "description": "Response payload with content artifacts for validation"
+          }
         }
       }
     },
