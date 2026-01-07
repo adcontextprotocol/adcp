@@ -732,18 +732,24 @@ export async function getMemberCapabilities(
       [workosUserId]
     ),
 
-    // Working groups & councils
+    // Working groups & councils (include leaders as implicit members)
     query<{
       wg_count: number;
       council_count: number;
     }>(
       `SELECT
-        (SELECT COUNT(*) FROM working_group_memberships wgm
-         JOIN working_groups wg ON wg.id = wgm.working_group_id
-         WHERE wgm.workos_user_id = $1 AND wg.committee_type = 'working_group') as wg_count,
-        (SELECT COUNT(*) FROM working_group_memberships wgm
-         JOIN working_groups wg ON wg.id = wgm.working_group_id
-         WHERE wgm.workos_user_id = $1 AND wg.committee_type = 'council') as council_count`,
+        (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
+         WHERE wg.committee_type = 'working_group'
+         AND (
+           EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
+           OR EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1)
+         )) as wg_count,
+        (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
+         WHERE wg.committee_type = 'council'
+         AND (
+           EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
+           OR EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1)
+         )) as council_count`,
       [workosUserId]
     ),
 
