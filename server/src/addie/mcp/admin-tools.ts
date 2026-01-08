@@ -206,6 +206,77 @@ export function isAdmin(memberContext: MemberContext | null): boolean {
   return memberContext?.org_membership?.role === 'admin';
 }
 
+// Admin API key for internal tool calls (bypasses session auth)
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+
+/**
+ * Get the base URL for internal API calls
+ * Uses BASE_URL env var in production, falls back to localhost for development
+ */
+function getBaseUrl(): string {
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  const port = process.env.PORT || process.env.CONDUCTOR_PORT || '3000';
+  return `http://localhost:${port}`;
+}
+
+/**
+ * Make an authenticated admin API call
+ * Uses ADMIN_API_KEY for authentication
+ */
+async function callAdminApi(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  body?: Record<string, unknown>
+): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}${path}`;
+
+  if (!ADMIN_API_KEY) {
+    logger.warn('ADMIN_API_KEY not configured - admin API calls will fail');
+    return {
+      ok: false,
+      status: 0,
+      error: 'Admin API key not configured',
+    };
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${ADMIN_API_KEY}`,
+    };
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorData = data as { error?: string; message?: string };
+      return {
+        ok: false,
+        status: response.status,
+        error: errorData.message || errorData.error || `HTTP ${response.status}`,
+      };
+    }
+
+    return { ok: true, status: response.status, data };
+  } catch (error) {
+    logger.error({ error, url, method }, 'Addie: Admin API call failed');
+    return {
+      ok: false,
+      status: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 /**
  * Compute the unified lifecycle stage for an organization.
  * This combines prospect_status and subscription_status into a single view.
@@ -6321,26 +6392,43 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       const limit = Math.min((input.limit as number) || 20, 50);
-      const pool = getPool();
 
-      const result = await pool.query(
-        `SELECT id, slug, content_type, title, excerpt, author_name, author_user_id,
-                category, tags, created_at
-         FROM perspectives
-         WHERE status = 'draft' AND working_group_id IS NULL
-         ORDER BY created_at DESC
-         LIMIT $1`,
-        [limit]
-      );
+      // Call admin API to get all perspectives
+      const result = await callAdminApi('GET', '/api/admin/perspectives');
 
-      if (result.rows.length === 0) {
+      if (!result.ok) {
+        logger.error({ error: result.error }, 'Error fetching perspectives from API');
+        return `❌ Failed to list perspective drafts: ${result.error}`;
+      }
+
+      const allPerspectives = result.data as Array<{
+        id: string;
+        slug: string;
+        content_type: string;
+        title: string;
+        excerpt?: string;
+        author_name?: string;
+        category?: string;
+        tags?: string[];
+        created_at: string;
+        status: string;
+        working_group_id?: string;
+      }>;
+
+      // Filter for drafts (excluding working group posts) and apply limit
+      const drafts = allPerspectives
+        .filter(p => p.status === 'draft' && !p.working_group_id)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, limit);
+
+      if (drafts.length === 0) {
         return '📋 No perspective drafts pending review.';
       }
 
       let response = `## Perspective Drafts Pending Review\n\n`;
-      response += `Found ${result.rows.length} draft(s) awaiting publication:\n\n`;
+      response += `Found ${drafts.length} draft(s) awaiting publication:\n\n`;
 
-      for (const p of result.rows) {
+      for (const p of drafts) {
         response += `### 📝 ${p.title}\n`;
         response += `**ID:** \`${p.id}\`\n`;
         response += `**Type:** ${p.content_type} | **Author:** ${p.author_name || 'Unknown'}\n`;
@@ -6371,39 +6459,72 @@ Use add_committee_leader to assign a leader.`;
     }
 
     try {
-      const pool = getPool();
+      // First get the perspective to check its status and get required fields
+      const getResult = await callAdminApi('GET', `/api/admin/perspectives/${perspectiveId}`);
 
-      // First check if perspective exists and is a draft
-      const checkResult = await pool.query(
-        `SELECT id, slug, title, status, author_name FROM perspectives WHERE id = $1`,
-        [perspectiveId]
-      );
-
-      if (checkResult.rows.length === 0) {
-        return `❌ Perspective with ID \`${perspectiveId}\` not found.`;
+      if (!getResult.ok) {
+        if (getResult.status === 404) {
+          return `❌ Perspective with ID \`${perspectiveId}\` not found.`;
+        }
+        return `❌ Failed to fetch perspective: ${getResult.error}`;
       }
 
-      const perspective = checkResult.rows[0];
+      const perspective = getResult.data as {
+        id: string;
+        slug: string;
+        content_type: string;
+        title: string;
+        subtitle?: string;
+        category?: string;
+        excerpt?: string;
+        content?: string;
+        external_url?: string;
+        external_site_name?: string;
+        author_name?: string;
+        author_title?: string;
+        featured_image_url?: string;
+        status: string;
+        published_at?: string;
+        display_order?: number;
+        tags?: string[];
+        metadata?: Record<string, unknown>;
+      };
 
       if (perspective.status === 'published') {
         return `ℹ️ "${perspective.title}" is already published.`;
       }
 
-      // Publish the perspective
-      const result = await pool.query(
-        `UPDATE perspectives
-         SET status = 'published', published_at = NOW(), updated_at = NOW()
-         WHERE id = $1
-         RETURNING id, slug, title, status, published_at`,
-        [perspectiveId]
-      );
+      // Publish the perspective via PUT API
+      const updateResult = await callAdminApi('PUT', `/api/admin/perspectives/${perspectiveId}`, {
+        slug: perspective.slug,
+        content_type: perspective.content_type,
+        title: perspective.title,
+        subtitle: perspective.subtitle,
+        category: perspective.category,
+        excerpt: perspective.excerpt,
+        content: perspective.content,
+        external_url: perspective.external_url,
+        external_site_name: perspective.external_site_name,
+        author_name: perspective.author_name,
+        author_title: perspective.author_title,
+        featured_image_url: perspective.featured_image_url,
+        status: 'published',
+        published_at: new Date().toISOString(),
+        display_order: perspective.display_order,
+        tags: perspective.tags,
+        metadata: perspective.metadata,
+      });
 
-      const published = result.rows[0];
+      if (!updateResult.ok) {
+        return `❌ Failed to publish perspective: ${updateResult.error}`;
+      }
+
+      const published = updateResult.data as typeof perspective;
 
       let response = `✅ **Published successfully!**\n\n`;
       response += `**Title:** ${published.title}\n`;
       response += `**Author:** ${perspective.author_name || 'Unknown'}\n`;
-      response += `**Published:** ${new Date(published.published_at).toLocaleString()}\n`;
+      response += `**Published:** ${new Date(published.published_at || '').toLocaleString()}\n`;
       response += `**URL:** https://agenticadvertising.org/perspectives/${published.slug}`;
 
       logger.info({ perspectiveId, title: published.title }, 'Perspective published by admin');
@@ -6426,66 +6547,71 @@ Use add_committee_leader to assign a leader.`;
     }
 
     try {
-      const pool = getPool();
+      // First get the perspective to check it exists and get required fields
+      const getResult = await callAdminApi('GET', `/api/admin/perspectives/${perspectiveId}`);
 
-      // Check if perspective exists
-      const checkResult = await pool.query(
-        `SELECT id, title FROM perspectives WHERE id = $1`,
-        [perspectiveId]
-      );
-
-      if (checkResult.rows.length === 0) {
-        return `❌ Perspective with ID \`${perspectiveId}\` not found.`;
+      if (!getResult.ok) {
+        if (getResult.status === 404) {
+          return `❌ Perspective with ID \`${perspectiveId}\` not found.`;
+        }
+        return `❌ Failed to fetch perspective: ${getResult.error}`;
       }
 
-      // Build update query dynamically based on provided fields
-      const updates: string[] = [];
-      const values: unknown[] = [];
-      let paramIndex = 1;
+      const perspective = getResult.data as {
+        id: string;
+        slug: string;
+        content_type: string;
+        title: string;
+        subtitle?: string;
+        category?: string;
+        excerpt?: string;
+        content?: string;
+        external_url?: string;
+        external_site_name?: string;
+        author_name?: string;
+        author_title?: string;
+        featured_image_url?: string;
+        status: string;
+        published_at?: string;
+        display_order?: number;
+        tags?: string[];
+        metadata?: Record<string, unknown>;
+      };
 
-      if (input.title !== undefined) {
-        updates.push(`title = $${paramIndex++}`);
-        values.push(input.title);
-      }
-      if (input.content !== undefined) {
-        updates.push(`content = $${paramIndex++}`);
-        values.push(input.content);
-      }
-      if (input.excerpt !== undefined) {
-        updates.push(`excerpt = $${paramIndex++}`);
-        values.push(input.excerpt);
-      }
-      if (input.category !== undefined) {
-        updates.push(`category = $${paramIndex++}`);
-        values.push(input.category);
-      }
-      if (input.tags !== undefined) {
-        updates.push(`tags = $${paramIndex++}`);
-        values.push(input.tags);
-      }
-      if (input.author_name !== undefined) {
-        updates.push(`author_name = $${paramIndex++}`);
-        values.push(input.author_name);
-      }
+      // Check if any fields to update were provided
+      const updatableFields = ['title', 'content', 'excerpt', 'category', 'tags', 'author_name'];
+      const updatedFields = updatableFields.filter(k => input[k] !== undefined);
 
-      if (updates.length === 0) {
+      if (updatedFields.length === 0) {
         return '❌ No fields to update. Provide at least one field (title, content, excerpt, category, tags, author_name).';
       }
 
-      updates.push(`updated_at = NOW()`);
-      values.push(perspectiveId);
+      // Merge input updates with existing perspective data
+      const updateResult = await callAdminApi('PUT', `/api/admin/perspectives/${perspectiveId}`, {
+        slug: perspective.slug,
+        content_type: perspective.content_type,
+        title: input.title !== undefined ? input.title : perspective.title,
+        subtitle: perspective.subtitle,
+        category: input.category !== undefined ? input.category : perspective.category,
+        excerpt: input.excerpt !== undefined ? input.excerpt : perspective.excerpt,
+        content: input.content !== undefined ? input.content : perspective.content,
+        external_url: perspective.external_url,
+        external_site_name: perspective.external_site_name,
+        author_name: input.author_name !== undefined ? input.author_name : perspective.author_name,
+        author_title: perspective.author_title,
+        featured_image_url: perspective.featured_image_url,
+        status: perspective.status,
+        published_at: perspective.published_at,
+        display_order: perspective.display_order,
+        tags: input.tags !== undefined ? input.tags : perspective.tags,
+        metadata: perspective.metadata,
+      });
 
-      const query = `
-        UPDATE perspectives
-        SET ${updates.join(', ')}
-        WHERE id = $${paramIndex}
-        RETURNING id, slug, title, status
-      `;
+      if (!updateResult.ok) {
+        return `❌ Failed to update perspective: ${updateResult.error}`;
+      }
 
-      const result = await pool.query(query, values);
-      const updated = result.rows[0];
-
-      const updatedFields = Object.keys(input).filter(k => k !== 'perspective_id');
+      const updated = updateResult.data as typeof perspective;
 
       let response = `✅ **Perspective updated!**\n\n`;
       response += `**Title:** ${updated.title}\n`;
@@ -6512,42 +6638,77 @@ Use add_committee_leader to assign a leader.`;
     }
 
     try {
-      const pool = getPool();
+      // First get the perspective to check its status and get required fields
+      const getResult = await callAdminApi('GET', `/api/admin/perspectives/${perspectiveId}`);
 
-      // Check if perspective exists
-      const checkResult = await pool.query(
-        `SELECT id, title, status, author_name FROM perspectives WHERE id = $1`,
-        [perspectiveId]
-      );
-
-      if (checkResult.rows.length === 0) {
-        return `❌ Perspective with ID \`${perspectiveId}\` not found.`;
+      if (!getResult.ok) {
+        if (getResult.status === 404) {
+          return `❌ Perspective with ID \`${perspectiveId}\` not found.`;
+        }
+        return `❌ Failed to fetch perspective: ${getResult.error}`;
       }
 
-      const perspective = checkResult.rows[0];
+      const perspective = getResult.data as {
+        id: string;
+        slug: string;
+        content_type: string;
+        title: string;
+        subtitle?: string;
+        category?: string;
+        excerpt?: string;
+        content?: string;
+        external_url?: string;
+        external_site_name?: string;
+        author_name?: string;
+        author_title?: string;
+        featured_image_url?: string;
+        status: string;
+        published_at?: string;
+        display_order?: number;
+        tags?: string[];
+        metadata?: Record<string, unknown>;
+      };
 
       if (perspective.status === 'archived') {
         return `ℹ️ "${perspective.title}" is already archived.`;
       }
 
-      // Archive the perspective
-      const result = await pool.query(
-        `UPDATE perspectives
-         SET status = 'archived', updated_at = NOW()
-         WHERE id = $1
-         RETURNING id, slug, title, status`,
-        [perspectiveId]
-      );
+      const previousStatus = perspective.status;
 
-      const archived = result.rows[0];
+      // Archive the perspective via PUT API
+      const updateResult = await callAdminApi('PUT', `/api/admin/perspectives/${perspectiveId}`, {
+        slug: perspective.slug,
+        content_type: perspective.content_type,
+        title: perspective.title,
+        subtitle: perspective.subtitle,
+        category: perspective.category,
+        excerpt: perspective.excerpt,
+        content: perspective.content,
+        external_url: perspective.external_url,
+        external_site_name: perspective.external_site_name,
+        author_name: perspective.author_name,
+        author_title: perspective.author_title,
+        featured_image_url: perspective.featured_image_url,
+        status: 'archived',
+        published_at: perspective.published_at,
+        display_order: perspective.display_order,
+        tags: perspective.tags,
+        metadata: perspective.metadata,
+      });
+
+      if (!updateResult.ok) {
+        return `❌ Failed to archive perspective: ${updateResult.error}`;
+      }
+
+      const archived = updateResult.data as typeof perspective;
 
       let response = `✅ **Perspective archived!**\n\n`;
       response += `**Title:** ${archived.title}\n`;
       response += `**Author:** ${perspective.author_name || 'Unknown'}\n`;
-      response += `**Previous status:** ${perspective.status}\n\n`;
+      response += `**Previous status:** ${previousStatus}\n\n`;
       response += `_The perspective is no longer visible on the public site. Use \`update_perspective\` to change status back to 'published' if needed._`;
 
-      logger.info({ perspectiveId, title: archived.title, previousStatus: perspective.status }, 'Perspective archived by admin');
+      logger.info({ perspectiveId, title: archived.title, previousStatus }, 'Perspective archived by admin');
 
       return response;
     } catch (error) {

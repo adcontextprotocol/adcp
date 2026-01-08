@@ -10,6 +10,7 @@ export { createAdminFeedsRouter } from './feeds.js';
 export { createAdminNotificationChannelsRouter } from './notification-channels.js';
 export { createAdminUsersRouter } from './users.js';
 export { createAdminSettingsRouter } from './settings.js';
+export { createAdminPerspectivesRouter } from './perspectives.js';
 
 // Core admin route setup functions
 export { setupProspectRoutes } from './prospects.js';
