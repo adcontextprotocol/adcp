@@ -16,6 +16,7 @@ import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyWorkingGroupPost } from "../notifications/slack.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
+import { createChannel, setChannelPurpose } from "../slack/client.js";
 
 const logger = createLogger("committee-routes");
 
@@ -24,6 +25,27 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 // Valid committee types
 const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'industry_gathering'] as const;
+
+/**
+ * Validate slug format based on committee type.
+ * Industry gatherings use hierarchical slugs: industry-gatherings/YYYY/name
+ * Other committee types use simple slugs: lowercase letters, numbers, hyphens
+ */
+function isValidCommitteeSlug(slug: string, committeeType?: string): boolean {
+  if (committeeType === 'industry_gathering') {
+    // Industry gatherings: industry-gatherings/YYYY/name-slug
+    // Allow lowercase letters, numbers, hyphens, and forward slashes
+    // Disallow consecutive slashes, consecutive hyphens, or slash-hyphen combinations
+    return /^[a-z0-9/-]+$/.test(slug)
+      && !slug.startsWith('/')
+      && !slug.endsWith('/')
+      && !slug.includes('//')
+      && !slug.includes('--')
+      && !/-\/|\/\-/.test(slug);
+  }
+  // Standard committees: lowercase letters, numbers, hyphens only
+  return /^[a-z0-9-]+$/.test(slug) && !slug.includes('--');
+}
 type CommitteeType = typeof VALID_COMMITTEE_TYPES[number];
 
 // Initialize WorkOS client only if authentication is enabled
@@ -227,18 +249,20 @@ export function createCommitteeRouters(): {
         });
       }
 
-      const slugPattern = /^[a-z0-9-]+$/;
-      if (!slugPattern.test(slug)) {
-        return res.status(400).json({
-          error: 'Invalid slug',
-          message: 'Slug must contain only lowercase letters, numbers, and hyphens'
-        });
-      }
-
       if (committee_type && !VALID_COMMITTEE_TYPES.includes(committee_type)) {
         return res.status(400).json({
           error: 'Invalid committee type',
-          message: 'Committee type must be working_group, council, chapter, or governance'
+          message: 'Committee type must be working_group, council, chapter, governance, or industry_gathering'
+        });
+      }
+
+      if (!isValidCommitteeSlug(slug, committee_type)) {
+        const message = committee_type === 'industry_gathering'
+          ? 'Slug must contain only lowercase letters, numbers, hyphens, and forward slashes'
+          : 'Slug must contain only lowercase letters, numbers, and hyphens';
+        return res.status(400).json({
+          error: 'Invalid slug',
+          message
         });
       }
 
@@ -252,8 +276,41 @@ export function createCommitteeRouters(): {
         });
       }
 
+      // Auto-create Slack channel for industry gatherings if not provided
+      let finalSlackChannelUrl = slack_channel_url;
+      let autoCreatedChannel = null;
+      if (committee_type === 'industry_gathering' && !slack_channel_url) {
+        // Generate channel name from the name (e.g., "CES 2026" -> "ces-2026")
+        const channelName = name.toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 80);
+
+        const channelResult = await createChannel(channelName);
+        if (channelResult) {
+          finalSlackChannelUrl = channelResult.url;
+          autoCreatedChannel = channelResult;
+
+          // Set channel purpose
+          const purpose = description || `Connect with AgenticAdvertising.org members at ${name}.`;
+          await setChannelPurpose(channelResult.channel.id, purpose);
+
+          logger.info(
+            { channelId: channelResult.channel.id, name: channelName },
+            'Auto-created Slack channel for industry gathering'
+          );
+        } else {
+          logger.warn(
+            { name },
+            'Failed to auto-create Slack channel for industry gathering'
+          );
+        }
+      }
+
       const group = await workingGroupDb.createWorkingGroup({
-        name, slug, description, slack_channel_url, is_private, status, display_order,
+        name, slug, description, slack_channel_url: finalSlackChannelUrl, is_private, status, display_order,
         leader_user_ids, committee_type, region: finalRegion
       });
 
@@ -273,6 +330,10 @@ export function createCommitteeRouters(): {
       res.status(201).json({
         ...group,
         sync_result: syncResult,
+        slack_channel_auto_created: !!autoCreatedChannel,
+        slack_channel_warning: (committee_type === 'industry_gathering' && !slack_channel_url && !autoCreatedChannel)
+          ? 'Slack channel auto-creation failed. You may need to manually create and link a channel.'
+          : null,
       });
     } catch (error) {
       logger.error({ err: error }, 'Create working group error:');
@@ -292,7 +353,7 @@ export function createCommitteeRouters(): {
       if (updates.committee_type && !VALID_COMMITTEE_TYPES.includes(updates.committee_type)) {
         return res.status(400).json({
           error: 'Invalid committee type',
-          message: 'Committee type must be working_group, council, chapter, or governance'
+          message: 'Committee type must be working_group, council, chapter, governance, or industry_gathering'
         });
       }
 
@@ -300,13 +361,20 @@ export function createCommitteeRouters(): {
         updates.region = null;
       }
 
+      // Check if we're adding/changing a Slack channel
+      const existingGroup = await workingGroupDb.getWorkingGroupById(id);
+
       // Validate slug format and uniqueness if changing
       if (updates.slug) {
-        const slugPattern = /^[a-z0-9-]+$/;
-        if (!slugPattern.test(updates.slug)) {
+        // Use the committee type being set, or fall back to existing
+        const effectiveCommitteeType = updates.committee_type || existingGroup?.committee_type;
+        if (!isValidCommitteeSlug(updates.slug, effectiveCommitteeType)) {
+          const message = effectiveCommitteeType === 'industry_gathering'
+            ? 'Slug must contain only lowercase letters, numbers, hyphens, and forward slashes'
+            : 'Slug must contain only lowercase letters, numbers, and hyphens';
           return res.status(400).json({
             error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
+            message
           });
         }
 
@@ -318,9 +386,6 @@ export function createCommitteeRouters(): {
           });
         }
       }
-
-      // Check if we're adding/changing a Slack channel
-      const existingGroup = await workingGroupDb.getWorkingGroupById(id);
       const isAddingChannel = updates.slack_channel_url && (!existingGroup?.slack_channel_id || updates.slack_channel_url !== existingGroup.slack_channel_url);
 
       const group = await workingGroupDb.updateWorkingGroup(id, updates);

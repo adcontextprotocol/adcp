@@ -231,6 +231,16 @@ When adding a new prospect and you don't know their domain:
 3. Once the admin confirms, use add_prospect with the confirmed domain
 This enables automatic enrichment and better deduplication
 
+**Industry Gatherings (available to admins):**
+- create_industry_gathering: Create a temporary committee for industry conferences/events (CES, Cannes Lions, etc.). This automatically creates a Slack channel for attendee coordination. Gather the event name, dates (start/end), and location.
+- list_industry_gatherings: List all industry gatherings with dates, locations, and member counts
+
+Example flow for creating an industry gathering:
+Admin: "Can we set up a group for CES 2026?"
+→ Ask: "When is CES 2026 and where is it held?"
+→ Use create_industry_gathering with the event name, dates, and location
+→ The tool automatically creates a Slack channel (e.g., #ces-2026)
+
 **Membership & Billing (available to admins for helping prospects):**
 - find_membership_products: Find the right membership product based on company type (company/individual) and revenue tier
 - create_payment_link: Generate a Stripe checkout URL for credit card payment
