@@ -232,18 +232,60 @@ This allows extensions to be backported to earlier AdCP versions and deprecated 
 
 ### Declaring Extension Support
 
-Agents declare which typed extensions they support in their agent card's `adcp` extension:
+Agents declare which typed extensions they support in their discovery metadata. The location depends on the protocol:
+
+#### A2A Agent Cards
+
+A2A agents declare AdCP support in the `extensions` array at `/.well-known/agent.json`:
 
 ```json
 {
-  "tools": ["get_products", "create_media_buy"],
-  "adcp": {
-    "adcp_version": "2.5.0",
-    "protocols_supported": ["media_buy"],
-    "extensions_supported": ["sustainability"]
+  "name": "AdCP Media Buy Agent",
+  "skills": [{ "name": "get_products" }, { "name": "create_media_buy" }],
+  "extensions": [
+    {
+      "uri": "https://adcontextprotocol.org/extensions/adcp",
+      "description": "AdCP media buying protocol support",
+      "required": false,
+      "params": {
+        "adcp_version": "2.6.0",
+        "protocols_supported": ["media_buy"],
+        "extensions_supported": ["sustainability"]
+      }
+    }
+  ]
+}
+```
+
+See the [A2A Guide](/docs/protocols/a2a-guide#adcp-extension) for complete details.
+
+#### MCP Server Cards
+
+MCP servers declare AdCP support via the `_meta` field at `/.well-known/mcp.json` or `/.well-known/server.json`:
+
+```json
+{
+  "$schema": "https://registry.modelcontextprotocol.io/server.schema.json",
+  "name": "io.adcontextprotocol/media-buy-agent",
+  "tools": [{ "name": "get_products" }, { "name": "create_media_buy" }],
+  "_meta": {
+    "adcontextprotocol.org": {
+      "adcp_version": "2.6.0",
+      "protocols_supported": ["media_buy"],
+      "extensions_supported": ["sustainability"]
+    }
   }
 }
 ```
+
+See the [MCP Guide](/docs/protocols/mcp-guide#adcp-extension-via-mcp-server-card) for complete details.
+
+#### Extension Params Schema
+
+Both protocols use the same params structure, defined in the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json):
+- **`adcp_version`** (required): Semantic version of AdCP implemented (e.g., "2.6.0")
+- **`protocols_supported`** (required): Array of protocol domains (media_buy, creative, signals)
+- **`extensions_supported`** (optional): Array of typed extension namespaces
 
 When an agent declares support for an extension, clients can expect:
 - The agent will accept and populate `ext.{namespace}` fields conforming to that extension's schema
