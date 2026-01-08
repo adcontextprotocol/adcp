@@ -357,6 +357,37 @@ To propose a typed extension for inclusion in AdCP:
 4. **Submit an RFC** - Propose the extension with schema and use cases
 5. **If accepted** - Extension is added to `/schemas/extensions/` with appropriate `valid_from`
 
+### Reserved Namespaces
+
+The following namespaces are reserved and cannot be used for typed extensions:
+- `adcp`, `core`, `protocol`, `schema`, `meta`, `ext`, `context`
+
+These are reserved to prevent confusion with core AdCP concepts.
+
+### Extension Deprecation Policy
+
+#### When Extensions May Be Deprecated
+
+1. **Superseded** - A better extension exists with a documented migration path
+2. **Promoted to core** - The extension becomes a core AdCP field
+3. **Low adoption** - Insufficient usage across implementations
+4. **Incompatible** - Breaking changes in AdCP require removal
+
+#### Deprecation Process
+
+1. Set `valid_until` to current version + 1 minor release (minimum grace period)
+2. Announce deprecation in CHANGELOG
+3. Publish migration guide if replacement exists
+4. Add deprecation warning to extension docs
+5. Extension removed from builds after `valid_until` version
+
+#### Emergency Deprecation
+
+Security issues may require immediate deprecation:
+- `valid_until` set to current version
+- Security advisory published
+- Patch release issued
+
 ## Proposing Spec Additions
 
 If your extension field represents **common ad tech functionality** that would benefit all AdCP implementations:

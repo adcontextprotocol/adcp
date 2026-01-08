@@ -100,6 +100,23 @@ function compareMinorVersions(a, b) {
 }
 
 /**
+ * Reserved namespaces that cannot be used for typed extensions
+ * These could cause confusion with core AdCP concepts
+ */
+const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
+
+/**
+ * Validate that an extension namespace is not reserved
+ * @param {string} namespace - Extension namespace to validate
+ * @throws {Error} If namespace is reserved
+ */
+function validateExtensionNamespace(namespace) {
+  if (RESERVED_NAMESPACES.includes(namespace.toLowerCase())) {
+    throw new Error(`Namespace "${namespace}" is reserved and cannot be used for extensions`);
+  }
+}
+
+/**
  * Discover extension files from the extensions directory
  * Returns array of { namespace, schema, path } objects
  */
@@ -122,6 +139,9 @@ function discoverExtensions(extensionsDir) {
 
       // Extract namespace from $id (e.g., /schemas/extensions/sustainability.json -> sustainability)
       const namespace = file.replace('.json', '');
+
+      // Validate namespace is not reserved
+      validateExtensionNamespace(namespace);
 
       extensions.push({
         namespace,

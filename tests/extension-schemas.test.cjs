@@ -379,7 +379,22 @@ async function runTests() {
     return true;
   });
 
-  // Test 13: Discovered extensions validate against meta schema
+  // Test 13: Reserved namespaces should be rejected by build script validation
+  await test('Reserved namespaces are documented', async () => {
+    // These namespaces are reserved in scripts/build-schemas.cjs
+    const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
+
+    // Verify none of the reserved namespaces exist as extension files
+    for (const reserved of RESERVED_NAMESPACES) {
+      const reservedPath = path.join(EXTENSIONS_DIR, `${reserved}.json`);
+      if (fs.existsSync(reservedPath)) {
+        throw new Error(`Reserved namespace "${reserved}" should not exist as an extension file`);
+      }
+    }
+    return true;
+  });
+
+  // Test 14: Discovered extensions validate against meta schema
   const extensionFiles = discoverExtensionFiles();
   if (extensionFiles.length > 0) {
     for (const extensionPath of extensionFiles) {
