@@ -4885,6 +4885,139 @@ Disallow: /api/admin/
       }
     });
 
+    // ========================================
+    // User Perspectives Routes (for Addie CMS tools)
+    // ========================================
+
+    // GET /api/me/perspectives - Get current user's perspectives
+    this.app.get('/api/me/perspectives', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const status = req.query.status as string | undefined;
+        const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+
+        const pool = getPool();
+
+        let query = `
+          SELECT id, slug, content_type, title, subtitle, category, excerpt,
+                 external_url, external_site_name, author_name, author_title,
+                 status, published_at, created_at, updated_at, tags
+          FROM perspectives
+          WHERE author_user_id = $1 AND working_group_id IS NULL
+        `;
+        const params: (string | number)[] = [user.id];
+
+        if (status && status !== 'all') {
+          query += ` AND status = $${params.length + 1}`;
+          params.push(status);
+        }
+
+        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+        params.push(limit);
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'GET /api/me/perspectives error');
+        res.status(500).json({
+          error: 'Failed to get perspectives',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/me/perspectives - Create a new perspective (as draft)
+    this.app.post('/api/me/perspectives', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const {
+          title,
+          content,
+          content_type = 'article',
+          excerpt,
+          external_url,
+          external_site_name,
+          category,
+          tags = [],
+          author_name,
+          author_user_id,
+        } = req.body;
+
+        if (!title) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'title is required',
+          });
+        }
+
+        // Validate content_type
+        const validContentTypes = ['article', 'link'];
+        if (!validContentTypes.includes(content_type)) {
+          return res.status(400).json({
+            error: 'Invalid content_type',
+            message: 'content_type must be: article or link',
+          });
+        }
+
+        // Validate content_type requirements
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external_url',
+            message: 'external_url is required for link type perspectives',
+          });
+        }
+
+        if (content_type === 'article' && !content) {
+          return res.status(400).json({
+            error: 'Missing content',
+            message: 'content is required for article type perspectives',
+          });
+        }
+
+        // Generate slug from title
+        const baseSlug = title
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .substring(0, 100);
+
+        // Add timestamp suffix to make unique
+        const slug = `${baseSlug}-${Date.now().toString(36)}`;
+
+        // Use provided author info or derive from user
+        const finalAuthorName = author_name ||
+          (user.firstName && user.lastName
+            ? `${user.firstName} ${user.lastName}`
+            : user.email?.split('@')[0] || 'Anonymous');
+        const finalAuthorUserId = author_user_id || user.id;
+
+        const pool = getPool();
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            slug, content_type, title, content, excerpt,
+            external_url, external_site_name, category, tags,
+            author_name, author_user_id, status
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft')
+          RETURNING *`,
+          [
+            slug, content_type, title, content, excerpt,
+            external_url, external_site_name, category, tags,
+            finalAuthorName, finalAuthorUserId,
+          ]
+        );
+
+        logger.info({ perspectiveId: result.rows[0].id, userId: user.id, title }, 'User created perspective draft');
+        res.status(201).json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'POST /api/me/perspectives error');
+        res.status(500).json({
+          error: 'Failed to create perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /api/me/agreements - Get user's agreement acceptance history
     this.app.get('/api/me/agreements', requireAuth, async (req, res) => {
       try {

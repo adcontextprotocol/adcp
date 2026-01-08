@@ -98,6 +98,39 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool?.input_schema.properties).toHaveProperty('link_url');
   });
 
+  it('has create_perspective tool', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'create_perspective');
+    expect(tool).toBeDefined();
+    expect(tool?.input_schema.required).toContain('title');
+    expect(tool?.input_schema.properties).toHaveProperty('title');
+    expect(tool?.input_schema.properties).toHaveProperty('content');
+    expect(tool?.input_schema.properties).toHaveProperty('content_type');
+    expect(tool?.input_schema.properties).toHaveProperty('excerpt');
+    expect(tool?.input_schema.properties).toHaveProperty('external_url');
+    expect(tool?.input_schema.properties).toHaveProperty('external_site_name');
+    expect(tool?.input_schema.properties).toHaveProperty('category');
+    expect(tool?.input_schema.properties).toHaveProperty('tags');
+    // content_type should support article and link
+    const contentTypeProp = tool?.input_schema.properties.content_type as { enum?: string[] };
+    expect(contentTypeProp?.enum).toContain('article');
+    expect(contentTypeProp?.enum).toContain('link');
+  });
+
+  it('has get_my_perspectives tool', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'get_my_perspectives');
+    expect(tool).toBeDefined();
+    expect(tool?.input_schema.properties).toHaveProperty('status');
+    expect(tool?.input_schema.properties).toHaveProperty('limit');
+    // status should support draft, published, archived, all
+    const statusProp = tool?.input_schema.properties.status as { enum?: string[] };
+    expect(statusProp?.enum).toContain('draft');
+    expect(statusProp?.enum).toContain('published');
+    expect(statusProp?.enum).toContain('archived');
+    expect(statusProp?.enum).toContain('all');
+    // All fields are optional
+    expect(tool?.input_schema.required).toEqual([]);
+  });
+
   it('has get_account_link tool', () => {
     const tool = MEMBER_TOOLS.find(t => t.name === 'get_account_link');
     expect(tool).toBeDefined();
@@ -276,6 +309,8 @@ describe('createMemberToolHandlers', () => {
       'get_my_profile',
       'update_my_profile',
       'create_working_group_post',
+      'create_perspective',
+      'get_my_perspectives',
     ];
 
     it.each(userScopedTools)('%s returns auth error when not logged in', async (toolName) => {
@@ -286,6 +321,48 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('need to be logged in');
       expect(result).toContain('agenticadvertising.org');
+    });
+  });
+
+  describe('create_perspective handler', () => {
+    it('validates that link-type perspectives require external_url', async () => {
+      const handlers = createMemberToolHandlers({
+        is_mapped: true,
+        is_member: true,
+        workos_user: {
+          workos_user_id: 'user_123',
+          email: 'test@example.com',
+        },
+      });
+
+      const handler = handlers.get('create_perspective')!;
+      const result = await handler({
+        title: 'Test Link',
+        content_type: 'link',
+        // Missing external_url
+      });
+
+      expect(result).toContain('external_url is required');
+    });
+
+    it('validates that article-type perspectives require content', async () => {
+      const handlers = createMemberToolHandlers({
+        is_mapped: true,
+        is_member: true,
+        workos_user: {
+          workos_user_id: 'user_123',
+          email: 'test@example.com',
+        },
+      });
+
+      const handler = handlers.get('create_perspective')!;
+      const result = await handler({
+        title: 'Test Article',
+        content_type: 'article',
+        // Missing content
+      });
+
+      expect(result).toContain('content is required');
     });
   });
 });

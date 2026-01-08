@@ -353,6 +353,73 @@ export const MEMBER_TOOLS: AddieTool[] = [
       required: ['working_group_slug', 'title', 'content'],
     },
   },
+  {
+    name: 'create_perspective',
+    description:
+      'Create a new perspective (article or link) as a draft. The current user will be set as the author. Drafts can be published later by an admin. Use this when a member wants to write content for AgenticAdvertising.org.',
+    usage_hints: 'use for "write an article", "create a post", "submit content", "draft a perspective"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Title of the perspective',
+        },
+        content: {
+          type: 'string',
+          description: 'Content in markdown format (for articles)',
+        },
+        content_type: {
+          type: 'string',
+          enum: ['article', 'link'],
+          description: 'Type of content: article (original content) or link (external article). Default: article',
+        },
+        excerpt: {
+          type: 'string',
+          description: 'Short summary/excerpt for the perspective (optional, auto-generated if not provided)',
+        },
+        external_url: {
+          type: 'string',
+          description: 'URL for link-type perspectives (required if content_type is link)',
+        },
+        external_site_name: {
+          type: 'string',
+          description: 'Name of the external site (for link-type, e.g., "AdExchanger", "TechCrunch")',
+        },
+        category: {
+          type: 'string',
+          description: 'Category for the perspective (e.g., "opinion", "research", "announcement")',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags for the perspective (e.g., ["ctv", "measurement", "privacy"])',
+        },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'get_my_perspectives',
+    description:
+      "Get the current user's perspectives (articles/posts they've authored). Shows drafts, published, and archived content.",
+    usage_hints: 'use for "show my articles", "what have I written", "my drafts", "my perspectives"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['draft', 'published', 'archived', 'all'],
+          description: 'Filter by status. Default: all',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number to return (default 10)',
+        },
+      },
+      required: [],
+    },
+  },
 
   // ============================================
   // ACCOUNT LINKING
@@ -1181,6 +1248,123 @@ export function createMemberToolHandlers(
     }
 
     return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
+  });
+
+  handlers.set('create_perspective', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to create perspectives. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const title = input.title as string;
+    const content = input.content as string | undefined;
+    const contentType = (input.content_type as string) || 'article';
+    const excerpt = input.excerpt as string | undefined;
+    const externalUrl = input.external_url as string | undefined;
+    const externalSiteName = input.external_site_name as string | undefined;
+    const category = input.category as string | undefined;
+    const tags = input.tags as string[] | undefined;
+
+    // Validate content_type requirements
+    if (contentType === 'link' && !externalUrl) {
+      return 'For link-type perspectives, an external_url is required.';
+    }
+
+    if (contentType === 'article' && !content) {
+      return 'For article-type perspectives, content is required.';
+    }
+
+    // Get user's name for author info
+    const userName = memberContext.workos_user.first_name && memberContext.workos_user.last_name
+      ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name}`
+      : memberContext.workos_user.email?.split('@')[0] || 'Anonymous';
+
+    const body: Record<string, unknown> = {
+      title,
+      content,
+      content_type: contentType,
+      excerpt,
+      external_url: externalUrl,
+      external_site_name: externalSiteName,
+      category,
+      tags: tags || [],
+      author_name: userName,
+      author_user_id: memberContext.workos_user.workos_user_id,
+      status: 'draft', // Always create as draft
+    };
+
+    const result = await callApi('POST', '/api/me/perspectives', memberContext, body);
+
+    if (!result.ok) {
+      return `Failed to create perspective: ${result.error}`;
+    }
+
+    const perspective = result.data as { id: string; slug: string; title: string };
+
+    let response = `✅ **Perspective draft created!**\n\n`;
+    response += `**Title:** ${title}\n`;
+    response += `**Type:** ${contentType}\n`;
+    response += `**Status:** Draft\n\n`;
+    response += `Your perspective has been saved as a draft. An admin will review and publish it.\n`;
+    response += `You can view and edit your drafts using the \`get_my_perspectives\` command.`;
+
+    return response;
+  });
+
+  handlers.set('get_my_perspectives', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your perspectives. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const statusFilter = (input.status as string) || 'all';
+    const limit = (input.limit as number) || 10;
+
+    let queryParams = `limit=${limit}`;
+    if (statusFilter && statusFilter !== 'all') {
+      queryParams += `&status=${encodeURIComponent(statusFilter)}`;
+    }
+
+    const result = await callApi('GET', `/api/me/perspectives?${queryParams}`, memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch your perspectives: ${result.error}`;
+    }
+
+    const perspectives = result.data as Array<{
+      id: string;
+      slug: string;
+      title: string;
+      content_type: string;
+      status: string;
+      created_at: string;
+      published_at?: string;
+      excerpt?: string;
+    }>;
+
+    if (perspectives.length === 0) {
+      const statusLabel = statusFilter !== 'all' ? ` with status "${statusFilter}"` : '';
+      return `You don't have any perspectives${statusLabel} yet. Use \`create_perspective\` to write one!`;
+    }
+
+    let response = `## Your Perspectives\n\n`;
+    perspectives.forEach((p) => {
+      const statusEmoji = p.status === 'published' ? '✅' : p.status === 'draft' ? '📝' : '📦';
+      response += `### ${statusEmoji} ${p.title}\n`;
+      response += `**Type:** ${p.content_type} | **Status:** ${p.status}\n`;
+      response += `**Created:** ${new Date(p.created_at).toLocaleDateString()}`;
+      if (p.published_at) {
+        response += ` | **Published:** ${new Date(p.published_at).toLocaleDateString()}`;
+      }
+      response += `\n`;
+      if (p.excerpt) {
+        response += `${p.excerpt}\n`;
+      }
+      if (p.status === 'published') {
+        response += `**Read more:** https://agenticadvertising.org/perspectives/${p.slug}\n`;
+      }
+      response += `\n`;
+    });
+
+    return response;
   });
 
   // ============================================
