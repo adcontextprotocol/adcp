@@ -60,6 +60,7 @@ import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { createCommitteeRouters } from "./routes/committees.js";
+import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
@@ -3628,6 +3629,13 @@ export class HTTPServer {
     this.app.use('/api/admin/working-groups', adminApiRouter);
     this.app.use('/api/working-groups', publicApiRouter);
     this.app.use('/api/me/working-groups', userApiRouter);
+
+    // ========================================
+    // Unified Content Management Routes
+    // ========================================
+
+    this.app.use('/api/content', createContentRouter());
+    this.app.use('/api/me/content', createMyContentRouter());
 
     // ========================================
     // SEO Routes (sitemap.xml, robots.txt)

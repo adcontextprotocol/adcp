@@ -14,6 +14,7 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
+import { getPool } from '../db/client.js';
 
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
@@ -21,6 +22,62 @@ const orgDb = new OrganizationDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 const emailPrefsDb = new EmailPreferencesDatabase();
 const addieDb = new AddieDatabase();
+
+/**
+ * Get pending content count for a user
+ * Returns counts for committee leads (their committees) and admins (all)
+ */
+async function getPendingContentForUser(
+  workosUserId: string,
+  isAdmin: boolean
+): Promise<{ total: number; by_committee: Record<string, number> }> {
+  const pool = getPool();
+
+  // Get committees user leads
+  const leaderResult = await pool.query(
+    `SELECT wg.id, wg.name, wg.slug
+     FROM working_group_leaders wgl
+     JOIN working_groups wg ON wg.id = wgl.working_group_id
+     WHERE wgl.user_id = $1`,
+    [workosUserId]
+  );
+  const ledCommitteeIds = leaderResult.rows.map(c => c.id);
+
+  if (!isAdmin && ledCommitteeIds.length === 0) {
+    return { total: 0, by_committee: {} };
+  }
+
+  // Build query for pending content
+  let query = `
+    SELECT wg.slug as committee_slug, COUNT(*) as count
+    FROM perspectives p
+    LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+    WHERE p.status = 'pending_review'
+  `;
+  const params: (string | string[])[] = [];
+
+  if (!isAdmin) {
+    // Non-admins only see pending for committees they lead
+    params.push(ledCommitteeIds);
+    query += ` AND p.working_group_id = ANY($${params.length})`;
+  }
+
+  query += ` GROUP BY wg.slug`;
+
+  const result = await pool.query<{ committee_slug: string | null; count: string }>(query, params);
+
+  const byCommittee: Record<string, number> = {};
+  let total = 0;
+
+  for (const row of result.rows) {
+    const key = row.committee_slug || 'personal';
+    const count = parseInt(row.count, 10);
+    byCommittee[key] = count;
+    total += count;
+  }
+
+  return { total, by_committee: byCommittee };
+}
 
 // Cache for member context to avoid repeated lookups for the same user
 // TTL of 30 minutes - user profile data rarely changes, and we invalidate on specific events
@@ -162,6 +219,12 @@ export interface MemberContext {
     total_interactions: number;
     last_interaction_at: Date | null;
     recent_topics: string[];
+  };
+
+  /** Pending content the user can review (committee leads and admins) */
+  pending_content?: {
+    total: number;
+    by_committee: Record<string, number>;
   };
 }
 
@@ -395,6 +458,23 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         subscribed_categories: categoryPrefs.filter(c => c.enabled).map(c => c.category_name),
         unsubscribed_categories: categoryPrefs.filter(c => !c.enabled).map(c => c.category_name),
       };
+    }
+
+    // Get pending content for committee leads and admins
+    const ledCommitteeIds = context.working_groups
+      ?.filter(wg => wg.is_leader)
+      .map(wg => wg.name) || [];
+    const userIsAdmin = context.org_membership?.role === 'admin';
+
+    if (ledCommitteeIds.length > 0 || userIsAdmin) {
+      try {
+        const pendingContent = await getPendingContentForUser(workosUserId, userIsAdmin);
+        if (pendingContent.total > 0) {
+          context.pending_content = pendingContent;
+        }
+      } catch (error) {
+        logger.warn({ error, workosUserId }, 'Addie: Failed to get pending content');
+      }
     }
 
     logger.debug(
@@ -648,6 +728,21 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
+    // Step 13: Get pending content for committee leads and admins
+    const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
+    const webUserIsAdmin = context.org_membership?.role === 'admin';
+
+    if (leadsCommittees.length > 0 || webUserIsAdmin) {
+      try {
+        const pendingContent = await getPendingContentForUser(workosUserId, webUserIsAdmin);
+        if (pendingContent.total > 0) {
+          context.pending_content = pendingContent;
+        }
+      } catch (error) {
+        logger.warn({ error, workosUserId }, 'Addie Web: Failed to get pending content');
+      }
+    }
+
     logger.debug(
       {
         workosUserId,
@@ -823,6 +918,19 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
   if (!context.slack_linked) {
     lines.push('');
     lines.push('Note: This user\'s Slack account is not yet linked to their AgenticAdvertising.org account.');
+  }
+
+  // Pending content notifications (for committee leads and admins)
+  if (context.pending_content && context.pending_content.total > 0) {
+    lines.push('');
+    lines.push('### Action Required: Pending Content');
+    lines.push(`There are ${context.pending_content.total} content item(s) awaiting your review.`);
+    for (const [committee, count] of Object.entries(context.pending_content.by_committee)) {
+      const label = committee === 'personal' ? 'Personal perspectives' : committee;
+      lines.push(`- ${label}: ${count}`);
+    }
+    lines.push('');
+    lines.push('IMPORTANT: Proactively mention this pending content to the user. Use `list_pending_content` to show details when relevant, or if the user asks about pending items.');
   }
 
   // Note: Previous Addie interactions removed - Slack Assistant threads handle conversation context automatically
