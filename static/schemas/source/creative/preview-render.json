@@ -39,7 +39,10 @@
               "minimum": 0
             }
           },
-          "required": ["width", "height"]
+          "required": [
+            "width",
+            "height"
+          ]
         },
         "embedding": {
           "type": "object",
@@ -64,8 +67,13 @@
           }
         }
       },
-      "required": ["render_id", "output_format", "preview_url", "role"],
-      "additionalProperties": false
+      "required": [
+        "render_id",
+        "output_format",
+        "preview_url",
+        "role"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -101,7 +109,10 @@
               "minimum": 0
             }
           },
-          "required": ["width", "height"]
+          "required": [
+            "width",
+            "height"
+          ]
         },
         "embedding": {
           "type": "object",
@@ -126,8 +137,13 @@
           }
         }
       },
-      "required": ["render_id", "output_format", "preview_html", "role"],
-      "additionalProperties": false
+      "required": [
+        "render_id",
+        "output_format",
+        "preview_html",
+        "role"
+      ],
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -168,7 +184,10 @@
               "minimum": 0
             }
           },
-          "required": ["width", "height"]
+          "required": [
+            "width",
+            "height"
+          ]
         },
         "embedding": {
           "type": "object",
@@ -193,8 +212,14 @@
           }
         }
       },
-      "required": ["render_id", "output_format", "preview_url", "preview_html", "role"],
-      "additionalProperties": false
+      "required": [
+        "render_id",
+        "output_format",
+        "preview_url",
+        "preview_html",
+        "role"
+      ],
+      "additionalProperties": true
     }
   ]
 }

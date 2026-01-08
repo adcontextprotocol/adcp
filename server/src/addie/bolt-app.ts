@@ -44,13 +44,16 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAdmin,
-  isAdmin,
 } from './mcp/admin-tools.js';
 import {
   EVENT_TOOLS,
   createEventToolHandlers,
   canCreateEvents,
 } from './mcp/event-tools.js';
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from './mcp/billing-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
@@ -66,6 +69,7 @@ import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
+import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { initializeEmailHandler } from './email-handler.js';
@@ -74,6 +78,12 @@ import {
   extractArticleUrls,
   queueCommunityArticle,
 } from './services/community-articles.js';
+
+/**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
 
 /**
  * Slack attachment type for forwarded messages
@@ -205,6 +215,43 @@ function extractUrls(text: string): string[] {
   return urls;
 }
 
+/**
+ * Result of checking Addie's participation in a thread.
+ * Returns both the participation status and the messages to avoid duplicate API calls.
+ */
+interface ThreadParticipationResult {
+  participated: boolean;
+  messages: Awaited<ReturnType<typeof getThreadReplies>>;
+}
+
+/**
+ * Check if Addie has already participated in a thread.
+ * Used to determine if replies in a thread should be treated as implicit @mentions.
+ *
+ * When a user replies to a thread where Addie has already responded,
+ * we should respond automatically without requiring an explicit @mention.
+ * This creates a natural conversational flow.
+ *
+ * Returns both the participation status AND the thread messages to avoid
+ * a duplicate API call when building thread context.
+ */
+async function checkAddieThreadParticipation(
+  channelId: string,
+  threadTs: string,
+  botUserId: string
+): Promise<ThreadParticipationResult> {
+  try {
+    const messages = await getThreadReplies(channelId, threadTs);
+    // Check if any message in the thread is from Addie (matches bot user ID)
+    // Note: Slack messages from bots have a 'user' field matching the bot's user ID
+    const participated = messages.some(msg => msg.user === botUserId);
+    return { participated, messages };
+  } catch (error) {
+    logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to check thread participation');
+    return { participated: false, messages: [] };
+  }
+}
+
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
@@ -322,11 +369,80 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Global error handler for Bolt
   boltApp.error(async (error) => {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isAssistantError = errorMessage.includes('Assistant') || errorMessage.includes('thread_ts');
+
     logger.error({
       error,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
+      isAssistantError,
     }, 'Addie Bolt: Unhandled error');
+
+    // If this is an Assistant-related error (likely missing thread_ts on first message),
+    // the event may have been lost. Log additional context to help debug.
+    if (isAssistantError) {
+      logger.warn(
+        { errorMessage },
+        'Addie Bolt: Assistant error detected - first DM may have been lost. Check if thread_ts was missing.'
+      );
+    }
+  });
+
+  // Add middleware to handle DMs that might fail the Assistant check
+  // This catches DMs without proper thread_ts before they reach the Assistant middleware
+  // and routes them directly to handleDirectMessage.
+  // Not calling next() stops the middleware chain, preventing downstream handlers from firing.
+  boltApp.use(async ({ payload, next, context }) => {
+    // Only intercept message events in IM channels
+    if (payload.type === 'message' && 'channel_type' in payload && payload.channel_type === 'im') {
+      const hasThreadTs = 'thread_ts' in payload && payload.thread_ts !== undefined;
+      const hasTs = 'ts' in payload;
+      const hasText = 'text' in payload && payload.text;
+      const hasBotId = 'bot_id' in payload && payload.bot_id;
+      const hasSubtype = 'subtype' in payload && payload.subtype;
+      const userId = 'user' in payload ? payload.user : undefined;
+      const channelId = 'channel' in payload ? payload.channel : undefined;
+
+      logger.debug({
+        channelId,
+        userId,
+        hasThreadTs,
+        hasTs,
+        hasText: !!hasText,
+        hasBotId: !!hasBotId,
+        hasSubtype: !!hasSubtype,
+      }, 'Addie Bolt: DM message received in middleware');
+
+      // If this is a DM without thread_ts (first message in new conversation),
+      // the Assistant middleware will fail with AssistantMissingPropertyError.
+      // Route directly to handleDirectMessage instead.
+      if (!hasThreadTs && hasTs && hasText && !hasBotId && !hasSubtype && userId) {
+        logger.info({
+          channelId,
+          userId,
+          ts: payload.ts,
+        }, 'Addie Bolt: Intercepting first DM (no thread_ts) - routing directly to handleDirectMessage');
+
+        try {
+          // Route directly to handleDirectMessage
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await handleDirectMessage(
+            payload as any,
+            { botUserId: context.botUserId }
+          );
+        } catch (error) {
+          logger.error({ error, channelId, userId }, 'Addie Bolt: Error handling first DM in middleware');
+          // The message was still processed (attempted), so don't retry via next()
+        }
+
+        // Don't call next() - we've handled this event
+        return;
+      }
+    }
+
+    // For all other events, continue normal processing
+    await next();
   });
 
   // Register the assistant
@@ -433,9 +549,21 @@ async function buildMessageWithMemberContext(
       channelContextText = channelLines.join('\n');
     }
 
-    if (memberContextText || channelContextText) {
+    // Get insight goals to naturally work into conversation
+    const isMapped = !!memberContext?.is_mapped;
+    let insightGoalsText = '';
+    try {
+      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+      if (goalsPrompt) {
+        insightGoalsText = goalsPrompt;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
+    }
+
+    if (memberContextText || channelContextText || insightGoalsText) {
       // Use double newline between sections for proper markdown spacing
-      const sections = [memberContextText, channelContextText].filter(Boolean);
+      const sections = [memberContextText, channelContextText, insightGoalsText].filter(Boolean);
       return {
         message: `${sections.join('\n\n')}\n\n---\n\n${sanitizedMessage}`,
         memberContext,
@@ -461,7 +589,16 @@ async function createUserScopedTools(
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
-  const userIsAdmin = isAdmin(memberContext);
+  // Add billing tools for all users (membership signup assistance)
+  const billingHandlers = createBillingToolHandlers();
+  allTools.push(...BILLING_TOOLS);
+  for (const [name, handler] of billingHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Billing tools enabled');
+
+  // Check if user is AAO admin (based on aao-admin working group membership)
+  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
 
   // Add admin tools if user is admin
   if (userIsAdmin) {
@@ -567,6 +704,16 @@ async function handleUserMessage({
   setTitle,
   getThreadContext,
 }: AllAssistantMiddlewareArgs<AssistantUserMessageMiddlewareArgs>): Promise<void> {
+  // Log entry into Assistant's userMessage handler for debugging
+  logger.debug({
+    channelId: 'channel' in event ? event.channel : undefined,
+    userId: 'user' in event ? event.user : undefined,
+    threadTs: 'thread_ts' in event ? event.thread_ts : undefined,
+    ts: 'ts' in event ? event.ts : undefined,
+    hasText: 'text' in event && !!event.text,
+    channelType: 'channel_type' in event ? event.channel_type : undefined,
+  }, 'Addie Bolt: handleUserMessage called (Assistant handler)');
+
   if (!claudeClient) {
     logger.warn('Addie Bolt: Claude client not initialized');
     return;
@@ -585,7 +732,13 @@ async function handleUserMessage({
 
   // Skip if not a user message
   if (!userId || !messageText) {
-    logger.debug('Addie Bolt: Ignoring message event without user or text');
+    logger.debug({ userId, hasText: !!messageText }, 'Addie Bolt: Ignoring message event without user or text');
+    return;
+  }
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (userId === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: messageText?.substring(0, 50) }, 'Addie Bolt: Ignoring Slackbot system message');
     return;
   }
 
@@ -826,8 +979,11 @@ async function handleUserMessage({
     }
   }
 
-  // Build final response object if we used streaming
+  // Build final response object if we used streaming but didn't receive a 'done' event
+  // This shouldn't happen normally, but provides a fallback with logging
   if (!response) {
+    logger.warn({ fullTextLength: fullText.length, toolsUsedCount: toolsUsed.length },
+      'Addie Bolt: Streaming completed without done event - using fallback response');
     response = {
       text: fullText,
       tools_used: toolsUsed,
@@ -837,7 +993,8 @@ async function handleUserMessage({
         duration_ms: 0,
         sequence: i + 1,
       })),
-      flagged: false,
+      flagged: true,
+      flag_reason: 'Streaming completed without done event',
     };
   }
 
@@ -1062,6 +1219,32 @@ async function handleAppMention({
     },
   });
 
+  // Fetch conversation history from database for context
+  // This ensures Claude remembers what Addie said in previous turns
+  const MAX_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for mention'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch mention conversation history');
+  }
+
   // Build message with member context and channel context
   const { message: messageWithMemberContext, memberContext } = await buildMessageWithMemberContext(
     userId,
@@ -1094,7 +1277,7 @@ async function handleAppMention({
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -1386,6 +1569,17 @@ async function handleDirectMessage(
   event: { channel: string; user?: string; text?: string; ts: string; thread_ts?: string; bot_id?: string; attachments?: SlackAttachment[]; files?: SlackFile[] },
   _context: { botUserId?: string }
 ): Promise<void> {
+  // Log entry for DM debugging
+  logger.debug({
+    channelId: event.channel,
+    userId: event.user,
+    ts: event.ts,
+    threadTs: event.thread_ts,
+    hasText: !!event.text,
+    textLength: event.text?.length || 0,
+    botId: event.bot_id,
+  }, 'Addie Bolt: handleDirectMessage called');
+
   if (!claudeClient || !boltApp) {
     logger.warn('Addie Bolt: Not initialized for DM handling');
     return;
@@ -1398,6 +1592,13 @@ async function handleDirectMessage(
   }
 
   const userId = event.user;
+
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (userId === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: event.text?.substring(0, 50) }, 'Addie Bolt: Ignoring Slackbot system message in DM');
+    return;
+  }
+
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.ts;
 
@@ -1517,12 +1718,12 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the DM thread
+  // Send response in the DM channel (no threading for DMs - just back-and-forth messages)
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
       text: outputValidation.sanitized,
-      thread_ts: threadTs !== event.ts ? threadTs : undefined, // Only thread if already in a thread
+      // Don't use thread_ts for DMs - threading feels awkward in direct messages
     });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
@@ -1594,6 +1795,287 @@ async function handleDirectMessage(
 }
 
 /**
+ * Handle replies in threads where Addie has already participated.
+ *
+ * When a user replies to a thread where Addie has already responded,
+ * we treat it as an implicit @mention and respond directly. This creates
+ * natural conversational flow - users don't need to explicitly @mention
+ * Addie to continue a conversation.
+ *
+ * This is similar to DM handling but with thread context included.
+ */
+async function handleActiveThreadReply({
+  event,
+  context,
+  channelId,
+  userId,
+  messageText,
+  threadTs,
+  startTime,
+  threadService,
+  slackThreadMessages,
+}: {
+  event: SlackEventMiddlewareArgs<'message'>['event'];
+  context: { botUserId?: string };
+  channelId: string;
+  userId: string;
+  messageText: string;
+  threadTs: string;
+  startTime: number;
+  threadService: ReturnType<typeof getThreadService>;
+  slackThreadMessages: Awaited<ReturnType<typeof getThreadReplies>>;
+}): Promise<void> {
+  if (!claudeClient || !boltApp) {
+    logger.warn('Addie Bolt: Not initialized for active thread reply');
+    return;
+  }
+
+  // Build external ID for thread: channel_id:thread_ts
+  const externalId = `${channelId}:${threadTs}`;
+
+  // Sanitize input
+  const inputValidation = sanitizeInput(messageText);
+
+  // Build thread context from the messages already fetched (avoid duplicate API call)
+  const MAX_THREAD_CONTEXT_MESSAGES = 25;
+  let threadContext = '';
+
+  if (slackThreadMessages.length > 0) {
+    // Include all messages (including Addie's) for full context
+    // but exclude the current message
+    const filteredMessages = slackThreadMessages
+      .filter(msg => msg.ts !== event.ts) // Exclude current message
+      .filter(msg => (msg.text || '').trim().length > 0)
+      .slice(-MAX_THREAD_CONTEXT_MESSAGES);
+
+    // Collect user IDs for display name lookup
+    const mentionedUserIds = new Set<string>();
+    for (const msg of filteredMessages) {
+      if (msg.user && msg.user !== context.botUserId) {
+        mentionedUserIds.add(msg.user);
+      }
+      const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
+      for (const match of mentions) {
+        if (match[1] !== context.botUserId) {
+          mentionedUserIds.add(match[1]);
+        }
+      }
+    }
+
+    // Look up display names
+    const userNameMap = new Map<string, string>();
+    if (mentionedUserIds.size > 0) {
+      const lookups = await Promise.all(
+        Array.from(mentionedUserIds).map(async (uid) => {
+          const user = await getSlackUser(uid);
+          return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
+        })
+      );
+      for (const { uid, name } of lookups) {
+        if (name) {
+          userNameMap.set(uid, name);
+        }
+      }
+    }
+
+    // Format messages with speaker identification
+    const contextMessages = filteredMessages.map(msg => {
+      let text = msg.text || '';
+      const isAddie = msg.user === context.botUserId;
+      const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
+
+      // Strip bot mentions
+      if (context.botUserId) {
+        text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+      }
+      // Replace user mentions with display names
+      text = text.replace(/<@(U[A-Z0-9]+)>/gi, (match, uid) => {
+        const name = userNameMap.get(uid);
+        return name ? `@${name}` : '[someone]';
+      });
+
+      return `- ${speaker}: ${text}`;
+    });
+
+    if (contextMessages.length > 0) {
+      threadContext = `\n\n## Thread Context\nThis is a continuation of a conversation in a Slack thread. Here are the previous messages:\n${contextMessages.join('\n')}\n\n---\n`;
+      logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Built thread context for active reply');
+    }
+  }
+
+  // Get member context
+  let memberContext: MemberContext | null = null;
+  try {
+    memberContext = await getMemberContext(userId);
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for active thread reply');
+  }
+
+  // Get or create unified thread
+  const thread = await threadService.getOrCreateThread({
+    channel: 'slack',
+    external_id: externalId,
+    user_type: 'slack',
+    user_id: userId,
+    user_display_name: memberContext?.slack_user?.display_name || undefined,
+    context: {
+      channel_id: channelId,
+      message_type: 'active_thread_reply',
+    },
+  });
+
+  // Fetch conversation history from database for context
+  // This ensures Claude remembers what Addie said in previous turns
+  const MAX_DB_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_DB_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for active thread reply'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history for active thread reply');
+  }
+
+  // Build message with member context
+  const { message: messageWithMemberContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
+    userId,
+    inputValidation.sanitized
+  );
+  if (!memberContext && updatedMemberContext) {
+    memberContext = updatedMemberContext;
+  }
+
+  // Prepend thread context
+  const messageWithContext = threadContext
+    ? `${threadContext}${messageWithMemberContext}`
+    : messageWithMemberContext;
+
+  // Log user message to unified thread
+  const userMessageFlagged = inputValidation.flagged;
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'user',
+    content: messageText,
+    content_sanitized: inputValidation.sanitized,
+    flagged: userMessageFlagged,
+    flag_reason: inputValidation.reason || undefined,
+  });
+
+  // Create user-scoped tools
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+
+  // Admin users get higher iteration limit
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+
+  // Process with Claude
+  let response;
+  try {
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Error processing active thread reply');
+    response = {
+      text: "I'm sorry, I encountered an error. Please try again.",
+      tools_used: [],
+      tool_executions: [],
+      flagged: true,
+      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+    };
+  }
+
+  // Validate output
+  const outputValidation = validateOutput(response.text);
+
+  // Send response in the thread
+  try {
+    await boltApp.client.chat.postMessage({
+      channel: channelId,
+      text: outputValidation.sanitized,
+      thread_ts: threadTs, // Reply in the thread
+    });
+  } catch (error) {
+    logger.error({ error }, 'Addie Bolt: Failed to send active thread reply');
+  }
+
+  // Log assistant response to unified thread
+  const assistantFlagged = response.flagged || outputValidation.flagged;
+  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+
+  await threadService.addMessage({
+    thread_id: thread.thread_id,
+    role: 'assistant',
+    content: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    tool_calls: response.tool_executions?.map(exec => ({
+      name: exec.tool_name,
+      input: exec.parameters,
+      result: exec.result,
+      duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
+    })),
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    tokens_input: response.usage?.input_tokens,
+    tokens_output: response.usage?.output_tokens,
+    flagged: assistantFlagged,
+    flag_reason: flagReason || undefined,
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
+  });
+
+  // Flag the thread if any message was flagged
+  if (userMessageFlagged || assistantFlagged) {
+    await threadService.flagThread(
+      thread.thread_id,
+      [inputValidation.reason, flagReason].filter(Boolean).join('; ')
+    );
+  }
+
+  // Log to security audit (using 'mention' since this behaves like an implicit mention)
+  logInteraction({
+    id: thread.thread_id,
+    timestamp: new Date(),
+    event_type: 'mention',
+    channel_id: channelId,
+    thread_ts: threadTs,
+    user_id: userId,
+    input_text: messageText,
+    input_sanitized: inputValidation.sanitized,
+    output_text: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    flagged: userMessageFlagged || assistantFlagged,
+    flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
+  });
+
+  logger.info(
+    { userId, channelId, threadTs, latencyMs: Date.now() - startTime },
+    'Addie Bolt: Active thread reply sent'
+  );
+}
+
+/**
  * Handle channel messages (not mentions) for HITL proposed responses
  *
  * When Addie sees a message in a channel it's in, it uses the router to
@@ -1625,13 +2107,30 @@ async function handleChannelMessage({
   // Handle DMs differently - route to the user message handler
   // For DMs, allow messages with attachments or files even if text is empty
   if (event.channel_type === 'im') {
+    // Log detailed info for DM debugging (use same check as middleware for consistency)
+    const hasThreadTs = 'thread_ts' in event && event.thread_ts !== undefined;
+    logger.debug({
+      channelId: event.channel,
+      userId,
+      hasText,
+      hasAttachments,
+      hasFiles,
+      hasSubtype,
+      subtype: 'subtype' in event ? event.subtype : undefined,
+      hasThreadTs,
+      threadTs: 'thread_ts' in event ? event.thread_ts : undefined,
+      ts: 'ts' in event ? event.ts : undefined,
+    }, 'Addie Bolt: Received DM in handleChannelMessage');
+
     if (!hasText && !hasAttachments && !hasFiles) {
+      logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Ignoring DM without content');
       return;
     }
     if (hasSubtype) {
+      logger.debug({ channelId: event.channel, userId, subtype: 'subtype' in event ? event.subtype : undefined }, 'Addie Bolt: Ignoring DM with subtype');
       return;
     }
-    logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to user message handler');
+    logger.debug({ channelId: event.channel, userId }, 'Addie Bolt: Routing DM to handleDirectMessage');
     await handleDirectMessage(event as typeof event & { attachments?: SlackAttachment[]; files?: SlackFile[] }, context);
     return;
   }
@@ -1709,6 +2208,36 @@ async function handleChannelMessage({
 
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
+
+  // Check if this is a reply in a thread where Addie has already participated.
+  // If so, treat it as an implicit @mention and respond directly.
+  // This creates natural conversational flow when users reply to Addie's questions.
+  if (isInThread && context.botUserId) {
+    const threadTsForCheck = 'thread_ts' in event ? event.thread_ts! : event.ts;
+    const { participated, messages: slackThreadMessages } = await checkAddieThreadParticipation(
+      channelId,
+      threadTsForCheck,
+      context.botUserId
+    );
+
+    if (participated) {
+      logger.info({ channelId, userId, threadTs: threadTsForCheck },
+        'Addie Bolt: Responding to active thread reply (Addie already participating)');
+
+      await handleActiveThreadReply({
+        event,
+        context,
+        channelId,
+        userId,
+        messageText,
+        threadTs,
+        startTime,
+        threadService,
+        slackThreadMessages, // Pass messages to avoid duplicate API call
+      });
+      return;
+    }
+  }
 
   try {
     // Fetch member context and insights in parallel (both are independent)
@@ -2183,6 +2712,7 @@ async function handleReactionAdded({
     'Addie Bolt: Received reaction on Addie message'
   );
 
+  const startTime = Date.now();
   const threadService = getThreadService();
 
   // Build external ID to find the thread
@@ -2317,22 +2847,40 @@ async function handleReactionAdded({
     logger.error({ error }, 'Addie Bolt: Failed to send reaction response');
   }
 
-  // Log assistant response
-  await threadService.addMessage({
-    thread_id: thread.thread_id,
-    role: 'assistant',
-    content: response.text,
-    tools_used: response.tools_used,
-    tool_calls: response.tool_executions?.map(exec => ({
-      name: exec.tool_name,
-      input: exec.parameters,
-      result: exec.result,
-    })),
-    model: AddieModelConfig.chat,
-  });
+  // Log assistant response with performance data
+  try {
+    await threadService.addMessage({
+      thread_id: thread.thread_id,
+      role: 'assistant',
+      content: response.text,
+      tools_used: response.tools_used,
+      tool_calls: response.tool_executions?.map(exec => ({
+        name: exec.tool_name,
+        input: exec.parameters,
+        result: exec.result,
+        duration_ms: exec.duration_ms,
+        is_error: exec.is_error,
+      })),
+      model: AddieModelConfig.chat,
+      latency_ms: Date.now() - startTime,
+      tokens_input: response.usage?.input_tokens,
+      tokens_output: response.usage?.output_tokens,
+      timing: response.timing ? {
+        system_prompt_ms: response.timing.system_prompt_ms,
+        total_llm_ms: response.timing.total_llm_ms,
+        total_tool_ms: response.timing.total_tool_execution_ms,
+        iterations: response.timing.iterations,
+      } : undefined,
+      tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+      tokens_cache_read: response.usage?.cache_read_input_tokens,
+      active_rule_ids: response.active_rule_ids,
+    });
+  } catch (error) {
+    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to log reaction response');
+  }
 
   logger.info(
-    { threadId: thread.thread_id, reaction, isConfirmation: isConfirmationRequest },
+    { threadId: thread.thread_id, reaction, isConfirmation: isConfirmationRequest, latencyMs: Date.now() - startTime },
     'Addie Bolt: Processed reaction and responded'
   );
 }

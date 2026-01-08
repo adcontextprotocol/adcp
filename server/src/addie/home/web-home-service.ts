@@ -7,7 +7,7 @@
 
 import type { HomeContent, GreetingSection } from './types.js';
 import { getWebMemberContext, type MemberContext } from '../member-context.js';
-import { isAdmin } from '../mcp/admin-tools.js';
+import { isWebUserAdmin } from '../mcp/admin-tools.js';
 import { buildAlerts } from './builders/alerts.js';
 import { buildQuickActions } from './builders/quick-actions.js';
 import { buildActivityFeed } from './builders/activity.js';
@@ -24,14 +24,17 @@ export async function getWebHomeContent(workosUserId: string): Promise<HomeConte
   // Get member context for web user
   const memberContext = await getWebMemberContext(workosUserId);
 
-  // Check if user is admin (based on org membership role)
-  const userIsAdmin = isAdmin(memberContext);
+  // Check if user is AAO admin (based on aao-admin working group membership)
+  const userIsAdmin = await isWebUserAdmin(workosUserId);
+
+  // Get admin user ID for prospect stats (if admin)
+  const adminUserId = userIsAdmin ? workosUserId : undefined;
 
   // Build all sections in parallel for speed
   const [alerts, activity, adminPanel] = await Promise.all([
     buildAlerts(memberContext),
     buildActivityFeed(memberContext),
-    userIsAdmin ? buildAdminPanel() : Promise.resolve(null),
+    userIsAdmin ? buildAdminPanel(adminUserId) : Promise.resolve(null),
   ]);
 
   // Build synchronous sections

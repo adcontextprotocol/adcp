@@ -4,5 +4,8 @@
   "title": "Sort Direction",
   "description": "Sort direction for list queries",
   "type": "string",
-  "enum": ["asc", "desc"]
+  "enum": [
+    "asc",
+    "desc"
+  ]
 }

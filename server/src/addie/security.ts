@@ -166,6 +166,48 @@ export function stripBotMention(text: string, botUserId: string): string {
 }
 
 /**
+ * Resolve Slack user mentions to include names for better LLM understanding.
+ *
+ * Converts raw Slack mentions like <@U0A1RAMRWNS> to annotated format like
+ * <@U0A1RAMRWNS|Ankuj> so the LLM can understand who is being mentioned.
+ *
+ * @param text - Message text containing Slack mentions
+ * @param lookupUser - Function to look up user name by Slack ID
+ * @returns Text with resolved mentions
+ */
+export async function resolveSlackMentions(
+  text: string,
+  lookupUser: (slackUserId: string) => Promise<string | null>
+): Promise<string> {
+  // Find all Slack user mentions: <@U...> (not already resolved with |name)
+  const mentionPattern = /<@(U[A-Z0-9]+)>(?!\|)/g;
+  const mentions = [...text.matchAll(mentionPattern)];
+
+  if (mentions.length === 0) {
+    return text;
+  }
+
+  // Look up each mentioned user
+  let result = text;
+  for (const match of mentions) {
+    const slackUserId = match[1];
+    const name = await lookupUser(slackUserId);
+    if (name) {
+      // Escape $ characters in name to prevent special replacement string behavior
+      // In JS replace(), $ has special meaning ($&, $1, $', $`)
+      const escapedName = name.replace(/\$/g, '$$$$');
+      // Replace <@U...> with <@U...|Name> so LLM knows who is mentioned
+      result = result.replace(
+        new RegExp(`<@${slackUserId}>`, 'g'),
+        `<@${slackUserId}|${escapedName}>`
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
  * Log an interaction for audit purposes
  */
 export function logInteraction(log: AddieInteractionLog): void {

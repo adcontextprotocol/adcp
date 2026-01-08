@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/bundled/media-buy/get-media-buy-delivery-request.json",
+  "title": "Get Media Buy Delivery Request",
+  "description": "Request parameters for retrieving comprehensive delivery metrics",
+  "type": "object",
+  "properties": {
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Array of publisher media buy IDs to get delivery data for",
+      "items": {
+        "type": "string"
+      }
+    },
+    "buyer_refs": {
+      "type": "array",
+      "description": "Array of buyer reference IDs to get delivery data for",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status_filter": {
+      "oneOf": [
+        {
+          "title": "Media Buy Status",
+          "description": "Status of a media buy",
+          "type": "string",
+          "enum": [
+            "pending_activation",
+            "active",
+            "paused",
+            "completed"
+          ],
+          "enumDescriptions": {
+            "pending_activation": "Media buy created but not yet activated",
+            "active": "Media buy is currently running",
+            "paused": "Media buy is temporarily paused",
+            "completed": "Media buy has finished running"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "title": "Media Buy Status",
+            "description": "Status of a media buy",
+            "type": "string",
+            "enum": [
+              "pending_activation",
+              "active",
+              "paused",
+              "completed"
+            ],
+            "enumDescriptions": {
+              "pending_activation": "Media buy created but not yet activated",
+              "active": "Media buy is currently running",
+              "paused": "Media buy is temporarily paused",
+              "completed": "Media buy has finished running"
+            }
+          }
+        }
+      ],
+      "description": "Filter by status. Can be a single status or array of statuses"
+    },
+    "start_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Start date for reporting period (YYYY-MM-DD)"
+    },
+    "end_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "End date for reporting period (YYYY-MM-DD)"
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-01-07T19:56:54.827Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

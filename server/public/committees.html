@@ -135,6 +135,15 @@
       font-weight: var(--font-medium);
     }
 
+    .group-card-title .launching-badge {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+      border-radius: var(--radius-md);
+      font-weight: var(--font-medium);
+    }
+
     .region-badge {
       display: inline-flex;
       align-items: center;
@@ -250,6 +259,32 @@
     }
 
     .view-group-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .interest-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+      border: var(--border-1) solid var(--color-primary-200);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      transition: var(--transition-colors);
+      cursor: pointer;
+    }
+
+    .interest-btn:hover {
+      background: var(--color-primary-200);
+      border-color: var(--color-brand);
+    }
+
+    .interest-btn svg {
       width: 16px;
       height: 16px;
     }
@@ -389,6 +424,7 @@
       <a href="/committees?type=working_group" class="type-tab" id="tab-working_group">Working Groups</a>
       <a href="/committees?type=council" class="type-tab" id="tab-council">Industry Councils</a>
       <a href="/committees?type=chapter" class="type-tab" id="tab-chapter">Regional Chapters</a>
+      <a href="/committees?type=industry_gathering" class="type-tab" id="tab-industry_gathering">Industry Gatherings</a>
     </div>
 
     <!-- User's Groups (shown when logged in and member of groups) -->
@@ -506,6 +542,19 @@
         joinCta: 'Become an AAO member to join regional chapters and connect with practitioners in your area.',
         viewButton: 'View Chapter',
         apiType: 'chapter'
+      },
+      industry_gathering: {
+        title: 'Industry Gatherings',
+        pageTitle: 'Industry Gatherings | AgenticAdvertising.org',
+        subtitle: 'Coordinate with AAO members at major industry events',
+        sectionTitle: 'All Industry Gatherings',
+        sectionDesc: 'Industry gatherings help members connect at conferences and trade shows like CES, Cannes Lions, and more.',
+        emptyTitle: 'No Upcoming Gatherings',
+        emptyMessage: 'No industry gatherings are scheduled. Check back soon!',
+        myGroupsTitle: 'Your Gatherings',
+        joinCta: 'Become an AAO member to coordinate meetups at industry events.',
+        viewButton: 'View Gathering',
+        apiType: 'industry_gathering'
       }
     };
 
@@ -661,6 +710,26 @@
       const hasLeadership = group.leaders && group.leaders.length > 0;
       const showRegion = group.committee_type === 'chapter' && group.region;
       const regionDisplay = showRegion ? `<div class="region-badge">📍 ${escapeHtml(group.region)}</div>` : '';
+      const isCouncil = group.committee_type === 'council';
+      const isLaunching = isCouncil && (group.member_count || 0) === 0;
+
+      // For launching councils, show interest button instead of member count
+      const footerLeft = isLaunching
+        ? `<button class="interest-btn" onclick="event.preventDefault(); event.stopPropagation(); handleInterest('${escapeHtml(group.slug)}', '${escapeHtml(group.name)}', this);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+            I'm Interested
+          </button>`
+        : `<span class="member-count">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            ${group.member_count || 0} member${group.member_count !== 1 ? 's' : ''}
+          </span>`;
 
       return `
         <a href="/working-groups/${escapeHtml(group.slug)}" class="group-card">
@@ -668,6 +737,7 @@
             <h3 class="group-card-title">
               ${escapeHtml(group.name)}
               ${group.is_private ? '<span class="private-badge">Private</span>' : ''}
+              ${isLaunching ? '<span class="launching-badge">Launching Soon</span>' : ''}
             </h3>
             ${regionDisplay}
             ${group.description ? `<p class="group-card-description">${escapeHtml(truncateText(group.description, 150))}</p>` : ''}
@@ -677,29 +747,23 @@
             ${hasLeadership ? `
               <div class="group-leadership">
                 <div class="group-leadership-title">Leadership</div>
-                ${group.leaders.map(leader => `
+                ${group.leaders.map(leader => {
+                  const displayName = leader.name || leader.user_id;
+                  return `
                   <div class="leader-item">
-                    <div class="leader-avatar">${getInitials(leader.name || 'Unknown')}</div>
+                    <div class="leader-avatar">${getInitials(displayName)}</div>
                     <div class="leader-info">
-                      <div class="leader-name">${escapeHtml(leader.name || 'Unknown')}</div>
+                      <div class="leader-name">${escapeHtml(displayName)}</div>
                       <div class="leader-role">Leader${leader.org_name ? ' · ' + escapeHtml(leader.org_name) : ''}</div>
                     </div>
                   </div>
-                `).join('')}
+                `}).join('')}
               </div>
             ` : ''}
           </div>
 
           <div class="group-card-footer">
-            <span class="member-count">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
-              ${group.member_count || 0} member${group.member_count !== 1 ? 's' : ''}
-            </span>
+            ${footerLeft}
             <span class="view-group-btn">
               ${config.viewButton}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -726,6 +790,80 @@
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML;
+    }
+
+    async function handleInterest(committeeSlug, committeeName, buttonEl) {
+      try {
+        // Disable button and show loading state
+        buttonEl.disabled = true;
+        const originalHtml = buttonEl.innerHTML;
+        buttonEl.innerHTML = 'Registering...';
+
+        const response = await fetch(`/api/working-groups/${committeeSlug}/interest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ interest_level: 'participant' })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Redirect to login
+            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+          throw new Error('Failed to register interest');
+        }
+
+        const data = await response.json();
+
+        // Update button to show success
+        buttonEl.outerHTML = `<span class="member-count" style="background: var(--color-success-100); color: var(--color-success-700);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          Interest Registered
+        </span>`;
+
+        // Show a quick toast notification
+        showToast(data.message || `Thanks for your interest in ${committeeName}!`);
+
+      } catch (error) {
+        console.error('Error registering interest:', error);
+        buttonEl.disabled = false;
+        buttonEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+        </svg>
+        I'm Interested`;
+        showToast('Failed to register interest. Please try again.', 'error');
+      }
+    }
+
+    // Simple toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: ${type === 'error' ? 'var(--color-error-600)' : 'var(--color-success-600)'};
+        color: white;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
     }
 
     init();

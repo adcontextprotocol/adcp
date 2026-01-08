@@ -41,7 +41,9 @@
             "description": "Logo height in pixels"
           }
         },
-        "required": ["url"]
+        "required": [
+          "url"
+        ]
       }
     },
     "colors": {
@@ -165,8 +167,12 @@
             "additionalProperties": true
           }
         },
-        "required": ["asset_id", "asset_type", "url"],
-        "additionalProperties": false
+        "required": [
+          "asset_id",
+          "asset_type",
+          "url"
+        ],
+        "additionalProperties": true
       }
     },
     "product_catalog": {
@@ -180,7 +186,11 @@
         },
         "feed_format": {
           "type": "string",
-          "enum": ["google_merchant_center", "facebook_catalog", "custom"],
+          "enum": [
+            "google_merchant_center",
+            "facebook_catalog",
+            "custom"
+          ],
           "default": "google_merchant_center",
           "description": "Format of the product feed"
         },
@@ -198,12 +208,19 @@
         },
         "update_frequency": {
           "type": "string",
-          "enum": ["realtime", "hourly", "daily", "weekly"],
+          "enum": [
+            "realtime",
+            "hourly",
+            "daily",
+            "weekly"
+          ],
           "description": "How frequently the product catalog is updated"
         }
       },
-      "required": ["feed_url"],
-      "additionalProperties": false
+      "required": [
+        "feed_url"
+      ],
+      "additionalProperties": true
     },
     "disclaimers": {
       "type": "array",
@@ -225,7 +242,9 @@
             "default": true
           }
         },
-        "required": ["text"]
+        "required": [
+          "text"
+        ]
       }
     },
     "industry": {
@@ -272,8 +291,10 @@
       }
     }
   },
-  "required": ["name"],
-  "additionalProperties": false,
+  "required": [
+    "name"
+  ],
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Example with both URL and name",
@@ -299,71 +320,89 @@
         "url": "https://acmecorp.com",
         "name": "ACME Corporation",
         "logos": [
-        {
-          "url": "https://cdn.acmecorp.com/logo-square-dark.png",
-          "tags": ["dark", "square"],
-          "width": 512,
-          "height": 512
+          {
+            "url": "https://cdn.acmecorp.com/logo-square-dark.png",
+            "tags": [
+              "dark",
+              "square"
+            ],
+            "width": 512,
+            "height": 512
+          },
+          {
+            "url": "https://cdn.acmecorp.com/logo-horizontal-light.png",
+            "tags": [
+              "light",
+              "horizontal"
+            ],
+            "width": 1200,
+            "height": 400
+          }
+        ],
+        "colors": {
+          "primary": "#FF6B35",
+          "secondary": "#004E89",
+          "accent": "#F7931E",
+          "background": "#FFFFFF",
+          "text": "#1A1A1A"
         },
-        {
-          "url": "https://cdn.acmecorp.com/logo-horizontal-light.png",
-          "tags": ["light", "horizontal"],
-          "width": 1200,
-          "height": 400
-        }
-      ],
-      "colors": {
-        "primary": "#FF6B35",
-        "secondary": "#004E89",
-        "accent": "#F7931E",
-        "background": "#FFFFFF",
-        "text": "#1A1A1A"
-      },
-      "fonts": {
-        "primary": "Helvetica Neue",
-        "secondary": "Georgia"
-      },
-      "tone": "professional and trustworthy",
-      "tagline": "Innovation You Can Trust",
-      "assets": [
-        {
-          "asset_id": "hero_winter_2024",
-          "asset_type": "image",
-          "url": "https://cdn.acmecorp.com/hero-winter-2024.jpg",
-          "tags": ["hero", "winter", "holiday", "lifestyle"],
-          "name": "Winter Campaign Hero",
-          "width": 1920,
-          "height": 1080,
-          "format": "jpg"
+        "fonts": {
+          "primary": "Helvetica Neue",
+          "secondary": "Georgia"
         },
-        {
-          "asset_id": "product_video_30s",
-          "asset_type": "video",
-          "url": "https://cdn.acmecorp.com/product-demo-30s.mp4",
-          "tags": ["product", "demo", "30s"],
-          "name": "Product Demo 30 Second",
-          "width": 1920,
-          "height": 1080,
-          "duration_seconds": 30,
-          "format": "mp4"
-        }
-      ],
-      "product_catalog": {
-        "feed_url": "https://acmecorp.com/products.xml",
-        "feed_format": "google_merchant_center",
-        "categories": ["electronics/computers", "electronics/accessories"],
-        "last_updated": "2024-03-15T10:00:00Z",
-        "update_frequency": "hourly"
-      },
-      "disclaimers": [
-        {
-          "text": "Results may vary. Consult a professional before use.",
-          "context": "health_claims",
-          "required": true
-        }
-      ],
-      "industry": "technology",
-      "target_audience": "business decision-makers aged 35-55"
+        "tone": "professional and trustworthy",
+        "tagline": "Innovation You Can Trust",
+        "assets": [
+          {
+            "asset_id": "hero_winter_2024",
+            "asset_type": "image",
+            "url": "https://cdn.acmecorp.com/hero-winter-2024.jpg",
+            "tags": [
+              "hero",
+              "winter",
+              "holiday",
+              "lifestyle"
+            ],
+            "name": "Winter Campaign Hero",
+            "width": 1920,
+            "height": 1080,
+            "format": "jpg"
+          },
+          {
+            "asset_id": "product_video_30s",
+            "asset_type": "video",
+            "url": "https://cdn.acmecorp.com/product-demo-30s.mp4",
+            "tags": [
+              "product",
+              "demo",
+              "30s"
+            ],
+            "name": "Product Demo 30 Second",
+            "width": 1920,
+            "height": 1080,
+            "duration_seconds": 30,
+            "format": "mp4"
+          }
+        ],
+        "product_catalog": {
+          "feed_url": "https://acmecorp.com/products.xml",
+          "feed_format": "google_merchant_center",
+          "categories": [
+            "electronics/computers",
+            "electronics/accessories"
+          ],
+          "last_updated": "2024-03-15T10:00:00Z",
+          "update_frequency": "hourly"
+        },
+        "disclaimers": [
+          {
+            "text": "Results may vary. Consult a professional before use.",
+            "context": "health_claims",
+            "required": true
+          }
+        ],
+        "industry": "technology",
+        "target_audience": "business decision-makers aged 35-55"
       }
     }
   ]

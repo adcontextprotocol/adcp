@@ -43,6 +43,7 @@ import {
 } from "./notifications/billing.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
+import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
@@ -57,12 +58,15 @@ import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
+import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
 import { sendCommunityReplies } from "./addie/services/community-articles.js";
 import { sendChannelMessage } from "./slack/client.js";
+import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
+import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -113,6 +117,10 @@ const AUTH_ENABLED = !!(
   process.env.WORKOS_COOKIE_PASSWORD &&
   process.env.WORKOS_COOKIE_PASSWORD.length >= 32
 );
+
+// PostHog config - only enabled if API key is set
+const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY || null;
+const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
 // Initialize WorkOS client only if authentication is enabled
 const workos = AUTH_ENABLED ? new WorkOS(process.env.WORKOS_API_KEY!, {
@@ -177,6 +185,76 @@ function setCachedUser(userId: string, displayName: string): void {
 }
 
 /**
+ * Upsert invoice data to local cache (org_invoices table).
+ * Called from Stripe webhook handlers to keep invoice data in sync.
+ */
+async function upsertInvoiceCache(
+  pool: ReturnType<typeof getPool>,
+  invoice: Stripe.Invoice,
+  workosOrgId: string | null,
+  productName: string | null = null
+): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO org_invoices (
+        stripe_invoice_id,
+        stripe_customer_id,
+        workos_organization_id,
+        status,
+        amount_due,
+        amount_paid,
+        currency,
+        invoice_number,
+        hosted_invoice_url,
+        invoice_pdf,
+        product_name,
+        customer_email,
+        created_at,
+        due_date,
+        paid_at,
+        voided_at,
+        stripe_updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+      ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        amount_due = EXCLUDED.amount_due,
+        amount_paid = EXCLUDED.amount_paid,
+        invoice_number = EXCLUDED.invoice_number,
+        hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+        invoice_pdf = EXCLUDED.invoice_pdf,
+        product_name = COALESCE(EXCLUDED.product_name, org_invoices.product_name),
+        customer_email = EXCLUDED.customer_email,
+        paid_at = EXCLUDED.paid_at,
+        voided_at = EXCLUDED.voided_at,
+        stripe_updated_at = NOW()`,
+      [
+        invoice.id,
+        invoice.customer as string,
+        workosOrgId,
+        invoice.status,
+        invoice.amount_due,
+        invoice.amount_paid,
+        invoice.currency,
+        invoice.number || null,
+        invoice.hosted_invoice_url || null,
+        invoice.invoice_pdf || null,
+        productName,
+        typeof invoice.customer_email === 'string' ? invoice.customer_email : null,
+        new Date(invoice.created * 1000),
+        invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+        invoice.status === 'paid' && invoice.status_transitions?.paid_at
+          ? new Date(invoice.status_transitions.paid_at * 1000)
+          : null,
+        invoice.status === 'void' ? new Date() : null,
+      ]
+    );
+    logger.debug({ invoiceId: invoice.id, status: invoice.status }, 'Invoice cache updated');
+  } catch (err) {
+    logger.error({ err, invoiceId: invoice.id }, 'Failed to update invoice cache');
+  }
+}
+
+/**
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
@@ -196,15 +274,26 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       lastName: user.lastName,
       isAdmin,
     } : null,
+    posthog: POSTHOG_API_KEY ? {
+      apiKey: POSTHOG_API_KEY,
+      host: POSTHOG_HOST,
+    } : null,
   };
 }
 
 /**
- * Generate the script tag to inject app config into HTML.
+ * Generate the script tags to inject app config and PostHog into HTML.
  */
 function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null): string {
   const config = buildAppConfig(user);
-  return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+  const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+
+  // Add PostHog script if API key is configured
+  const posthogScript = POSTHOG_API_KEY
+    ? `<script src="/posthog-init.js" defer></script>`
+    : '';
+
+  return `${configScript}\n${posthogScript}`;
 }
 
 /**
@@ -294,6 +383,8 @@ export class HTTPServer {
   private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
   private alertProcessorIntervalId: NodeJS.Timeout | null = null;
   private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
+  private taskReminderIntervalId: NodeJS.Timeout | null = null;
+  private engagementScoringIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -359,7 +450,163 @@ export class HTTPServer {
     const distPath = process.env.NODE_ENV === 'production'
       ? __dirname
       : path.join(__dirname, "../../dist");
-    this.app.use('/schemas', express.static(path.join(distPath, 'schemas')));
+    const schemasPath = path.join(distPath, 'schemas');
+
+    // Cache for schema version directories (refreshed every 60 seconds)
+    let versionCache: { versions: string[], timestamp: number } | null = null;
+    const CACHE_TTL_MS = 60 * 1000;
+
+    async function getSchemaVersions(): Promise<string[]> {
+      const now = Date.now();
+      if (versionCache && (now - versionCache.timestamp) < CACHE_TTL_MS) {
+        return versionCache.versions;
+      }
+
+      const entries = await fs.readdir(schemasPath, { withFileTypes: true });
+      const versions = entries
+        .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+        .map(e => e.name)
+        .sort((a, b) => {
+          // Sort by semver (descending)
+          const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
+          const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
+          if (aMajor !== bMajor) return bMajor - aMajor;
+          if (aMinor !== bMinor) return bMinor - aMinor;
+          return bPatch - aPatch;
+        });
+
+      versionCache = { versions, timestamp: now };
+      return versions;
+    }
+
+    function parseSemver(version: string): { major: number, minor: number, patch: number } {
+      const [major, minor, patch] = version.split('.').map(Number);
+      return { major, minor, patch };
+    }
+
+    function findMatchingVersion(versions: string[], requestedMajor: number, requestedMinor?: number): string | undefined {
+      // Find the latest version that matches the requested major (and optionally minor)
+      return versions.find(v => {
+        const { major, minor } = parseSemver(v);
+        if (major !== requestedMajor) return false;
+        if (requestedMinor !== undefined && minor !== requestedMinor) return false;
+        return true;
+      });
+    }
+
+    // Middleware to resolve version aliases (e.g., v2.5 → 2.5.1)
+    // This handles cases where symlinks don't exist (e.g., in Docker)
+    this.app.use('/schemas', async (req, res, next) => {
+      // Match version alias patterns: /v2/, /v2.5/, /v2.6/, /v1/
+      const versionMatch = req.path.match(/^\/v(\d+)(?:\.(\d+))?(\/.*)?$/);
+      if (!versionMatch) {
+        return next();
+      }
+
+      const requestedMajor = parseInt(versionMatch[1], 10);
+      const requestedMinor = versionMatch[2] ? parseInt(versionMatch[2], 10) : undefined;
+      const restOfPath = versionMatch[3] || '/';
+
+      // Special case: v1 always points to latest
+      if (requestedMajor === 1 && requestedMinor === undefined) {
+        req.url = '/latest' + restOfPath;
+        return next();
+      }
+
+      try {
+        const versions = await getSchemaVersions();
+        const targetVersion = findMatchingVersion(versions, requestedMajor, requestedMinor);
+
+        if (targetVersion) {
+          req.url = '/' + targetVersion + restOfPath;
+        }
+      } catch {
+        // If we can't read the directory, let static middleware handle it
+      }
+      next();
+    });
+
+    // Redirect version directory requests to index.json
+    // e.g., /schemas/2.6.0/ → /schemas/2.6.0/index.json
+    this.app.use('/schemas', (req, res, next) => {
+      // Match paths like /2.6.0/ or /latest/ (directory requests)
+      if (req.path.match(/^\/(\d+\.\d+\.\d+|latest)\/$/)) {
+        return res.redirect(req.path + 'index.json');
+      }
+      next();
+    });
+
+    // Schema discovery endpoint - returns available versions and aliases
+    this.app.get('/schemas/', async (req, res) => {
+      try {
+        const versions = await getSchemaVersions();
+        const latestPerMinor: Record<string, string> = {};
+        let latestMajorVersion: string | undefined;
+
+        for (const version of versions) {
+          const { major, minor } = parseSemver(version);
+          const minorKey = `${major}.${minor}`;
+
+          // First version in sorted list is the overall latest
+          if (!latestMajorVersion) {
+            latestMajorVersion = version;
+          }
+
+          // Track latest patch for each minor
+          if (!latestPerMinor[minorKey]) {
+            latestPerMinor[minorKey] = version;
+          }
+        }
+
+        // Build aliases list
+        const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
+
+        // v1 -> latest (backward compatibility)
+        aliases.push({
+          alias: "v1",
+          resolves_to: "latest",
+          path: "/schemas/v1/"
+        });
+
+        // Major version aliases (e.g., v2 -> 2.6.0)
+        if (latestMajorVersion) {
+          const { major } = parseSemver(latestMajorVersion);
+          aliases.push({
+            alias: `v${major}`,
+            resolves_to: latestMajorVersion,
+            path: `/schemas/v${major}/`
+          });
+        }
+
+        // Minor version aliases (e.g., v2.5 -> 2.5.1)
+        for (const [minorKey, version] of Object.entries(latestPerMinor)) {
+          aliases.push({
+            alias: `v${minorKey}`,
+            resolves_to: version,
+            path: `/schemas/v${minorKey}/`
+          });
+        }
+
+        // Sort aliases for consistent output
+        aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
+
+        res.json({
+          versions: versions.map(v => ({
+            version: v,
+            path: `/schemas/${v}/`
+          })),
+          aliases,
+          latest: {
+            path: "/schemas/latest/",
+            note: "Development version, may differ from released versions"
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to list schema versions" });
+      }
+    });
+
+    this.app.use('/schemas', express.static(schemasPath));
 
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
@@ -504,6 +751,11 @@ export class HTTPServer {
     const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
     this.app.use('/admin', insightsPageRouter);      // Page routes: /admin/insights, /admin/insight-types, etc.
     this.app.use('/api/admin', insightsApiRouter);   // API routes: /api/admin/insights, /api/admin/insight-types, etc.
+
+    // Mount admin outbound planner routes (goals, rehearsal)
+    const { pageRouter: outboundPageRouter, apiRouter: outboundApiRouter } = createAdminOutboundRouter();
+    this.app.use('/admin', outboundPageRouter);          // Page routes: /admin/goals, /admin/rehearsal
+    this.app.use('/api/admin/outbound', outboundApiRouter); // API routes: /api/admin/outbound/goals, /api/admin/outbound/rehearsal
 
     // Mount Addie admin routes
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
@@ -1052,6 +1304,7 @@ export class HTTPServer {
       }
 
       const user = req.user ? {
+        id: req.user.id,
         email: req.user.email,
         firstName: req.user.firstName,
         lastName: req.user.lastName,
@@ -1434,6 +1687,11 @@ export class HTTPServer {
 
     this.app.get("/chapters", (req, res) => {
       res.redirect(301, '/committees?type=chapter');
+    });
+
+    // Industry Gatherings page (events with attendee groups)
+    this.app.get("/industry-gatherings", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'industry-gatherings.html');
     });
 
     this.app.get("/working-groups/:slug", async (req, res) => {
@@ -1967,6 +2225,47 @@ export class HTTPServer {
             break;
           }
 
+          // Invoice lifecycle events - cache for prospects page (avoids Stripe API calls)
+          case 'invoice.created':
+          case 'invoice.updated':
+          case 'invoice.finalized':
+          case 'invoice.voided': {
+            const invoice = event.data.object as Stripe.Invoice;
+            logger.debug({
+              invoiceId: invoice.id,
+              status: invoice.status,
+              eventType: event.type,
+            }, 'Invoice lifecycle event');
+
+            // Find org by customer ID
+            const customerId = invoice.customer as string;
+            const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            // Get product name from line items if available
+            let productName: string | null = null;
+            if (invoice.lines?.data && invoice.lines.data.length > 0) {
+              const primaryLine = invoice.lines.data[0] as any;
+              const productId = primaryLine.price?.product as string;
+              if (productId && stripe) {
+                try {
+                  const product = await stripe.products.retrieve(productId);
+                  productName = product.name;
+                } catch (err) {
+                  logger.debug({ err, productId, invoiceId: invoice.id }, 'Failed to retrieve product name, using fallback');
+                  productName = primaryLine.description || null;
+                }
+              }
+            }
+
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              productName
+            );
+            break;
+          }
+
           case 'invoice.payment_succeeded':
           case 'invoice.paid': {
             const invoice = event.data.object as Stripe.Invoice;
@@ -2232,6 +2531,29 @@ export class HTTPServer {
                 );
               }
             }
+
+            // Update invoice cache (for prospects page - avoids Stripe API calls)
+            // Get product name for cache even if we didn't process revenue above
+            let cachedProductName: string | null = null;
+            if (invoice.lines?.data && invoice.lines.data.length > 0) {
+              const primaryLine = invoice.lines.data[0] as any;
+              const cachedProductId = primaryLine.price?.product as string;
+              if (cachedProductId && stripe) {
+                try {
+                  const product = await stripe.products.retrieve(cachedProductId);
+                  cachedProductName = product.name;
+                } catch (err) {
+                  logger.debug({ err, productId: cachedProductId, invoiceId: invoice.id }, 'Failed to retrieve product name for cache, using fallback');
+                  cachedProductName = primaryLine.description || null;
+                }
+              }
+            }
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              cachedProductName
+            );
             break;
           }
 
@@ -2303,6 +2625,14 @@ export class HTTPServer {
                 attemptCount: invoice.attempt_count || 1,
               }).catch(err => logger.error({ err }, 'Failed to send Slack failed payment notification'));
             }
+
+            // Update invoice cache (keeps status in sync for prospects page)
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              null
+            );
             break;
           }
 
@@ -2993,18 +3323,6 @@ export class HTTPServer {
           || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
         const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
           || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-
-        // Helper to decode HTML entities
-        const decodeHtmlEntities = (text: string): string => {
-          return text
-            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-            .replace(/&quot;/g, '"')
-            .replace(/&apos;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-        };
 
         // Determine title (prefer og:title, then <title>)
         let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
@@ -4031,11 +4349,27 @@ Disallow: /api/admin/
 
         const returnTo = req.query.return_to as string;
         const slackUserId = req.query.slack_user_id as string;
+        const nativeMode = req.query.native === 'true';
+        const nativeRedirectUri = req.query.redirect_uri as string;
 
-        // Build state object with return_to and slack_user_id for auto-linking
-        const stateObj: { return_to?: string; slack_user_id?: string } = {};
+        // Validate native redirect URI to prevent open redirect attacks
+        const ALLOWED_NATIVE_SCHEMES = ['addie://'];
+        const isValidNativeRedirectUri = (uri: string): boolean => {
+          return ALLOWED_NATIVE_SCHEMES.some(scheme => uri.startsWith(scheme));
+        };
+
+        if (nativeMode && nativeRedirectUri && !isValidNativeRedirectUri(nativeRedirectUri)) {
+          return res.status(400).json({ error: 'Invalid redirect_uri - must use addie:// scheme' });
+        }
+
+        // Build state object with return_to, slack_user_id for auto-linking, and native app params
+        const stateObj: { return_to?: string; slack_user_id?: string; native?: boolean; native_redirect_uri?: string } = {};
         if (returnTo) stateObj.return_to = returnTo;
         if (slackUserId) stateObj.slack_user_id = slackUserId;
+        if (nativeMode) {
+          stateObj.native = true;
+          stateObj.native_redirect_uri = nativeRedirectUri || 'addie://auth/callback';
+        }
         const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
@@ -4287,20 +4621,39 @@ Disallow: /api/admin/
           })();
         }
 
-        // Parse return_to and slack_user_id from state
+        // Parse return_to, slack_user_id, and native mode from state
         let returnTo = '/dashboard';
         let slackUserIdToLink: string | undefined;
+        let isNativeMode = false;
+        let nativeRedirectUri = 'addie://auth/callback';
         logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
             const parsedState = JSON.parse(state);
             returnTo = parsedState.return_to || returnTo;
             slackUserIdToLink = parsedState.slack_user_id;
-            logger.debug({ parsedState, returnTo, slackUserIdToLink }, 'Parsed state successfully');
+            isNativeMode = parsedState.native === true;
+            nativeRedirectUri = parsedState.native_redirect_uri || nativeRedirectUri;
+            logger.debug({ parsedState, returnTo, slackUserIdToLink, isNativeMode }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
             logger.debug({ state, error: String(e) }, 'Failed to parse state');
           }
+        }
+
+        // For native app authentication, return JSON with sealed session and redirect to deep link
+        if (isNativeMode) {
+          logger.info({ userId: user.id, nativeRedirectUri }, 'Native app authentication - redirecting to deep link');
+
+          // Redirect to native app with sealed session as a query parameter
+          const redirectUrl = new URL(nativeRedirectUri);
+          redirectUrl.searchParams.set('sealed_session', sealedSession!);
+          redirectUrl.searchParams.set('user_id', user.id);
+          redirectUrl.searchParams.set('email', user.email);
+          if (user.firstName) redirectUrl.searchParams.set('first_name', user.firstName);
+          if (user.lastName) redirectUrl.searchParams.set('last_name', user.lastName);
+
+          return res.redirect(redirectUrl.toString());
         }
 
         // Auto-link Slack account if slack_user_id was provided during signup
@@ -4360,6 +4713,7 @@ Disallow: /api/admin/
         });
       }
     });
+
 
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
@@ -5458,6 +5812,53 @@ Disallow: /api/admin/
       }
     });
 
+    // POST /api/members/:slug/click - Track a profile click for analytics
+    this.app.post('/api/members/:slug/click', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { search_session_id } = req.body;
+
+        // Import analytics db lazily
+        const { MemberSearchAnalyticsDatabase } = await import('./db/member-search-analytics-db.js');
+        const analyticsDb = new MemberSearchAnalyticsDatabase();
+
+        // Get the profile to get its ID
+        const profile = await memberDb.getProfileBySlug(slug);
+        if (!profile) {
+          return res.status(404).json({ error: 'Member not found' });
+        }
+
+        // Get user ID if authenticated
+        let userId: string | undefined;
+        const sessionCookie = req.cookies?.['wos-session'];
+        if (sessionCookie && AUTH_ENABLED && workos) {
+          try {
+            const result = await workos.userManagement.authenticateWithSessionCookie({
+              sessionData: sessionCookie,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            if (result.authenticated && 'user' in result && result.user) {
+              userId = result.user.id;
+            }
+          } catch {
+            // Not authenticated - that's fine
+          }
+        }
+
+        // Record the click
+        await analyticsDb.recordProfileClick({
+          member_profile_id: profile.id,
+          searcher_user_id: userId,
+          search_session_id,
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Record member click error');
+        res.status(500).json({ error: 'Failed to record click' });
+      }
+    });
+
     // GET /api/public/discover-agent - Public endpoint to discover agent info (for members directory)
     this.app.get('/api/public/discover-agent', async (req, res) => {
       const { url } = req.query;
@@ -5595,18 +5996,23 @@ Disallow: /api/admin/
 
         return res.json({
           success: true,
-          formats: formats.map(format => ({
-            format_id: format.format_id,
-            name: format.name,
-            type: format.type,
-            description: format.description,
-            preview_image: format.preview_image,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets_required: format.assets_required,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          })),
+          formats: formats.map(format => {
+            // Cast to allow 'assets' field (added in schema v2.5.2, @adcp/client may not have it yet)
+            const formatWithAssets = format as typeof format & { assets?: unknown };
+            return {
+              format_id: format.format_id,
+              name: format.name,
+              type: format.type,
+              description: format.description,
+              preview_image: format.preview_image,
+              example_url: format.example_url,
+              renders: format.renders,
+              assets_required: format.assets_required, // deprecated but kept for backward compatibility
+              assets: formatWithAssets.assets, // new unified field
+              output_format_ids: format.output_format_ids,
+              agent_url: format.agent_url,
+            };
+          }),
         });
       } catch (error) {
         logger.error({ err: error, url }, 'Agent formats fetch error');
@@ -6710,9 +7116,26 @@ Disallow: /api/admin/
         });
       }
     });
+
+    // Global error handler - logger.error() automatically captures to PostHog via error hook
+    this.app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
+      res.status(500).json({ error: 'Internal server error' });
+    });
   }
 
   async start(port: number = 3000): Promise<void> {
+    // Initialize OpenTelemetry logging for PostHog (all log levels)
+    const { initOtelLogs, emitLog } = await import('./utils/otel-logs.js');
+    const { setLogHook } = await import('./logger.js');
+    if (initOtelLogs()) {
+      setLogHook(emitLog);
+    }
+
+    // Initialize PostHog error tracking (captures all logger.error() calls as exceptions)
+    const { initPostHogErrorTracking } = await import('./utils/posthog.js');
+    initPostHogErrorTracking();
+
     // Initialize database
     const { initializeDatabase } = await import("./db/client.js");
     const { runMigrations } = await import("./db/migrate.js");
@@ -6784,6 +7207,14 @@ Disallow: /api/admin/
     // Start industry feed monitoring
     // Fetches RSS feeds, processes articles, sends Slack alerts
     this.startIndustryMonitor();
+
+    // Start daily task reminder job
+    // Sends DMs to admins about overdue/upcoming tasks
+    this.startTaskReminders();
+
+    // Start engagement scoring job
+    // Updates user and org engagement scores periodically
+    this.startEngagementScoring();
 
     this.server = this.app.listen(port, () => {
       logger.info({
@@ -6934,6 +7365,76 @@ Disallow: /api/admin/
   }
 
   /**
+   * Start daily task reminder job
+   * Sends DMs to admins about overdue/upcoming tasks at 9am ET
+   */
+  private startTaskReminders(): void {
+    const REMINDER_CHECK_INTERVAL_HOURS = 1;
+
+    // Check every hour, but only send once per day per user
+    this.taskReminderIntervalId = setInterval(async () => {
+      try {
+        // Only run during morning hours (8-10am ET) using proper timezone handling
+        const now = new Date();
+        const etHour = parseInt(now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          hour: 'numeric',
+          hour12: false,
+        }), 10);
+        if (etHour < 8 || etHour > 10) {
+          return;
+        }
+
+        // Skip weekends (using ET day of week)
+        const etDayStr = now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          weekday: 'short',
+        });
+        if (etDayStr === 'Sat' || etDayStr === 'Sun') {
+          return;
+        }
+
+        const result = await runTaskReminderJob();
+        if (result.remindersSent > 0) {
+          logger.info(result, 'Task reminders: sent daily reminders');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Task reminders: job failed');
+      }
+    }, REMINDER_CHECK_INTERVAL_HOURS * 60 * 60 * 1000);
+
+    logger.info({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
+  }
+
+  /**
+   * Start periodic engagement scoring for users and organizations
+   * Updates stale scores (older than 1 day) every hour
+   */
+  private startEngagementScoring(): void {
+    const SCORING_INTERVAL_HOURS = 1;
+
+    // Run immediately on startup (with delay for DB connection)
+    setTimeout(async () => {
+      try {
+        await runEngagementScoringJob();
+      } catch (err) {
+        logger.error({ err }, 'Engagement scoring: initial batch failed');
+      }
+    }, 10000);
+
+    // Then run periodically
+    this.engagementScoringIntervalId = setInterval(async () => {
+      try {
+        await runEngagementScoringJob();
+      } catch (err) {
+        logger.error({ err }, 'Engagement scoring: job failed');
+      }
+    }, SCORING_INTERVAL_HOURS * 60 * 60 * 1000);
+
+    logger.info({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
+  }
+
+  /**
    * Setup graceful shutdown handlers for SIGTERM and SIGINT
    */
   private setupShutdownHandlers(): void {
@@ -6979,6 +7480,20 @@ Disallow: /api/admin/
     }
     logger.info('Industry monitor stopped');
 
+    // Stop task reminder job
+    if (this.taskReminderIntervalId) {
+      clearInterval(this.taskReminderIntervalId);
+      this.taskReminderIntervalId = null;
+      logger.info('Task reminder job stopped');
+    }
+
+    // Stop engagement scoring job
+    if (this.engagementScoringIntervalId) {
+      clearInterval(this.engagementScoringIntervalId);
+      this.engagementScoringIntervalId = null;
+      logger.info('Engagement scoring job stopped');
+    }
+
     // Close HTTP server
     if (this.server) {
       await new Promise<void>((resolve, reject) => {
@@ -6993,6 +7508,14 @@ Disallow: /api/admin/
         });
       });
     }
+
+    // Shutdown PostHog client (flush pending events)
+    const { shutdownPostHog } = await import('./utils/posthog.js');
+    await shutdownPostHog();
+
+    // Shutdown OpenTelemetry logging (flush pending logs)
+    const { shutdownOtelLogs } = await import('./utils/otel-logs.js');
+    await shutdownOtelLogs();
 
     // Close database connection
     logger.info('Closing database connection');

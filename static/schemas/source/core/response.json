@@ -17,6 +17,8 @@
       "description": "AdCP task-specific response data (see individual task response schemas)"
     }
   },
-  "required": ["message"],
-  "additionalProperties": false
+  "required": [
+    "message"
+  ],
+  "additionalProperties": true
 }

@@ -31,6 +31,7 @@ import {
   mapIndustryToCompanyType,
   mapRevenueToTier,
 } from "../services/lusha.js";
+import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
@@ -218,11 +219,18 @@ export function createPublicBillingRouter(): Router {
 
       // Validate lookup key starts with our prefix
       if (!lookupKey.startsWith("aao_")) {
+        logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
         return res.status(400).json({
           error: "Invalid product",
           message: "Invalid product selection",
         });
       }
+
+      logger.info({
+        lookupKey,
+        companyName,
+        contactEmail,
+      }, 'Invoice request received');
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -374,7 +382,7 @@ export function createPublicBillingRouter(): Router {
         if (!result) {
           return res.status(500).json({
             error: "Failed to create checkout session",
-            message: "Could not create Stripe checkout session. Please try again.",
+            message: "Stripe is not configured. Please contact support.",
           });
         }
 
@@ -395,9 +403,10 @@ export function createPublicBillingRouter(): Router {
         });
       } catch (error) {
         logger.error({ err: error }, "Checkout session creation error");
+        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again.";
         res.status(500).json({
           error: "Failed to create checkout session",
-          message: "An unexpected error occurred. Please try again.",
+          message: errorMessage,
         });
       }
     }
@@ -415,24 +424,28 @@ export function createPublicBillingRouter(): Router {
         // Dev mode: return mock billing data based on dev user type
         const devUser = isDevModeEnabled() ? getDevUser(req) : null;
         if (devUser) {
-          // For 'member' and 'admin' dev users, simulate organization needing profile info
-          // with enrichment-based suggestions for prefilling the modal
-          // For 'nonmember' dev user, simulate personal workspace (no modal needed)
+          // For 'member' and 'admin' dev users, simulate active membership
+          // For 'nonmember' dev user, simulate personal workspace with no subscription
           if (devUser.isMember) {
             return res.json({
-              subscription: null, // No subscription yet - needs to sign up
+              subscription: {
+                status: "active",
+                product_id: "prod_dev_membership",
+                product_name: "Company Membership (Dev)",
+                current_period_end: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60, // 1 year from now
+                cancel_at_period_end: false,
+              },
               stripe_customer_id: "cus_dev_mock",
               customer_session_secret: null,
-              company_type: null, // Not set - triggers modal
-              revenue_tier: null, // Not set - triggers modal
+              company_type: "adtech",
+              revenue_tier: "5m_50m",
               is_personal: false,
               pending_invoices: [],
-              // Enrichment-based suggestions for prefilling the profile modal
-              suggested_company_type: "adtech", // Simulates Lusha enrichment data
-              suggested_revenue_tier: "5m_50m", // Simulates Lusha enrichment data
+              suggested_company_type: "adtech",
+              suggested_revenue_tier: "5m_50m",
             });
           } else {
-            // Non-member dev user - personal workspace (no profile modal needed)
+            // Non-member dev user - personal workspace (no subscription)
             return res.json({
               subscription: null,
               stripe_customer_id: "cus_dev_mock",
@@ -615,14 +628,8 @@ export function createPublicBillingRouter(): Router {
         const { orgId } = req.params;
         const { company_type, revenue_tier } = req.body;
 
-        // Validate inputs - must match CompanyType in organization-db.ts
-        const validCompanyTypes = [
-          "brand",
-          "publisher",
-          "agency",
-          "adtech",
-          "other",
-        ];
+        // Validate inputs - use centralized company types config
+        const validCompanyTypes = COMPANY_TYPE_VALUES;
         const validRevenueTiers = [
           "under_1m",
           "1m_5m",

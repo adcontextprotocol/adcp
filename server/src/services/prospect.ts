@@ -22,7 +22,7 @@ const logger = createLogger('prospect-service');
 
 const VALID_PROSPECT_STATUSES = [
   'prospect', 'contacted', 'responded', 'interested',
-  'negotiating', 'joined', 'declined'
+  'negotiating', 'joined', 'converted', 'declined', 'disqualified'
 ] as const;
 
 export interface CreateProspectInput {

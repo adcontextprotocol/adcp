@@ -1,0 +1,322 @@
+---
+title: preview_creative (Advanced)
+sidebar_position: 15
+---
+
+
+Advanced patterns for creative preview integration including workflows, caching strategies, and implementation notes.
+
+For basic usage, see [preview_creative](/docs/creative/task-reference/preview_creative).
+
+## Common Workflows
+
+### Format Showcase Pages
+
+Build a browsable catalog of available formats:
+
+```typescript
+// 1. List all formats from creative agent
+const formats = await creative_agent.list_creative_formats();
+
+// 2. Generate format card previews (batch + HTML)
+const formatPreviews = await creative_agent.preview_creative({
+  request_type: "batch",
+  output_format: "html",
+  requests: formats.formats.map(format => ({
+    format_id: format.format_id,
+    creative_manifest: format.format_card.manifest
+  }))
+});
+
+// 3. Render in a grid
+function FormatCatalog({ formatPreviews }) {
+  return (
+    <div className="format-grid">
+      {formatPreviews.results.map((result, idx) => (
+        result.success && (
+          <div
+            key={idx}
+            className="format-card"
+            dangerouslySetInnerHTML={{
+              __html: result.response.previews[0].renders[0].preview_html
+            }}
+          />
+        )
+      ))}
+    </div>
+  );
+}
+```
+
+### Campaign Review Grid
+
+Review all creatives before launch:
+
+```typescript
+const campaignCreatives = await getCreativesForCampaign(campaignId);
+
+const previews = await creative_agent.preview_creative({
+  request_type: "batch",
+  output_format: "html",
+  requests: campaignCreatives.map(c => ({
+    format_id: c.format_id,
+    creative_manifest: c.manifest
+  }))
+});
+
+function CampaignReview({ previews }) {
+  return (
+    <div className="review-grid">
+      {previews.results.map((result, idx) => (
+        <div className="creative-card">
+          <div dangerouslySetInnerHTML={{
+            __html: result.response.previews[0].renders[0].preview_html
+          }}/>
+          <button onClick={() => approve(idx)}>Approve</button>
+          <button onClick={() => reject(idx)}>Reject</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Web Component Integration
+
+For production applications with lazy loading:
+
+```html
+<script src="https://creative.adcontextprotocol.org/static/rendered-creative.js"></script>
+
+<div class="grid">
+  <rendered-creative
+    src="https://creative-agent.example.com/preview/abc123"
+    width="300"
+    height="400"
+    lazy="true">
+  </rendered-creative>
+</div>
+```
+
+**Benefits:**
+- Shadow DOM for CSS isolation
+- Lazy loading (only loads when visible)
+- Framework agnostic
+
+## Choosing Output Format
+
+**Use `output_format: "url"` (default) when:**
+- Security is paramount (third-party creatives)
+- Building interactive preview tools
+- Need iframe isolation
+
+**Use `output_format: "html"` when:**
+- Building format catalogs (10+ formats)
+- Creating campaign review grids (20+ creatives)
+- Server-side rendering
+- Working with trusted creative agents only
+
+## Caching Strategy
+
+Cache individual preview results by format_id + manifest hash:
+
+```typescript
+function cachePreviewResults(results, formatIds, manifests) {
+  results.forEach((result, idx) => {
+    if (result.success) {
+      const cacheKey = `${formatIds[idx]}:${hashManifest(manifests[idx])}`;
+      cache.set(cacheKey, result.response, result.response.expires_at);
+    }
+  });
+}
+
+async function getPreviewsWithCache(formatIds, manifests) {
+  const cached = [];
+  const toFetch = [];
+
+  formatIds.forEach((id, idx) => {
+    const cacheKey = `${id}:${hashManifest(manifests[idx])}`;
+    const cachedResult = cache.get(cacheKey);
+
+    if (cachedResult && !isExpired(cachedResult.expires_at)) {
+      cached[idx] = cachedResult;
+    } else {
+      toFetch.push({ idx, id, manifest: manifests[idx] });
+    }
+  });
+
+  // Batch fetch only missing previews
+  if (toFetch.length > 0) {
+    const fetched = await client.preview_creative({
+      request_type: "batch",
+      output_format: "html",
+      requests: toFetch.map(f => ({
+        format_id: f.id,
+        creative_manifest: f.manifest
+      }))
+    });
+
+    fetched.results.forEach((result, i) => {
+      cached[toFetch[i].idx] = result.response;
+    });
+  }
+
+  return cached;
+}
+```
+
+**Key points:**
+- Cache by format_id + manifest hash (not entire batch)
+- Request [A,B,C] → cache each separately
+- Later request [B,C,D] → only fetch D
+- Always check `expires_at` before using cached previews
+
+## Error Handling
+
+```typescript
+const response = await client.preview_creative({
+  request_type: "batch",
+  requests: formatRequests
+});
+
+const succeeded = response.results.filter(r => r.success);
+const failed = response.results.filter(r => !r.success);
+
+if (failed.length > 0) {
+  console.log(`${failed.length} previews failed`);
+  failed.forEach((result) => {
+    console.error(`  - ${result.error.code}: ${result.error.message}`);
+  });
+}
+
+// Display successful previews, show error states for failures
+function displayPreviews(results) {
+  return results.map((result, idx) => {
+    if (result.success) {
+      return <Preview html={result.response.previews[0].renders[0].preview_html} />;
+    } else {
+      return <PreviewError
+        code={result.error.code}
+        message={result.error.message}
+        onRetry={() => retryPreview(idx)}
+      />;
+    }
+  });
+}
+```
+
+## Migration from Single to Batch
+
+**Before (Sequential):**
+```python
+previews = []
+for format in formats:
+    preview = await client.preview_creative(
+        request_type="single",
+        format_id=format.format_id,
+        creative_manifest=format.format_card.manifest
+    )
+    previews.append(preview)
+# Total time: N × 250ms = 5000ms for 20 formats
+```
+
+**After (Batch):**
+```python
+response = await client.preview_creative(
+    request_type="batch",
+    output_format="html",
+    requests=[
+        {
+            "format_id": fmt.format_id,
+            "creative_manifest": fmt.format_card.manifest
+        }
+        for fmt in formats
+    ]
+)
+# Total time: ~500ms for 20 formats
+```
+
+## Use Case Patterns
+
+### Device Variants
+```json
+{
+  "inputs": [
+    { "name": "Desktop", "macros": { "DEVICE_TYPE": "desktop" } },
+    { "name": "Mobile", "macros": { "DEVICE_TYPE": "mobile" } },
+    { "name": "CTV", "macros": { "DEVICE_TYPE": "ctv" } }
+  ]
+}
+```
+
+### Geographic Variants
+```json
+{
+  "inputs": [
+    { "name": "NYC", "macros": { "CITY": "New York", "DMA": "501" } },
+    { "name": "LA", "macros": { "CITY": "Los Angeles", "DMA": "803" } }
+  ]
+}
+```
+
+### Privacy Compliance Testing
+```json
+{
+  "inputs": [
+    { "name": "Full consent", "macros": { "GDPR": "1", "GDPR_CONSENT": "CPc7TgP..." } },
+    { "name": "No consent", "macros": { "GDPR": "1", "GDPR_CONSENT": "" } },
+    { "name": "LAT enabled", "macros": { "LIMIT_AD_TRACKING": "1" } }
+  ]
+}
+```
+
+### AI Content Variants
+```json
+{
+  "inputs": [
+    { "name": "Morning commute", "context_description": "User commuting to work" },
+    { "name": "Evening relaxation", "context_description": "User relaxing at home" }
+  ]
+}
+```
+
+## Implementation Notes
+
+### For Creative Agents
+
+**Required:**
+1. Return complete HTML pages from `preview_url`
+2. Handle all media types (images, video, audio, interactive)
+3. Echo input parameters in response
+4. Validate manifest before rendering
+5. Apply macro values (or use defaults)
+6. Implement security sandboxing
+7. Set reasonable expiration (24-48 hours)
+
+**Optional enhancements:**
+- Provide `hints` object (media type, dimensions, duration)
+- Provide `embedding` metadata (sandbox policy, CSP)
+- Support responsive design
+- Include accessibility features
+
+### For Buyers
+
+1. Just iframe the `preview_url` - no special rendering needed
+2. Use `inputs` array for specific scenarios
+3. Check `input` field to confirm macros applied
+4. Share preview URLs with clients for approval
+5. Use `interactive_url` for advanced testing
+
+### For Publishers
+
+1. Return consistent HTML from preview URLs
+2. Implement responsive preview pages
+3. Document supported macros via `supported_macros` in formats
+4. Clarify preview vs production differences
+5. Consider providing `interactive_url` for testing
+
+## Related Documentation
+
+- [preview_creative](/docs/creative/task-reference/preview_creative) - Basic usage and parameters
+- [Creative Manifests](/docs/creative/creative-manifests) - Manifest structure
+- [Universal Macros](/docs/creative/universal-macros) - Available macro values

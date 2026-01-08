@@ -86,6 +86,70 @@
       min-height: 100px;
       resize: vertical;
     }
+    /* Description guidance panel */
+    .description-guidance {
+      margin-top: var(--space-3);
+      background: var(--color-primary-50, #eef2ff);
+      border: var(--border-1) solid var(--color-primary-200, #c7d2fe);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .description-guidance summary {
+      padding: var(--space-3) var(--space-4);
+      cursor: pointer;
+      color: var(--color-brand, #1a36b4);
+      font-weight: var(--font-medium);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .description-guidance summary::-webkit-details-marker {
+      display: none;
+    }
+    .description-guidance summary::before {
+      content: '▶';
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+    .description-guidance[open] summary::before {
+      transform: rotate(90deg);
+    }
+    .description-guidance .guidance-content {
+      padding: 0 var(--space-4) var(--space-4);
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+    }
+    .description-guidance .guidance-content p {
+      margin-bottom: var(--space-3);
+    }
+    .description-guidance .guidance-content ul {
+      margin: 0 0 var(--space-4) var(--space-4);
+      padding: 0;
+    }
+    .description-guidance .guidance-content li {
+      margin-bottom: var(--space-2);
+    }
+    .description-guidance .example-label {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+      margin-top: var(--space-4);
+    }
+    .description-guidance .example-prompts {
+      background: white;
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      margin-left: 0;
+    }
+    .description-guidance .example-prompts li {
+      font-style: italic;
+      color: var(--color-text-muted);
+    }
+    .description-guidance .guidance-note {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-bottom: 0;
+    }
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -729,6 +793,25 @@
             <label for="description">Description</label>
             <textarea id="description" name="description" placeholder="Tell people about your company and what you offer..."></textarea>
             <div class="hint">The first 200 characters will appear in the directory card</div>
+            <details class="description-guidance">
+              <summary>Tips: Help Addie recommend you to the right people</summary>
+              <div class="guidance-content">
+                <p>Addie uses your description to match you with people looking for help. Write in plain language about:</p>
+                <ul>
+                  <li><strong>What you do</strong> — Be specific about your services (e.g., "We run managed sales agents for CTV publishers" rather than "We provide advertising solutions")</li>
+                  <li><strong>Who you serve</strong> — Describe your ideal customer (e.g., "mid-size publishers with 1M+ monthly impressions" or "brands spending $50K+/month on programmatic")</li>
+                  <li><strong>How you help</strong> — Explain your approach: Do you run things for them? Help them build their own? Provide software? Consult?</li>
+                </ul>
+                <p class="example-label">Example questions people might ask Addie:</p>
+                <ul class="example-prompts">
+                  <li>"Find someone to run a sales agent for my publisher inventory"</li>
+                  <li>"I need help implementing AdCP for my DSP"</li>
+                  <li>"Looking for a consultant who understands CTV advertising"</li>
+                  <li>"Who can help a small publisher get started with agentic advertising?"</li>
+                </ul>
+                <p class="guidance-note">If your description answers questions like these, Addie will recommend you to the right prospects.</p>
+              </div>
+            </details>
           </div>
 
           <!-- Offerings -->

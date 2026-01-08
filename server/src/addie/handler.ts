@@ -11,9 +11,11 @@ import {
   sanitizeInput,
   validateOutput,
   stripBotMention,
+  resolveSlackMentions,
   logInteraction,
   generateInteractionId,
 } from './security.js';
+import { SlackDatabase } from '../db/slack-db.js';
 import {
   initializeKnowledgeSearch,
   isKnowledgeReady,
@@ -28,7 +30,6 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAdmin,
-  isAdmin,
 } from './mcp/admin-tools.js';
 import {
   MEMBER_TOOLS,
@@ -46,6 +47,7 @@ import { getMemberContext, formatMemberContextForPrompt, type MemberContext } fr
 import {
   extractInsights,
   checkAndMarkOutreachResponse,
+  getGoalsForSystemPrompt,
   type ExtractionContext,
 } from './services/insight-extractor.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
@@ -58,10 +60,31 @@ import type {
   SuggestedPrompt,
 } from './types.js';
 
+/**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
+
 let claudeClient: AddieClaudeClient | null = null;
 let addieDb: AddieDatabase | null = null;
+let slackDb: SlackDatabase | null = null;
 let initialized = false;
 let botUserId: string | null = null;
+
+/**
+ * Look up a Slack user's name by their Slack user ID
+ */
+async function lookupSlackUserName(slackUserId: string): Promise<string | null> {
+  if (!slackDb) return null;
+  try {
+    const mapping = await slackDb.getBySlackUserId(slackUserId);
+    return mapping?.slack_real_name || mapping?.slack_display_name || null;
+  } catch (error) {
+    logger.warn({ error, slackUserId }, 'Failed to look up Slack user name');
+    return null;
+  }
+}
 
 /**
  * Initialize Addie
@@ -81,6 +104,7 @@ export async function initializeAddie(): Promise<void> {
 
   // Initialize database access
   addieDb = new AddieDatabase();
+  slackDb = new SlackDatabase();
 
   // Initialize knowledge search (database-backed)
   await initializeKnowledgeSearch();
@@ -163,9 +187,22 @@ async function buildMessageWithMemberContext(
       baseMessage = `[ADMIN USER] ${sanitizedMessage}`;
     }
 
-    if (memberContextText) {
+    // Get insight goals to naturally work into conversation
+    const isMapped = !!memberContext?.is_mapped;
+    let insightGoalsText = '';
+    try {
+      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+      if (goalsPrompt) {
+        insightGoalsText = goalsPrompt;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
+    }
+
+    if (memberContextText || insightGoalsText) {
+      const sections = [memberContextText, insightGoalsText].filter(Boolean);
       return {
-        message: `${memberContextText}\n---\n\n${baseMessage}`,
+        message: `${sections.join('\n\n')}\n---\n\n${baseMessage}`,
         memberContext,
       };
     }
@@ -192,7 +229,8 @@ async function createUserScopedTools(
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
-  const userIsAdmin = isAdmin(memberContext);
+  // Check if user is AAO admin (based on aao-admin working group membership)
+  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
 
   // Add admin tools if user is admin
   if (userIsAdmin) {
@@ -275,6 +313,12 @@ export async function handleAssistantMessage(
     return;
   }
 
+  // Skip Slackbot system messages (e.g., "added you to #channel")
+  if (event.user === SLACKBOT_USER_ID) {
+    logger.debug({ messageText: event.text?.substring(0, 50) }, 'Addie: Ignoring Slackbot system message');
+    return;
+  }
+
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
@@ -282,8 +326,11 @@ export async function handleAssistantMessage(
   const isAdmin = await isSlackUserAdmin(event.user);
   logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status');
 
+  // Resolve user mentions to include names (e.g., <@U123> -> <@U123|John>)
+  const textWithResolvedMentions = await resolveSlackMentions(event.text, lookupSlackUserName);
+
   // Sanitize input
-  const inputValidation = sanitizeInput(event.text);
+  const inputValidation = sanitizeInput(textWithResolvedMentions);
 
   // Set status to thinking
   try {
@@ -436,8 +483,11 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   // Strip bot mention
   const rawText = botUserId ? stripBotMention(event.text, botUserId) : event.text;
 
+  // Resolve user mentions to include names (e.g., <@U123> -> <@U123|John>)
+  const textWithResolvedMentions = await resolveSlackMentions(rawText, lookupSlackUserName);
+
   // Sanitize input
-  const inputValidation = sanitizeInput(rawText);
+  const inputValidation = sanitizeInput(textWithResolvedMentions);
 
   // Build message with member context for personalization (includes admin prefix if admin)
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(

@@ -566,6 +566,8 @@ export interface EmailThreadContext {
   to: string[]; // Original TO recipients
   cc?: string[]; // Original CC recipients
   replyTo?: string; // Reply-To header if present
+  originalText?: string; // Original email text for quoting
+  originalDate?: Date; // When the original was sent
 }
 
 /**
@@ -643,6 +645,48 @@ export async function sendEmailReply(data: {
     data.threadContext.messageId,
   ].filter(Boolean).join(' ');
 
+  // Build quoted original message if available
+  let quotedHtml = '';
+  let quotedText = '';
+  if (data.threadContext.originalText) {
+    const senderName = data.threadContext.from.replace(/<.*>/, '').trim() || data.threadContext.from;
+    const dateStr = data.threadContext.originalDate
+      ? data.threadContext.originalDate.toLocaleDateString('en-US', {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : '';
+
+    // Build attribution line (with or without date)
+    const attribution = dateStr ? `On ${dateStr}, ${senderName} wrote:` : `${senderName} wrote:`;
+
+    // Truncate quoted text to keep emails reasonable
+    const truncatedOriginal = data.threadContext.originalText.substring(0, 2000);
+    const escapedOriginal = truncatedOriginal
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+
+    quotedHtml = `
+  <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e5e5;">
+    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+      ${attribution}
+    </p>
+    <blockquote style="margin: 0; padding-left: 15px; border-left: 3px solid #e5e5e5; color: #666; font-size: 14px;">
+      ${escapedOriginal}
+    </blockquote>
+  </div>`;
+
+    // Build text version with > quoting
+    const quotedLines = truncatedOriginal.split('\n').map(line => `> ${line}`).join('\n');
+    quotedText = `\n\n${attribution}\n${quotedLines}`;
+  }
+
   try {
     const { data: sendData, error } = await resend.emails.send({
       from,
@@ -663,6 +707,7 @@ export async function sendEmailReply(data: {
   <p style="font-size: 12px; color: #666;">
     Addie is the AI assistant for <a href="https://agenticadvertising.org" style="color: #2563eb;">AgenticAdvertising.org</a>
   </p>
+  ${quotedHtml}
 </body>
 </html>
       `.trim(),
@@ -670,7 +715,7 @@ export async function sendEmailReply(data: {
 
 ---
 Addie is the AI assistant for AgenticAdvertising.org
-https://agenticadvertising.org`,
+https://agenticadvertising.org${quotedText}`,
       headers: {
         'In-Reply-To': data.threadContext.messageId,
         ...(references && { References: references }),
@@ -693,6 +738,133 @@ https://agenticadvertising.org`,
     return { success: true, messageId: sendData?.id };
   } catch (error) {
     logger.error({ error }, 'Error sending email reply');
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+/**
+ * Send an introduction email from Addie connecting a searcher with a member
+ * This is a transactional email (no unsubscribe needed)
+ */
+export async function sendIntroductionEmail(data: {
+  memberEmail: string;
+  memberName: string;
+  memberSlug: string;
+  requesterName: string;
+  requesterEmail: string;
+  requesterCompany?: string;
+  requesterMessage: string;
+  searchQuery?: string;
+  addieReasoning?: string;
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (!resend) {
+    logger.warn('Resend not configured, cannot send introduction email');
+    return { success: false, error: 'Email not configured' };
+  }
+
+  const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+
+  // Sanitize and truncate for subject line (prevent injection and excessive length)
+  const safeName = (data.requesterName || 'Someone').slice(0, 50).replace(/[\r\n]/g, '');
+  const safeCompany = data.requesterCompany ? data.requesterCompany.slice(0, 50).replace(/[\r\n]/g, '') : '';
+
+  // Build the subject line
+  const subject = `Introduction: ${safeName}${safeCompany ? ` from ${safeCompany}` : ''} wants to connect`;
+
+  // Build the context section if we have search info
+  let contextHtml = '';
+  let contextText = '';
+  if (data.searchQuery || data.addieReasoning) {
+    contextHtml = `
+    <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
+      <p style="font-size: 12px; color: #6b7280; margin: 0 0 8px 0; font-weight: 500;">WHY THIS INTRODUCTION</p>
+      ${data.searchQuery ? `<p style="margin: 0 0 8px 0;"><strong>They searched for:</strong> "${escapeHtml(data.searchQuery)}"</p>` : ''}
+      ${data.addieReasoning ? `<p style="margin: 0; color: #374151;">${escapeHtml(data.addieReasoning)}</p>` : ''}
+    </div>`;
+
+    contextText = `\n---\nWHY THIS INTRODUCTION\n`;
+    if (data.searchQuery) contextText += `They searched for: "${data.searchQuery}"\n`;
+    if (data.addieReasoning) contextText += `${data.addieReasoning}\n`;
+    contextText += `---\n`;
+  }
+
+  // Build requester info
+  const requesterInfo = data.requesterCompany
+    ? `${data.requesterName} from ${data.requesterCompany}`
+    : data.requesterName;
+
+  try {
+    const { data: sendData, error } = await resend.emails.send({
+      from: 'Addie from AgenticAdvertising.org <addie@agenticadvertising.org>',
+      to: data.memberEmail,
+      replyTo: data.requesterEmail,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <p>Hi ${escapeHtml(data.memberName.split(' ')[0] || data.memberName)},</p>
+
+  <p><strong>${escapeHtml(requesterInfo)}</strong> found your profile on AgenticAdvertising.org and asked me to make an introduction.</p>
+
+  ${contextHtml}
+
+  <div style="background: #fafafa; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0;">
+    <p style="font-size: 12px; color: #6b7280; margin: 0 0 8px 0; font-weight: 500;">THEIR MESSAGE</p>
+    <p style="margin: 0;">${escapeHtml(data.requesterMessage)}</p>
+  </div>
+
+  <p><strong>Reply directly to this email</strong> to connect with ${escapeHtml(data.requesterName)} - your response will go straight to them at ${escapeHtml(data.requesterEmail)}.</p>
+
+  <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 30px 0;">
+
+  <p style="font-size: 12px; color: #666;">
+    This introduction was made through <a href="https://agenticadvertising.org" style="color: #2563eb;">AgenticAdvertising.org</a>.<br>
+    <a href="https://agenticadvertising.org/members/${escapeHtml(data.memberSlug)}" style="color: #2563eb;">View your member profile</a> |
+    <a href="https://agenticadvertising.org/member-profile" style="color: #2563eb;">Update your profile</a>
+  </p>
+</body>
+</html>
+      `.trim(),
+      text: `Hi ${data.memberName.split(' ')[0] || data.memberName},
+
+${requesterInfo} found your profile on AgenticAdvertising.org and asked me to make an introduction.
+${contextText}
+---
+THEIR MESSAGE
+
+${data.requesterMessage}
+---
+
+Reply directly to this email to connect with ${data.requesterName} - your response will go straight to them at ${data.requesterEmail}.
+
+---
+This introduction was made through AgenticAdvertising.org.
+View your member profile: https://agenticadvertising.org/members/${data.memberSlug}
+Update your profile: https://agenticadvertising.org/member-profile
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.memberEmail }, 'Failed to send introduction email');
+      return { success: false, error: error.message };
+    }
+
+    logger.info({
+      messageId: sendData?.id,
+      to: data.memberEmail,
+      from: data.requesterEmail,
+      memberSlug: data.memberSlug,
+    }, 'Introduction email sent');
+
+    return { success: true, messageId: sendData?.id };
+  } catch (error) {
+    logger.error({ error }, 'Error sending introduction email');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }

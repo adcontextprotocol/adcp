@@ -33,5 +33,5 @@
   "required": [
     "products"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -17,6 +17,7 @@ import { getPool } from '../db/client.js';
 import {
   runOutreachScheduler,
   manualOutreach,
+  manualOutreachWithGoal,
   getOutreachMode,
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
@@ -37,6 +38,7 @@ import {
   type ActionPriority,
 } from '../db/account-management-db.js';
 import { runMomentumCheck, dryRunMomentumCheck, previewMomentumForUser } from '../addie/jobs/momentum-check.js';
+import { runTaskReminderJob, previewTaskReminders } from '../addie/jobs/task-reminder.js';
 
 const logger = createLogger('admin-insights-routes');
 const insightsDb = new InsightsDatabase();
@@ -633,6 +635,28 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
+  // GET /api/admin/outreach/stats/by-goal - Get response rates by goal type
+  apiRouter.get('/outreach/stats/by-goal', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await insightsDb.getOutreachGoalStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting outreach goal stats');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/outreach/stats/time-series - Get time-windowed outreach stats
+  apiRouter.get('/outreach/stats/time-series', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await insightsDb.getOutreachTimeStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting outreach time stats');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/admin/outreach/history - Get recent outreach history
   apiRouter.get('/outreach/history', requireAuth, requireAdmin, async (req, res) => {
     try {
@@ -752,6 +776,54 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
     }
   });
 
+  // POST /api/admin/outreach/send-with-goal - Send outreach with a specific goal (admin override)
+  apiRouter.post('/outreach/send-with-goal', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { slack_user_id, goal_id, admin_context } = req.body;
+
+      // Validate inputs
+      const goalIdNum = parseInt(goal_id, 10);
+      if (!slack_user_id || isNaN(goalIdNum) || goalIdNum <= 0) {
+        return res.status(400).json({ error: 'Valid slack_user_id and goal_id are required' });
+      }
+
+      // Check if user can be contacted
+      const eligibility = await canContactUser(slack_user_id);
+      if (!eligibility.canContact) {
+        return res.status(400).json({ error: eligibility.reason });
+      }
+
+      // Pass admin info for auto-assignment
+      const triggeredBy = req.user ? {
+        id: req.user.id,
+        name: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email,
+        email: req.user.email,
+      } : undefined;
+
+      const result = await manualOutreachWithGoal(
+        slack_user_id,
+        goalIdNum,
+        admin_context,
+        triggeredBy
+      );
+
+      if (result.success) {
+        logger.info({
+          slackUserId: slack_user_id,
+          goalId: goal_id,
+          hasContext: !!admin_context,
+          triggeredBy: req.user?.id,
+        }, 'Admin-override outreach sent');
+        res.json(result);
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error) {
+      logger.error({ err: error }, 'Error sending admin-override outreach');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/admin/outreach/check/:slackUserId - Check if user can be contacted
   apiRouter.get('/outreach/check/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
     try {
@@ -787,24 +859,52 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
 
       const user = userResult.rows[0];
 
-      // Determine outreach type
+      // Use the goal from unified_contacts_with_goals which considers all factors
+      // including whether the account is already linked
+      const goalKey = user.goal_key;
+
+      // Map goal_key to outreach_type for variant selection
       let outreachType: string;
-      if (!user.workos_user_id) {
+      if (goalKey === 'link_account') {
+        // User needs to link their Slack to AAO
         outreachType = 'account_link';
-      } else if (!user.last_outreach_at) {
+      } else if (!user.last_outreach_at && !user.workos_user_id) {
+        // Never contacted and no AAO account
         outreachType = 'introduction';
       } else {
-        outreachType = 'insight_goal';
+        // User is already linked or has been contacted before
+        // Use goal-based outreach
+        outreachType = goalKey || 'insight_goal';
       }
 
-      // Get active variant for message template
-      const variantResult = await pool.query(`
-        SELECT name, message_template, tone, approach
-        FROM outreach_variants
-        WHERE is_active = TRUE
-        ORDER BY weight DESC
-        LIMIT 1
-      `);
+      // Get active variant appropriate for the outreach type
+      // For linked users (not needing account_link), prefer engagement-focused variants
+      const needsLinking = goalKey === 'link_account';
+
+      // Use separate queries to avoid dynamic SQL construction
+      let variantQuery: string;
+      if (needsLinking) {
+        variantQuery = `
+          SELECT name, message_template, tone, approach
+          FROM outreach_variants
+          WHERE is_active = TRUE
+          ORDER BY weight DESC
+          LIMIT 1
+        `;
+      } else {
+        // Exclude account-linking focused variants for already-linked users
+        variantQuery = `
+          SELECT name, message_template, tone, approach
+          FROM outreach_variants
+          WHERE is_active = TRUE
+            AND message_template NOT LIKE '%connected to Slack%'
+            AND message_template NOT LIKE '%linked to Slack%'
+            AND message_template NOT LIKE '%link your Slack%'
+          ORDER BY weight DESC
+          LIMIT 1
+        `;
+      }
+      const variantResult = await pool.query(variantQuery);
 
       const variant = variantResult.rows[0];
 
@@ -824,13 +924,16 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
 
       // Build preview message
       const userName = user.slack_display_name || user.slack_real_name || 'there';
-      let previewMessage = variant?.message_template || '[No active outreach variant configured]';
+      let previewMessage: string;
+
+      // Use the variant's message template (already filtered to exclude linking messages for linked users)
+      previewMessage = variant?.message_template || '[No active outreach variant configured]';
       previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
       if (goalQuestion) {
         previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
       }
 
-      // Check eligibility
+      // Check eligibility - use standard checks for all users (linked or not)
       const eligibility = await canContactUser(slackUserId);
 
       res.json({
@@ -1082,6 +1185,33 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       if (error instanceof Error && error.message.includes('not found')) {
         return res.status(404).json({ error: error.message });
       }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/task-reminders/run - Run task reminder job
+  apiRouter.post('/task-reminders/run', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { includeTomorrow, dryRun, forceResend } = req.body;
+      const result = await runTaskReminderJob({
+        includeTomorrow: includeTomorrow === true,
+        dryRun: dryRun === true,
+        forceResend: forceResend === true,
+      });
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, 'Error running task reminder job');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/task-reminders/preview - Preview what reminders would be sent
+  apiRouter.get('/task-reminders/preview', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const result = await previewTaskReminders();
+      res.json({ batches: result });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing task reminders');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

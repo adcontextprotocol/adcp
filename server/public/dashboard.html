@@ -235,7 +235,8 @@
       border-color: var(--color-brand);
       background: var(--color-primary-50);
     }
-    .profile-radio-option.selected {
+    .profile-radio-option.selected,
+    .profile-radio-option:has(input[type="radio"]:checked) {
       border-color: var(--color-brand);
       background: var(--color-primary-100);
     }
@@ -255,6 +256,56 @@
       font-size: 13px;
       color: var(--color-text-secondary);
       margin-top: 2px;
+    }
+
+    /* Mobile responsive styles for profile modal */
+    @media (max-width: 480px) {
+      .profile-modal-overlay {
+        padding: 0;
+        align-items: stretch;
+      }
+
+      .profile-modal {
+        max-width: 100%;
+        border-radius: 0;
+        max-height: 100dvh;
+        height: 100%;
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+      }
+
+      .profile-modal-header {
+        padding: 16px;
+      }
+
+      .profile-modal-header h2 {
+        font-size: 16px;
+      }
+
+      .profile-modal-header p {
+        font-size: 13px;
+      }
+
+      .profile-modal-body {
+        padding: 16px;
+      }
+
+      .profile-radio-option {
+        padding: 10px;
+        gap: 8px;
+      }
+
+      .profile-radio-option-title {
+        font-size: 13px;
+      }
+
+      .profile-radio-option-desc {
+        font-size: 12px;
+      }
+
+      .profile-modal-footer {
+        padding: 12px 16px;
+      }
     }
   </style>
 </head>
@@ -322,35 +373,49 @@
         <div class="profile-form-group">
           <label id="companyTypeLabel">What type of organization are you?</label>
           <div class="profile-radio-options" id="profileCompanyTypeOptions" role="radiogroup" aria-labelledby="companyTypeLabel">
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'brand')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="brand">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Brand / Advertiser</div>
                 <div class="profile-radio-option-desc">Companies that advertise products or services</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'publisher')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="publisher">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Publisher / Media Network</div>
                 <div class="profile-radio-option-desc">Media owners and networks that sell advertising inventory</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'agency')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="agency">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Agency</div>
                 <div class="profile-radio-option-desc">Advertising, media, or creative agencies</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'adtech')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="adtech">
               <div class="profile-radio-option-content">
-                <div class="profile-radio-option-title">Technology Provider</div>
-                <div class="profile-radio-option-desc">AdTech platforms, data providers, and service providers</div>
+                <div class="profile-radio-option-title">Ad Tech Provider</div>
+                <div class="profile-radio-option-desc">DSPs, SSPs, ad servers, measurement, identity, and data platforms</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'companyType', 'other')">
+            <label class="profile-radio-option">
+              <input type="radio" name="profileCompanyType" value="data">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">Data & Measurement</div>
+                <div class="profile-radio-option-desc">Clean rooms, CDPs, identity, measurement, and analytics</div>
+              </div>
+            </label>
+            <label class="profile-radio-option">
+              <input type="radio" name="profileCompanyType" value="ai">
+              <div class="profile-radio-option-content">
+                <div class="profile-radio-option-title">AI & Tech Platforms</div>
+                <div class="profile-radio-option-desc">LLM providers, agent builders, cloud AI, and ML platforms</div>
+              </div>
+            </label>
+            <label class="profile-radio-option">
               <input type="radio" name="profileCompanyType" value="other">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Other</div>
@@ -362,37 +427,37 @@
         <div class="profile-form-group">
           <label id="revenueTierLabel">Annual Revenue</label>
           <div class="profile-radio-options" id="profileRevenueTierOptions" role="radiogroup" aria-labelledby="revenueTierLabel">
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', 'under_1m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="under_1m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">Under $1M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '1m_5m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="1m_5m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$1M - $5M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '5m_50m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="5m_50m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$5M - $50M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '50m_250m')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="50m_250m">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$50M - $250M</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '250m_1b')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="250m_1b">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$250M - $1B</div>
               </div>
             </label>
-            <label class="profile-radio-option" onclick="selectProfileOption(this, 'revenueTier', '1b_plus')">
+            <label class="profile-radio-option">
               <input type="radio" name="profileRevenueTier" value="1b_plus">
               <div class="profile-radio-option-content">
                 <div class="profile-radio-option-title">$1B+</div>
@@ -607,16 +672,27 @@
         </div>
       </section>
 
-      <!-- ========== WORKING GROUPS SECTION ========== -->
-      <section id="working-groups" class="dashboard-section">
+      <!-- ========== COMMITTEES SECTION ========== -->
+      <section id="committees" class="dashboard-section">
         <div class="section-header">
-          <h2>Working Groups</h2>
-          <p>Collaborate with other members on shared interests</p>
+          <h2>Committees</h2>
+          <p>Join working groups, industry councils, and regional chapters</p>
         </div>
-        <div class="section-card" id="workingGroupsCard">
-          <div id="workingGroupsCardContent" class="section-card-body">
-            <div style="text-align: center; color: var(--color-text-secondary);">Loading working groups...</div>
+        <div class="section-card" id="committeesCard">
+          <div id="committeesCardContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading committees...</div>
           </div>
+        </div>
+      </section>
+
+      <!-- ========== LEADERSHIP SECTION ========== -->
+      <section id="leadership" class="dashboard-section" style="display: none;">
+        <div class="section-header">
+          <h2>Leadership</h2>
+          <p>Manage the committees you lead</p>
+        </div>
+        <div id="leadershipContent">
+          <div style="text-align: center; color: var(--color-text-secondary); padding: 20px;">Loading committees...</div>
         </div>
       </section>
 
@@ -672,13 +748,9 @@
               <p style="margin: 4px 0 0 0; color: var(--color-text-secondary); font-size: 14px;">Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.</p>
             </div>
           </div>
-          <div class="section-card-body" style="text-align: center; padding: 32px 20px;">
-            <p style="margin: 0 0 20px 0; color: var(--color-text-secondary); font-size: 15px; max-width: 400px; margin-left: auto; margin-right: auto;">
-              Join AgenticAdvertising.org to help shape the future of agentic advertising. Founding member rates available through March 31, 2026.
-            </p>
-            <a href="/dashboard/membership" class="btn btn-primary btn-lg" style="font-size: 16px; padding: 14px 32px;">
-              View Membership Options
-            </a>
+          <div id="inlinePricingContent" class="section-card-body" style="padding: 24px;">
+            <!-- Will be dynamically populated with price, agreement, and checkout button -->
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading membership options...</div>
           </div>
         </div>
       </section>
@@ -722,7 +794,7 @@
         </div>
 
         <p style="text-align: center; margin-top: 16px; font-size: 14px; color: var(--color-text-secondary);">
-          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestModal()" style="color: var(--aao-primary); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
+          Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestWithOrgInfo()" style="color: var(--aao-primary); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
         </p>
       </div>
 
@@ -769,10 +841,24 @@
       return currentOrg?.billing?.status === 'active';
     }
 
+    // Helper to open invoice request modal with current org info pre-filled
+    function openInvoiceRequestWithOrgInfo() {
+      const isPersonal = currentOrg?.is_personal || currentOrg?.billing?.is_personal;
+      const customerType = isPersonal ? 'individual' : 'company';
+      const revenueTier = currentOrg?.billing?.revenue_tier || '';
+
+      openInvoiceRequestModal({
+        companyName: currentOrg?.name || '',
+        selectedProduct: inlineCheckoutProduct?.lookup_key || '',
+        customerType: customerType,
+        revenueTier: revenueTier
+      });
+    }
+
     // Profile modal state
     let profileSelectedCompanyType = null;
     let profileSelectedRevenueTier = null;
-    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'other'];
+    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'data', 'ai', 'other'];
     const VALID_REVENUE_TIERS = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
 
     // Check if org needs profile info (legacy accounts without company_type or revenue_tier)
@@ -836,6 +922,10 @@
       container.querySelectorAll('.profile-radio-option').forEach(opt => opt.classList.remove('selected'));
       element.classList.add('selected');
 
+      // Also ensure the radio input is checked
+      const radio = element.querySelector('input[type="radio"]');
+      if (radio) radio.checked = true;
+
       if (group === 'companyType') {
         profileSelectedCompanyType = value;
       } else if (group === 'revenueTier') {
@@ -845,6 +935,32 @@
       // Enable save button if both are selected
       const btn = document.getElementById('saveProfileBtn');
       btn.disabled = !(profileSelectedCompanyType && profileSelectedRevenueTier);
+    }
+
+    // Initialize profile modal radio button listeners (more reliable than onclick on labels)
+    function initProfileModalListeners() {
+      const radioGroups = [
+        { selector: '#profileCompanyTypeOptions', group: 'companyType' },
+        { selector: '#profileRevenueTierOptions', group: 'revenueTier' }
+      ];
+
+      radioGroups.forEach(({ selector, group }) => {
+        document.querySelectorAll(`${selector} input[type="radio"]`).forEach(radio => {
+          radio.addEventListener('change', function() {
+            const label = this.closest('.profile-radio-option');
+            if (label) {
+              selectProfileOption(label, group, this.value);
+            }
+          });
+        });
+      });
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initProfileModalListeners);
+    } else {
+      initProfileModalListeners();
     }
 
     // Save org profile from modal
@@ -968,13 +1084,15 @@
           ? 'How you appear in the member directory'
           : 'How your organization appears in the member directory';
       }
-      if (teamHeading && teamDesc) {
+      // Hide team section entirely for personal workspaces (no team features allowed)
+      const teamSection = document.getElementById('team');
+      if (teamSection) {
         if (isPersonal) {
-          teamHeading.textContent = 'Teammates';
-          teamDesc.textContent = 'Invite others to collaborate on your workspace';
+          teamSection.style.display = 'none';
         } else {
-          teamHeading.textContent = 'Team';
-          teamDesc.textContent = "Manage your organization's members";
+          teamSection.style.display = '';
+          if (teamHeading) teamHeading.textContent = 'Team';
+          if (teamDesc) teamDesc.textContent = "Manage your organization's members";
         }
       }
 
@@ -985,8 +1103,12 @@
       renderMembershipCard(org, hasSubscription);
 
       // ===== LOAD DATA =====
-      loadTeamSection(org.id);
-      loadWorkingGroupsSection();
+      // Only load team section if not a personal workspace
+      if (!isPersonal) {
+        loadTeamSection(org.id);
+      }
+      loadCommitteesSection();
+      loadLeadershipSection();
 
       // ===== MEMBERSHIP SIGNUP SECTION (hidden, for modal use) =====
       const membershipSection = document.getElementById('membershipSection');
@@ -1172,29 +1294,242 @@
         membershipCard.style.display = 'none';
         inlinePricingSection.style.display = 'block';
 
+        // Populate inline pricing with agreement checkbox and pay button
+        renderInlineMembershipCheckout(org);
+
         // Show promo banner for non-subscribers
         renderJoinPromoBanner(org);
       }
     }
 
+    // Cache for inline checkout state
+    let inlineCheckoutProduct = null;
+    let inlineAgreementAccepted = false;
+
+    // Render inline membership checkout with agreement checkbox
+    async function renderInlineMembershipCheckout(org) {
+      const container = document.getElementById('inlinePricingContent');
+      if (!container) return;
+
+      const isPersonal = org.is_personal || org.billing?.is_personal;
+      const customerType = isPersonal ? 'individual' : 'company';
+      const revenueTier = org.billing?.revenue_tier || '';
+
+      // Show loading state
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">
+          Loading membership options...
+        </div>
+      `;
+
+      try {
+        // Fetch products
+        const url = new URL('/api/billing-products', window.location.origin);
+        url.searchParams.set('customer_type', customerType);
+        url.searchParams.set('category', 'membership');
+        if (revenueTier) {
+          url.searchParams.set('revenue_tier', revenueTier);
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        const products = data.products || [];
+
+        if (products.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+              <p style="color: var(--color-text-secondary); margin-bottom: 16px;">No membership options available for your account type.</p>
+              <p style="font-size: 14px; color: var(--color-text-muted);">Please contact <a href="mailto:membership@agenticadvertising.org">membership@agenticadvertising.org</a></p>
+            </div>
+          `;
+          return;
+        }
+
+        // Take the first matching product (should be the correct tier-specific one)
+        const product = products[0];
+        if (!product || typeof product.amount_cents !== 'number') {
+          throw new Error('Invalid product data received');
+        }
+        inlineCheckoutProduct = product;
+        const price = escapeHtml(formatCurrency(product.amount_cents, product.currency));
+
+        // Load agreement content
+        let agreementHtml = 'Loading agreement...';
+        try {
+          const agreementResponse = await fetch('/api/agreement/current?type=membership');
+          if (agreementResponse.ok) {
+            const agreementData = await agreementResponse.json();
+            agreementHtml = DOMPurify.sanitize(marked.parse(agreementData.text || 'Agreement not available.'));
+          }
+        } catch (e) {
+          console.error('Error loading agreement:', e);
+          agreementHtml = 'Unable to load agreement. Please refresh.';
+        }
+
+        // Render the checkout section with agreement
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <!-- Price display -->
+            <div style="text-align: center; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
+              <div style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 4px;">Your membership</div>
+              <div style="font-size: 36px; font-weight: 700; color: var(--color-brand);">${price}<span style="font-size: 16px; font-weight: 400; color: var(--color-text-muted);">/year</span></div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 4px;">Founding member rate through March 31, 2026</div>
+            </div>
+
+            <!-- Benefits summary -->
+            <div style="padding: 0 16px;">
+              <div style="font-size: 14px; font-weight: 600; color: var(--color-text-heading); margin-bottom: 12px;">Membership includes:</div>
+              <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--color-text-secondary); line-height: 1.8;">
+                <li>Listed in the member directory</li>
+                <li>Participate in working groups</li>
+                <li>Vote on standards and governance</li>
+                <li>Shape the future of agentic advertising</li>
+              </ul>
+            </div>
+
+            <!-- Agreement section -->
+            <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; background: var(--color-bg-subtle);">
+              <div style="font-size: 14px; font-weight: 600; color: var(--color-text-heading); margin-bottom: 12px;">Membership Agreement</div>
+              <div id="inlineAgreementContent" style="max-height: 150px; overflow-y: auto; padding: 12px; background: white; border: 1px solid var(--color-border); border-radius: 6px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
+                ${agreementHtml}
+              </div>
+              <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="inlineAgreementCheckbox" onchange="updateInlineCheckoutButton()" style="margin-top: 3px; cursor: pointer; width: 18px; height: 18px;" />
+                <span style="font-size: 14px; color: var(--color-text-heading);">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+              </label>
+            </div>
+
+            <!-- Action buttons -->
+            <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
+              <button id="inlinePayNowBtn" class="btn btn-primary btn-lg" onclick="startInlineCheckout()" disabled style="width: 100%; max-width: 300px; padding: 14px 32px; font-size: 16px;">
+                Pay Now
+              </button>
+              <div style="font-size: 13px; color: var(--color-text-muted);">
+                Need an invoice for a PO? <button type="button" onclick="openInvoiceRequestWithOrgInfo()" style="color: var(--color-brand); text-decoration: underline; background: none; border: none; padding: 0; font: inherit; cursor: pointer;">Request an invoice</button>
+              </div>
+              <a href="/membership" style="font-size: 13px; color: var(--color-brand);">Learn more about membership benefits →</a>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error('Error rendering inline checkout:', error);
+        inlineCheckoutProduct = null; // Clear stale state on error
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px;">
+            <p style="color: var(--color-error-600); margin-bottom: 16px;">Unable to load membership options.</p>
+            <button onclick="renderInlineMembershipCheckout(currentOrg)" class="btn btn-secondary">Try Again</button>
+          </div>
+        `;
+      }
+    }
+
+    // Update inline checkout button state based on agreement checkbox
+    function updateInlineCheckoutButton() {
+      const checkbox = document.getElementById('inlineAgreementCheckbox');
+      const btn = document.getElementById('inlinePayNowBtn');
+      if (checkbox && btn) {
+        inlineAgreementAccepted = checkbox.checked;
+        btn.disabled = !checkbox.checked;
+      }
+    }
+
+    // Prevent double-click on checkout
+    let checkoutInProgress = false;
+
+    // Start checkout from inline section
+    async function startInlineCheckout() {
+      if (!inlineCheckoutProduct || !currentOrg || !inlineAgreementAccepted) return;
+      if (checkoutInProgress) return;
+      checkoutInProgress = true;
+
+      const btn = document.getElementById('inlinePayNowBtn');
+      if (!btn) {
+        checkoutInProgress = false;
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Redirecting to checkout...';
+
+      try {
+        const response = await fetch('/api/checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            priceId: inlineCheckoutProduct.price_id,
+            orgId: currentOrg.id,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create checkout session');
+        }
+
+        const data = await response.json();
+
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error('No checkout URL returned');
+        }
+      } catch (error) {
+        console.error('Checkout error:', error);
+        showToast(error.message || 'Unable to start checkout', true);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Pay Now';
+        }
+        checkoutInProgress = false;
+      }
+    }
+
     // Render promo banner for non-members (founding member pricing)
-    function renderJoinPromoBanner(org) {
+    // Shows exact price when revenue tier is known, otherwise shows range
+    async function renderJoinPromoBanner(org) {
       const promoBanner = document.getElementById('promoBanner');
       if (!promoBanner) return;
 
-      // Determine pricing message based on org type
       const isPersonal = org.is_personal || org.billing?.is_personal;
+      const revenueTier = org.billing?.revenue_tier;
 
-      // Show the founding member pricing range:
-      // - Companies: $2,500 - $10,000/year depending on revenue tier
-      // - Individuals: $50 - $250/year ($50 discounted for students/academics/between jobs)
-      const priceMessage = isPersonal
-        ? '<span class="promo-banner-price">$50 - $250</span><span style="font-size: 14px; font-weight: normal;">/year</span>'
-        : '<span class="promo-banner-price">$2,500 - $10,000</span><span style="font-size: 14px; font-weight: normal;">/year</span>';
+      let priceMessage, subtext;
 
-      const subtext = isPersonal
-        ? 'Standard or discounted rates available'
-        : 'Based on company revenue tier';
+      // If we know the revenue tier, fetch the exact price from API
+      if (!isPersonal && revenueTier) {
+        try {
+          const url = new URL('/api/billing-products', window.location.origin);
+          url.searchParams.set('customer_type', 'company');
+          url.searchParams.set('category', 'membership');
+          url.searchParams.set('revenue_tier', revenueTier);
+
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.json();
+            const products = data.products || [];
+            if (products.length > 0 && typeof products[0].amount_cents === 'number') {
+              // Use the first matching product's price
+              const exactPrice = escapeHtml(formatCurrency(products[0].amount_cents, products[0].currency));
+              priceMessage = `<span class="promo-banner-price">${exactPrice}</span><span style="font-size: 14px; font-weight: normal;">/year</span>`;
+              subtext = 'Founding member rate';
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching exact price:', e);
+        }
+      }
+
+      // Fall back to range if we couldn't get exact price
+      if (!priceMessage) {
+        priceMessage = isPersonal
+          ? '<span class="promo-banner-price">$50 - $250</span><span style="font-size: 14px; font-weight: normal;">/year</span>'
+          : '<span class="promo-banner-price">$2,500 - $10,000</span><span style="font-size: 14px; font-weight: normal;">/year</span>';
+        subtext = isPersonal
+          ? 'Standard or discounted rates available'
+          : 'Based on company revenue tier';
+      }
 
       promoBanner.innerHTML = `
         <div class="promo-banner">
@@ -1561,76 +1896,340 @@
       }
     }
 
-    // Load working groups section content
-    async function loadWorkingGroupsSection() {
-      const container = document.getElementById('workingGroupsCardContent');
+    // Load committees section content (working groups, councils, chapters)
+    async function loadCommitteesSection() {
+      const container = document.getElementById('committeesCardContent');
       if (!container) return;
 
       try {
-        const response = await fetch('/api/me/working-groups', { credentials: 'include' });
+        // Fetch all committees and user's memberships in parallel
+        const [allResponse, myResponse] = await Promise.all([
+          fetch('/api/working-groups', { credentials: 'include' }),
+          fetch('/api/me/working-groups', { credentials: 'include' })
+        ]);
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            container.innerHTML = `
-              <div style="text-align: center; padding: 20px;">
-                <p style="color: var(--color-text-secondary); margin: 0 0 16px 0;">Log in to see your working groups.</p>
-                <a href="/working-groups" class="btn btn-primary btn-sm">Browse Groups</a>
-              </div>
-            `;
-            return;
-          }
-          throw new Error('Failed to load working groups');
+        if (!allResponse.ok) {
+          throw new Error('Failed to load committees');
         }
 
-        const data = await response.json();
-        const groups = data.working_groups || [];
+        const allData = await allResponse.json();
+        const allCommittees = allData.working_groups || [];
 
-        if (groups.length === 0) {
+        // Get user's joined committees (may fail if not logged in)
+        let myCommitteeIds = new Set();
+        if (myResponse.ok) {
+          const myData = await myResponse.json();
+          myCommitteeIds = new Set((myData.working_groups || []).map(g => g.id));
+        }
+
+        if (allCommittees.length === 0) {
           container.innerHTML = `
             <div style="text-align: center; padding: 20px;">
               <div style="font-size: 32px; margin-bottom: 12px;">🏛️</div>
-              <p style="margin: 0 0 16px 0; color: var(--color-text-secondary);">You haven't joined any working groups yet.</p>
-              <a href="/working-groups" class="btn btn-primary btn-sm">Browse Working Groups</a>
+              <p style="margin: 0 0 16px 0; color: var(--color-text-secondary);">No committees available yet.</p>
+              <a href="/committees" class="btn btn-primary btn-sm">View Committees</a>
             </div>
           `;
           return;
         }
 
-        // Render working groups list
-        const groupsHtml = groups.map(g => `
-          <a href="/working-groups/${escapeHtml(g.slug)}" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border); text-decoration: none; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-            <div style="width: 40px; height: 40px; border-radius: 8px; background: ${g.is_private ? 'var(--color-warning-100)' : 'var(--color-primary-100)'}; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">
-              ${g.is_private ? '🔒' : '🏛️'}
-            </div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-weight: 500; color: var(--color-text-heading); font-size: 14px;">${escapeHtml(g.name)}</div>
-              <div style="color: var(--color-text-secondary); font-size: 12px;">${g.is_private ? 'Private' : 'Public'} group</div>
-            </div>
-          </a>
-        `).join('');
+        // Group by type
+        const byType = {
+          working_group: allCommittees.filter(c => c.committee_type === 'working_group'),
+          council: allCommittees.filter(c => c.committee_type === 'council'),
+          chapter: allCommittees.filter(c => c.committee_type === 'chapter'),
+          industry_gathering: allCommittees.filter(c => c.committee_type === 'industry_gathering')
+        };
 
-        container.innerHTML = `
-          <div style="margin-bottom: 16px;">
-            ${groupsHtml}
-          </div>
-          <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">Browse All Groups</a>
-        `;
+        // Helper to get icon and colors
+        function getCommitteeStyle(committee) {
+          const isJoined = myCommitteeIds.has(committee.id);
+          const isLaunching = committee.committee_type === 'council' && (committee.member_count || 0) === 0;
 
-        // Remove border from last group item
-        const groupItems = container.querySelectorAll('a[href^="/working-groups/"]');
-        if (groupItems.length > 0) {
-          groupItems[groupItems.length - 1].style.borderBottom = 'none';
+          let icon = '🏛️';
+          let bgColor = 'var(--color-primary-100)';
+
+          if (committee.is_private) {
+            icon = '🔒';
+            bgColor = 'var(--color-warning-100)';
+          } else if (committee.committee_type === 'council') {
+            icon = '🏢';
+            bgColor = isLaunching ? 'var(--color-gray-100)' : 'var(--color-success-100)';
+          } else if (committee.committee_type === 'chapter') {
+            icon = '📍';
+            bgColor = 'var(--color-info-100)';
+          } else if (committee.committee_type === 'industry_gathering') {
+            icon = '✈️';
+            bgColor = 'var(--color-primary-50)';
+          }
+
+          return { icon, bgColor, isJoined, isLaunching };
         }
 
+        // Helper to render a single committee item
+        function renderCommitteeItem(c) {
+          const { icon, bgColor, isJoined, isLaunching } = getCommitteeStyle(c);
+
+          // Determine the action button
+          let actionBtn = '';
+          if (isJoined) {
+            actionBtn = `<span style="font-size: 11px; padding: 4px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-weight: 500;">Joined</span>`;
+          } else if (isLaunching) {
+            actionBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); handleCommitteeInterest('${escapeHtml(c.slug)}', '${escapeHtml(c.name)}', this);" style="font-size: 11px; padding: 4px 10px; background: var(--color-primary-100); color: var(--color-brand); border: 1px solid var(--color-primary-200); border-radius: 4px; font-weight: 500; cursor: pointer; transition: background 0.15s;" onmouseover="this.style.background='var(--color-primary-200)'" onmouseout="this.style.background='var(--color-primary-100)'">I'm Interested</button>`;
+          } else {
+            actionBtn = `<a href="/working-groups/${escapeHtml(c.slug)}" onclick="event.stopPropagation();" style="font-size: 11px; padding: 4px 10px; background: var(--color-brand); color: white; border-radius: 4px; font-weight: 500; text-decoration: none; transition: background 0.15s;" onmouseover="this.style.background='var(--color-brand-hover)'" onmouseout="this.style.background='var(--color-brand)'">View</a>`;
+          }
+
+          // Badge for launching councils
+          const launchingBadge = isLaunching
+            ? `<span style="font-size: 10px; padding: 2px 6px; background: var(--color-primary-100); color: var(--color-brand); border-radius: 3px; margin-left: 6px;">Launching Soon</span>`
+            : '';
+
+          return `
+            <a href="/working-groups/${escapeHtml(c.slug)}" style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border-light); text-decoration: none; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: ${bgColor}; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">
+                ${icon}
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 500; color: var(--color-text-heading); font-size: 13px; display: flex; align-items: center; flex-wrap: wrap;">
+                  ${escapeHtml(c.name)}${launchingBadge}
+                </div>
+                <div style="color: var(--color-text-muted); font-size: 11px;">${c.member_count || 0} member${c.member_count !== 1 ? 's' : ''}</div>
+              </div>
+              <div style="flex-shrink: 0;">
+                ${actionBtn}
+              </div>
+            </a>
+          `;
+        }
+
+        // Render sections
+        let html = '';
+
+        // Working Groups
+        if (byType.working_group.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Working Groups</div>
+              ${byType.working_group.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Industry Councils
+        if (byType.council.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Industry Councils</div>
+              ${byType.council.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Regional Chapters
+        if (byType.chapter.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Regional Chapters</div>
+              ${byType.chapter.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Industry Gatherings
+        if (byType.industry_gathering.length > 0) {
+          html += `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border);">Industry Gatherings</div>
+              ${byType.industry_gathering.map(renderCommitteeItem).join('')}
+            </div>
+          `;
+        }
+
+        // Browse all link
+        html += `<a href="/committees" class="btn btn-ghost btn-sm" style="width: 100%;">Browse All Committees</a>`;
+
+        container.innerHTML = html;
+
+        // Remove border from last item in each section
+        container.querySelectorAll('div[style*="margin-bottom: 16px"]').forEach(section => {
+          const items = section.querySelectorAll('a[href^="/working-groups/"]');
+          if (items.length > 0) {
+            items[items.length - 1].style.borderBottom = 'none';
+          }
+        });
+
       } catch (error) {
-        console.error('Error loading working groups section:', error);
+        console.error('Error loading committees section:', error);
         container.innerHTML = `
           <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">
-            Unable to load working groups. <a href="/working-groups" style="color: var(--color-brand);">Browse Groups</a>
+            Unable to load committees. <a href="/committees" style="color: var(--color-brand);">Browse Committees</a>
           </div>
         `;
       }
     }
+
+    // Load leadership section - committees the user leads
+    async function loadLeadershipSection() {
+      const section = document.getElementById('leadership');
+      const container = document.getElementById('leadershipContent');
+      if (!container) return;
+
+      try {
+        const response = await fetch('/api/me/working-groups/leading', { credentials: 'include' });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Not logged in - hide section
+            if (section) section.style.display = 'none';
+            return;
+          }
+          throw new Error('Failed to load leadership data');
+        }
+
+        const data = await response.json();
+        const committees = data.committees || [];
+
+        if (committees.length === 0) {
+          // No committees - hide section and nav item
+          if (section) section.style.display = 'none';
+          if (window.DashboardNav?.showLeadershipNav) {
+            DashboardNav.showLeadershipNav(false);
+          }
+          return;
+        }
+
+        // Show the section and nav item
+        if (section) section.style.display = 'block';
+        if (window.DashboardNav?.showLeadershipNav) {
+          DashboardNav.showLeadershipNav(true);
+        }
+
+        // Committee type labels
+        const typeLabels = {
+          working_group: 'Working Group',
+          council: 'Council',
+          chapter: 'Chapter',
+          governance: 'Governance',
+          industry_gathering: 'Industry Gathering'
+        };
+
+        // Committee type icons
+        const typeIcons = {
+          working_group: '🏛️',
+          council: '👥',
+          chapter: '📍',
+          governance: '⚖️',
+          industry_gathering: '🎪'
+        };
+
+        // Render committee cards with manage link
+        const committeesHtml = committees.map(c => {
+          const typeLabel = typeLabels[c.committee_type] || 'Committee';
+          const typeIcon = typeIcons[c.committee_type] || '📋';
+
+          return `
+            <div class="section-card" style="margin-bottom: 16px;">
+              <div style="display: flex; align-items: start; gap: 16px; padding: 20px;">
+                <div style="width: 48px; height: 48px; border-radius: 10px; background: var(--color-primary-100); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;">
+                  ${typeIcon}
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                    <h3 style="margin: 0; font-size: 16px; color: var(--color-text-heading);">${escapeHtml(c.name)}</h3>
+                    <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: var(--color-gray-100); color: var(--color-text-secondary);">${typeLabel}</span>
+                  </div>
+                  <p style="margin: 0 0 12px 0; color: var(--color-text-secondary); font-size: 13px;">
+                    ${c.member_count || 0} member${c.member_count === 1 ? '' : 's'}${c.region ? ' &bull; ' + escapeHtml(c.region) : ''}
+                  </p>
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <a href="/working-groups/${escapeHtml(c.slug)}" class="btn btn-ghost btn-sm">View Page</a>
+                    <a href="/working-groups/${escapeHtml(c.slug)}/manage" class="btn btn-primary btn-sm">Manage</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = committeesHtml;
+
+      } catch (error) {
+        console.error('Error loading leadership section:', error);
+        if (section) section.style.display = 'none';
+        if (window.DashboardNav?.showLeadershipNav) {
+          DashboardNav.showLeadershipNav(false);
+        }
+      }
+    }
+
+    // Handle interest click for launching committees
+    async function handleCommitteeInterest(committeeSlug, committeeName, buttonEl) {
+      try {
+        // Disable button and show loading state
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Registering...';
+
+        const response = await fetch(`/api/working-groups/${committeeSlug}/interest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ interest_level: 'participant' })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Redirect to login
+            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+          throw new Error('Failed to register interest');
+        }
+
+        const data = await response.json();
+
+        // Update button to show success
+        buttonEl.outerHTML = `<span style="font-size: 11px; padding: 4px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-weight: 500;">Interest Registered</span>`;
+
+        // Show a quick toast notification
+        showToast(data.message || `Thanks for your interest in ${committeeName}!`);
+
+      } catch (error) {
+        console.error('Error registering interest:', error);
+        buttonEl.disabled = false;
+        buttonEl.textContent = "I'm Interested";
+        showToast('Failed to register interest. Please try again.', 'error');
+      }
+    }
+
+    // Simple toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: ${type === 'error' ? 'var(--color-error-600)' : 'var(--color-success-600)'};
+        color: white;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        animation: slideUp 0.3s ease;
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
 
     // Load working groups for the current user (legacy - kept for compatibility)
     async function loadWorkingGroups() {

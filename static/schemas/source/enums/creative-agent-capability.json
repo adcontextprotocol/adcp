@@ -4,5 +4,10 @@
   "title": "Creative Agent Capability",
   "description": "Capabilities supported by creative agents for format handling",
   "type": "string",
-  "enum": ["validation", "assembly", "generation", "preview"]
+  "enum": [
+    "validation",
+    "assembly",
+    "generation",
+    "preview"
+  ]
 }

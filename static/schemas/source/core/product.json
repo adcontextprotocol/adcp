@@ -113,7 +113,7 @@
         "format_id",
         "manifest"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "product_card_detailed": {
       "type": "object",
@@ -133,7 +133,7 @@
         "format_id",
         "manifest"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -149,5 +149,5 @@
     "delivery_measurement",
     "pricing_options"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

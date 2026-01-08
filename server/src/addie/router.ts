@@ -115,6 +115,11 @@ export const ROUTING_RULES = {
    * Topics Addie can help with (and the tools to use)
    */
   expertise: {
+    capabilities: {
+      patterns: ['what can you do', 'what can you help with', 'how can you help me', 'what do you do', 'what are you capable of', 'what are you', 'what kinds of things', 'your capabilities'],
+      tools: [], // No tools needed - respond from system prompt knowledge
+      description: 'Questions about what Addie can help with - respond with capability overview',
+    },
     adcp_protocol: {
       patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
       tools: ['search_docs'],
@@ -145,15 +150,72 @@ export const ROUTING_RULES = {
       tools: ['get_my_profile', 'list_working_groups', 'join_working_group'],
       description: 'AgenticAdvertising.org membership',
     },
+    find_help: {
+      patterns: [
+        'find someone',
+        'looking for',
+        'who can help',
+        'need help with',
+        'vendor',
+        'consultant',
+        'partner',
+        'service provider',
+        'implementation',
+        'managed service',
+        'run a',
+        'operate a',
+        'introduce me',
+        'connect me',
+        'dsp',
+        'ssp',
+        'programmatic',
+        'ctv',
+        'measurement',
+        'attribution',
+        'creative optimization',
+      ],
+      tools: ['search_members', 'request_introduction'],
+      description: 'Find member organizations who can help with specific needs - searching for vendors, partners, consultants',
+    },
     community: {
       patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
       tools: ['search_slack'],
       description: 'Community discussions',
     },
-    external_protocols: {
-      patterns: ['mcp', 'model context protocol', 'a2a', 'agent to agent'],
-      tools: ['web_search'],
-      description: 'External protocols (MCP, A2A) - web search only',
+    ad_tech_protocols: {
+      patterns: [
+        'openrtb',
+        'open rtb',
+        'adcom',
+        'vast',
+        'opendirect',
+        'prebid',
+        'header bidding',
+        'rtb',
+        'real-time bidding',
+        'iab',
+        'tcf',
+        'transparency consent',
+        'gpp',
+        'global privacy',
+        'ccpa',
+        'us privacy',
+        'uid2',
+        'unified id',
+        'ads.cert',
+        'adscert',
+        'artf',
+        'agentic rtb',
+        'ucp',
+        'user context protocol',
+      ],
+      tools: ['search_repos', 'search_docs'],
+      description: 'IAB Tech Lab specs and ad tech protocols - we have these indexed!',
+    },
+    agent_protocols: {
+      patterns: ['mcp', 'model context protocol', 'a2a', 'agent to agent', 'langgraph', 'langchain'],
+      tools: ['search_repos'],
+      description: 'Agent protocols (MCP, A2A, LangGraph) - we have these indexed!',
     },
     industry_news: {
       patterns: ['news', 'industry', 'announcement', 'latest', 'trend'],
@@ -276,8 +338,9 @@ IMPORTANT: Choose tools based on the user's INTENT, not just keywords:
 - "Validate my adagents.json" / "Check example.com" / "Debug my setup" → validate_adagents (action/validation)
 - "How do I use the SDK?" / "Salesagent setup" → search_repos (implementation help)
 - "What did someone say about X?" → search_slack (community discussions)
-- Questions about MCP, A2A, external protocols → web_search (external info)
+- Questions about MCP, A2A, OpenRTB, AdCOM, TCF, GPP, UID2, Prebid, IAB specs → search_repos (we have these indexed!)
 - "Is my agent working?" / "Test my endpoint" → check_agent_health (testing)
+- Questions about topics NOT in our indexed repos → web_search (external info)
 
 ## Messages to React To (emoji only, no response)
 ${reactList}

@@ -1,0 +1,2362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Account - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/js/company-types.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .breadcrumb {
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-5);
+    }
+    h1 {
+      margin-bottom: var(--space-2);
+      color: var(--color-text-heading);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    h2 {
+      font-size: var(--text-lg);
+      margin-bottom: var(--space-4);
+      color: var(--color-text-heading);
+    }
+
+    /* Header subtitle with company info */
+    .header-subtitle {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+    }
+
+    /* Status bar under header */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-3) 0;
+      border-top: var(--border-1) solid var(--color-gray-100);
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      margin-bottom: var(--space-4);
+      flex-wrap: wrap;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: var(--text-sm);
+    }
+    .status-label {
+      color: var(--color-text-muted);
+    }
+
+    /* Engagement fires */
+    .engagement-fires {
+      font-size: var(--text-xl);
+    }
+
+    /* Member status badges */
+    .member-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+    }
+    .member-badge.member {
+      background: var(--color-success-600);
+      color: white;
+    }
+    .member-badge.trial {
+      background: var(--color-warning-500);
+      color: white;
+    }
+    .member-badge.lapsed {
+      background: var(--color-info-500);
+      color: white;
+    }
+    .member-badge.prospect {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .member-badge.disqualified {
+      background: var(--color-gray-400);
+      color: white;
+    }
+
+    /* Interest level badge - prominent */
+    .interest-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .interest-badge:hover {
+      filter: brightness(0.95);
+    }
+    .interest-low { background: var(--color-gray-200); color: var(--color-text-secondary); }
+    .interest-medium { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .interest-high { background: var(--color-success-100); color: var(--color-success-700); }
+    .interest-very_high { background: var(--color-success-200); color: var(--color-success-800); }
+    .interest-none { background: var(--color-gray-100); color: var(--color-text-muted); border: 1px dashed var(--color-gray-300); }
+
+    /* Grid layout */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-5);
+    }
+    @media (max-width: 900px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Info rows */
+    .info-section {
+      margin-bottom: var(--space-4);
+    }
+    .info-section-title {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-2);
+    }
+    .info-row {
+      display: flex;
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+    }
+    .info-row:last-child {
+      border-bottom: none;
+    }
+    .info-label {
+      width: 130px;
+      flex-shrink: 0;
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .info-value {
+      flex: 1;
+      font-size: var(--text-sm);
+    }
+
+    /* Signal items */
+    .signal-item {
+      display: flex;
+      justify-content: space-between;
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      font-size: var(--text-sm);
+    }
+    .signal-item:last-child {
+      border-bottom: none;
+    }
+    .signal-label {
+      color: var(--color-text-secondary);
+    }
+    .signal-value {
+      font-weight: var(--font-medium);
+    }
+    .signal-value.positive {
+      color: var(--color-success-600);
+    }
+    .signal-value.negative {
+      color: var(--color-text-muted);
+    }
+
+    /* Pending invoice highlight */
+    .invoice-highlight {
+      background: var(--color-warning-50);
+      border-left: 3px solid var(--color-warning-500);
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-4);
+    }
+    .invoice-highlight .amount {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-warning-700);
+    }
+
+    /* Next steps */
+    .next-step-item {
+      padding: var(--space-3);
+      background: var(--color-warning-50);
+      border-left: 3px solid var(--color-warning-500);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-3);
+    }
+    .next-step-item.overdue {
+      background: var(--color-error-50);
+      border-left-color: var(--color-error-500);
+    }
+    .next-step-due {
+      font-size: var(--text-xs);
+      color: var(--color-warning-600);
+      margin-bottom: var(--space-1);
+    }
+    .next-step-item.overdue .next-step-due {
+      color: var(--color-error-600);
+    }
+    .next-step-description {
+      font-size: var(--text-sm);
+    }
+    .next-step-owner {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .next-step-actions {
+      margin-top: var(--space-2);
+    }
+
+    /* Activity timeline */
+    .timeline {
+      position: relative;
+      padding-left: var(--space-6);
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--color-gray-200);
+    }
+    .timeline-item {
+      position: relative;
+      padding-bottom: var(--space-5);
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -22px;
+      top: 4px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--color-brand);
+      border: 2px solid var(--color-bg-card);
+    }
+    .timeline-item.is-next-step::before {
+      background: var(--color-warning-500);
+    }
+    .timeline-item.completed::before {
+      background: var(--color-success-500);
+    }
+    .timeline-date {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-1);
+    }
+    .timeline-type {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      text-transform: capitalize;
+    }
+    .timeline-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+    .timeline-meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+
+    /* Members list */
+    .members-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .members-list li {
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      font-size: var(--text-sm);
+    }
+    .members-list li:last-child {
+      border-bottom: none;
+    }
+    .member-role {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-left: var(--space-2);
+    }
+    .member-name-link {
+      color: var(--color-brand);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .member-name-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Working groups */
+    .wg-badge {
+      display: inline-block;
+      padding: var(--space-1) var(--space-2);
+      margin-right: var(--space-2);
+      margin-bottom: var(--space-2);
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+
+    /* Buttons */
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-primary-700);
+    }
+    .btn-secondary {
+      background: var(--color-gray-100);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-200);
+    }
+    .btn-sm {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+    }
+    .btn-success {
+      background: var(--color-success-600);
+      color: white;
+    }
+    .btn-success:hover {
+      background: var(--color-success-700);
+    }
+
+    /* Owner selector */
+    .owner-selector {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .owner-name {
+      cursor: pointer;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      transition: var(--transition-all);
+    }
+    .owner-name:hover {
+      background: var(--color-gray-100);
+    }
+    .owner-dropdown {
+      display: none;
+    }
+    .owner-dropdown.show {
+      display: block;
+    }
+    .watch-btn {
+      background: none;
+      border: none;
+      font-size: var(--text-lg);
+      cursor: pointer;
+      padding: var(--space-1);
+      border-radius: var(--radius-sm);
+      transition: var(--transition-all);
+    }
+    .watch-btn:hover {
+      background: var(--color-gray-100);
+    }
+    .watch-btn.watching {
+      color: var(--color-warning-500);
+    }
+
+    /* Collapsible sections */
+    .collapsible {
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .collapsible::after {
+      content: '\25BC';
+      font-size: var(--text-xs);
+      transition: transform 0.2s;
+    }
+    .collapsible.collapsed::after {
+      transform: rotate(-90deg);
+    }
+    .collapsible-content {
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .collapsible-content.collapsed {
+      max-height: 0 !important;
+    }
+
+    /* Quick follow-up form */
+    .quick-followup {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-gray-100);
+    }
+    .quick-followup-input {
+      flex: 1;
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+
+    /* Modals */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal.show {
+      display: flex;
+    }
+    .modal-content {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-lg);
+      width: 90%;
+      max-width: 500px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: var(--space-6);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+    }
+    .modal-header h2 {
+      margin: 0;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: var(--text-2xl);
+      cursor: pointer;
+      color: var(--color-text-muted);
+      line-height: 1;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-3);
+      margin-top: var(--space-5);
+    }
+
+    /* Form elements */
+    .form-group {
+      margin-bottom: var(--space-4);
+    }
+    .form-group label {
+      display: block;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    .form-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+
+    /* Loading state */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Empty state */
+    .empty-state {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      padding: var(--space-4) 0;
+    }
+
+    /* Domains list */
+    .domain-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+    }
+    .domain-item:last-child {
+      border-bottom: none;
+    }
+    .domain-badges {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .domain-badge {
+      font-size: var(--text-xs);
+      padding: var(--space-0) var(--space-1);
+      border-radius: var(--radius-sm);
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+    .domain-badge.primary {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .domain-badge.verified {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">
+    Loading account...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="/admin/prospects">Accounts</a> / <span id="breadcrumbName">Account</span>
+      </div>
+
+      <!-- Header Card -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h1>
+              <span id="accountName">Loading...</span>
+              <span id="memberBadge" class="member-badge prospect">Prospect</span>
+              <span id="accountTypeBadge" class="member-badge" style="background: var(--color-gray-200); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
+            </h1>
+            <div id="headerSubtitle" class="header-subtitle"></div>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-secondary" onclick="openPaymentLinkModal()">Pay Link</button>
+            <button class="btn btn-secondary" onclick="openInvoiceModal()">Invoice</button>
+            <button class="btn btn-secondary" onclick="openEditModal()">Edit</button>
+            <button class="btn btn-secondary" onclick="openLogActivityModal()">Log Activity</button>
+            <button class="btn btn-secondary" onclick="runAIEnrichment()" id="aiEnrichBtn" title="Research using AI">
+              AI Enrich
+              <span id="aiEnrichTimestamp" style="display: none; font-size: var(--text-xs); opacity: 0.7; margin-left: var(--space-1);"></span>
+            </button>
+            <button class="btn btn-primary" onclick="openAddNextStepModal()">+ Next Step</button>
+          </div>
+        </div>
+
+        <!-- Status bar - engagement, interest, owner -->
+        <div class="status-bar">
+          <div class="status-item">
+            <span id="engagementFires" class="engagement-fires"></span>
+            <span class="status-label">Engagement</span>
+          </div>
+          <div class="status-item">
+            <span id="interestBadge" class="interest-badge interest-none" onclick="openInterestModal()" title="Click to set interest level">
+              Set Interest
+            </span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Owner:</span>
+            <span class="owner-selector">
+              <span id="ownerDisplay" class="owner-name" onclick="showOwnerDropdown()">Unassigned</span>
+              <div id="ownerDropdown" class="owner-dropdown">
+                <select id="ownerSelect" onchange="assignOwner(this.value)">
+                  <option value="">Unassigned</option>
+                </select>
+              </div>
+              <button id="watchBtn" class="watch-btn" onclick="toggleWatch()" title="Watch this account">☆</button>
+            </span>
+          </div>
+        </div>
+
+        <!-- Pending invoice highlight (if any) -->
+        <div id="pendingInvoiceHighlight" class="invoice-highlight" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span class="amount" id="pendingInvoiceAmount">$0</span>
+              <span style="color: var(--color-text-secondary); font-size: var(--text-sm);"> invoice pending</span>
+              <span id="pendingInvoiceDate" style="color: var(--color-text-muted); font-size: var(--text-xs);"></span>
+            </div>
+            <a id="pendingInvoiceLink" href="#" target="_blank" class="btn btn-sm btn-secondary">View Invoice</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Left Column -->
+        <div>
+          <!-- Contact & Source -->
+          <div class="card">
+            <div class="info-section">
+              <div class="info-section-title">Contact</div>
+              <div id="contactInfo" class="empty-state">No contact info</div>
+            </div>
+            <div class="info-section">
+              <div class="info-section-title">Source</div>
+              <div id="sourceInfo">-</div>
+            </div>
+          </div>
+
+          <!-- Next Steps -->
+          <div class="card">
+            <h2>Next Steps</h2>
+            <div id="nextStepsList" class="empty-state">
+              No pending next steps
+            </div>
+            <form id="quickFollowUpForm" class="quick-followup" onsubmit="saveQuickFollowUp(event)">
+              <input type="text" id="quickFollowUpText" placeholder="Add a quick follow-up..." class="quick-followup-input" autocomplete="off">
+              <button type="submit" class="btn btn-primary btn-sm">Add</button>
+            </form>
+          </div>
+
+          <!-- Engagement Signals -->
+          <div class="card">
+            <h2 class="collapsible" onclick="toggleSection(this)">Engagement Signals</h2>
+            <div class="collapsible-content" id="engagementSignalsContent">
+              <div class="signal-item">
+                <span class="signal-label">Logins (30d)</span>
+                <span class="signal-value" id="signalLogins">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Last Login</span>
+                <span class="signal-value" id="signalLastLogin">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Email Clicks (30d)</span>
+                <span class="signal-value" id="signalEmailClicks">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Working Groups</span>
+                <span class="signal-value" id="signalWorkingGroups">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">Member Profile</span>
+                <span class="signal-value" id="signalMemberProfile">-</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pricing & Discount -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+              <h2 style="margin-bottom: 0;">Pricing</h2>
+              <button class="btn btn-sm btn-secondary" onclick="openDiscountModal()">Set Discount</button>
+            </div>
+            <div id="pricingContent">
+              <div class="signal-item">
+                <span class="signal-label">Recommended</span>
+                <span class="signal-value" id="pricingSuggestedTier">-</span>
+              </div>
+              <div class="signal-item">
+                <span class="signal-label">List Price</span>
+                <span class="signal-value" id="pricingListPrice">-</span>
+              </div>
+              <div class="signal-item" id="discountRow" style="display: none;">
+                <span class="signal-label">Discount</span>
+                <span class="signal-value" id="pricingDiscount">-</span>
+              </div>
+              <div class="signal-item" id="netPriceRow" style="display: none;">
+                <span class="signal-label">Net Price</span>
+                <span class="signal-value" id="pricingNetPrice" style="color: var(--color-success-600); font-weight: var(--font-bold);">-</span>
+              </div>
+              <div class="signal-item" id="promoCodeRow" style="display: none;">
+                <span class="signal-label">Promo Code</span>
+                <span class="signal-value" id="pricingPromoCode">-</span>
+              </div>
+            </div>
+            <div id="discountDetails" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-sm); display: none;">
+              <div style="font-size: var(--text-sm);">
+                <strong>Reason:</strong>
+                <span id="discountReasonText"></span>
+              </div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+                Granted by <span id="discountGrantedBy"></span> on <span id="discountGrantedAt"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pending Invoices -->
+          <div class="card" id="pendingInvoicesCard" style="display: none;">
+            <h2>Pending Invoices</h2>
+            <div id="pendingInvoicesList">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- Company Profile (enrichment) -->
+          <div class="card" id="companyProfileCard" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 class="collapsible" onclick="toggleSection(this)" style="margin-bottom: 0;">Company Profile</h2>
+              <button class="btn btn-sm btn-secondary" onclick="refreshEnrichment()">Refresh</button>
+            </div>
+            <div class="collapsible-content" id="companyProfileContent" style="margin-top: var(--space-4);">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- Members -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">
+                Members <span id="memberCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
+              </h2>
+              <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
+            </div>
+            <div class="collapsible-content collapsed" id="membersContent" style="margin-top: var(--space-4);">
+              <ul id="membersList" class="members-list">
+                <li class="empty-state">No members yet</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Working Groups -->
+          <div class="card">
+            <h2 class="collapsible collapsed" onclick="toggleSection(this)">Working Groups</h2>
+            <div class="collapsible-content collapsed" id="workingGroupsContent">
+              <div id="workingGroupsList" class="empty-state">
+                Not in any working groups
+              </div>
+            </div>
+          </div>
+
+          <!-- Domains -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">Linked Domains</h2>
+              <button class="btn btn-sm btn-secondary" onclick="openAddDomainModal()">+ Add</button>
+            </div>
+            <div class="collapsible-content collapsed" id="domainsContent" style="margin-top: var(--space-4);">
+              <div id="domainsList" class="empty-state">
+                No domains linked
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column - Activity Timeline -->
+        <div>
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+              <h2 style="margin-bottom: 0;">Activity</h2>
+              <button class="btn btn-secondary btn-sm" onclick="openLogActivityModal()">+ Log Activity</button>
+            </div>
+            <div id="activityTimeline" class="timeline">
+              <div class="empty-state">No activities yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interest Level Modal -->
+  <div id="interestModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2>Set Interest Level</h2>
+        <button class="modal-close" onclick="closeModal('interestModal')">&times;</button>
+      </div>
+      <form id="interestForm" onsubmit="saveInterestLevel(event)">
+        <div class="form-group">
+          <label>Interest Level</label>
+          <select id="interestLevelSelect">
+            <option value="">Not set</option>
+            <option value="low">Low - Not a good fit / not interested</option>
+            <option value="medium">Medium - Lukewarm / maybe later</option>
+            <option value="high">High - Interested / actively engaged</option>
+            <option value="very_high">Very High - Ready to move forward</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Note (optional)</label>
+          <textarea id="interestLevelNote" placeholder="e.g., Per conversation with CEO on 12/28..." rows="3"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('interestModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Log Activity Modal -->
+  <div id="activityModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Log Activity</h2>
+        <button class="modal-close" onclick="closeModal('activityModal')">&times;</button>
+      </div>
+      <form id="activityForm" onsubmit="saveActivity(event)">
+        <div class="form-group">
+          <label>Activity Type *</label>
+          <select id="activityType" required>
+            <option value="">Select type...</option>
+            <option value="call">Call</option>
+            <option value="email">Email</option>
+            <option value="meeting">Meeting</option>
+            <option value="slack_dm">Slack DM</option>
+            <option value="event">Event</option>
+            <option value="note">Note</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="activityDescription" placeholder="What happened?"></textarea>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="isNextStep" onchange="toggleNextStepFields()">
+            This creates a follow-up task
+          </label>
+        </div>
+        <div id="nextStepFields" style="display: none;">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Due Date</label>
+              <input type="date" id="nextStepDueDate">
+            </div>
+            <div class="form-group">
+              <label>Owner</label>
+              <select id="nextStepOwner">
+                <option value="">Not assigned</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('activityModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Activity</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Account Modal -->
+  <div id="editModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>Edit Account</h2>
+        <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
+      </div>
+      <form id="editForm" onsubmit="saveAccountChanges(event)">
+        <div class="form-group">
+          <label>Organization Name</label>
+          <input type="text" id="editName" disabled>
+          <div class="form-hint">Name cannot be changed here</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Company Type</label>
+            <select id="editCompanyType">
+              <option value="">Not specified</option>
+              <option value="brand">Brand</option>
+              <option value="publisher">Publisher</option>
+              <option value="agency">Agency</option>
+              <option value="adtech">Ad Tech</option>
+              <option value="data">Data & Measurement</option>
+              <option value="ai">AI & Tech Platforms</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Source</label>
+            <select id="editSource">
+              <option value="">Not specified</option>
+              <option value="slack">Slack</option>
+              <option value="referral">Referral</option>
+              <option value="inbound">Inbound</option>
+              <option value="organic">Organic</option>
+              <option value="aao_launch_list">AAO Launch List</option>
+            </select>
+          </div>
+        </div>
+        <h3 style="margin-top: var(--space-5); margin-bottom: var(--space-4); font-size: var(--text-base);">Contact</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Contact Name</label>
+            <input type="text" id="editContactName">
+          </div>
+          <div class="form-group">
+            <label>Contact Email</label>
+            <input type="email" id="editContactEmail">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Contact Title</label>
+          <input type="text" id="editContactTitle" placeholder="e.g., VP Engineering">
+        </div>
+
+        <div id="disqualifySection" style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-200);">
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="editDisqualified" onchange="toggleDisqualifyReason()">
+              Disqualify this account
+            </label>
+            <div class="form-hint">Mark as not a viable customer (academic org, personal account, etc.)</div>
+          </div>
+          <div class="form-group" id="disqualifyReasonGroup" style="display: none;">
+            <label>Reason</label>
+            <input type="text" id="editDisqualifyReason" placeholder="e.g., Academic institution, Competitor, Not in target market">
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Domain Modal -->
+  <div id="addDomainModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2>Add Domain</h2>
+        <button class="modal-close" onclick="closeModal('addDomainModal')">&times;</button>
+      </div>
+      <form id="addDomainForm" onsubmit="addDomain(event)">
+        <div class="form-group">
+          <label>Domain *</label>
+          <input type="text" id="domainInput" placeholder="e.g., acme.com" required>
+          <div class="form-hint">Enter the domain without http:// or www.</div>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="domainIsPrimary">
+            Set as primary domain
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('addDomainModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Domain</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Migrate Members Modal -->
+  <div id="migrateMembersModal" class="modal">
+    <div class="modal-content" style="max-width: 550px;">
+      <div class="modal-header">
+        <h2>Migrate Members</h2>
+        <button class="modal-close" onclick="closeModal('migrateMembersModal')">&times;</button>
+      </div>
+      <form id="migrateMembersForm" onsubmit="migrateMembers(event)">
+        <div style="background: var(--color-warning-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+          <div style="font-weight: var(--font-semibold); color: var(--color-warning-700);">Warning</div>
+          <div style="font-size: var(--text-sm); color: var(--color-warning-700);">
+            This will move members from this account to another account. The members will be removed from this account and added to the target account.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Target Account *</label>
+          <input type="text" id="migrateTargetOrgId" placeholder="e.g., org_01ABC123..." required>
+          <div class="form-hint">Enter the organization ID to migrate members to</div>
+        </div>
+        <div class="form-group">
+          <label>Members to Migrate</label>
+          <div id="migrateMembersList" style="max-height: 200px; overflow-y: auto; border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-2);">
+            <!-- Populated by JS -->
+          </div>
+          <div class="form-hint">Select which members to migrate (leave all unchecked to migrate all)</div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('migrateMembersModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="migrateMembersSubmitBtn">Migrate Members</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Convert Account Type Modal -->
+  <div id="convertAccountModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2 id="convertAccountTitle">Convert Account Type</h2>
+        <button class="modal-close" onclick="closeModal('convertAccountModal')">&times;</button>
+      </div>
+      <div id="convertAccountContent">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Link Modal (placeholder) -->
+  <div id="paymentLinkModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Generate Payment Link</h2>
+        <button class="modal-close" onclick="closeModal('paymentLinkModal')">&times;</button>
+      </div>
+      <div id="paymentLinkContent">
+        <!-- Will be populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Invoice Modal (placeholder) -->
+  <div id="invoiceModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Send Invoice</h2>
+        <button class="modal-close" onclick="closeModal('invoiceModal')">&times;</button>
+      </div>
+      <div id="invoiceContent">
+        <!-- Will be populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Discount Modal -->
+  <div id="discountModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 id="discountModalTitle">Set Discount</h2>
+        <button class="modal-close" onclick="closeModal('discountModal')">&times;</button>
+      </div>
+      <form id="discountForm" onsubmit="saveDiscount(event)">
+        <div class="form-group">
+          <label>Discount Type</label>
+          <select id="discountType" onchange="toggleDiscountInputs()">
+            <option value="percent">Percentage</option>
+            <option value="amount">Fixed Amount</option>
+          </select>
+        </div>
+        <div class="form-group" id="discountPercentGroup">
+          <label>Discount Percentage *</label>
+          <input type="number" id="discountPercent" min="1" max="100" placeholder="e.g., 20">
+          <div class="form-hint">Enter a value between 1 and 100</div>
+        </div>
+        <div class="form-group" id="discountAmountGroup" style="display: none;">
+          <label>Discount Amount (USD) *</label>
+          <input type="number" id="discountAmount" min="1" step="1" placeholder="e.g., 500">
+          <div class="form-hint">Enter the discount amount in dollars</div>
+        </div>
+        <div class="form-group">
+          <label>Reason *</label>
+          <select id="discountReasonSelect" onchange="toggleCustomReason()">
+            <option value="">Select a reason...</option>
+            <option value="startup">Startup / Early Stage</option>
+            <option value="nonprofit">Nonprofit Organization</option>
+            <option value="early_adopter">Early Adopter</option>
+            <option value="strategic">Strategic Partner</option>
+            <option value="volume">Multi-Year / Volume</option>
+            <option value="custom">Other (custom reason)</option>
+          </select>
+        </div>
+        <div class="form-group" id="customReasonGroup" style="display: none;">
+          <label>Custom Reason *</label>
+          <input type="text" id="discountCustomReason" placeholder="e.g., Referred by existing member">
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="createStripeCoupon" checked>
+            Create Stripe coupon & promo code
+          </label>
+          <div class="form-hint">Generates a unique promo code the prospect can use at checkout</div>
+        </div>
+        <div id="currentDiscountInfo" style="display: none; margin-top: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border-radius: var(--radius-sm);">
+          <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-warning-700);">Current Discount</div>
+          <div style="font-size: var(--text-sm); margin-top: var(--space-1);" id="currentDiscountText"></div>
+          <button type="button" class="btn btn-sm btn-danger" style="margin-top: var(--space-2);" onclick="removeDiscount()">Remove Discount</button>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('discountModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveDiscountBtn">Save Discount</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- User Context Modal -->
+  <div id="userContextModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2 id="userContextModalTitle">Member Context</h2>
+        <button class="modal-close" onclick="closeModal('userContextModal')">&times;</button>
+      </div>
+      <div id="userContextModalBody" style="padding: var(--space-4);">
+        <!-- Content populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let accountData = null;
+    let currentUserId = null;
+    let teamMembers = [];
+    const accountId = window.location.pathname.split('/').pop();
+
+    // Load account data
+    async function loadAccount() {
+      try {
+        const [accountResponse, teamResponse] = await Promise.all([
+          fetch(`/api/admin/accounts/${accountId}`),
+          fetch('/api/admin/team')
+        ]);
+
+        if (!accountResponse.ok) {
+          throw new Error('Failed to load account');
+        }
+
+        accountData = await accountResponse.json();
+        teamMembers = (await teamResponse.json()) || [];
+        currentUserId = window.__APP_CONFIG__?.user?.id;
+
+        renderAccount();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading account:', error);
+        document.getElementById('loading').textContent = 'Error loading account';
+      }
+    }
+
+    function renderAccount() {
+      const a = accountData;
+
+      // Header
+      document.getElementById('accountName').textContent = a.name;
+      document.getElementById('breadcrumbName').textContent = a.name;
+      document.title = `${a.name} - Account`;
+
+      // Member status badge
+      const memberBadge = document.getElementById('memberBadge');
+      memberBadge.className = `member-badge ${a.member_status}`;
+      if (a.is_disqualified) {
+        memberBadge.className = 'member-badge disqualified';
+        memberBadge.textContent = 'Disqualified';
+      } else {
+        const statusLabels = {
+          member: 'Member',
+          trial: 'Trial',
+          lapsed: 'Lapsed',
+          prospect: 'Prospect'
+        };
+        memberBadge.textContent = statusLabels[a.member_status] || 'Prospect';
+      }
+
+      // Header subtitle (company type, employees, location)
+      const subtitleParts = [];
+      if (a.company_type) subtitleParts.push(formatCompanyType(a.company_type));
+      if (a.enrichment?.employee_count_range) subtitleParts.push(a.enrichment.employee_count_range + ' employees');
+      if (a.enrichment?.city && a.enrichment?.country) subtitleParts.push(`${a.enrichment.city}, ${a.enrichment.country}`);
+      document.getElementById('headerSubtitle').textContent = subtitleParts.join(' • ') || '';
+
+      // Engagement fires
+      const fires = a.engagement_fires || 0;
+      document.getElementById('engagementFires').textContent = fires > 0 ? '🔥'.repeat(fires) : '○';
+
+      // Interest level badge
+      const interestBadge = document.getElementById('interestBadge');
+      if (a.interest_level) {
+        const interestLabels = {
+          low: 'Low Interest',
+          medium: 'Medium Interest',
+          high: 'High Interest ⭐',
+          very_high: 'Very High ⭐⭐'
+        };
+        interestBadge.textContent = interestLabels[a.interest_level] || a.interest_level;
+        interestBadge.className = `interest-badge interest-${a.interest_level}`;
+      } else {
+        interestBadge.textContent = 'Set Interest';
+        interestBadge.className = 'interest-badge interest-none';
+      }
+
+      // Owner
+      renderOwner();
+
+      // Pending invoice highlight
+      if (a.has_pending_invoice && a.pending_invoices?.length > 0) {
+        const invoice = a.pending_invoices[0];
+        document.getElementById('pendingInvoiceHighlight').style.display = 'block';
+        document.getElementById('pendingInvoiceAmount').textContent = formatCurrency(invoice.amount_due);
+        if (invoice.due_date) {
+          document.getElementById('pendingInvoiceDate').textContent = ` • due ${formatDate(invoice.due_date)}`;
+        }
+        if (invoice.hosted_invoice_url) {
+          document.getElementById('pendingInvoiceLink').href = invoice.hosted_invoice_url;
+        }
+      }
+
+      // Contact info
+      if (a.contact_name || a.contact_email) {
+        let contactHtml = '';
+        if (a.contact_name) {
+          contactHtml += `<div><strong>${escapeHtml(a.contact_name)}</strong>`;
+          if (a.contact_title) contactHtml += ` <span style="color: var(--color-text-muted);">${escapeHtml(a.contact_title)}</span>`;
+          contactHtml += '</div>';
+        }
+        if (a.contact_email) {
+          contactHtml += `<div><a href="mailto:${escapeHtml(a.contact_email)}">${escapeHtml(a.contact_email)}</a></div>`;
+        }
+        document.getElementById('contactInfo').innerHTML = contactHtml;
+      }
+
+      // Source
+      document.getElementById('sourceInfo').textContent = formatSource(a.source) || '-';
+
+      // Next steps
+      renderNextSteps();
+
+      // Engagement signals
+      if (a.engagement_signals) {
+        const s = a.engagement_signals;
+        document.getElementById('signalLogins').textContent = s.login_count_30d || 0;
+        document.getElementById('signalLogins').className = `signal-value ${s.login_count_30d > 0 ? 'positive' : 'negative'}`;
+        document.getElementById('signalLastLogin').textContent = s.last_login ? formatDate(s.last_login) : 'Never';
+        document.getElementById('signalEmailClicks').textContent = s.email_click_count_30d || 0;
+        document.getElementById('signalWorkingGroups').textContent = s.working_group_count || 0;
+        document.getElementById('signalMemberProfile').textContent = s.has_member_profile ? 'Configured' : 'Not set up';
+        document.getElementById('signalMemberProfile').className = `signal-value ${s.has_member_profile ? 'positive' : 'negative'}`;
+      }
+
+      // Company profile (enrichment)
+      if (a.enrichment) {
+        document.getElementById('companyProfileCard').style.display = 'block';
+        let profileHtml = '';
+        if (a.enrichment.industry) profileHtml += signalRow('Industry', a.enrichment.industry);
+        if (a.enrichment.sub_industry) profileHtml += signalRow('Sub-Industry', a.enrichment.sub_industry);
+        if (a.enrichment.revenue_range || a.enrichment.revenue) profileHtml += signalRow('Revenue', a.enrichment.revenue_range || a.enrichment.revenue);
+        if (a.enrichment.employee_count_range || a.enrichment.employee_count) profileHtml += signalRow('Employees', a.enrichment.employee_count_range || a.enrichment.employee_count);
+        if (a.enrichment.founded_year) profileHtml += signalRow('Founded', a.enrichment.founded_year);
+        if (a.enrichment.city || a.enrichment.country) profileHtml += signalRow('Location', [a.enrichment.city, a.enrichment.country].filter(Boolean).join(', '));
+        if (a.enrichment.linkedin_url) profileHtml += signalRow('LinkedIn', `<a href="${escapeHtml(a.enrichment.linkedin_url)}" target="_blank">View Profile</a>`);
+        if (a.enrichment.description) {
+          profileHtml += `<div style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">${escapeHtml(a.enrichment.description)}</div>`;
+        }
+        if (a.enrichment.enriched_at) {
+          profileHtml += `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">Updated ${formatDate(a.enrichment.enriched_at)} via ${a.enrichment.source || 'enrichment'}</div>`;
+        }
+        document.getElementById('companyProfileContent').innerHTML = profileHtml;
+
+        // Update AI Enrich button with last enrichment time
+        const aiEnrichBtn = document.getElementById('aiEnrichBtn');
+        if (a.enrichment.enriched_at) {
+          aiEnrichBtn.title = `Last enriched: ${formatDate(a.enrichment.enriched_at)}`;
+        }
+      }
+
+      // Account type badge
+      renderAccountTypeBadge();
+
+      // Members
+      if (a.members && a.members.length > 0) {
+        document.getElementById('memberCount').textContent = `(${a.members.length})`;
+        // Show migrate button if there are members
+        document.getElementById('migrateMembersBtn').style.display = 'inline-flex';
+        let membersHtml = '';
+        for (const m of a.members) {
+          const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
+          membersHtml += `<li>
+            <span class="member-name-link" onclick="viewMemberContext('${m.id}')">${escapeHtml(name)}</span>
+            ${m.role ? `<span class="member-role">${m.role}</span>` : ''}
+            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</div>
+          </li>`;
+        }
+        document.getElementById('membersList').innerHTML = membersHtml;
+      }
+
+      // Working groups
+      if (a.working_groups && a.working_groups.length > 0) {
+        let wgHtml = '';
+        for (const wg of a.working_groups) {
+          wgHtml += `<span class="wg-badge">${escapeHtml(wg.name)}</span>`;
+        }
+        document.getElementById('workingGroupsList').innerHTML = wgHtml;
+      }
+
+      // Domains
+      if (a.domains && a.domains.length > 0) {
+        let domainsHtml = '';
+        for (const d of a.domains) {
+          domainsHtml += `<div class="domain-item">
+            <span>${escapeHtml(d.domain)}</span>
+            <div class="domain-badges">
+              ${d.is_primary ? '<span class="domain-badge primary">Primary</span>' : ''}
+              ${d.verified ? '<span class="domain-badge verified">Verified</span>' : ''}
+            </div>
+          </div>`;
+        }
+        document.getElementById('domainsList').innerHTML = domainsHtml;
+      }
+
+      // Activity timeline
+      renderActivities();
+
+      // Pricing and discounts
+      renderPricing();
+
+      // Pending invoices (with void buttons)
+      renderPendingInvoices();
+
+      // Populate team dropdowns
+      populateTeamDropdowns();
+    }
+
+    function renderOwner() {
+      const owner = accountData.owner;
+      const ownerDisplay = document.getElementById('ownerDisplay');
+      const watchBtn = document.getElementById('watchBtn');
+
+      if (owner) {
+        const isMe = owner.user_id === currentUserId;
+        ownerDisplay.textContent = isMe ? 'Me' : owner.user_name || owner.user_email || 'Unknown';
+        watchBtn.style.display = isMe ? 'none' : 'inline';
+      } else {
+        ownerDisplay.textContent = 'Unassigned';
+        watchBtn.style.display = 'inline';
+      }
+
+      // Watch button state
+      const isWatching = accountData.stakeholders?.some(s => s.user_id === currentUserId && s.role === 'interested');
+      watchBtn.textContent = isWatching ? '⭐' : '☆';
+      watchBtn.className = `watch-btn ${isWatching ? 'watching' : ''}`;
+    }
+
+    function renderNextSteps() {
+      const steps = accountData.next_steps || [];
+      if (steps.length === 0) {
+        document.getElementById('nextStepsList').innerHTML = '<div class="empty-state">No pending next steps</div>';
+        return;
+      }
+
+      let html = '';
+      for (const step of steps) {
+        const isOverdue = step.next_step_due_date && new Date(step.next_step_due_date) < new Date();
+        html += `<div class="next-step-item ${isOverdue ? 'overdue' : ''}">
+          <div class="next-step-due">${step.next_step_due_date ? (isOverdue ? 'Overdue: ' : 'Due: ') + formatDate(step.next_step_due_date) : 'No due date'}</div>
+          <div class="next-step-description">${escapeHtml(step.description || 'Follow up')}</div>
+          ${step.next_step_owner_name ? `<div class="next-step-owner">Assigned to ${escapeHtml(step.next_step_owner_name)}</div>` : ''}
+          <div class="next-step-actions">
+            <button class="btn btn-sm btn-success" onclick="completeNextStep(${step.id})">Mark Complete</button>
+          </div>
+        </div>`;
+      }
+      document.getElementById('nextStepsList').innerHTML = html;
+    }
+
+    function renderActivities() {
+      const activities = accountData.activities || [];
+      if (activities.length === 0) {
+        document.getElementById('activityTimeline').innerHTML = '<div class="empty-state">No activities yet</div>';
+        return;
+      }
+
+      let html = '';
+      for (const activity of activities) {
+        const isNextStep = activity.is_next_step;
+        const isCompleted = activity.next_step_completed_at;
+        let itemClass = '';
+        if (isNextStep && !isCompleted) itemClass = 'is-next-step';
+        if (isCompleted) itemClass = 'completed';
+
+        html += `<div class="timeline-item ${itemClass}">
+          <div class="timeline-date">${formatDateTime(activity.activity_date)}</div>
+          <div class="timeline-type">${formatActivityType(activity.activity_type)}</div>
+          ${activity.description ? `<div class="timeline-description">${escapeHtml(activity.description)}</div>` : ''}
+          ${activity.logged_by_name ? `<div class="timeline-meta">by ${escapeHtml(activity.logged_by_name)}</div>` : ''}
+        </div>`;
+      }
+      document.getElementById('activityTimeline').innerHTML = html;
+    }
+
+    function populateTeamDropdowns() {
+      const ownerSelect = document.getElementById('ownerSelect');
+      const nextStepOwner = document.getElementById('nextStepOwner');
+
+      let options = '<option value="">Unassigned</option>';
+      for (const member of teamMembers) {
+        const isMe = member.workos_user_id === currentUserId;
+        options += `<option value="${member.workos_user_id}">${isMe ? 'Me' : member.name || member.email}</option>`;
+      }
+
+      ownerSelect.innerHTML = options;
+      nextStepOwner.innerHTML = options;
+
+      // Set current owner
+      if (accountData.owner) {
+        ownerSelect.value = accountData.owner.user_id || '';
+      }
+    }
+
+    // Helper functions
+    function signalRow(label, value) {
+      return `<div class="signal-item"><span class="signal-label">${label}</span><span class="signal-value">${value}</span></div>`;
+    }
+
+    function formatCompanyType(type) {
+      const types = {
+        brand: 'Brand',
+        publisher: 'Publisher',
+        agency: 'Agency',
+        adtech: 'Ad Tech',
+        data: 'Data & Measurement',
+        ai: 'AI & Tech',
+        other: 'Other'
+      };
+      return types[type] || type;
+    }
+
+    function formatSource(source) {
+      const sources = {
+        slack: 'Slack',
+        referral: 'Referral',
+        inbound: 'Inbound',
+        organic: 'Organic',
+        aao_launch_list: 'AAO Launch List'
+      };
+      return sources[source] || source;
+    }
+
+    function formatActivityType(type) {
+      const types = {
+        call: 'Call',
+        email: 'Email',
+        meeting: 'Meeting',
+        slack_dm: 'Slack DM',
+        event: 'Event',
+        note: 'Note',
+        dashboard_login: 'Dashboard Login',
+        email_inbound: 'Email Received'
+      };
+      return types[type] || type;
+    }
+
+    function formatDate(date) {
+      if (!date) return '-';
+      return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatDateTime(date) {
+      if (!date) return '-';
+      return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    function formatCurrency(cents) {
+      return '$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Modal helpers
+    function openModal(id) {
+      document.getElementById(id).classList.add('show');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    function toggleSection(header) {
+      header.classList.toggle('collapsed');
+      const content = header.nextElementSibling;
+      if (content && content.classList.contains('collapsible-content')) {
+        content.classList.toggle('collapsed');
+      }
+    }
+
+    // Owner management
+    function showOwnerDropdown() {
+      const dropdown = document.getElementById('ownerDropdown');
+      dropdown.classList.toggle('show');
+    }
+
+    async function assignOwner(userId) {
+      try {
+        if (userId) {
+          await fetch(`/api/admin/organizations/${accountId}/stakeholders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, role: 'owner' })
+          });
+        } else {
+          // Remove owner
+          const currentOwner = accountData.stakeholders?.find(s => s.role === 'owner');
+          if (currentOwner) {
+            await fetch(`/api/admin/organizations/${accountId}/stakeholders/${currentOwner.id}`, {
+              method: 'DELETE'
+            });
+          }
+        }
+        location.reload();
+      } catch (error) {
+        console.error('Error assigning owner:', error);
+        alert('Failed to assign owner');
+      }
+    }
+
+    async function toggleWatch() {
+      const isWatching = accountData.stakeholders?.some(s => s.user_id === currentUserId && s.role === 'interested');
+      try {
+        if (isWatching) {
+          await fetch(`/api/admin/organizations/${accountId}/stakeholders/me`, { method: 'DELETE' });
+        } else {
+          await fetch(`/api/admin/organizations/${accountId}/stakeholders/me`, { method: 'POST' });
+        }
+        location.reload();
+      } catch (error) {
+        console.error('Error toggling watch:', error);
+      }
+    }
+
+    // Interest level
+    function openInterestModal() {
+      document.getElementById('interestLevelSelect').value = accountData.interest_level || '';
+      document.getElementById('interestLevelNote').value = accountData.interest_level_note || '';
+      openModal('interestModal');
+    }
+
+    async function saveInterestLevel(event) {
+      event.preventDefault();
+      const level = document.getElementById('interestLevelSelect').value || null;
+      const note = document.getElementById('interestLevelNote').value || null;
+
+      try {
+        await fetch(`/api/admin/organizations/${accountId}/interest-level`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interest_level: level, note })
+        });
+        closeModal('interestModal');
+        location.reload();
+      } catch (error) {
+        console.error('Error saving interest level:', error);
+        alert('Failed to save interest level');
+      }
+    }
+
+    // Activity logging
+    function openLogActivityModal() {
+      document.getElementById('activityForm').reset();
+      document.getElementById('nextStepFields').style.display = 'none';
+      openModal('activityModal');
+    }
+
+    function openAddNextStepModal() {
+      document.getElementById('activityForm').reset();
+      document.getElementById('activityType').value = 'note';
+      document.getElementById('isNextStep').checked = true;
+      document.getElementById('nextStepFields').style.display = 'block';
+      // Set default due date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      document.getElementById('nextStepDueDate').value = tomorrow.toISOString().split('T')[0];
+      openModal('activityModal');
+    }
+
+    function toggleNextStepFields() {
+      document.getElementById('nextStepFields').style.display =
+        document.getElementById('isNextStep').checked ? 'block' : 'none';
+    }
+
+    async function saveActivity(event) {
+      event.preventDefault();
+      const isNextStep = document.getElementById('isNextStep').checked;
+
+      const body = {
+        activity_type: document.getElementById('activityType').value,
+        description: document.getElementById('activityDescription').value,
+        is_next_step: isNextStep
+      };
+
+      if (isNextStep) {
+        body.next_step_due_date = document.getElementById('nextStepDueDate').value || null;
+        body.next_step_owner_user_id = document.getElementById('nextStepOwner').value || null;
+      }
+
+      try {
+        await fetch(`/api/admin/organizations/${accountId}/activities`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        closeModal('activityModal');
+        location.reload();
+      } catch (error) {
+        console.error('Error saving activity:', error);
+        alert('Failed to save activity');
+      }
+    }
+
+    async function saveQuickFollowUp(event) {
+      event.preventDefault();
+      const text = document.getElementById('quickFollowUpText').value.trim();
+      if (!text) return;
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      try {
+        await fetch(`/api/admin/organizations/${accountId}/activities`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activity_type: 'note',
+            description: text,
+            is_next_step: true,
+            next_step_due_date: tomorrow.toISOString().split('T')[0],
+            next_step_owner_user_id: currentUserId
+          })
+        });
+        location.reload();
+      } catch (error) {
+        console.error('Error saving follow-up:', error);
+        alert('Failed to add follow-up');
+      }
+    }
+
+    async function completeNextStep(activityId) {
+      try {
+        await fetch(`/api/admin/organizations/${accountId}/activities/${activityId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ next_step_completed_at: new Date().toISOString() })
+        });
+        location.reload();
+      } catch (error) {
+        console.error('Error completing next step:', error);
+        alert('Failed to complete next step');
+      }
+    }
+
+    // Edit account
+    function openEditModal() {
+      document.getElementById('editName').value = accountData.name;
+      document.getElementById('editCompanyType').value = accountData.company_type || '';
+      document.getElementById('editSource').value = accountData.source || '';
+      document.getElementById('editContactName').value = accountData.contact_name || '';
+      document.getElementById('editContactEmail').value = accountData.contact_email || '';
+      document.getElementById('editContactTitle').value = accountData.contact_title || '';
+      document.getElementById('editDisqualified').checked = accountData.is_disqualified;
+      document.getElementById('editDisqualifyReason').value = accountData.disqualification_reason || '';
+      toggleDisqualifyReason();
+      openModal('editModal');
+    }
+
+    function toggleDisqualifyReason() {
+      document.getElementById('disqualifyReasonGroup').style.display =
+        document.getElementById('editDisqualified').checked ? 'block' : 'none';
+    }
+
+    async function saveAccountChanges(event) {
+      event.preventDefault();
+
+      const body = {
+        company_type: document.getElementById('editCompanyType').value || null,
+        prospect_source: document.getElementById('editSource').value || null,
+        prospect_contact_name: document.getElementById('editContactName').value || null,
+        prospect_contact_email: document.getElementById('editContactEmail').value || null,
+        prospect_contact_title: document.getElementById('editContactTitle').value || null,
+        prospect_status: document.getElementById('editDisqualified').checked ? 'disqualified' : null,
+        disqualification_reason: document.getElementById('editDisqualified').checked ?
+          document.getElementById('editDisqualifyReason').value : null
+      };
+
+      try {
+        await fetch(`/api/admin/prospects/${accountId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        closeModal('editModal');
+        location.reload();
+      } catch (error) {
+        console.error('Error saving changes:', error);
+        alert('Failed to save changes');
+      }
+    }
+
+    // Domain management
+    function openAddDomainModal() {
+      document.getElementById('addDomainForm').reset();
+      openModal('addDomainModal');
+    }
+
+    async function addDomain(event) {
+      event.preventDefault();
+      const domain = document.getElementById('domainInput').value.trim().toLowerCase();
+      const isPrimary = document.getElementById('domainIsPrimary').checked;
+
+      try {
+        await fetch(`/api/admin/organizations/${accountId}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain, is_primary: isPrimary })
+        });
+        closeModal('addDomainModal');
+        location.reload();
+      } catch (error) {
+        console.error('Error adding domain:', error);
+        alert('Failed to add domain');
+      }
+    }
+
+    // Enrichment refresh
+    async function refreshEnrichment() {
+      try {
+        await fetch(`/api/admin/organizations/${accountId}/enrich`, { method: 'POST' });
+        location.reload();
+      } catch (error) {
+        console.error('Error refreshing enrichment:', error);
+        alert('Failed to refresh enrichment');
+      }
+    }
+
+    // Payment link (placeholder)
+    function openPaymentLinkModal() {
+      // Redirect to old page for now
+      window.location.href = `/admin/organizations/${accountId}`;
+    }
+
+    // Invoice (placeholder)
+    function openInvoiceModal() {
+      // Redirect to old page for now
+      window.location.href = `/admin/organizations/${accountId}`;
+    }
+
+    // AI Enrichment
+    async function runAIEnrichment() {
+      const btn = document.getElementById('aiEnrichBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Researching...';
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/analyze-with-ai/${accountId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 503) {
+            showToast('AI enrichment is not configured. ANTHROPIC_API_KEY is required.', 'error');
+            return;
+          }
+          throw new Error('Failed to run AI enrichment');
+        }
+
+        const result = await response.json();
+
+        // Count what was updated
+        let updateCount = 0;
+        if (result.tool_calls) {
+          updateCount = result.tool_calls.filter(tc =>
+            ['update_prospect', 'enrich_prospect'].includes(tc.tool)
+          ).length;
+        }
+
+        // Show brief success message and reload to show updated data
+        showToast(updateCount > 0 ? 'Enrichment complete - data updated' : 'Analysis complete - no updates needed', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } catch (error) {
+        console.error('AI enrichment error:', error);
+        showToast('Error running AI enrichment: ' + error.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
+    // Simple toast notification
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        background: ${type === 'error' ? 'var(--color-error)' : type === 'success' ? 'var(--color-success)' : 'var(--color-brand)'};
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.animation = 'fadeOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Discount management
+    function openDiscountModal() {
+      document.getElementById('discountForm').reset();
+      document.getElementById('discountType').value = 'percent';
+      document.getElementById('discountPercentGroup').style.display = 'block';
+      document.getElementById('discountAmountGroup').style.display = 'none';
+      document.getElementById('customReasonGroup').style.display = 'none';
+
+      const currentInfo = document.getElementById('currentDiscountInfo');
+      const discount = accountData.discount;
+      if (discount && (discount.percent || discount.amount_cents)) {
+        currentInfo.style.display = 'block';
+        let currentText = '';
+        if (discount.percent) {
+          currentText = `${discount.percent}% discount`;
+          document.getElementById('discountType').value = 'percent';
+          document.getElementById('discountPercent').value = discount.percent;
+        } else {
+          currentText = `$${discount.amount_cents / 100} discount`;
+          document.getElementById('discountType').value = 'amount';
+          document.getElementById('discountAmount').value = discount.amount_cents / 100;
+          toggleDiscountInputs();
+        }
+        if (discount.reason) {
+          currentText += ` - ${discount.reason}`;
+        }
+        document.getElementById('currentDiscountText').textContent = currentText;
+        document.getElementById('discountModalTitle').textContent = 'Edit Discount';
+      } else {
+        currentInfo.style.display = 'none';
+        document.getElementById('discountModalTitle').textContent = 'Set Discount';
+      }
+      openModal('discountModal');
+    }
+
+    function toggleDiscountInputs() {
+      const type = document.getElementById('discountType').value;
+      document.getElementById('discountPercentGroup').style.display = type === 'percent' ? 'block' : 'none';
+      document.getElementById('discountAmountGroup').style.display = type === 'amount' ? 'block' : 'none';
+    }
+
+    function toggleCustomReason() {
+      const reason = document.getElementById('discountReasonSelect').value;
+      document.getElementById('customReasonGroup').style.display = reason === 'custom' ? 'block' : 'none';
+    }
+
+    async function saveDiscount(event) {
+      event.preventDefault();
+      const type = document.getElementById('discountType').value;
+      const reasonSelect = document.getElementById('discountReasonSelect').value;
+      const customReason = document.getElementById('discountCustomReason').value;
+      const createStripeCoupon = document.getElementById('createStripeCoupon').checked;
+
+      let discountValue;
+      if (type === 'percent') {
+        discountValue = parseInt(document.getElementById('discountPercent').value);
+        if (!discountValue || discountValue < 1 || discountValue > 100) {
+          alert('Please enter a valid percentage between 1 and 100');
+          return;
+        }
+      } else {
+        discountValue = parseInt(document.getElementById('discountAmount').value);
+        if (!discountValue || discountValue < 1) {
+          alert('Please enter a valid discount amount');
+          return;
+        }
+      }
+
+      if (!reasonSelect) {
+        alert('Please select a reason for the discount');
+        return;
+      }
+
+      if (reasonSelect === 'custom' && !customReason.trim()) {
+        alert('Please enter a custom reason');
+        return;
+      }
+
+      const reason = reasonSelect === 'custom' ? customReason : reasonSelect;
+      const btn = document.getElementById('saveDiscountBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const body = { reason, create_stripe_coupon: createStripeCoupon };
+        if (type === 'percent') {
+          body.discount_percent = discountValue;
+        } else {
+          body.discount_amount_cents = discountValue * 100;
+        }
+
+        const response = await fetch(`/api/admin/organizations/${accountId}/discount`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || error.message || 'Failed to save discount');
+        }
+
+        const result = await response.json();
+        closeModal('discountModal');
+        if (result.promotion_code) {
+          alert(`Discount saved! Promo code: ${result.promotion_code}`);
+        } else {
+          alert('Discount saved!');
+        }
+        location.reload();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Discount';
+      }
+    }
+
+    async function removeDiscount() {
+      if (!confirm('Are you sure you want to remove this discount?')) return;
+      try {
+        const response = await fetch(`/api/admin/organizations/${accountId}/discount`, { method: 'DELETE' });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || error.message || 'Failed to remove discount');
+        }
+        closeModal('discountModal');
+        alert('Discount removed');
+        location.reload();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Render pricing info
+    function renderPricing() {
+      const discount = accountData.discount;
+      if (discount && (discount.percent || discount.amount_cents)) {
+        document.getElementById('discountRow').style.display = 'flex';
+        if (discount.percent) {
+          document.getElementById('pricingDiscount').textContent = `${discount.percent}%`;
+        } else {
+          document.getElementById('pricingDiscount').textContent = formatCurrency(discount.amount_cents);
+        }
+        if (discount.reason) {
+          document.getElementById('discountDetails').style.display = 'block';
+          document.getElementById('discountReasonText').textContent = discount.reason;
+          document.getElementById('discountGrantedBy').textContent = discount.granted_by_name || discount.granted_by || 'Unknown';
+          document.getElementById('discountGrantedAt').textContent = discount.granted_at ? formatDate(discount.granted_at) : '-';
+        }
+        if (discount.promo_code) {
+          document.getElementById('promoCodeRow').style.display = 'flex';
+          document.getElementById('pricingPromoCode').textContent = discount.promo_code;
+        }
+      }
+    }
+
+    // Pending invoices with void button
+    function renderPendingInvoices() {
+      const invoices = accountData.pending_invoices || [];
+      if (invoices.length === 0) {
+        document.getElementById('pendingInvoicesCard').style.display = 'none';
+        return;
+      }
+
+      document.getElementById('pendingInvoicesCard').style.display = 'block';
+      let html = '';
+      for (const invoice of invoices) {
+        html += `
+          <div class="invoice-item" data-invoice-id="${invoice.id}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); background: var(--color-warning-50); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
+            <div>
+              <div style="font-weight: var(--font-semibold);">${formatCurrency(invoice.amount_due)}</div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
+                ${invoice.status} ${invoice.due_date ? '• Due ' + formatDate(invoice.due_date) : ''}
+              </div>
+            </div>
+            <div style="display: flex; gap: var(--space-2);">
+              ${invoice.hosted_invoice_url ? `<a href="${invoice.hosted_invoice_url}" target="_blank" class="btn btn-sm btn-secondary">View</a>` : ''}
+              <button class="btn btn-sm btn-danger" onclick="voidInvoice('${invoice.id}', '${invoice.status}')">
+                ${invoice.status === 'draft' ? 'Delete' : 'Void'}
+              </button>
+            </div>
+          </div>
+        `;
+      }
+      document.getElementById('pendingInvoicesList').innerHTML = html;
+    }
+
+    async function voidInvoice(invoiceId, status) {
+      const action = status === 'draft' ? 'delete' : 'void';
+      if (!confirm(`Are you sure you want to ${action} this invoice? This cannot be undone.`)) return;
+
+      try {
+        let response;
+        if (status === 'draft') {
+          response = await fetch(`/api/admin/invoices/${invoiceId}`, { method: 'DELETE' });
+        } else {
+          response = await fetch(`/api/admin/invoices/${invoiceId}/void`, { method: 'POST' });
+        }
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || `Failed to ${action} invoice`);
+        }
+
+        const invoiceEl = document.querySelector(`[data-invoice-id="${invoiceId}"]`);
+        if (invoiceEl) invoiceEl.remove();
+
+        const remaining = document.querySelectorAll('.invoice-item');
+        if (remaining.length === 0) {
+          document.getElementById('pendingInvoicesCard').style.display = 'none';
+        }
+        alert(`Invoice ${action === 'void' ? 'voided' : 'deleted'} successfully`);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Member context
+    async function viewMemberContext(userId) {
+      const modal = document.getElementById('userContextModal');
+      const modalTitle = document.getElementById('userContextModalTitle');
+      const modalBody = document.getElementById('userContextModalBody');
+
+      modalTitle.textContent = 'Loading...';
+      modalBody.innerHTML = '<div style="text-align: center; padding: var(--space-8);"><p>Loading context...</p></div>';
+      openModal('userContextModal');
+
+      try {
+        const response = await fetch(`/api/admin/users/${userId}/context?type=workos`);
+        if (!response.ok) throw new Error('Failed to fetch context');
+        const context = await response.json();
+
+        const name = context.workos_user ?
+          `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim() || context.workos_user.email :
+          'Member';
+        modalTitle.textContent = `Context: ${name}`;
+        modalBody.innerHTML = renderUserContextHtml(context);
+      } catch (error) {
+        console.error('Error fetching context:', error);
+        modalBody.innerHTML = `
+          <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
+            <p>Failed to load context.</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderUserContextHtml(context) {
+      let html = '';
+
+      // Addie's Goal Section
+      if (context.addie_goal) {
+        html += `<div style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+          <h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Addie's Goal</h3>
+          <div style="font-weight: var(--font-medium); color: var(--color-text-heading);">${escapeHtml(context.addie_goal.goal_name || context.addie_goal.goal_key)}</div>
+          ${context.addie_goal.reasoning ? `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(context.addie_goal.reasoning)}</p>` : ''}
+        </div>`;
+      }
+
+      // Identity Section
+      html += '<div style="margin-bottom: var(--space-4);"><h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Identity</h3>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+      if (context.workos_user) {
+        html += renderContextItem('Email', context.workos_user.email);
+        const name = `${context.workos_user.first_name || ''} ${context.workos_user.last_name || ''}`.trim();
+        if (name) html += renderContextItem('Name', name);
+      }
+      html += '</div></div>';
+
+      // Organization Section
+      if (context.organization) {
+        html += '<div style="margin-bottom: var(--space-4);"><h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Organization</h3>';
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+        html += renderContextItem('Company', context.organization.name);
+        html += renderContextItem('Subscription', context.organization.subscription_status || 'None');
+        html += '</div></div>';
+      }
+
+      // Activity Section
+      html += '<div style="margin-bottom: var(--space-4);"><h3 style="font-size: var(--text-sm); margin-bottom: var(--space-2);">Activity</h3>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">';
+      html += renderContextItem('Total Logins', context.login_count || 0);
+      html += renderContextItem('Logins (30d)', context.login_count_30d || 0);
+      if (context.last_login) html += renderContextItem('Last Login', formatDate(context.last_login));
+      html += '</div></div>';
+
+      return html;
+    }
+
+    function renderContextItem(label, value) {
+      return `<div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-md);">
+        <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">${label}</div>
+        <div style="font-weight: var(--font-medium);">${escapeHtml(String(value))}</div>
+      </div>`;
+    }
+
+    // Account type badge and conversion
+    function renderAccountTypeBadge() {
+      const badge = document.getElementById('accountTypeBadge');
+      if (accountData.is_personal) {
+        badge.textContent = 'Personal';
+        badge.style.background = 'var(--color-warning-100)';
+        badge.style.color = 'var(--color-warning-700)';
+      } else {
+        badge.textContent = 'Team';
+        badge.style.background = 'var(--color-primary-100)';
+        badge.style.color = 'var(--color-primary-700)';
+      }
+    }
+
+    function openConvertAccountModal() {
+      const content = document.getElementById('convertAccountContent');
+      const title = document.getElementById('convertAccountTitle');
+      const isPersonal = accountData.is_personal;
+      const memberCount = accountData.members?.length || 0;
+
+      if (isPersonal) {
+        title.textContent = 'Convert to Team Account';
+        content.innerHTML = `
+          <p style="margin-bottom: var(--space-4);">Converting to a team account will allow this account to:</p>
+          <ul style="margin-bottom: var(--space-4); padding-left: var(--space-5);">
+            <li>Invite team members</li>
+            <li>Claim corporate domains</li>
+            <li>Appear in the member directory</li>
+          </ul>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('convertAccountModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="convertAccountType(false)">Convert to Team</button>
+          </div>
+        `;
+      } else {
+        title.textContent = 'Convert to Personal Account';
+        if (memberCount > 1) {
+          content.innerHTML = `
+            <div style="background: var(--color-error-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-error-700);">Cannot Convert</div>
+              <p style="color: var(--color-error-700); margin-top: var(--space-1);">
+                This account has ${memberCount} team members. You must migrate or remove team members before converting to a personal account.
+              </p>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" onclick="closeModal('convertAccountModal')">Close</button>
+              <button type="button" class="btn btn-primary" onclick="closeModal('convertAccountModal'); openMigrateMembersModal();">Migrate Members</button>
+            </div>
+          `;
+        } else {
+          content.innerHTML = `
+            <div style="background: var(--color-warning-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-warning-700);">Warning</div>
+              <p style="color: var(--color-warning-700); margin-top: var(--space-1);">
+                Converting to a personal account will restrict this account from inviting team members and claiming domains.
+              </p>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" onclick="closeModal('convertAccountModal')">Cancel</button>
+              <button type="button" class="btn btn-primary" onclick="convertAccountType(true)">Convert to Personal</button>
+            </div>
+          `;
+        }
+      }
+      openModal('convertAccountModal');
+    }
+
+    async function convertAccountType(isPersonal) {
+      try {
+        const response = await fetch(`/api/admin/accounts/${accountId}/account-type`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_personal: isPersonal })
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to convert account type');
+        }
+
+        closeModal('convertAccountModal');
+        showToast(isPersonal ? 'Converted to personal account' : 'Converted to team account', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Member migration
+    function openMigrateMembersModal() {
+      const members = accountData.members || [];
+      if (members.length === 0) {
+        alert('No members to migrate');
+        return;
+      }
+
+      document.getElementById('migrateTargetOrgId').value = '';
+
+      let html = '';
+      for (const m of members) {
+        const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
+        html += `
+          <label style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);">
+            <input type="checkbox" name="migrateUser" value="${m.id}">
+            <span>${escapeHtml(name)}</span>
+            <span style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</span>
+          </label>
+        `;
+      }
+      document.getElementById('migrateMembersList').innerHTML = html;
+
+      openModal('migrateMembersModal');
+    }
+
+    async function migrateMembers(event) {
+      event.preventDefault();
+
+      const targetOrgId = document.getElementById('migrateTargetOrgId').value.trim();
+      if (!targetOrgId) {
+        alert('Please enter a target organization ID');
+        return;
+      }
+
+      // Get selected users (if any)
+      const checkboxes = document.querySelectorAll('input[name="migrateUser"]:checked');
+      const userIds = Array.from(checkboxes).map(cb => cb.value);
+
+      const btn = document.getElementById('migrateMembersSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Migrating...';
+
+      try {
+        const body = { target_org_id: targetOrgId };
+        if (userIds.length > 0) {
+          body.user_ids = userIds;
+        }
+
+        const response = await fetch(`/api/admin/accounts/${accountId}/migrate-members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to migrate members');
+        }
+
+        closeModal('migrateMembersModal');
+
+        // Show results
+        const successCount = data.results.filter(r => r.status === 'success').length;
+        const errorCount = data.results.filter(r => r.status === 'error').length;
+
+        if (errorCount > 0) {
+          const errors = data.results.filter(r => r.status === 'error').map(r => `${r.email}: ${r.error}`).join('\n');
+          alert(`Migrated ${successCount} members, ${errorCount} failed:\n\n${errors}`);
+        } else {
+          showToast(`Successfully migrated ${successCount} members to ${data.target_org.name}`, 'success');
+        }
+
+        setTimeout(() => location.reload(), 1500);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Migrate Members';
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', loadAccount);
+
+    // Close dropdowns on click outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.owner-selector')) {
+        document.getElementById('ownerDropdown').classList.remove('show');
+      }
+    });
+  </script>
+</body>
+</html>

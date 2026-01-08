@@ -153,6 +153,56 @@
       margin-top: 2px;
     }
 
+    /* Mobile responsive styles for profile modal */
+    @media (max-width: 480px) {
+      .profile-modal-overlay {
+        padding: 0;
+        align-items: stretch;
+      }
+
+      .profile-modal {
+        max-width: 100%;
+        border-radius: 0;
+        max-height: 100dvh;
+        height: 100%;
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+      }
+
+      .profile-modal-header {
+        padding: 16px;
+      }
+
+      .profile-modal-header h2 {
+        font-size: 16px;
+      }
+
+      .profile-modal-header p {
+        font-size: 13px;
+      }
+
+      .profile-modal-body {
+        padding: 16px;
+      }
+
+      .radio-option {
+        padding: 10px;
+        gap: 8px;
+      }
+
+      .radio-option-title {
+        font-size: 13px;
+      }
+
+      .radio-option-desc {
+        font-size: 12px;
+      }
+
+      .profile-modal-footer {
+        padding: 12px 16px;
+      }
+    }
+
     .page-header {
       padding: 32px 40px 24px;
       border-bottom: 1px solid var(--color-border);
@@ -275,6 +325,189 @@
     .membership-promo a {
       color: white;
       text-decoration: underline;
+    }
+
+    /* Benefits list in promo */
+    .membership-benefits {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .membership-benefits-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .membership-benefits-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    .membership-benefits-list li::before {
+      content: '\2713';
+      color: var(--color-success-500);
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    /* Member benefits card (for existing members) - matches public page style */
+    .member-benefits-card {
+      background: linear-gradient(135deg, var(--color-success-50) 0%, var(--color-success-100) 100%);
+      border: 2px solid var(--color-success-500);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      margin-bottom: var(--space-6);
+      text-align: center;
+    }
+
+    .member-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      background: var(--color-success-600);
+      color: white;
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-full);
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      margin-bottom: var(--space-4);
+    }
+
+    .member-badge-checkmark {
+      font-size: var(--text-xl);
+    }
+
+    .member-thanks {
+      color: var(--color-success-700);
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-6);
+    }
+
+    .member-benefits-inner {
+      background: white;
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      text-align: left;
+    }
+
+    .member-benefits-inner h4 {
+      color: var(--color-success-700);
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      margin: 0 0 var(--space-3) 0;
+    }
+
+    .member-benefits-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--space-3);
+    }
+
+    .member-benefits-grid ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .member-benefits-grid li {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+      padding: var(--space-1) 0;
+      font-size: var(--text-sm);
+      color: var(--color-text);
+    }
+
+    .member-benefits-grid li::before {
+      content: '\2713';
+      color: var(--color-success-600);
+      font-weight: var(--font-bold);
+      flex-shrink: 0;
+    }
+
+    /* What's Next / Engagement section */
+    .whats-next-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .whats-next-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .whats-next-header h2 {
+      margin: 0;
+      font-size: 16px;
+      color: var(--color-text-heading);
+    }
+
+    .whats-next-body {
+      padding: 20px 24px;
+    }
+
+    .whats-next-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+
+    .whats-next-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      background: var(--color-bg-subtle);
+      border-radius: 8px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s;
+    }
+
+    .whats-next-item:hover {
+      background: var(--color-primary-50);
+      border-color: var(--color-brand);
+      transform: translateY(-2px);
+    }
+
+    .whats-next-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: var(--color-brand);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .whats-next-content h4 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .whats-next-content p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      line-height: 1.4;
     }
 
     /* Agreement section */
@@ -535,8 +768,22 @@
             <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'adtech')">
               <input type="radio" name="companyType" value="adtech">
               <div class="radio-option-content">
-                <div class="radio-option-title">Technology Provider</div>
-                <div class="radio-option-desc">AdTech platforms, data providers, and service providers</div>
+                <div class="radio-option-title">Ad Tech Provider</div>
+                <div class="radio-option-desc">DSPs, SSPs, ad servers, measurement, identity, and data platforms</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'data')">
+              <input type="radio" name="companyType" value="data">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Data & Measurement</div>
+                <div class="radio-option-desc">Clean rooms, CDPs, identity, measurement, and analytics</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'ai')">
+              <input type="radio" name="companyType" value="ai">
+              <div class="radio-option-content">
+                <div class="radio-option-title">AI & Tech Platforms</div>
+                <div class="radio-option-desc">LLM providers, agent builders, cloud AI, and ML platforms</div>
               </div>
             </label>
             <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'other')">
@@ -622,6 +869,62 @@
         </div>
       </div>
 
+      <!-- Member Benefits (for existing subscribers) -->
+      <div id="memberBenefitsCard" class="member-benefits-card" style="display: none;">
+        <div class="member-badge">
+          <span class="member-badge-checkmark">&#10003;</span>
+          <span>You're a Member!</span>
+        </div>
+        <p class="member-thanks">
+          Thank you for being a founding member of AgenticAdvertising.org. Your support helps build the future of agentic advertising.
+        </p>
+        <div class="member-benefits-inner">
+          <h4 id="memberBenefitsTitle">Your Member Benefits</h4>
+          <div id="memberBenefitsGrid" class="member-benefits-grid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- What's Next / Engagement (for existing subscribers) -->
+      <div id="whatsNextCard" class="whats-next-card" style="display: none;">
+        <div class="whats-next-header">
+          <h2>Get the Most Out of Your Membership</h2>
+        </div>
+        <div class="whats-next-body">
+          <div class="whats-next-grid">
+            <a href="/dashboard/profile" class="whats-next-item">
+              <div class="whats-next-icon">&#128100;</div>
+              <div class="whats-next-content">
+                <h4>Complete Your Profile</h4>
+                <p>Add your logo and details to appear in the member directory</p>
+              </div>
+            </a>
+            <a href="/dashboard/addie" class="whats-next-item">
+              <div class="whats-next-icon">&#129302;</div>
+              <div class="whats-next-content">
+                <h4>Talk to Addie</h4>
+                <p>Get answers about AdCP, membership, and agentic advertising</p>
+              </div>
+            </a>
+            <a href="https://join.slack.com/t/agenticadvertising/shared_invite/zt-2vq5tqy3n-c2X3jroBr0Pn_z~9fG8V9Q" target="_blank" class="whats-next-item">
+              <div class="whats-next-icon">&#128172;</div>
+              <div class="whats-next-content">
+                <h4>Join the Slack Community</h4>
+                <p>Connect with other members and participate in discussions</p>
+              </div>
+            </a>
+            <a href="/members" class="whats-next-item">
+              <div class="whats-next-icon">&#127760;</div>
+              <div class="whats-next-content">
+                <h4>Browse the Directory</h4>
+                <p>Discover other member organizations and potential partners</p>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+
       <!-- Agreements section (for subscribers) -->
       <div id="agreementsCard" class="billing-card" style="display: none;">
         <div class="billing-card-header">
@@ -642,6 +945,9 @@
             Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.
             <a href="/membership">Learn more about founding membership benefits →</a>
           </p>
+          <div class="membership-benefits" id="membershipBenefits">
+            <!-- Benefits populated by JS based on org type -->
+          </div>
         </div>
 
         <div class="billing-card">
@@ -662,7 +968,7 @@
   </div>
 
   <!-- Invoice Request Modal -->
-  <div id="invoiceRequestModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+  <div id="invoiceRequestModal" class="profile-modal-overlay" style="display: none;">
     <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl);">
       <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
         <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Request an Invoice</h2>
@@ -736,7 +1042,7 @@
   </div>
 
   <!-- Agreement Modal -->
-  <div id="agreementModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px;">
+  <div id="agreementModal" class="profile-modal-overlay" style="display: none;">
     <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-xl);">
       <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
         <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership Agreement</h2>
@@ -873,19 +1179,122 @@
       const subscriptionCard = document.getElementById('subscriptionCard');
       const membershipSection = document.getElementById('membershipSection');
       const agreementsCard = document.getElementById('agreementsCard');
+      const memberBenefitsCard = document.getElementById('memberBenefitsCard');
+      const whatsNextCard = document.getElementById('whatsNextCard');
 
       if (hasSubscription) {
         subscriptionCard.style.display = 'block';
+        memberBenefitsCard.style.display = 'block';
+        whatsNextCard.style.display = 'block';
         agreementsCard.style.display = 'block';
         membershipSection.style.display = 'none';
         renderSubscriptionStatus();
+        renderMemberBenefitsForSubscriber();
         loadMyAgreements();
       } else {
         subscriptionCard.style.display = 'none';
+        memberBenefitsCard.style.display = 'none';
+        whatsNextCard.style.display = 'none';
         agreementsCard.style.display = 'none';
         membershipSection.style.display = 'block';
+        renderMembershipBenefits();
         loadProducts();
       }
+    }
+
+    // Render member benefits for existing subscribers
+    function renderMemberBenefitsForSubscriber() {
+      const container = document.getElementById('memberBenefitsGrid');
+      const titleEl = document.getElementById('memberBenefitsTitle');
+      if (!container) return;
+
+      const isPersonal = currentOrg.is_personal || currentOrg.billing?.is_personal;
+
+      const companyBenefits = [
+        'Eligibility to serve on Board',
+        'Right to vote for Board',
+        'Help build standards, practices, protocols, and policies',
+        'Right to vote on standards adoption',
+        'Serve on interim Advisory Council',
+        'Participate in working groups',
+        'All team members can participate in association activities'
+      ];
+
+      const individualBenefits = [
+        'Help build standards, practices, protocols, and policies',
+        'Eligible for professional development and certification courses',
+        'Personal listing in member directory',
+        'Working group participation',
+        'Community Slack access',
+        'Event discounts and early access',
+        'Newsletter and industry updates'
+      ];
+
+      const benefits = isPersonal ? individualBenefits : companyBenefits;
+      const memberType = isPersonal ? 'Individual' : 'Company';
+
+      // Update title
+      if (titleEl) {
+        titleEl.textContent = `Your ${memberType} Member Benefits`;
+      }
+
+      // Split benefits into two columns
+      const midpoint = Math.ceil(benefits.length / 2);
+      const leftBenefits = benefits.slice(0, midpoint);
+      const rightBenefits = benefits.slice(midpoint);
+
+      container.innerHTML = `
+        <ul>
+          ${leftBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+        <ul>
+          ${rightBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+      `;
+    }
+
+    // Render membership benefits based on org type
+    function renderMembershipBenefits() {
+      const container = document.getElementById('membershipBenefits');
+      if (!container) return;
+
+      const isPersonal = currentOrg.is_personal || currentOrg.billing?.is_personal;
+
+      const companyBenefits = [
+        'Eligibility to serve on Board',
+        'Right to vote for Board',
+        'Help build standards, practices, protocols, and policies',
+        'Right to vote on standards adoption',
+        'Serve on interim Advisory Council',
+        'Participate in working groups',
+        'All team members can participate in association activities'
+      ];
+
+      const individualBenefits = [
+        'Help build standards, practices, protocols, and policies',
+        'Eligible for professional development and certification courses',
+        'Personal listing in member directory',
+        'Working group participation',
+        'Community Slack access',
+        'Event discounts and early access',
+        'Newsletter and industry updates'
+      ];
+
+      const benefits = isPersonal ? individualBenefits : companyBenefits;
+
+      // Split benefits into two columns
+      const midpoint = Math.ceil(benefits.length / 2);
+      const leftBenefits = benefits.slice(0, midpoint);
+      const rightBenefits = benefits.slice(midpoint);
+
+      container.innerHTML = `
+        <ul class="membership-benefits-list">
+          ${leftBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+        <ul class="membership-benefits-list">
+          ${rightBenefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+      `;
     }
 
     function renderSubscriptionStatus() {
@@ -961,14 +1370,21 @@
     }
 
     // Render product cards
+    // Deduplicates products by amount_cents to avoid showing multiple cards with the same price
     function renderProductCards() {
       const container = document.getElementById('productsContainer');
 
-      const cardsHtml = membershipProducts.map(product => {
-        const tierInfo = product.revenue_tiers?.length > 0
-          ? product.revenue_tiers.join(', ')
-          : '';
+      // Deduplicate products by price - keep only one product per unique price
+      const seenPrices = new Set();
+      const uniqueProducts = membershipProducts.filter(product => {
+        if (seenPrices.has(product.amount_cents)) {
+          return false;
+        }
+        seenPrices.add(product.amount_cents);
+        return true;
+      });
 
+      const cardsHtml = uniqueProducts.map(product => {
         return `
           <div class="product-card" data-lookup-key="${product.lookup_key}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
@@ -976,7 +1392,6 @@
               ${formatCurrency(product.amount_cents)}
               <span class="period">/year</span>
             </div>
-            ${tierInfo ? `<div class="product-card-tier">${escapeHtml(tierInfo)}</div>` : ''}
             <div class="product-card-actions">
               <button class="btn btn-primary" onclick="selectProduct('${product.lookup_key}')">Pay Now</button>
               <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${product.lookup_key}')">Request Invoice</button>
@@ -1115,10 +1530,12 @@
       const modal = document.getElementById('invoiceRequestModal');
       const productSelect = document.getElementById('invoice-product');
 
-      // Populate product dropdown with available membership products
+      // Populate product dropdown with subscription products only
+      // (excludes legacy one-time invoice products)
       productSelect.innerHTML = '<option value="">Select a product...</option>';
       if (membershipProducts && membershipProducts.length > 0) {
-        membershipProducts.forEach(product => {
+        const subscriptionProducts = membershipProducts.filter(p => p.billing_type === 'subscription');
+        subscriptionProducts.forEach(product => {
           const price = formatCurrency(product.amount_cents);
           productSelect.innerHTML += `<option value="${product.lookup_key}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
         });
@@ -1331,7 +1748,7 @@
     }
 
     // Profile modal functions
-    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'other'];
+    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'data', 'ai', 'other'];
     const VALID_REVENUE_TIERS = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
 
     function showProfileModal() {

@@ -400,15 +400,15 @@ export function setupMembersRoutes(
         // Get payment history from revenue_events table
         const result = await pool.query(
           `SELECT
-            event_type,
-            amount_cents,
+            revenue_type as event_type,
+            amount_paid as amount_cents,
             currency,
-            event_timestamp,
+            paid_at as event_timestamp,
             stripe_invoice_id,
             product_name
            FROM revenue_events
            WHERE workos_organization_id = $1
-           ORDER BY event_timestamp DESC`,
+           ORDER BY paid_at DESC`,
           [orgId]
         );
 

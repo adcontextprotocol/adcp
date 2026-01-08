@@ -117,6 +117,11 @@ export interface ResponseAnalysis {
   analysisNote: string;
 }
 
+export interface MemberOutreachWithUser extends MemberOutreach {
+  slack_display_name: string | null;
+  slack_real_name: string | null;
+}
+
 // Input types
 export interface CreateInsightTypeInput {
   name: string;
@@ -286,6 +291,43 @@ export interface OutreachStats {
   insights_gathered: number;
 }
 
+export interface OutreachGoalStats {
+  goal_id: number;
+  goal_name: string;
+  goal_question: string;
+  goal_type: GoalType;
+  is_enabled: boolean;
+  total_sent: number;
+  total_responded: number;
+  total_insights: number;
+  response_rate_pct: number | null;
+  insight_conversion_rate_pct: number | null;
+  positive_responses: number;
+  neutral_responses: number;
+  negative_responses: number;
+  refusal_responses: number;
+  converted_count: number;
+  interested_count: number;
+  deferred_count: number;
+  question_count: number;
+  objection_count: number;
+  first_outreach_at: Date | null;
+  last_outreach_at: Date | null;
+}
+
+export interface OutreachTimeStats {
+  sent_today: number;
+  responded_today: number;
+  sent_this_week: number;
+  responded_this_week: number;
+  sent_this_month: number;
+  responded_this_month: number;
+  total_sent: number;
+  total_responded: number;
+  total_insights: number;
+  overall_response_rate_pct: number | null;
+}
+
 // =====================================================
 // DATABASE CLASS
 // =====================================================
@@ -343,6 +385,17 @@ export class InsightsDatabase {
     const result = await query<MemberInsightType>(
       'SELECT * FROM member_insight_types WHERE id = $1',
       [id]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get insight type by name
+   */
+  async getInsightTypeByName(name: string): Promise<MemberInsightType | null> {
+    const result = await query<MemberInsightType>(
+      'SELECT * FROM member_insight_types WHERE name = $1',
+      [name]
     );
     return result.rows[0] || null;
   }
@@ -1145,11 +1198,115 @@ export class InsightsDatabase {
   }
 
   /**
+   * Get outreach response rates broken down by goal
+   */
+  async getOutreachGoalStats(): Promise<OutreachGoalStats[]> {
+    const result = await query<{
+      goal_id: string;
+      goal_name: string;
+      goal_question: string;
+      goal_type: GoalType;
+      is_enabled: boolean;
+      total_sent: string;
+      total_responded: string;
+      total_insights: string;
+      response_rate_pct: string | null;
+      insight_conversion_rate_pct: string | null;
+      positive_responses: string;
+      neutral_responses: string;
+      negative_responses: string;
+      refusal_responses: string;
+      converted_count: string;
+      interested_count: string;
+      deferred_count: string;
+      question_count: string;
+      objection_count: string;
+      first_outreach_at: Date | null;
+      last_outreach_at: Date | null;
+    }>('SELECT * FROM outreach_goal_stats ORDER BY total_sent DESC');
+
+    return result.rows.map(row => ({
+      goal_id: parseInt(row.goal_id, 10),
+      goal_name: row.goal_name,
+      goal_question: row.goal_question,
+      goal_type: row.goal_type,
+      is_enabled: row.is_enabled,
+      total_sent: parseInt(row.total_sent, 10),
+      total_responded: parseInt(row.total_responded, 10),
+      total_insights: parseInt(row.total_insights, 10),
+      response_rate_pct: row.response_rate_pct ? parseFloat(row.response_rate_pct) : null,
+      insight_conversion_rate_pct: row.insight_conversion_rate_pct ? parseFloat(row.insight_conversion_rate_pct) : null,
+      positive_responses: parseInt(row.positive_responses, 10),
+      neutral_responses: parseInt(row.neutral_responses, 10),
+      negative_responses: parseInt(row.negative_responses, 10),
+      refusal_responses: parseInt(row.refusal_responses, 10),
+      converted_count: parseInt(row.converted_count, 10),
+      interested_count: parseInt(row.interested_count, 10),
+      deferred_count: parseInt(row.deferred_count, 10),
+      question_count: parseInt(row.question_count, 10),
+      objection_count: parseInt(row.objection_count, 10),
+      first_outreach_at: row.first_outreach_at,
+      last_outreach_at: row.last_outreach_at,
+    }));
+  }
+
+  /**
+   * Get outreach time-windowed statistics
+   */
+  async getOutreachTimeStats(): Promise<OutreachTimeStats> {
+    const result = await query<{
+      sent_today: string;
+      responded_today: string;
+      sent_this_week: string;
+      responded_this_week: string;
+      sent_this_month: string;
+      responded_this_month: string;
+      total_sent: string;
+      total_responded: string;
+      total_insights: string;
+      overall_response_rate_pct: string | null;
+    }>('SELECT * FROM outreach_time_stats');
+
+    const row = result.rows[0];
+    if (!row) {
+      return {
+        sent_today: 0,
+        responded_today: 0,
+        sent_this_week: 0,
+        responded_this_week: 0,
+        sent_this_month: 0,
+        responded_this_month: 0,
+        total_sent: 0,
+        total_responded: 0,
+        total_insights: 0,
+        overall_response_rate_pct: null,
+      };
+    }
+
+    return {
+      sent_today: parseInt(row.sent_today, 10),
+      responded_today: parseInt(row.responded_today, 10),
+      sent_this_week: parseInt(row.sent_this_week, 10),
+      responded_this_week: parseInt(row.responded_this_week, 10),
+      sent_this_month: parseInt(row.sent_this_month, 10),
+      responded_this_month: parseInt(row.responded_this_month, 10),
+      total_sent: parseInt(row.total_sent, 10),
+      total_responded: parseInt(row.total_responded, 10),
+      total_insights: parseInt(row.total_insights, 10),
+      overall_response_rate_pct: row.overall_response_rate_pct ? parseFloat(row.overall_response_rate_pct) : null,
+    };
+  }
+
+  /**
    * Get recent outreach history for admin dashboard
    */
-  async getRecentOutreach(limit = 50): Promise<MemberOutreach[]> {
-    const result = await query<MemberOutreach>(
-      'SELECT * FROM member_outreach ORDER BY sent_at DESC LIMIT $1',
+  async getRecentOutreach(limit = 50): Promise<MemberOutreachWithUser[]> {
+    const result = await query<MemberOutreachWithUser>(
+      `SELECT mo.*, sm.slack_display_name, sm.slack_real_name
+       FROM member_outreach mo
+       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = mo.slack_user_id
+       ORDER BY mo.sent_at DESC
+       LIMIT $1`,
       [limit]
     );
     return result.rows;

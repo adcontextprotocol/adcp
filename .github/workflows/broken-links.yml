@@ -2,17 +2,26 @@ name: Check for Broken Links
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, '2.6.x' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, '2.6.x' ]
+  workflow_run:
+    workflows: ["Sync Versioned Docs"]
+    types:
+      - completed
 
 jobs:
   broken-links:
     runs-on: ubuntu-latest
+    # Skip if triggered by sync workflow that failed
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # Ensure we get latest changes including synced docs
+        ref: ${{ github.event.workflow_run.head_branch || github.ref }}
 
     - name: Use Node.js
       uses: actions/setup-node@v4
@@ -23,5 +32,8 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Check for broken links
+    - name: Check for broken links in docs (v2.5)
       run: npx mintlify@latest broken-links
+
+    - name: Check README links
+      run: npx markdown-link-check README.md --config .markdown-link-check.json

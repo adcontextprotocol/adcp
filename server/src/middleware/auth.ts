@@ -173,6 +173,16 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     isMember: false,
     description: 'User without any organization membership',
   },
+  // Committee leader (member who leads a working group but is not a site admin)
+  leader: {
+    id: 'user_dev_leader_001',
+    email: 'leader@test.local',
+    firstName: 'Committee',
+    lastName: 'Leader',
+    isAdmin: false,
+    isMember: true,
+    description: 'Committee leader with working group management access',
+  },
 };
 
 // Dev session cookie name
@@ -852,9 +862,37 @@ export function createRequireWorkingGroupLeader(
 }
 
 /**
+ * Extract sealed session from request
+ * Supports both cookie-based auth (web) and Authorization header (native apps)
+ * Native apps send: Authorization: Bearer <sealed-session>
+ */
+function extractSealedSession(req: Request): string | undefined {
+  // First check for cookie (web browsers)
+  const sessionCookie = req.cookies['wos-session'];
+  if (sessionCookie) {
+    return sessionCookie;
+  }
+
+  // Then check Authorization header (native apps like Tauri)
+  // Format: Authorization: Bearer <sealed-session>
+  // Note: We differentiate from WorkOS API keys by checking prefix
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    // WorkOS API keys start with 'wos_api_key_', sealed sessions don't
+    if (!token.startsWith('wos_api_key_')) {
+      return token;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Optional auth middleware - loads user if authenticated, but doesn't require it
  * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
+ * Supports both cookie-based auth (web) and Authorization header (native apps)
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
   // Dev mode: set dev user if logged in via dev-session cookie
@@ -868,7 +906,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     return next();
   }
 
-  const sessionCookie = req.cookies['wos-session'];
+  const sessionCookie = extractSealedSession(req);
 
   if (!sessionCookie) {
     return next();

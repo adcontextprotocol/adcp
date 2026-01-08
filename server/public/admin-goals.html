@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Outreach Goals - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      color: var(--color-text-heading);
+      font-size: 24px;
+    }
+    .page-header p {
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .btn-danger {
+      background: var(--color-danger);
+      color: white;
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    /* Goals list */
+    .goals-grid {
+      display: grid;
+      gap: 16px;
+    }
+    .goal-card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      border-left: 4px solid var(--color-brand);
+    }
+    .goal-card.disabled {
+      border-left-color: var(--color-gray-300);
+      opacity: 0.7;
+    }
+    .goal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .goal-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+    .goal-category {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    .goal-category.information { background: var(--color-info-light); color: var(--color-info); }
+    .goal-category.education { background: var(--color-warning-light); color: var(--color-warning-dark); }
+    .goal-category.invitation { background: var(--color-success-light); color: var(--color-success); }
+    .goal-category.connection { background: #e8def8; color: #6b21a8; }
+    .goal-category.admin { background: var(--color-gray-200); color: var(--color-text-secondary); }
+
+    .goal-description {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .goal-stats {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 12px;
+    }
+    .goal-stat {
+      display: flex;
+      flex-direction: column;
+    }
+    .goal-stat .value {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+    .goal-stat .label {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+    }
+    .goal-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .goal-tag {
+      padding: 2px 8px;
+      background: var(--color-gray-100);
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .goal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 700px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin-bottom: 20px;
+      color: var(--color-text-heading);
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+      font-size: 14px;
+    }
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    .form-group small {
+      color: var(--color-text-muted);
+      font-size: 12px;
+      margin-top: 4px;
+      display: block;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+
+    .badge {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-success { background: var(--color-success-light); color: var(--color-success); }
+    .badge-warning { background: var(--color-warning-light); color: var(--color-warning-dark); }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-muted);
+    }
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 12px 20px;
+      background: none;
+      border: none;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      font-size: 14px;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Outreach Goals</h1>
+        <p>Define and manage goals for adaptive outbound conversations</p>
+      </div>
+      <button class="btn btn-primary" onclick="openGoalModal()">+ New Goal</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="filterByCategory(null)">All Goals</button>
+      <button class="tab" onclick="filterByCategory('information')">Information</button>
+      <button class="tab" onclick="filterByCategory('education')">Education</button>
+      <button class="tab" onclick="filterByCategory('invitation')">Invitations</button>
+      <button class="tab" onclick="filterByCategory('admin')">Admin</button>
+    </div>
+
+    <div id="goals-loading" class="loading">Loading goals...</div>
+    <div id="goals-grid" class="goals-grid"></div>
+    <div id="goals-empty" class="empty-state" style="display: none;">No goals defined yet.</div>
+  </div>
+
+  <!-- Goal Modal -->
+  <div id="goal-modal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modal-title">New Goal</h2>
+      <form id="goal-form" onsubmit="handleGoalSubmit(event)">
+        <input type="hidden" id="goal-id">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="goal-name">Name *</label>
+            <input type="text" id="goal-name" required placeholder="e.g., Learn Role">
+          </div>
+          <div class="form-group">
+            <label for="goal-category">Category *</label>
+            <select id="goal-category" required>
+              <option value="information">Information Gathering</option>
+              <option value="education">Education</option>
+              <option value="invitation">Invitation</option>
+              <option value="connection">Connection</option>
+              <option value="admin">Administrative</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="goal-description">Description</label>
+          <input type="text" id="goal-description" placeholder="What this goal achieves">
+        </div>
+
+        <div class="form-group">
+          <label for="goal-message">Message Template *</label>
+          <textarea id="goal-message" required placeholder="Use {{user_name}}, {{company_name}}, {{link_url}} as placeholders"></textarea>
+          <small>Available placeholders: {{user_name}}, {{company_name}}, {{link_url}}</small>
+        </div>
+
+        <div class="form-group">
+          <label for="goal-followup">Follow-up on Question</label>
+          <textarea id="goal-followup" placeholder="What to say if they ask 'what's that?'"></textarea>
+          <small>Optional: Response when user asks for clarification</small>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="goal-priority">Priority (1-100)</label>
+            <input type="number" id="goal-priority" min="1" max="100" value="50">
+          </div>
+          <div class="form-group">
+            <label for="goal-insight">Success Insight Type</label>
+            <input type="text" id="goal-insight" placeholder="e.g., role, goals_2025">
+            <small>What insight we gain on success</small>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="goal-requires-mapped">Account Status</label>
+            <select id="goal-requires-mapped">
+              <option value="">Any</option>
+              <option value="true">Linked only</option>
+              <option value="false">Not linked only</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="goal-min-engagement">Min Engagement Score</label>
+            <input type="number" id="goal-min-engagement" min="0" max="100" value="0">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="goal-company-types">Required Company Types</label>
+          <input type="text" id="goal-company-types" placeholder="publisher, dsp (comma-separated)">
+          <small>Leave empty for all company types</small>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="goal-enabled" checked>
+            Enabled
+          </label>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeGoalModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="modal-submit">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let goals = [];
+    let currentFilter = null;
+
+    async function init() {
+      await loadGoals();
+    }
+
+    async function loadGoals() {
+      const loading = document.getElementById('goals-loading');
+      const grid = document.getElementById('goals-grid');
+      const empty = document.getElementById('goals-empty');
+
+      loading.style.display = 'block';
+      grid.innerHTML = '';
+      empty.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/admin/outbound/goals/summary');
+        if (!response.ok) {
+          if (response.status === 401) {
+            AdminSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load goals');
+        }
+
+        goals = await response.json();
+        loading.style.display = 'none';
+
+        renderGoals();
+      } catch (err) {
+        loading.style.display = 'none';
+        grid.innerHTML = `<div class="empty-state">Error loading goals: ${err.message}</div>`;
+      }
+    }
+
+    function renderGoals() {
+      const grid = document.getElementById('goals-grid');
+      const empty = document.getElementById('goals-empty');
+
+      let filtered = goals;
+      if (currentFilter) {
+        filtered = goals.filter(g => g.category === currentFilter);
+      }
+
+      if (filtered.length === 0) {
+        empty.style.display = 'block';
+        grid.innerHTML = '';
+        return;
+      }
+
+      empty.style.display = 'none';
+      grid.innerHTML = filtered.map(g => `
+        <div class="goal-card ${g.is_enabled ? '' : 'disabled'}">
+          <div class="goal-header">
+            <div>
+              <div class="goal-title">${escapeHtml(g.name)}</div>
+              <span class="goal-category ${g.category}">${g.category}</span>
+            </div>
+            <span class="badge ${g.is_enabled ? 'badge-success' : 'badge-warning'}">
+              ${g.is_enabled ? 'Active' : 'Disabled'}
+            </span>
+          </div>
+          ${g.description ? `<div class="goal-description">${escapeHtml(g.description)}</div>` : ''}
+          <div class="goal-stats">
+            <div class="goal-stat">
+              <span class="value">${g.total_attempts || 0}</span>
+              <span class="label">Attempts</span>
+            </div>
+            <div class="goal-stat">
+              <span class="value">${g.successful_attempts || 0}</span>
+              <span class="label">Successful</span>
+            </div>
+            <div class="goal-stat">
+              <span class="value">${g.success_rate_pct || 0}%</span>
+              <span class="label">Success Rate</span>
+            </div>
+            <div class="goal-stat">
+              <span class="value">${g.base_priority}</span>
+              <span class="label">Priority</span>
+            </div>
+          </div>
+          <div class="goal-tags">
+            <span class="goal-tag">Outcomes: ${g.outcome_count || 0}</span>
+          </div>
+          <div class="goal-actions">
+            <button class="btn btn-secondary btn-small" onclick="editGoal(${g.id})">Edit</button>
+            <button class="btn btn-secondary btn-small" onclick="toggleGoal(${g.id}, ${!g.is_enabled})">
+              ${g.is_enabled ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filterByCategory(category) {
+      currentFilter = category;
+
+      // Update tab active state
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      event.target.classList.add('active');
+
+      renderGoals();
+    }
+
+    function openGoalModal(goal = null) {
+      document.getElementById('modal-title').textContent = goal ? 'Edit Goal' : 'New Goal';
+      document.getElementById('modal-submit').textContent = goal ? 'Save' : 'Create';
+      document.getElementById('goal-form').reset();
+      document.getElementById('goal-id').value = goal?.id || '';
+
+      if (goal) {
+        document.getElementById('goal-name').value = goal.name || '';
+        document.getElementById('goal-category').value = goal.category || 'information';
+        document.getElementById('goal-description').value = goal.description || '';
+        document.getElementById('goal-message').value = goal.message_template || '';
+        document.getElementById('goal-followup').value = goal.follow_up_on_question || '';
+        document.getElementById('goal-priority').value = goal.base_priority || 50;
+        document.getElementById('goal-insight').value = goal.success_insight_type || '';
+        document.getElementById('goal-requires-mapped').value = goal.requires_mapped ? 'true' : '';
+        document.getElementById('goal-min-engagement').value = goal.requires_min_engagement || 0;
+        document.getElementById('goal-company-types').value = (goal.requires_company_type || []).join(', ');
+        document.getElementById('goal-enabled').checked = goal.is_enabled !== false;
+      }
+
+      document.getElementById('goal-modal').style.display = 'flex';
+    }
+
+    function closeGoalModal() {
+      document.getElementById('goal-modal').style.display = 'none';
+    }
+
+    async function editGoal(id) {
+      try {
+        const response = await fetch(`/api/admin/outbound/goals/${id}`);
+        if (!response.ok) throw new Error('Failed to load goal');
+        const goal = await response.json();
+        openGoalModal(goal);
+      } catch (err) {
+        alert('Failed to load goal: ' + err.message);
+      }
+    }
+
+    async function handleGoalSubmit(event) {
+      event.preventDefault();
+
+      const id = document.getElementById('goal-id').value;
+      const companyTypes = document.getElementById('goal-company-types').value
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t);
+
+      const requiresMappedValue = document.getElementById('goal-requires-mapped').value;
+
+      const data = {
+        name: document.getElementById('goal-name').value.trim(),
+        category: document.getElementById('goal-category').value,
+        description: document.getElementById('goal-description').value.trim() || null,
+        message_template: document.getElementById('goal-message').value.trim(),
+        follow_up_on_question: document.getElementById('goal-followup').value.trim() || null,
+        base_priority: parseInt(document.getElementById('goal-priority').value) || 50,
+        success_insight_type: document.getElementById('goal-insight').value.trim() || null,
+        requires_mapped: requiresMappedValue === 'true' ? true : requiresMappedValue === 'false' ? false : null,
+        requires_min_engagement: parseInt(document.getElementById('goal-min-engagement').value) || 0,
+        requires_company_type: companyTypes,
+        is_enabled: document.getElementById('goal-enabled').checked,
+      };
+
+      try {
+        const url = id ? `/api/admin/outbound/goals/${id}` : '/api/admin/outbound/goals';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to save goal');
+        }
+
+        closeGoalModal();
+        loadGoals();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function toggleGoal(id, enable) {
+      try {
+        const response = await fetch(`/api/admin/outbound/goals/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_enabled: enable }),
+        });
+
+        if (!response.ok) throw new Error('Failed to update goal');
+        loadGoals();
+      } catch (err) {
+        alert('Failed to update goal: ' + err.message);
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    init();
+  </script>
+</body>
+</html>

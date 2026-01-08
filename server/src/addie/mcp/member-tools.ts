@@ -24,9 +24,20 @@ import {
   type TestOptions,
 } from '@adcp/client/testing';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
+import {
+  findExistingProposalOrFeed,
+  createFeedProposal,
+  getPendingProposals,
+} from '../../db/industry-feeds-db.js';
+import { MemberDatabase } from '../../db/member-db.js';
+import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
+import { sendIntroductionEmail } from '../../notifications/email.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const adagentsManager = new AdAgentsManager();
+const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
+const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -50,6 +61,64 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
     name: 'AdCP Reference Creative Agent',
   },
 };
+
+/**
+ * Public test agent credentials.
+ * These are intentionally public and documented for testing purposes.
+ * See: https://adcontextprotocol.org/docs/media-buy/advanced-topics/testing
+ *
+ * The token can be overridden via PUBLIC_TEST_AGENT_TOKEN env var if needed,
+ * but defaults to the documented public token.
+ */
+const PUBLIC_TEST_AGENT = {
+  url: 'https://test-agent.adcontextprotocol.org/mcp',
+  // Default token is documented at https://adcontextprotocol.org/docs/quickstart
+  token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
+  name: 'AdCP Public Test Agent',
+};
+
+/**
+ * Known error patterns that indicate bugs in the @adcp/client testing library
+ * rather than in the agent being tested.
+ *
+ * Each pattern should be specific enough to avoid false positives where an agent
+ * is actually returning invalid data.
+ */
+const CLIENT_LIBRARY_ERROR_PATTERNS: Array<{
+  pattern: RegExp;
+  repo: string;
+  description: string;
+}> = [
+  {
+    // This specific Zod validation error occurs when the test code tries to access
+    // authorized_properties (old field) but the schema expects publisher_domains (new field)
+    pattern: /publisher_domains\.\d+: Invalid input: expected string, received undefined/i,
+    repo: 'adcp-client',
+    description: 'The discovery test scenario references `authorized_properties` (v2.2 field) instead of `publisher_domains` (v2.3+ field).',
+  },
+];
+
+/**
+ * Check if an error indicates a bug in the client library rather than the agent.
+ * Returns null if no known client library bug pattern matches.
+ */
+function detectClientLibraryBug(
+  failedSteps: Array<{ error?: string; step?: string; details?: string }>
+): { repo: string; description: string; matchedError: string } | null {
+  for (const step of failedSteps) {
+    const errorText = step.error || step.details || '';
+    for (const pattern of CLIENT_LIBRARY_ERROR_PATTERNS) {
+      if (pattern.pattern.test(errorText)) {
+        return {
+          repo: pattern.repo,
+          description: pattern.description,
+          matchedError: errorText,
+        };
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Extract hostname from an agent URL for matching against known agents
@@ -358,8 +427,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'test_adcp_agent',
     description:
-      'Run end-to-end tests against an AdCP agent to verify it works correctly. Tests the full workflow: discover products, create media buys, sync creatives, etc. By default runs in dry-run mode - set dry_run=false for real testing. Use this when users want to test their agent implementation, verify compliance, or debug issues. This replaces the testing.adcontextprotocol.org harness.',
-    usage_hints: 'use for "test my agent", "run the full flow", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models"',
+      'Run end-to-end tests against an AdCP agent to verify it works correctly. Tests the full workflow: discover products, create media buys, sync creatives, etc. By default runs in dry-run mode - set dry_run=false for real testing. IMPORTANT: For agents requiring authentication (including the public test agent), users must first set up the agent. Use setup_test_agent for the public test agent, or save_agent for custom agents.',
+    usage_hints: 'use for "test my agent", "run the full flow", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". If testing the public test agent and auth fails, suggest setup_test_agent first.',
     input_schema: {
       type: 'object',
       properties: {
@@ -411,47 +480,30 @@ export const MEMBER_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Specific pricing models to test (e.g., ["cpm", "cpcv"]). If not specified, uses first available.',
         },
-        auth_token: {
-          type: 'string',
-          description: 'Bearer token for agents that require authentication. For test-agent.adcontextprotocol.org, use the published test credentials.',
+        brand_manifest: {
+          type: 'object',
+          description: 'Brand manifest for the test advertiser. Can specify a well-known brand like {name: "Nike", url: "https://nike.com"} or a custom brand. If not specified, uses Nike as the default.',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Brand name (e.g., "Nike", "Coca-Cola", "Acme Corp")',
+            },
+            url: {
+              type: 'string',
+              format: 'uri',
+              description: 'Brand website URL',
+            },
+            tagline: {
+              type: 'string',
+              description: 'Brand tagline or slogan',
+            },
+          },
+          required: ['name'],
         },
       },
       required: ['agent_url'],
     },
   },
-  {
-    name: 'call_adcp_tool',
-    description:
-      'Call any AdCP task on an agent and return the raw response. Use this for custom testing, exploring agent capabilities, or when you need to call a specific task with specific parameters. This is lower-level than test_adcp_agent - use it when you need precise control over the request/response.',
-    usage_hints: 'use for "call get_products on my agent", "try create_media_buy with these parameters", "what does list_creative_formats return", exploring agent responses, debugging specific calls',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to call (e.g., "https://sales.example.com/mcp")',
-        },
-        task: {
-          type: 'string',
-          description: 'The AdCP task to call (e.g., "get_products", "create_media_buy", "list_creative_formats", "sync_creatives")',
-        },
-        params: {
-          type: 'object',
-          description: 'Parameters to pass to the task. Structure depends on the task being called.',
-        },
-        auth_token: {
-          type: 'string',
-          description: 'Bearer token for agents that require authentication. Will auto-lookup saved token if not provided.',
-        },
-        dry_run: {
-          type: 'boolean',
-          description: 'Whether to include X-Dry-Run header (default: true for safety)',
-        },
-      },
-      required: ['agent_url', 'task'],
-    },
-  },
-
   // ============================================
   // AGENT CONTEXT MANAGEMENT
   // ============================================
@@ -511,6 +563,17 @@ export const MEMBER_TOOLS: AddieTool[] = [
       required: ['agent_url'],
     },
   },
+  {
+    name: 'setup_test_agent',
+    description:
+      'Set up the public AdCP test agent for the user with one click. This saves the test agent URL and credentials so the user can immediately start testing. Use this when users want to try AdCP, explore the test agent, or say "set up the test agent". Requires the user to be logged in with an organization.',
+    usage_hints: 'use for "set up test agent", "I want to try AdCP", "help me get started testing", "configure the test agent"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
 
   // ============================================
   // GITHUB ISSUE DRAFTING
@@ -545,6 +608,122 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['title', 'body'],
+    },
+  },
+
+  // ============================================
+  // INDUSTRY FEED PROPOSALS
+  // ============================================
+  {
+    name: 'propose_news_source',
+    description:
+      'Propose a website or RSS feed as a news source for industry monitoring. Any community member can propose sources - admins will review and approve them. Use this when someone shares a link to a relevant ad-tech, marketing, or media publication and thinks it should be monitored for news. Check for duplicates before proposing.',
+    usage_hints: 'use when user shares a news link and suggests it as a source, or asks to add a publication to monitoring',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL of the proposed news source (website or RSS feed URL)',
+        },
+        name: {
+          type: 'string',
+          description: 'Suggested name for the feed (e.g., "AdExchanger", "Marketing Week")',
+        },
+        reason: {
+          type: 'string',
+          description: 'Brief reason why this source is relevant to the community',
+        },
+        category: {
+          type: 'string',
+          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
+          description: 'Category that best fits this publication',
+        },
+      },
+      required: ['url'],
+    },
+  },
+
+  // ============================================
+  // MEMBER SEARCH / FIND HELP
+  // ============================================
+  {
+    name: 'search_members',
+    description:
+      'Search for member organizations that can help with specific needs. Searches member names, descriptions, taglines, offerings, and tags using natural language. Use this when users ask about finding vendors, consultants, implementation partners, managed services, or anyone who can help them with AdCP adoption. Returns public member profiles with contact info.',
+    usage_hints: 'use for "find someone to run a sales agent", "who can help me implement AdCP", "find a CTV partner", "looking for managed services", "need a consultant"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'What the user is looking for in natural language (e.g., "run a sales agent for me", "help implementing AdCP", "CTV advertising expertise", "managed services for publishers")',
+        },
+        offerings: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'],
+          },
+          description: 'Optional: filter by specific service offerings',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default 5, max 10)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'request_introduction',
+    description:
+      'Send an introduction email connecting a user with a member organization. Addie sends the email directly on behalf of the requester. Use this when a user explicitly asks to be introduced to or connected with a specific member after seeing search results.',
+    usage_hints: 'use for "introduce me to X", "connect me with X", "I\'d like to talk to X", "can you put me in touch with X"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        member_slug: {
+          type: 'string',
+          description: 'The slug (URL identifier) of the member to be introduced to',
+        },
+        requester_name: {
+          type: 'string',
+          description: 'Full name of the person requesting the introduction',
+        },
+        requester_email: {
+          type: 'string',
+          description: 'Email address of the person requesting the introduction',
+        },
+        requester_company: {
+          type: 'string',
+          description: 'Company/organization of the person requesting the introduction (optional)',
+        },
+        message: {
+          type: 'string',
+          description: 'Brief message from the requester explaining what they\'re looking for or why they want to connect',
+        },
+        search_query: {
+          type: 'string',
+          description: 'The original search query the user used to find this member (if applicable)',
+        },
+        reasoning: {
+          type: 'string',
+          description: 'Addie\'s explanation of why this member is a good fit for what the requester is looking for. Be specific about matching capabilities.',
+        },
+      },
+      required: ['member_slug', 'requester_name', 'requester_email', 'message', 'reasoning'],
+    },
+  },
+  {
+    name: 'get_my_search_analytics',
+    description:
+      'Get search analytics for the user\'s member profile. Shows how many times their profile appeared in searches, profile clicks, and introduction requests. Only works for members with a public profile.',
+    usage_hints: 'use for "how is my profile performing?", "how many people have seen my profile?", "search analytics", "introduction stats"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
     },
   },
 ];
@@ -1252,11 +1431,14 @@ export function createMemberToolHandlers(
     const dryRun = input.dry_run as boolean | undefined;
     const channels = input.channels as string[] | undefined;
     const pricingModels = input.pricing_models as string[] | undefined;
+    const brandManifest = input.brand_manifest as TestOptions['brand_manifest'];
     let authToken = input.auth_token as string | undefined;
 
-    // Auto-lookup saved token if user didn't provide one and has org context
+    // Look up saved token for organization
     let usingSavedToken = false;
+    let usingPublicTestAgent = false;
     const organizationId = memberContext?.organization?.workos_organization_id;
+
     if (!authToken && organizationId) {
       try {
         const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
@@ -1274,9 +1456,24 @@ export function createMemberToolHandlers(
       }
     }
 
+    // Auto-use public credentials for the public test agent.
+    // Comes after saved token lookup so explicit user saves take precedence.
+    if (!authToken && agentUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+      authToken = PUBLIC_TEST_AGENT.token;
+      usingPublicTestAgent = true;
+      logger.info({ agentUrl }, 'Using public test agent credentials');
+    }
+
+    // Use a realistic default brand manifest that real sales agents will accept
+    const defaultBrandManifest = {
+      name: 'Nike',
+      url: 'https://nike.com',
+    };
+
     const options: TestOptions = {
       test_session_id: `addie-test-${Date.now()}`,
       dry_run: dryRun, // undefined means default to true
+      brand_manifest: brandManifest || defaultBrandManifest,
     };
     if (brief) options.brief = brief;
     if (budget) options.budget = budget;
@@ -1331,18 +1528,36 @@ export function createMemberToolHandlers(
       let output = formatTestResults(result);
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
+      } else if (usingPublicTestAgent) {
+        output = `_Using public test agent credentials._\n\n` + output;
       }
 
-      // If tests failed on a known open-source agent, offer to help file a GitHub issue
+      // If tests failed, offer to help file a GitHub issue
       const failedSteps = result.steps.filter((s) => !s.passed);
       if (failedSteps.length > 0) {
-        const openSourceInfo = getOpenSourceAgentInfo(agentUrl);
-        if (openSourceInfo) {
+        // First, check if this looks like a bug in the @adcp/client testing library itself
+        const clientLibraryBug = detectClientLibraryBug(failedSteps);
+        if (clientLibraryBug) {
+          logger.info(
+            { agentUrl, repo: clientLibraryBug.repo, matchedError: clientLibraryBug.matchedError },
+            'Detected known client library bug in test results'
+          );
           output += `\n---\n\n`;
-          output += `💡 **This is an open-source agent** (${openSourceInfo.name})\n\n`;
-          output += `Since ${failedSteps.length} test step(s) failed, would you like me to help you report this issue?\n`;
-          output += `I can draft a GitHub issue for the \`${openSourceInfo.org}/${openSourceInfo.repo}\` repository with all the relevant details.\n\n`;
-          output += `Just say "yes, file an issue" or "help me report this bug" and I'll create a pre-filled GitHub link for you.`;
+          output += `⚠️ **This looks like a bug in the testing library** (not the agent)\n\n`;
+          output += `The error pattern suggests an issue in \`@adcp/client\`:\n`;
+          output += `> ${clientLibraryBug.description}\n\n`;
+          output += `Would you like me to draft a GitHub issue for \`adcontextprotocol/${clientLibraryBug.repo}\`?\n\n`;
+          output += `Just say "yes, file an issue" and I'll create a pre-filled GitHub link for you.`;
+        } else {
+          // Check if this is a known open-source agent
+          const openSourceInfo = getOpenSourceAgentInfo(agentUrl);
+          if (openSourceInfo) {
+            output += `\n---\n\n`;
+            output += `💡 **This is an open-source agent** (${openSourceInfo.name})\n\n`;
+            output += `Since ${failedSteps.length} test step(s) failed, would you like me to help you report this issue?\n`;
+            output += `I can draft a GitHub issue for the \`${openSourceInfo.org}/${openSourceInfo.repo}\` repository with all the relevant details.\n\n`;
+            output += `Just say "yes, file an issue" or "help me report this bug" and I'll create a pre-filled GitHub link for you.`;
+          }
         }
       }
 
@@ -1350,79 +1565,6 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    }
-  });
-
-  handlers.set('call_adcp_tool', async (input) => {
-    const agentUrl = input.agent_url as string;
-    const task = input.task as string;
-    const params = (input.params as Record<string, unknown>) || {};
-    const dryRun = input.dry_run as boolean | undefined;
-    let authToken = input.auth_token as string | undefined;
-
-    // Auto-lookup saved token if user didn't provide one and has org context
-    let usingSavedToken = false;
-    const organizationId = memberContext?.organization?.workos_organization_id;
-    if (!authToken && organizationId) {
-      try {
-        const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(organizationId, agentUrl);
-        if (savedToken) {
-          authToken = savedToken;
-          usingSavedToken = true;
-          logger.info({ agentUrl, task }, 'Using saved auth token for call_adcp_tool');
-        }
-      } catch (error) {
-        logger.debug({ error, agentUrl }, 'Could not lookup saved token');
-      }
-    }
-
-    try {
-      // Create a test client for the agent
-      const testOptions: TestOptions = {
-        test_session_id: `addie-call-${Date.now()}`,
-        dry_run: dryRun, // undefined defaults to true in createTestClient
-      };
-      if (authToken) {
-        testOptions.auth = { type: 'bearer', token: authToken };
-      }
-
-      const client = createTestClient(agentUrl, 'mcp', testOptions);
-      const startTime = Date.now();
-
-      // Execute the task
-      const result = await client.executeTask(task, params);
-      const duration = Date.now() - startTime;
-
-      // Format response
-      let output = `## AdCP Task Result\n\n`;
-      output += `**Agent:** ${agentUrl}\n`;
-      output += `**Task:** \`${task}\`\n`;
-      output += `**Duration:** ${duration}ms\n`;
-      output += `**Mode:** ${dryRun !== false ? '🧪 Dry Run' : '🔴 Live'}\n`;
-      if (usingSavedToken) {
-        output += `**Auth:** Using saved credentials\n`;
-      }
-      output += `\n`;
-
-      if (result.success) {
-        output += `### ✅ Success\n\n`;
-        output += '```json\n';
-        output += JSON.stringify(result.data, null, 2);
-        output += '\n```\n';
-      } else {
-        output += `### ❌ Error\n\n`;
-        output += `**Error:** ${result.error || 'Unknown error'}\n`;
-        if (result.data) {
-          output += '\n**Response data:**\n```json\n';
-          output += JSON.stringify(result.data, null, 2);
-          output += '\n```\n';
-        }
-      }
-
-      return output;
-    } catch (error) {
-      logger.error({ error, agentUrl, task }, 'Addie: call_adcp_tool failed');
-      return `Failed to call ${task} on ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
@@ -1650,6 +1792,397 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl }, 'Addie: remove_saved_agent failed');
       return `Failed to remove agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // TEST AGENT SETUP (one-click)
+  // ============================================
+  handlers.set('setup_test_agent', async () => {
+    // Require authenticated user with organization
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to set up the test agent. Please log in at https://agenticadvertising.org/dashboard first, then come back and try again.';
+    }
+
+    const setupOrgId = memberContext.organization?.workos_organization_id;
+    if (!setupOrgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    try {
+      // Check if already set up
+      let context = await agentContextDb.getByOrgAndUrl(setupOrgId, PUBLIC_TEST_AGENT.url);
+
+      if (context && context.has_auth_token) {
+        return `✅ The test agent is already set up for your organization!\n\n**Agent:** ${PUBLIC_TEST_AGENT.name}\n**URL:** ${PUBLIC_TEST_AGENT.url}\n\nYou can now use \`test_adcp_agent\` to run tests against it.`;
+      }
+
+      if (context) {
+        // Context exists but no token - add the token
+        await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
+      } else {
+        // Create new context with token
+        context = await agentContextDb.create({
+          organization_id: setupOrgId,
+          agent_url: PUBLIC_TEST_AGENT.url,
+          agent_name: PUBLIC_TEST_AGENT.name,
+          protocol: 'mcp',
+          created_by: memberContext.workos_user.workos_user_id,
+        });
+        await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
+      }
+
+      let response = `✅ **Test agent is ready!**\n\n`;
+      response += `**Agent:** ${PUBLIC_TEST_AGENT.name}\n`;
+      response += `**URL:** ${PUBLIC_TEST_AGENT.url}\n\n`;
+      response += `You can now:\n`;
+      response += `- Run \`test_adcp_agent\` to run the full test suite\n`;
+      response += `- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\`\n\n`;
+      response += `Would you like me to run a quick test now?`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Addie: setup_test_agent failed');
+      return `Failed to set up test agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // INDUSTRY FEED PROPOSAL HANDLER
+  // ============================================
+
+  handlers.set('propose_news_source', async (input) => {
+    const url = (input.url as string)?.trim();
+    const name = input.name as string | undefined;
+    const reason = input.reason as string | undefined;
+    const category = input.category as string | undefined;
+
+    if (!url) {
+      return '❌ Please provide a URL for the proposed news source.';
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      return `❌ Invalid URL: "${url}". Please provide a valid website or RSS feed URL.`;
+    }
+
+    try {
+      // Check for existing feed or proposal
+      const { existingFeed, existingProposal } = await findExistingProposalOrFeed(url);
+
+      if (existingFeed) {
+        const status = existingFeed.is_active ? '✅ active' : '⏸️ inactive';
+        return `This source is already being monitored!\n\n**${existingFeed.name}** (${status})\n**URL:** ${existingFeed.feed_url}\n${existingFeed.category ? `**Category:** ${existingFeed.category}\n` : ''}`;
+      }
+
+      if (existingProposal) {
+        return `This source has already been proposed and is pending review.\n\n**URL:** ${existingProposal.url}\n${existingProposal.name ? `**Suggested name:** ${existingProposal.name}\n` : ''}**Proposed:** ${existingProposal.proposed_at.toLocaleDateString()}`;
+      }
+
+      // Create the proposal
+      const proposal = await createFeedProposal({
+        url,
+        name,
+        reason,
+        category,
+        proposed_by_slack_user_id: memberContext?.slack_user?.slack_user_id,
+        proposed_by_workos_user_id: memberContext?.workos_user?.workos_user_id,
+      });
+
+      let response = `✅ **News source proposed!**\n\n`;
+      response += `**URL:** ${url}\n`;
+      if (name) response += `**Suggested name:** ${name}\n`;
+      if (category) response += `**Category:** ${category}\n`;
+      if (reason) response += `**Reason:** ${reason}\n`;
+      response += `\nAn admin will review this proposal and decide whether to add it to our monitored feeds. Thanks for the suggestion!`;
+
+      logger.info({ proposalId: proposal.id, url, name }, 'Feed proposal created');
+      return response;
+    } catch (error) {
+      logger.error({ error, url }, 'Error creating feed proposal');
+      return '❌ Failed to submit the proposal. Please try again.';
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH / FIND HELP
+  // ============================================
+  handlers.set('search_members', async (input) => {
+    const searchQuery = input.query as string;
+    const offeringsFilter = input.offerings as string[] | undefined;
+    const requestedLimit = (input.limit as number) || 5;
+    const limit = Math.min(Math.max(requestedLimit, 1), 10);
+
+    // Generate a session ID for this search operation to correlate analytics
+    const searchSessionId = uuidv4();
+
+    try {
+      // Search public member profiles
+      // The MemberDatabase.listProfiles supports text search across name, tagline, description, tags
+      const profiles = await memberDb.listProfiles({
+        is_public: true,
+        search: searchQuery,
+        offerings: offeringsFilter as any,
+        limit: limit + 5, // Get extra to allow for relevance filtering
+      });
+
+      if (profiles.length === 0) {
+        let response = `No members found matching "${searchQuery}".\n\n`;
+        response += `This could mean:\n`;
+        response += `- No members have published profiles matching your needs yet\n`;
+        response += `- Try broader search terms\n\n`;
+        response += `You can also:\n`;
+        response += `- Browse all members at https://agenticadvertising.org/members\n`;
+        response += `- Ask me for general guidance on getting started with AdCP`;
+        return response;
+      }
+
+      const displayProfiles = profiles.slice(0, limit);
+
+      // Track search impressions for analytics (fire-and-forget)
+      const searcherUserId = memberContext?.workos_user?.workos_user_id;
+      memberSearchAnalyticsDb
+        .recordSearchImpressionsBatch(
+          displayProfiles.map((profile, index) => ({
+            member_profile_id: profile.id,
+            search_query: searchQuery,
+            search_session_id: searchSessionId,
+            searcher_user_id: searcherUserId,
+            context: {
+              position: index + 1,
+              total_results: profiles.length,
+              offerings_filter: offeringsFilter,
+            },
+          }))
+        )
+        .catch((err) => {
+          logger.warn({ error: err, searchSessionId }, 'Failed to record search impressions');
+        });
+
+      // Return structured data that chat UI can render as cards
+      // The format is: intro text + special JSON block + follow-up text
+      const memberCards = displayProfiles.map((profile) => ({
+        id: profile.id,
+        slug: profile.slug,
+        display_name: profile.display_name,
+        tagline: profile.tagline || null,
+        description: profile.description
+          ? profile.description.length > 200
+            ? profile.description.substring(0, 200) + '...'
+            : profile.description
+          : null,
+        logo_url: profile.logo_url || profile.logo_light_url || null,
+        offerings: profile.offerings || [],
+        headquarters: profile.headquarters || null,
+        contact_website: profile.contact_website || null,
+      }));
+
+      // Embed structured data in a special format the chat UI will recognize
+      const structuredData = {
+        type: 'member_search_results',
+        query: searchQuery,
+        search_session_id: searchSessionId,
+        results: memberCards,
+        total_found: profiles.length,
+      };
+
+      // Build response with intro, embedded data block, and follow-up
+      let response = `Found ${displayProfiles.length} member${displayProfiles.length !== 1 ? 's' : ''} who can help:\n\n`;
+      response += `<!--ADDIE_DATA:${JSON.stringify(structuredData)}:ADDIE_DATA-->\n\n`;
+
+      if (profiles.length > limit) {
+        response += `_Showing top ${limit} of ${profiles.length} results. [Browse all members](/members) for more options._\n\n`;
+      }
+
+      response += `Click on a card to see their full profile, or ask me to introduce you to someone.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query: searchQuery }, 'Addie: search_members failed');
+      return `Failed to search members: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // INTRODUCTION REQUESTS
+  // ============================================
+  handlers.set('request_introduction', async (input) => {
+    const memberSlug = input.member_slug as string;
+    const requesterName = input.requester_name as string;
+    const requesterEmail = input.requester_email as string;
+    const requesterCompany = input.requester_company as string | undefined;
+    const message = input.message as string;
+    const searchQuery = input.search_query as string | undefined;
+    const reasoning = input.reasoning as string;
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!requesterEmail || !emailRegex.test(requesterEmail)) {
+      return 'Please provide a valid email address for the introduction request.';
+    }
+
+    try {
+      // Get the member profile
+      const profile = await memberDb.getProfileBySlug(memberSlug);
+      if (!profile) {
+        return `I couldn't find a member with the identifier "${memberSlug}". Please check the name and try again, or use search_members to find the right member.`;
+      }
+
+      if (!profile.is_public) {
+        return `This member's profile is not currently public. They may not be accepting introductions at this time.`;
+      }
+
+      // Check if the member has a contact email
+      if (!profile.contact_email) {
+        let response = `**${profile.display_name}** doesn't have a contact email listed in their profile.\n\n`;
+        if (profile.contact_website) {
+          response += `You can reach them through their website: ${profile.contact_website}`;
+        } else if (profile.linkedin_url) {
+          response += `You can connect with them on LinkedIn: ${profile.linkedin_url}`;
+        } else {
+          response += `You may want to visit their profile page at https://agenticadvertising.org/members/${profile.slug} for more information.`;
+        }
+        return response;
+      }
+
+      // Record the introduction request for analytics
+      const searcherUserId = memberContext?.workos_user?.workos_user_id;
+      await memberSearchAnalyticsDb.recordIntroductionRequest({
+        member_profile_id: profile.id,
+        searcher_user_id: searcherUserId,
+        searcher_email: requesterEmail,
+        searcher_name: requesterName,
+        searcher_company: requesterCompany,
+        context: {
+          message,
+          search_query: searchQuery,
+          reasoning,
+        },
+      });
+
+      // Send the introduction email
+      const emailResult = await sendIntroductionEmail({
+        memberEmail: profile.contact_email,
+        memberName: profile.display_name,
+        memberSlug: profile.slug,
+        requesterName,
+        requesterEmail,
+        requesterCompany,
+        requesterMessage: message,
+        searchQuery,
+        addieReasoning: reasoning,
+      });
+
+      if (!emailResult.success) {
+        // Email failed but we recorded the request - let user know to follow up manually
+        logger.warn({ error: emailResult.error, memberSlug, requesterEmail }, 'Introduction email failed to send');
+        let response = `I recorded your introduction request to **${profile.display_name}**, but there was an issue sending the email.\n\n`;
+        response += `Please reach out to them directly at: **${profile.contact_email}**\n\n`;
+        response += `Here's a suggested message:\n\n---\n\n`;
+        response += `Hi ${profile.display_name.split(' ')[0] || 'there'},\n\n`;
+        response += `I found your profile on AgenticAdvertising.org. ${message}\n\n`;
+        response += `${requesterName}`;
+        if (requesterCompany) response += `\n${requesterCompany}`;
+        response += `\n${requesterEmail}\n\n---`;
+        return response;
+      }
+
+      // Record that the email was sent
+      await memberSearchAnalyticsDb.recordIntroductionSent({
+        member_profile_id: profile.id,
+        searcher_email: requesterEmail,
+        searcher_name: requesterName,
+        context: { email_id: emailResult.messageId },
+      });
+
+      logger.info(
+        { memberSlug, requesterEmail, memberProfileId: profile.id, emailId: emailResult.messageId },
+        'Introduction email sent'
+      );
+
+      // Build a nice confirmation message
+      let response = `## Introduction Sent!\n\n`;
+      response += `I've sent an introduction email to **${profile.display_name}** on your behalf.\n\n`;
+      response += `**What happens next:**\n`;
+      response += `- ${profile.display_name} will receive an email with your message and contact info\n`;
+      response += `- When they reply, it will go directly to ${requesterEmail}\n`;
+      response += `- The email explains why you're a good match for what you're looking for\n\n`;
+      response += `Good luck with your conversation!`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, memberSlug }, 'Addie: request_introduction failed');
+      return `Failed to process introduction request: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH ANALYTICS
+  // ============================================
+  handlers.set('get_my_search_analytics', async () => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your search analytics. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const orgId = memberContext.organization?.workos_organization_id;
+    if (!orgId) {
+      return 'Your account is not associated with an organization. Please contact support.';
+    }
+
+    try {
+      // Get the member profile for this organization
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (!profile) {
+        return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one!";
+      }
+
+      if (!profile.is_public) {
+        return "Your profile is not public yet. Make your profile public to appear in searches and see analytics.\n\nVisit https://agenticadvertising.org/member-profile to update your visibility settings.";
+      }
+
+      // Get analytics summary
+      const analytics = await memberSearchAnalyticsDb.getAnalyticsSummary(profile.id);
+
+      let response = `## Search Analytics for ${profile.display_name}\n\n`;
+
+      // Summary stats
+      response += `### Last 30 Days\n`;
+      response += `- **Search impressions:** ${analytics.impressions_last_30_days}\n`;
+      response += `- **Profile clicks:** ${analytics.clicks_last_30_days}\n`;
+      response += `- **Introduction requests:** ${analytics.intro_requests_last_30_days}\n\n`;
+
+      response += `### Last 7 Days\n`;
+      response += `- **Search impressions:** ${analytics.impressions_last_7_days}\n`;
+      response += `- **Profile clicks:** ${analytics.clicks_last_7_days}\n`;
+      response += `- **Introduction requests:** ${analytics.intro_requests_last_7_days}\n\n`;
+
+      response += `### All Time\n`;
+      response += `- **Total impressions:** ${analytics.total_impressions}\n`;
+      response += `- **Total clicks:** ${analytics.total_clicks}\n`;
+      response += `- **Total introduction requests:** ${analytics.total_intro_requests}\n`;
+      response += `- **Introductions sent:** ${analytics.total_intros_sent}\n\n`;
+
+      // Conversion insights
+      if (analytics.total_impressions > 0) {
+        const clickRate = ((analytics.total_clicks / analytics.total_impressions) * 100).toFixed(1);
+        response += `### Insights\n`;
+        response += `- **Click-through rate:** ${clickRate}%\n`;
+        if (analytics.total_clicks > 0) {
+          const introRate = ((analytics.total_intro_requests / analytics.total_clicks) * 100).toFixed(1);
+          response += `- **Introduction request rate:** ${introRate}% (of profile views)\n`;
+        }
+      }
+
+      if (analytics.total_impressions === 0) {
+        response += `\n💡 **Tip:** Your profile hasn't appeared in any searches yet. Make sure your description includes keywords that describe your services. Check your profile at https://agenticadvertising.org/member-profile`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Addie: get_my_search_analytics failed');
+      return `Failed to fetch analytics: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

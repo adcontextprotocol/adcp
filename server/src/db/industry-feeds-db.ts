@@ -67,11 +67,13 @@ export interface RssPerspective {
 
 /**
  * Get all active feeds that need fetching
+ * Only returns feeds with a valid feed_url (excludes email-only feeds)
  */
 export async function getFeedsToFetch(): Promise<IndustryFeed[]> {
   const result = await query<IndustryFeed>(
     `SELECT * FROM industry_feeds
      WHERE is_active = true
+       AND feed_url IS NOT NULL
        AND (last_fetched_at IS NULL
             OR last_fetched_at < NOW() - (fetch_interval_minutes || ' minutes')::interval)
      ORDER BY last_fetched_at ASC NULLS FIRST
@@ -130,6 +132,76 @@ export async function updateFeedStatus(
       [feedId, error]
     );
   }
+}
+
+/**
+ * Normalize a URL for comparison purposes.
+ * Removes trailing slashes, normalizes www prefix, and lowercases the hostname.
+ */
+export function normalizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // Normalize hostname: lowercase and remove www prefix
+    let hostname = parsed.hostname.toLowerCase();
+    if (hostname.startsWith('www.')) {
+      hostname = hostname.slice(4);
+    }
+    // Normalize path: remove trailing slash unless it's just "/"
+    let path = parsed.pathname;
+    if (path.length > 1 && path.endsWith('/')) {
+      path = path.slice(0, -1);
+    }
+    // Rebuild without search params for comparison (RSS feeds rarely use them meaningfully)
+    return `${parsed.protocol}//${hostname}${path}`;
+  } catch {
+    // If URL parsing fails, return the original lowercased
+    return url.toLowerCase().replace(/\/+$/, '');
+  }
+}
+
+/**
+ * Find feeds with similar URLs (potential duplicates).
+ * Returns feeds where the normalized URL matches or is very similar.
+ */
+export async function findSimilarFeeds(feedUrl: string): Promise<IndustryFeed[]> {
+  const normalized = normalizeUrl(feedUrl);
+
+  // Get all feeds and check for similar URLs
+  const result = await query<IndustryFeed>(
+    `SELECT * FROM industry_feeds WHERE feed_url IS NOT NULL`
+  );
+
+  const similar: IndustryFeed[] = [];
+  for (const feed of result.rows) {
+    if (feed.feed_url) {
+      const feedNormalized = normalizeUrl(feed.feed_url);
+      // Check if normalized URLs match
+      if (feedNormalized === normalized) {
+        similar.push(feed);
+        continue;
+      }
+      // Check if one is a subdomain or path variant of the other
+      // e.g., example.com/feed vs example.com/feed/rss
+      try {
+        const inputParsed = new URL(normalized.startsWith('http') ? normalized : `https://${normalized}`);
+        const feedParsed = new URL(feedNormalized.startsWith('http') ? feedNormalized : `https://${feedNormalized}`);
+
+        // Same hostname, similar paths
+        if (inputParsed.hostname === feedParsed.hostname) {
+          const inputPath = inputParsed.pathname.toLowerCase();
+          const feedPath = feedParsed.pathname.toLowerCase();
+          // Check if paths are variations of each other
+          if (inputPath.startsWith(feedPath) || feedPath.startsWith(inputPath)) {
+            similar.push(feed);
+          }
+        }
+      } catch {
+        // Ignore URL parsing errors
+      }
+    }
+  }
+
+  return similar;
 }
 
 /**
@@ -311,17 +383,6 @@ export async function getRecentRssPerspectives(
 // ============== Alert Operations ==============
 
 /**
- * Check if we've already alerted for this perspective
- */
-export async function hasAlertedPerspective(perspectiveId: string): Promise<boolean> {
-  const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM industry_alerts WHERE perspective_id = $1)`,
-    [perspectiveId]
-  );
-  return result.rows[0].exists;
-}
-
-/**
  * Record that we sent an alert for a perspective
  */
 export async function recordPerspectiveAlert(
@@ -337,56 +398,6 @@ export async function recordPerspectiveAlert(
     [perspectiveId, alertLevel, channelId, messageTs]
   );
   return result.rows[0];
-}
-
-/**
- * Get RSS perspectives that should be alerted
- * (high quality, relevant mentions, not yet alerted)
- */
-export async function getPerspectivesToAlert(): Promise<{
-  id: string;
-  title: string;
-  link: string;
-  summary: string;
-  addie_notes: string;
-  quality_score: number;
-  mentions_agentic: boolean;
-  mentions_adcp: boolean;
-  relevance_tags: string[];
-  feed_name: string;
-}[]> {
-  const result = await query<{
-    id: string;
-    title: string;
-    link: string;
-    summary: string;
-    addie_notes: string;
-    quality_score: number;
-    mentions_agentic: boolean;
-    mentions_adcp: boolean;
-    relevance_tags: string[];
-    feed_name: string;
-  }>(
-    `SELECT p.id, p.title, p.external_url as link,
-            k.summary, k.addie_notes, k.quality_score,
-            k.mentions_agentic, k.mentions_adcp, k.relevance_tags,
-            f.name as feed_name
-     FROM perspectives p
-     JOIN industry_feeds f ON p.feed_id = f.id
-     JOIN addie_knowledge k ON k.source_url = p.external_url
-     WHERE p.source_type = 'rss'
-       AND p.status = 'published'
-       AND k.fetch_status = 'success'
-       AND NOT EXISTS (SELECT 1 FROM industry_alerts ia WHERE ia.perspective_id = p.id)
-       AND (k.quality_score >= 4 OR k.mentions_agentic = true OR k.mentions_adcp = true)
-     ORDER BY
-       CASE WHEN k.mentions_adcp THEN 0
-            WHEN k.mentions_agentic THEN 1
-            ELSE 2 END,
-       k.quality_score DESC NULLS LAST
-     LIMIT 20`
-  );
-  return result.rows;
 }
 
 // ============== Stats ==============
@@ -709,4 +720,190 @@ export async function createEmailPerspective(article: EmailArticleInput): Promis
   }
 
   return result.rows[0]?.id || null;
+}
+
+// ============== Feed Proposal Operations ==============
+
+export interface FeedProposal {
+  id: number;
+  url: string;
+  name: string | null;
+  reason: string | null;
+  category: string | null;
+  proposed_by_slack_user_id: string | null;
+  proposed_by_workos_user_id: string | null;
+  proposed_at: Date;
+  status: 'pending' | 'approved' | 'rejected' | 'duplicate';
+  reviewed_by_workos_user_id: string | null;
+  reviewed_at: Date | null;
+  review_notes: string | null;
+  feed_id: number | null;
+  source_channel_id: string | null;
+  source_message_ts: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateProposalInput {
+  url: string;
+  name?: string;
+  reason?: string;
+  category?: string;
+  proposed_by_slack_user_id?: string;
+  proposed_by_workos_user_id?: string;
+  source_channel_id?: string;
+  source_message_ts?: string;
+}
+
+/**
+ * Check if a URL has already been proposed or exists as a feed
+ */
+export async function findExistingProposalOrFeed(url: string): Promise<{
+  existingFeed: IndustryFeed | null;
+  existingProposal: FeedProposal | null;
+}> {
+  const normalized = normalizeUrl(url);
+
+  // Check for existing feed with similar URL
+  const feedResult = await query<IndustryFeed>(
+    `SELECT * FROM industry_feeds WHERE feed_url IS NOT NULL`
+  );
+
+  let existingFeed: IndustryFeed | null = null;
+  for (const feed of feedResult.rows) {
+    if (feed.feed_url && normalizeUrl(feed.feed_url) === normalized) {
+      existingFeed = feed;
+      break;
+    }
+  }
+
+  // Check for pending proposal with similar URL (using normalization)
+  const proposalResult = await query<FeedProposal>(
+    `SELECT * FROM feed_proposals WHERE status = 'pending'`
+  );
+
+  let existingProposal: FeedProposal | null = null;
+  for (const proposal of proposalResult.rows) {
+    if (normalizeUrl(proposal.url) === normalized) {
+      existingProposal = proposal;
+      break;
+    }
+  }
+
+  return {
+    existingFeed,
+    existingProposal,
+  };
+}
+
+/**
+ * Create a new feed proposal
+ */
+export async function createFeedProposal(input: CreateProposalInput): Promise<FeedProposal> {
+  const result = await query<FeedProposal>(
+    `INSERT INTO feed_proposals (
+       url, name, reason, category,
+       proposed_by_slack_user_id, proposed_by_workos_user_id,
+       source_channel_id, source_message_ts
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      input.url,
+      input.name || null,
+      input.reason || null,
+      input.category || null,
+      input.proposed_by_slack_user_id || null,
+      input.proposed_by_workos_user_id || null,
+      input.source_channel_id || null,
+      input.source_message_ts || null,
+    ]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get pending feed proposals for admin review
+ */
+export async function getPendingProposals(limit: number = 20): Promise<FeedProposal[]> {
+  const result = await query<FeedProposal>(
+    `SELECT * FROM feed_proposals
+     WHERE status = 'pending'
+     ORDER BY proposed_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Approve a feed proposal - creates the feed and updates the proposal
+ */
+export async function approveProposal(
+  proposalId: number,
+  reviewedByWorkosUserId: string,
+  feedName: string,
+  feedUrl: string,
+  category?: string
+): Promise<{ proposal: FeedProposal; feed: IndustryFeed }> {
+  // Create the feed
+  const feed = await addFeed(feedName, feedUrl, category);
+
+  // Update the proposal
+  const result = await query<FeedProposal>(
+    `UPDATE feed_proposals SET
+       status = 'approved',
+       reviewed_by_workos_user_id = $2,
+       reviewed_at = NOW(),
+       feed_id = $3,
+       updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [proposalId, reviewedByWorkosUserId, feed.id]
+  );
+
+  return { proposal: result.rows[0], feed };
+}
+
+/**
+ * Reject a feed proposal
+ */
+export async function rejectProposal(
+  proposalId: number,
+  reviewedByWorkosUserId: string,
+  reason?: string
+): Promise<FeedProposal> {
+  const result = await query<FeedProposal>(
+    `UPDATE feed_proposals SET
+       status = 'rejected',
+       reviewed_by_workos_user_id = $2,
+       reviewed_at = NOW(),
+       review_notes = $3,
+       updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [proposalId, reviewedByWorkosUserId, reason || null]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get proposal stats for admin dashboard
+ */
+export async function getProposalStats(): Promise<{
+  pending: number;
+  approved: number;
+  rejected: number;
+  duplicate: number;
+}> {
+  const result = await query<{ status: string; count: string }>(
+    `SELECT status, COUNT(*) as count FROM feed_proposals GROUP BY status`
+  );
+
+  const stats = { pending: 0, approved: 0, rejected: 0, duplicate: 0 };
+  for (const row of result.rows) {
+    if (row.status in stats) {
+      stats[row.status as keyof typeof stats] = parseInt(row.count, 10);
+    }
+  }
+  return stats;
 }

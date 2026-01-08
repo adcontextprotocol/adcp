@@ -23,21 +23,43 @@
       "patternProperties": {
         "^[a-zA-Z0-9_-]+$": {
           "oneOf": [
-            {"$ref": "/schemas/core/assets/image-asset.json"},
-            {"$ref": "/schemas/core/assets/video-asset.json"},
-            {"$ref": "/schemas/core/assets/audio-asset.json"},
-            {"$ref": "/schemas/core/assets/text-asset.json"},
-            {"$ref": "/schemas/core/assets/html-asset.json"},
-            {"$ref": "/schemas/core/assets/css-asset.json"},
-            {"$ref": "/schemas/core/assets/javascript-asset.json"},
-            {"$ref": "/schemas/core/assets/vast-asset.json"},
-            {"$ref": "/schemas/core/assets/daast-asset.json"},
-            {"$ref": "/schemas/core/promoted-offerings.json"},
-            {"$ref": "/schemas/core/assets/url-asset.json"}
+            {
+              "$ref": "/schemas/core/assets/image-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/video-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/audio-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/text-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/html-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/css-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/javascript-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/vast-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/daast-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/promoted-offerings.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/url-asset.json"
+            }
           ]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "inputs": {
       "type": "array",
@@ -52,15 +74,19 @@
           "macros": {
             "type": "object",
             "description": "Macro values to apply for this preview",
-            "additionalProperties": {"type": "string"}
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "context_description": {
             "type": "string",
             "description": "Natural language description of the context for AI-generated content"
           }
         },
-        "required": ["name"],
-        "additionalProperties": false
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
       }
     },
     "tags": {
@@ -89,6 +115,11 @@
       "minItems": 1
     }
   },
-  "required": ["creative_id", "name", "format_id", "assets"],
-  "additionalProperties": false
+  "required": [
+    "creative_id",
+    "name",
+    "format_id",
+    "assets"
+  ],
+  "additionalProperties": true
 }

@@ -432,6 +432,20 @@
       color: var(--color-text-heading);
       margin-bottom: var(--space-2);
     }
+    .detail-title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .detail-title-row h1 {
+      margin-bottom: 0;
+    }
+    .detail-founding-badge {
+      padding: 4px 12px;
+      font-size: var(--text-sm);
+      border-radius: 6px;
+    }
     .detail-title .tagline {
       font-size: var(--text-lg);
       color: var(--color-text-muted);
@@ -1470,6 +1484,10 @@
     function renderMemberDetail(member) {
       const content = document.getElementById('detail-content');
 
+      const foundingBadgeHtml = member.is_founding_member
+        ? '<span class="founding-member-badge detail-founding-badge">Founding Member</span>'
+        : '';
+
       content.innerHTML = `
         <div class="detail-header">
           ${member.logo_url
@@ -1477,7 +1495,10 @@
             : `<div class="detail-logo-placeholder">${member.display_name.charAt(0)}</div>`
           }
           <div class="detail-title">
-            <h1>${member.display_name}</h1>
+            <div class="detail-title-row">
+              <h1>${member.display_name}</h1>
+              ${foundingBadgeHtml}
+            </div>
             ${member.tagline ? `<p class="tagline">${member.tagline}</p>` : ''}
           </div>
         </div>

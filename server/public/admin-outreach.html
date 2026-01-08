@@ -411,6 +411,7 @@
 
     <div class="tabs">
       <button class="tab active" onclick="showTab('history')">History</button>
+      <button class="tab" onclick="showTab('analytics')">Analytics</button>
       <button class="tab" onclick="showTab('variants')">A/B Variants</button>
       <button class="tab" onclick="showTab('test-accounts')">Test Accounts</button>
     </div>
@@ -436,6 +437,56 @@
         <div id="history-empty" class="empty-state" style="display: none;">
           No outreach has been sent yet.
         </div>
+      </div>
+    </div>
+
+    <!-- Analytics Tab -->
+    <div id="tab-analytics" class="tab-content">
+      <!-- Time-based stats -->
+      <div class="card" style="margin-bottom: 24px;">
+        <h3 style="margin-bottom: 16px; color: var(--color-text-heading);">Performance Over Time</h3>
+        <div class="stats-row" style="margin-bottom: 0;">
+          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+            <div class="label">Today</div>
+            <div class="value" id="time-stat-today-sent">—</div>
+            <div class="subtext"><span id="time-stat-today-responded">0</span> responded</div>
+          </div>
+          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+            <div class="label">This Week</div>
+            <div class="value" id="time-stat-week-sent">—</div>
+            <div class="subtext"><span id="time-stat-week-responded">0</span> responded</div>
+          </div>
+          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+            <div class="label">This Month</div>
+            <div class="value" id="time-stat-month-sent">—</div>
+            <div class="subtext"><span id="time-stat-month-responded">0</span> responded</div>
+          </div>
+          <div class="stat-card" style="box-shadow: none; background: var(--color-gray-50);">
+            <div class="label">All Time</div>
+            <div class="value" id="time-stat-total-sent">—</div>
+            <div class="subtext"><span id="time-stat-total-rate">0</span>% response rate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Goal-level stats -->
+      <div class="card">
+        <h3 style="margin-bottom: 16px; color: var(--color-text-heading);">Response Rates by Goal</h3>
+        <div id="goal-stats-loading" class="loading">Loading goal statistics...</div>
+        <div id="goal-stats-empty" class="empty-state" style="display: none;">No outreach data yet.</div>
+        <table id="goal-stats-table" style="display: none;">
+          <thead>
+            <tr>
+              <th>Goal</th>
+              <th style="text-align: center;">Sent</th>
+              <th style="text-align: center;">Responded</th>
+              <th style="text-align: center;">Response Rate</th>
+              <th style="text-align: center;">Insights</th>
+              <th>Sentiment Breakdown</th>
+            </tr>
+          </thead>
+          <tbody id="goal-stats-body"></tbody>
+        </table>
       </div>
     </div>
 
@@ -527,6 +578,7 @@
         loadHistory(),
         loadVariants(),
         loadTestAccounts(),
+        loadAnalytics(),
       ]);
     }
 
@@ -611,10 +663,12 @@
 
     function renderHistory() {
       const tbody = document.getElementById('history-body');
-      tbody.innerHTML = history.map(item => `
+      tbody.innerHTML = history.map(item => {
+        const userName = item.slack_display_name || item.slack_real_name || item.slack_user_id;
+        return `
         <tr>
           <td>${formatDate(item.sent_at)}</td>
-          <td>${escapeHtml(item.slack_user_id)}</td>
+          <td>${escapeHtml(userName)}</td>
           <td><span class="badge badge-info">${item.outreach_type}</span></td>
           <td>${item.tone ? `${item.tone} / ${item.approach}` : '—'}</td>
           <td>
@@ -628,7 +682,7 @@
             </span>
           </td>
         </tr>
-      `).join('');
+      `}).join('');
     }
 
     async function loadVariants() {
@@ -914,6 +968,92 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // Load analytics data (time stats + goal stats)
+    async function loadAnalytics() {
+      try {
+        const [timeResponse, goalResponse] = await Promise.all([
+          fetch('/api/admin/outreach/stats/time-series'),
+          fetch('/api/admin/outreach/stats/by-goal'),
+        ]);
+
+        // Load time stats
+        if (timeResponse.ok) {
+          const timeStats = await timeResponse.json();
+          document.getElementById('time-stat-today-sent').textContent = timeStats.sent_today || 0;
+          document.getElementById('time-stat-today-responded').textContent = timeStats.responded_today || 0;
+          document.getElementById('time-stat-week-sent').textContent = timeStats.sent_this_week || 0;
+          document.getElementById('time-stat-week-responded').textContent = timeStats.responded_this_week || 0;
+          document.getElementById('time-stat-month-sent').textContent = timeStats.sent_this_month || 0;
+          document.getElementById('time-stat-month-responded').textContent = timeStats.responded_this_month || 0;
+          document.getElementById('time-stat-total-sent').textContent = timeStats.total_sent || 0;
+          document.getElementById('time-stat-total-rate').textContent = timeStats.overall_response_rate_pct || 0;
+        }
+
+        // Load goal stats
+        const loading = document.getElementById('goal-stats-loading');
+        const table = document.getElementById('goal-stats-table');
+        const empty = document.getElementById('goal-stats-empty');
+        const tbody = document.getElementById('goal-stats-body');
+
+        loading.style.display = 'none';
+
+        if (goalResponse.ok) {
+          const goalStats = await goalResponse.json();
+
+          if (goalStats.length === 0) {
+            empty.style.display = 'block';
+            return;
+          }
+
+          tbody.innerHTML = goalStats.map(goal => {
+            // Build sentiment bar
+            const total = goal.positive_responses + goal.neutral_responses + goal.negative_responses + goal.refusal_responses;
+            const sentimentBar = total > 0 ? `
+              <div style="display: flex; gap: 2px; height: 8px; min-width: 100px;">
+                ${goal.positive_responses > 0 ? `<div style="flex: ${goal.positive_responses}; background: var(--color-success); border-radius: 2px;" title="${goal.positive_responses} positive"></div>` : ''}
+                ${goal.neutral_responses > 0 ? `<div style="flex: ${goal.neutral_responses}; background: var(--color-gray-400); border-radius: 2px;" title="${goal.neutral_responses} neutral"></div>` : ''}
+                ${goal.negative_responses > 0 ? `<div style="flex: ${goal.negative_responses}; background: var(--color-warning); border-radius: 2px;" title="${goal.negative_responses} negative"></div>` : ''}
+                ${goal.refusal_responses > 0 ? `<div style="flex: ${goal.refusal_responses}; background: var(--color-danger); border-radius: 2px;" title="${goal.refusal_responses} refusal"></div>` : ''}
+              </div>
+              <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 4px;">
+                ${goal.positive_responses > 0 ? `<span style="color: var(--color-success);">${goal.positive_responses} +</span> ` : ''}
+                ${goal.neutral_responses > 0 ? `<span style="color: var(--color-gray-600);">${goal.neutral_responses} ~</span> ` : ''}
+                ${goal.negative_responses > 0 ? `<span style="color: var(--color-warning);">${goal.negative_responses} -</span> ` : ''}
+                ${goal.refusal_responses > 0 ? `<span style="color: var(--color-danger);">${goal.refusal_responses} x</span>` : ''}
+              </div>
+            ` : '<span style="color: var(--color-text-muted);">No responses</span>';
+
+            const responseRate = goal.response_rate_pct !== null ? `${goal.response_rate_pct}%` : '—';
+            const insightRate = goal.insight_conversion_rate_pct !== null ? `(${goal.insight_conversion_rate_pct}% conversion)` : '';
+
+            return `<tr>
+              <td>
+                <div style="font-weight: 500; color: var(--color-text-heading);">${escapeHtml(goal.goal_name)}</div>
+                ${goal.is_enabled ? '' : '<span style="font-size: 10px; color: var(--color-text-muted);">Disabled</span>'}
+              </td>
+              <td style="text-align: center;">${goal.total_sent}</td>
+              <td style="text-align: center;">${goal.total_responded}</td>
+              <td style="text-align: center;">
+                <span style="font-weight: 600; color: ${goal.response_rate_pct > 30 ? 'var(--color-success)' : goal.response_rate_pct > 15 ? 'var(--color-warning)' : 'var(--color-text-secondary)'};">
+                  ${responseRate}
+                </span>
+              </td>
+              <td style="text-align: center;">
+                ${goal.total_insights}
+                <span style="font-size: 10px; color: var(--color-text-muted);">${insightRate}</span>
+              </td>
+              <td>${sentimentBar}</td>
+            </tr>`;
+          }).join('');
+
+          table.style.display = 'table';
+        }
+      } catch (err) {
+        console.error('Failed to load analytics:', err);
+        document.getElementById('goal-stats-loading').textContent = 'Failed to load analytics';
+      }
     }
 
     // Initialize

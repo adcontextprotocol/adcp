@@ -1,0 +1,514 @@
+---
+title: get_media_buy_delivery
+sidebar_position: 6
+testable: true
+---
+
+
+Retrieve comprehensive delivery metrics and performance data for media buy reporting.
+
+**Response Time**: ~60 seconds (reporting query)
+
+**Request Schema**: [`/schemas/v2/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json)
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
+| `buyer_refs` | string[] | No* | Array of buyer reference IDs |
+| `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
+| `start_date` | string | No | Report start date (YYYY-MM-DD) |
+| `end_date` | string | No | Report end date (YYYY-MM-DD) |
+
+*Either `media_buy_ids` or `buyer_refs` can be provided. If neither provided, returns all media buys in current session context.
+
+## Response
+
+Returns delivery report with aggregated totals and per-media-buy breakdowns:
+
+| Field | Description |
+|-------|-------------|
+| `reporting_period` | Date range for report (start/end timestamps) |
+| `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
+| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, video_completions, media_buy_count) |
+| `media_buy_deliveries` | Array of delivery data per media buy |
+
+### Media Buy Delivery Object
+
+| Field | Description |
+|-------|-------------|
+| `media_buy_id` | Media buy identifier |
+| `buyer_ref` | Buyer's reference identifier |
+| `status` | Current status (`pending`, `active`, `paused`, `completed`, `failed`) |
+| `totals` | Aggregate metrics (impressions, spend, clicks, ctr, video_completions, completion_rate) |
+| `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
+| `daily_breakdown` | Day-by-day delivery (date, impressions, spend) |
+
+See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json) for complete field list.
+
+## Common Scenarios
+
+### Single Media Buy
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+
+// Get single media buy delivery report
+const result = await testAgent.getMediaBuyDelivery({
+  media_buy_ids: ['mb_12345'],
+  start_date: '2024-02-01',
+  end_date: '2024-02-07'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuyDeliveryResponseSchema.parse(result.data);
+
+// Check for errors (discriminated union response)
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log(`Delivered ${validated.aggregated_totals.impressions.toLocaleString()} impressions`);
+console.log(`Spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
+if (validated.media_buy_deliveries.length > 0) {
+  console.log(`CTR: ${(validated.media_buy_deliveries[0].totals.ctr * 100).toFixed(2)}%`);
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+from adcp.types import GetMediaBuyDeliveryRequest
+
+async def main():
+    # Get single media buy delivery report
+    result = await test_agent.get_media_buy_delivery(
+        GetMediaBuyDeliveryRequest(
+            media_buy_ids=['mb_12345'],
+            start_date='2024-02-01',
+            end_date='2024-02-07'
+        )
+    )
+
+    # Check for errors (discriminated union response)
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    print(f"Delivered {result.aggregated_totals.impressions:,} impressions")
+    print(f"Spend: ${result.aggregated_totals.spend:.2f}")
+    if result.media_buy_deliveries:
+        print(f"CTR: {result.media_buy_deliveries[0].totals.ctr * 100:.2f}%")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Multiple Media Buys
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+
+// Get all active media buys from context
+const result = await testAgent.getMediaBuyDelivery({
+  status_filter: 'active',
+  start_date: '2024-02-01',
+  end_date: '2024-02-07'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuyDeliveryResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log(`${validated.aggregated_totals.media_buy_count} active campaigns`);
+console.log(`Total impressions: ${validated.aggregated_totals.impressions.toLocaleString()}`);
+console.log(`Total spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
+
+// Review each campaign
+validated.media_buy_deliveries.forEach(delivery => {
+  console.log(`${delivery.media_buy_id}: ${delivery.totals.impressions.toLocaleString()} impressions, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
+});
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+from adcp.types import GetMediaBuyDeliveryRequest
+
+async def main():
+    # Get all active media buys from context
+    result = await test_agent.get_media_buy_delivery(
+        GetMediaBuyDeliveryRequest(
+            status_filter='active',
+            start_date='2024-02-01',
+            end_date='2024-02-07'
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    print(f"{result.aggregated_totals.media_buy_count} active campaigns")
+    print(f"Total impressions: {result.aggregated_totals.impressions:,}")
+    print(f"Total spend: ${result.aggregated_totals.spend:.2f}")
+
+    # Review each campaign
+    for delivery in result.media_buy_deliveries:
+        print(f"{delivery.media_buy_id}: {delivery.totals.impressions:,} impressions, CTR {delivery.totals.ctr * 100:.2f}%")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Date Range Reporting
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+
+// Get month-to-date performance
+const now = new Date();
+const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+const dateFormat = date => date.toISOString().split('T')[0];
+
+const result = await testAgent.getMediaBuyDelivery({
+  media_buy_ids: ['mb_12345'],
+  start_date: dateFormat(monthStart),
+  end_date: dateFormat(now)
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuyDeliveryResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if (validated.media_buy_deliveries.length > 0) {
+  // Analyze daily breakdown
+  const dailyBreakdown = validated.media_buy_deliveries[0].daily_breakdown;
+  if (dailyBreakdown && dailyBreakdown.length > 0) {
+    console.log(`Daily average: ${Math.round(validated.aggregated_totals.impressions / dailyBreakdown.length).toLocaleString()} impressions`);
+
+    // Find peak day
+    const peakDay = dailyBreakdown.reduce((max, day) =>
+      day.impressions > max.impressions ? day : max
+    );
+    console.log(`Peak day: ${peakDay.date} with ${peakDay.impressions.toLocaleString()} impressions`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+from adcp.types import GetMediaBuyDeliveryRequest
+from datetime import date
+
+async def main():
+    # Get month-to-date performance
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+
+    result = await test_agent.get_media_buy_delivery(
+        GetMediaBuyDeliveryRequest(
+            media_buy_ids=['mb_12345'],
+            start_date=str(month_start),
+            end_date=str(today)
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    if result.media_buy_deliveries:
+        # Analyze daily breakdown
+        daily_breakdown = result.media_buy_deliveries[0].daily_breakdown
+        if daily_breakdown:
+            daily_avg = result.aggregated_totals.impressions // len(daily_breakdown)
+            print(f"Daily average: {daily_avg:,} impressions")
+
+            # Find peak day
+            peak_day = max(daily_breakdown, key=lambda d: d.impressions)
+            print(f"Peak day: {peak_day.date} with {peak_day.impressions:,} impressions")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Multi-Status Query
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+
+// Get both active and paused campaigns
+const result = await testAgent.getMediaBuyDelivery({
+  status_filter: ['active', 'paused'],
+  start_date: '2024-02-01',
+  end_date: '2024-02-07'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuyDeliveryResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+// Group by status
+const byStatus = validated.media_buy_deliveries.reduce((acc, delivery) => {
+  if (!acc[delivery.status]) acc[delivery.status] = [];
+  acc[delivery.status].push(delivery);
+  return acc;
+}, {});
+
+console.log(`Active campaigns: ${byStatus.active?.length || 0}`);
+console.log(`Paused campaigns: ${byStatus.paused?.length || 0}`);
+
+// Identify underperforming campaigns
+byStatus.paused?.forEach(delivery => {
+  if (delivery.by_package && delivery.by_package.length > 0) {
+    const avgPacing = delivery.by_package.reduce((sum, pkg) => sum + pkg.pacing_index, 0) / delivery.by_package.length;
+    console.log(`${delivery.media_buy_id}: paused with ${(avgPacing * 100).toFixed(0)}% pacing`);
+  }
+});
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+from adcp.types import GetMediaBuyDeliveryRequest
+from collections import defaultdict
+
+async def main():
+    # Get both active and paused campaigns
+    result = await test_agent.get_media_buy_delivery(
+        GetMediaBuyDeliveryRequest(
+            status_filter=['active', 'paused'],
+            start_date='2024-02-01',
+            end_date='2024-02-07'
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    # Group by status
+    by_status = defaultdict(list)
+    for delivery in result.media_buy_deliveries:
+        by_status[delivery.status].append(delivery)
+
+    print(f"Active campaigns: {len(by_status['active'])}")
+    print(f"Paused campaigns: {len(by_status['paused'])}")
+
+    # Identify underperforming campaigns
+    for delivery in by_status['paused']:
+        if delivery.by_package:
+            avg_pacing = sum(pkg.pacing_index for pkg in delivery.by_package) / len(delivery.by_package)
+            print(f"{delivery.media_buy_id}: paused with {avg_pacing * 100:.0f}% pacing")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Buyer Reference Query
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+
+// Query by buyer reference instead of media buy ID
+const result = await testAgent.getMediaBuyDelivery({
+  buyer_refs: ['nike_q1_campaign_2024', 'nike_q1_retargeting_2024']
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuyDeliveryResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+// Lifetime delivery data (no date range specified)
+console.log(`Total lifetime impressions: ${validated.aggregated_totals.impressions.toLocaleString()}`);
+console.log(`Total lifetime spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
+
+// Compare campaigns
+validated.media_buy_deliveries.forEach(delivery => {
+  if (delivery.totals.impressions > 0) {
+    const cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000;
+    console.log(`${delivery.buyer_ref}: CPM $${cpm.toFixed(2)}, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
+  }
+});
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+from adcp.types import GetMediaBuyDeliveryRequest
+
+async def main():
+    # Query by buyer reference instead of media buy ID
+    result = await test_agent.get_media_buy_delivery(
+        GetMediaBuyDeliveryRequest(
+            buyer_refs=['nike_q1_campaign_2024', 'nike_q1_retargeting_2024']
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    # Lifetime delivery data (no date range specified)
+    print(f"Total lifetime impressions: {result.aggregated_totals.impressions:,}")
+    print(f"Total lifetime spend: ${result.aggregated_totals.spend:.2f}")
+
+    # Compare campaigns
+    for delivery in result.media_buy_deliveries:
+        if delivery.totals.impressions > 0:
+            cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000
+            print(f"{delivery.buyer_ref}: CPM ${cpm:.2f}, CTR {delivery.totals.ctr * 100:.2f}%")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Metrics Definitions
+
+| Metric | Definition |
+|--------|------------|
+| **Impressions** | Number of times ads were displayed |
+| **Spend** | Amount spent in specified currency |
+| **Clicks** | Number of ad clicks (if available) |
+| **CTR** | Click-through rate (clicks/impressions) |
+| **Video Completions** | Videos watched to completion |
+| **Completion Rate** | Video completions/video impressions |
+| **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
+| **CPM** | Cost per thousand impressions (spend/impressions * 1000) |
+
+## Query Behavior
+
+### Context-Based Queries
+- If neither `media_buy_ids` nor `buyer_refs` provided, returns all media buys from current session context
+- Context established by previous operations (e.g., `create_media_buy`)
+
+### Status Filtering
+- Defaults to `["active"]` if not specified
+- Can be single string (`"active"`) or array (`["active", "paused"]`)
+- Use `"all"` to return media buys of any status
+
+### Date Ranges
+- If dates not specified, returns lifetime delivery data
+- Date format: `YYYY-MM-DD`
+- Daily breakdown may be truncated for long date ranges to reduce response size
+
+### Metric Availability
+- **Universal**: Impressions, spend (available on all platforms)
+- **Format-dependent**: Clicks, video completions (depends on inventory type and platform capabilities)
+- **Package-level**: All metrics broken down by package with pacing_index
+
+## Data Freshness
+
+- Reporting data typically has 2-4 hour delay
+- Real-time impression counts not available
+- Use for periodic reporting and optimization decisions, not live monitoring
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
+| `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
+| `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_ids or buyer_refs explicitly |
+| `INVALID_STATUS_FILTER` | Invalid status value | Use valid status: active, pending, paused, completed, failed, all |
+
+## Package-Level Metrics
+
+The `by_package` array provides per-package delivery details with these key fields:
+
+**Buyer Control**:
+- **`paused`**: Whether the package is currently paused by the buyer (true/false)
+
+**System State**:
+- **`delivery_status`**: System-reported operational state:
+  - `delivering` - Package is actively delivering impressions
+  - `completed` - Package finished successfully
+  - `budget_exhausted` - Package ran out of budget
+  - `flight_ended` - Package reached its end date
+  - `goal_met` - Package achieved its impression/conversion goal
+
+**Performance**:
+- **`pacing_index`**: Delivery pace (1.0 = on track, below 1.0 = behind, above 1.0 = ahead)
+- **`rate`**: Effective pricing rate (e.g., CPM)
+- **`pricing_model`**: How the package is billed (cpm, cpcv, cpp, etc.)
+
+**Key Distinction**: `paused` reflects buyer control, while `delivery_status` reflects system reality. A package can be not paused but have `delivery_status: "budget_exhausted"`.
+
+## Best Practices
+
+**1. Use Date Ranges for Analysis**
+Specify date ranges for period-over-period comparisons and trend analysis.
+
+**2. Monitor Pacing Index**
+Aim for 0.95-1.05 pacing index. Values outside this range indicate delivery issues.
+
+**3. Check Daily Breakdown**
+Identify delivery patterns and weekend/weekday performance differences.
+
+**4. Compare Package Performance**
+Use `by_package` breakdowns to identify best-performing inventory. Check both `paused` state and `delivery_status` to understand why packages aren't delivering.
+
+**5. Track Status Changes**
+Use multi-status queries to understand why campaigns were paused or completed.
+
+## Next Steps
+
+After retrieving delivery data:
+
+1. **Optimize Campaigns**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to adjust budgets, pacing, or targeting
+2. **Provide Feedback**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) to share results with seller
+3. **Update Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) to refresh underperforming assets
+4. **Create Follow-Up Campaigns**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) based on insights
+
+## Learn More
+
+- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
+- [Task Management](/docs/protocols/task-management) - Async patterns and status handling
+- [Performance Optimization](/docs/media-buy/media-buys/optimization-reporting) - Using delivery data for optimization

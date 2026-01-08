@@ -39,7 +39,7 @@ primary_region = 'iad'
       User-Agent = "Fly Health Check"
 
 [machine]
-  memory = "512mb"
+  memory = "1gb"
   cpu_kind = "shared"
   cpus = 1
 

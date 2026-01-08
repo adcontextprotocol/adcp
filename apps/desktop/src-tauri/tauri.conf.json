@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Addie",
+  "version": "0.1.0",
+  "identifier": "org.agenticadvertising.addie",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Addie",
+        "width": 900,
+        "height": 700,
+        "minWidth": 400,
+        "minHeight": 500,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; frame-src https://agenticadvertising.org https://*.agenticadvertising.org; connect-src 'self' https://agenticadvertising.org https://*.agenticadvertising.org; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:;"
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["addie"]
+      },
+      "mobile": [
+        { "scheme": ["addie"] }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

@@ -43,7 +43,7 @@
         "total_matching",
         "returned"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "pagination": {
       "type": "object",
@@ -79,7 +79,7 @@
         "offset",
         "has_more"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "creatives": {
       "type": "array",
@@ -206,14 +206,14 @@
                     "assigned_date",
                     "status"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             },
             "required": [
               "assignment_count"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "performance": {
             "type": "object",
@@ -256,7 +256,7 @@
             "required": [
               "last_updated"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "sub_assets": {
             "type": "array",
@@ -274,7 +274,7 @@
           "created_date",
           "updated_date"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "format_summary": {
@@ -287,7 +287,7 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "status_summary": {
       "type": "object",
@@ -314,7 +314,7 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -328,7 +328,7 @@
     "pagination",
     "creatives"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Successful library query with results",

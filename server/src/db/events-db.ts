@@ -42,6 +42,7 @@ export class EventsDatabase {
         venue_lat, venue_lng,
         virtual_url, virtual_platform,
         luma_event_id, luma_url,
+        external_registration_url, is_external_event,
         featured_image_url,
         sponsorship_enabled, sponsorship_tiers, stripe_product_id,
         status, max_attendees,
@@ -49,7 +50,7 @@ export class EventsDatabase {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
       )
       RETURNING *`,
       [
@@ -73,6 +74,8 @@ export class EventsDatabase {
         input.virtual_platform || null,
         input.luma_event_id || null,
         input.luma_url || null,
+        input.external_registration_url || null,
+        input.is_external_event ?? false,
         input.featured_image_url || null,
         input.sponsorship_enabled ?? false,
         JSON.stringify(input.sponsorship_tiers || []),
@@ -136,6 +139,8 @@ export class EventsDatabase {
       virtual_platform: 'virtual_platform',
       luma_event_id: 'luma_event_id',
       luma_url: 'luma_url',
+      external_registration_url: 'external_registration_url',
+      is_external_event: 'is_external_event',
       featured_image_url: 'featured_image_url',
       sponsorship_enabled: 'sponsorship_enabled',
       sponsorship_tiers: 'sponsorship_tiers',
@@ -197,7 +202,12 @@ export class EventsDatabase {
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    if (options.status) {
+    // Support querying multiple statuses at once
+    if (options.statuses && options.statuses.length > 0) {
+      const placeholders = options.statuses.map(() => `$${paramIndex++}`).join(', ');
+      conditions.push(`status IN (${placeholders})`);
+      params.push(...options.statuses);
+    } else if (options.status) {
       conditions.push(`status = $${paramIndex++}`);
       params.push(options.status);
     }
@@ -357,9 +367,27 @@ export class EventsDatabase {
   }
 
   /**
-   * Get registrations by user
+   * Get registrations by user (matches by workos_user_id OR by user's email)
+   * This allows registrations created via Luma import (which only have email)
+   * to be associated with a user who later signs up with that email.
+   *
+   * Security note: This intentionally associates registrations by email to support
+   * the workflow where external registrations (Luma) are imported by email, and
+   * users later sign up with the same email to see their history.
    */
-  async getUserRegistrations(workosUserId: string): Promise<EventRegistration[]> {
+  async getUserRegistrations(workosUserId: string, userEmail?: string): Promise<EventRegistration[]> {
+    // If we have an email, also match registrations by email
+    // This handles Luma imports where workos_user_id wasn't set
+    if (userEmail) {
+      const result = await query<EventRegistration>(
+        `SELECT * FROM event_registrations
+         WHERE workos_user_id = $1 OR LOWER(email) = LOWER($2)
+         ORDER BY registered_at DESC`,
+        [workosUserId, userEmail]
+      );
+      return result.rows.map(row => this.deserializeRegistration(row));
+    }
+
     const result = await query<EventRegistration>(
       `SELECT * FROM event_registrations
        WHERE workos_user_id = $1
@@ -385,9 +413,20 @@ export class EventsDatabase {
   }
 
   /**
-   * Check if user is registered for an event
+   * Check if user is registered for an event (by workos_user_id or email)
    */
-  async isUserRegistered(eventId: string, workosUserId: string): Promise<boolean> {
+  async isUserRegistered(eventId: string, workosUserId: string, userEmail?: string): Promise<boolean> {
+    if (userEmail) {
+      const result = await query(
+        `SELECT 1 FROM event_registrations
+         WHERE event_id = $1 AND (workos_user_id = $2 OR LOWER(email) = LOWER($3))
+         AND registration_status != 'cancelled'
+         LIMIT 1`,
+        [eventId, workosUserId, userEmail]
+      );
+      return result.rows.length > 0;
+    }
+
     const result = await query(
       `SELECT 1 FROM event_registrations
        WHERE event_id = $1 AND workos_user_id = $2
@@ -638,6 +677,47 @@ export class EventsDatabase {
   }
 
   // =====================================================
+  // EVENTS BY LOCATION
+  // =====================================================
+
+  /**
+   * Get events for a specific city/region
+   * Returns both upcoming and recent past events (within last 6 months)
+   */
+  async getEventsByCity(city: string): Promise<{
+    upcoming: Event[];
+    past: Event[];
+  }> {
+    // Upcoming events in this city
+    const upcomingResult = await query<Event>(
+      `SELECT * FROM events
+       WHERE status = 'published'
+         AND venue_city ILIKE $1
+         AND start_time > NOW()
+       ORDER BY start_time ASC
+       LIMIT 10`,
+      [city]
+    );
+
+    // Recent past events in this city (within 6 months)
+    const pastResult = await query<Event>(
+      `SELECT * FROM events
+       WHERE status = 'published'
+         AND venue_city ILIKE $1
+         AND start_time < NOW()
+         AND start_time > NOW() - INTERVAL '6 months'
+       ORDER BY start_time DESC
+       LIMIT 5`,
+      [city]
+    );
+
+    return {
+      upcoming: upcomingResult.rows.map(row => this.deserializeEvent(row)),
+      past: pastResult.rows.map(row => this.deserializeEvent(row)),
+    };
+  }
+
+  // =====================================================
   // EVENT CONTENT (PERSPECTIVES)
   // =====================================================
 
@@ -749,6 +829,121 @@ export class EventsDatabase {
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at),
     };
+  }
+
+  // =====================================================
+  // EVENT COMMITTEE LINKS
+  // =====================================================
+
+  /**
+   * Link an event to a committee
+   */
+  async linkEventToCommittee(
+    eventId: string,
+    committeeId: string,
+    role: 'host' | 'sponsor' | 'partner' | 'participant' = 'host',
+    createdByUserId?: string
+  ): Promise<{ id: string; event_id: string; committee_id: string; role: string }> {
+    const result = await query<{ id: string; event_id: string; committee_id: string; role: string }>(
+      `INSERT INTO event_committee_links (event_id, committee_id, role, created_by_user_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (event_id, committee_id) DO UPDATE SET role = $3
+       RETURNING id, event_id, committee_id, role`,
+      [eventId, committeeId, role, createdByUserId || null]
+    );
+
+    return result.rows[0];
+  }
+
+  /**
+   * Unlink an event from a committee
+   */
+  async unlinkEventFromCommittee(eventId: string, committeeId: string): Promise<boolean> {
+    const result = await query(
+      `DELETE FROM event_committee_links WHERE event_id = $1 AND committee_id = $2`,
+      [eventId, committeeId]
+    );
+
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  /**
+   * Get events linked to a committee
+   */
+  async getEventsByCommittee(
+    committeeId: string,
+    options: { includeUnpublished?: boolean } = {}
+  ): Promise<{ upcoming: Event[]; past: Event[] }> {
+    const statusCondition = options.includeUnpublished
+      ? ''
+      : "AND e.status = 'published'";
+
+    const upcomingResult = await query<Event>(
+      `SELECT e.* FROM events e
+       INNER JOIN event_committee_links ecl ON e.id = ecl.event_id
+       WHERE ecl.committee_id = $1
+         ${statusCondition}
+         AND e.start_time > NOW()
+       ORDER BY e.start_time ASC
+       LIMIT 20`,
+      [committeeId]
+    );
+
+    const pastResult = await query<Event>(
+      `SELECT e.* FROM events e
+       INNER JOIN event_committee_links ecl ON e.id = ecl.event_id
+       WHERE ecl.committee_id = $1
+         ${statusCondition}
+         AND e.start_time <= NOW()
+       ORDER BY e.start_time DESC
+       LIMIT 10`,
+      [committeeId]
+    );
+
+    return {
+      upcoming: upcomingResult.rows.map(row => this.deserializeEvent(row)),
+      past: pastResult.rows.map(row => this.deserializeEvent(row)),
+    };
+  }
+
+  /**
+   * Get committees linked to an event
+   */
+  async getCommitteesForEvent(eventId: string): Promise<Array<{
+    id: string;
+    committee_id: string;
+    committee_name: string;
+    committee_slug: string;
+    role: string;
+  }>> {
+    const result = await query<{
+      id: string;
+      committee_id: string;
+      committee_name: string;
+      committee_slug: string;
+      role: string;
+    }>(
+      `SELECT ecl.id, ecl.committee_id, wg.name as committee_name, wg.slug as committee_slug, ecl.role
+       FROM event_committee_links ecl
+       INNER JOIN working_groups wg ON ecl.committee_id = wg.id
+       WHERE ecl.event_id = $1
+       ORDER BY ecl.role, wg.name`,
+      [eventId]
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Check if a committee is linked to an event
+   */
+  async isCommitteeLinkedToEvent(eventId: string, committeeId: string): Promise<boolean> {
+    const result = await query(
+      `SELECT 1 FROM event_committee_links WHERE event_id = $1 AND committee_id = $2 LIMIT 1`,
+      [eventId, committeeId]
+    );
+
+    return result.rows.length > 0;
   }
 }
 

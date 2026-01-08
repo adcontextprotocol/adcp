@@ -84,12 +84,13 @@ function parseMetadataArray(value: string | undefined): string[] {
  */
 export async function getBillingProducts(): Promise<BillingProduct[]> {
   if (!stripe) {
-    logger.warn('Stripe not initialized - cannot fetch products');
+    logger.warn('getBillingProducts: Stripe not initialized - cannot fetch products');
     return [];
   }
 
   // Return cached data if fresh
   if (productsCache && Date.now() - productsCacheTime < PRODUCTS_CACHE_TTL) {
+    logger.debug({ count: productsCache.length }, 'getBillingProducts: Returning cached products');
     return productsCache;
   }
 
@@ -100,6 +101,8 @@ export async function getBillingProducts(): Promise<BillingProduct[]> {
       expand: ['data.product'],
       limit: 100,
     });
+
+    logger.info({ totalPrices: prices.data.length }, 'getBillingProducts: Fetched prices from Stripe');
 
     const products: BillingProduct[] = [];
 
@@ -179,10 +182,21 @@ export async function getBillingProducts(): Promise<BillingProduct[]> {
     productsCache = products;
     productsCacheTime = Date.now();
 
-    logger.info({ count: products.length }, 'Fetched billing products from Stripe');
+    // Log the products found for debugging
+    const productSummary = products.map(p => ({
+      lookup_key: p.lookup_key,
+      display_name: p.display_name,
+      amount_cents: p.amount_cents,
+      category: p.category,
+      billing_type: p.billing_type,
+    }));
+    logger.info({
+      count: products.length,
+      products: productSummary,
+    }, 'getBillingProducts: Fetched billing products from Stripe');
     return products;
   } catch (error) {
-    logger.error({ err: error }, 'Error fetching billing products');
+    logger.error({ err: error }, 'getBillingProducts: Error fetching billing products');
     return productsCache || [];
   }
 }
@@ -198,7 +212,12 @@ export async function getProductsForCustomer(options: {
 }): Promise<BillingProduct[]> {
   const allProducts = await getBillingProducts();
 
-  return allProducts.filter(product => {
+  logger.debug({
+    options,
+    allProductsCount: allProducts.length,
+  }, 'getProductsForCustomer: Filtering products');
+
+  const filtered = allProducts.filter(product => {
     // Filter by category if specified
     if (options.category && product.category !== options.category) {
       return false;
@@ -225,6 +244,13 @@ export async function getProductsForCustomer(options: {
 
     return true;
   });
+
+  logger.debug({
+    filteredCount: filtered.length,
+    lookupKeys: filtered.map(p => p.lookup_key),
+  }, 'getProductsForCustomer: Filtered results');
+
+  return filtered;
 }
 
 /**
@@ -240,9 +266,20 @@ export async function getInvoiceableProducts(): Promise<BillingProduct[]> {
  */
 export async function getPriceByLookupKey(lookupKey: string): Promise<string | null> {
   if (!stripe) {
+    logger.warn({ lookupKey }, 'getPriceByLookupKey: Stripe not initialized');
     return null;
   }
 
+  // First check our cached products - this is faster and more reliable
+  const cachedProducts = await getBillingProducts();
+  const cachedProduct = cachedProducts.find(p => p.lookup_key === lookupKey);
+  if (cachedProduct) {
+    logger.info({ lookupKey, priceId: cachedProduct.price_id }, 'getPriceByLookupKey: Found price in cache');
+    return cachedProduct.price_id;
+  }
+
+  // Fallback to direct Stripe query if not in cache
+  logger.info({ lookupKey }, 'getPriceByLookupKey: Not in cache, querying Stripe directly');
   try {
     const prices = await stripe.prices.list({
       lookup_keys: [lookupKey],
@@ -251,13 +288,22 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
     });
 
     if (prices.data.length === 0) {
-      logger.warn({ lookupKey }, 'No price found for lookup key');
+      // Log available lookup keys for debugging
+      const allPrices = await stripe.prices.list({ active: true, limit: 100 });
+      const availableLookupKeys = allPrices.data
+        .filter(p => p.lookup_key?.startsWith('aao_'))
+        .map(p => p.lookup_key);
+      logger.error({
+        lookupKey,
+        availableLookupKeys,
+      }, 'getPriceByLookupKey: No price found for lookup key in Stripe');
       return null;
     }
 
+    logger.info({ lookupKey, priceId: prices.data[0].id }, 'getPriceByLookupKey: Found price in Stripe');
     return prices.data[0].id;
   } catch (error) {
-    logger.error({ err: error, lookupKey }, 'Error fetching price by lookup key');
+    logger.error({ err: error, lookupKey }, 'getPriceByLookupKey: Error fetching price');
     return null;
   }
 }
@@ -742,12 +788,13 @@ export interface InvoiceRequestData {
 }
 
 /**
- * Create and send an invoice for a product
+ * Create a subscription with invoice billing and send the first invoice
  * Uses collection_method: 'send_invoice' so customer receives email with payment link
+ * When paid, this creates a proper subscription that will auto-renew
  */
 export async function createAndSendInvoice(
   data: InvoiceRequestData
-): Promise<{ invoiceId: string; invoiceUrl: string } | null> {
+): Promise<{ invoiceId: string; invoiceUrl: string; subscriptionId: string } | null> {
   if (!stripe) {
     logger.warn('Stripe not initialized - cannot create invoice');
     return null;
@@ -798,44 +845,97 @@ export async function createAndSendInvoice(
       logger.info({ customerId: customer.id, email: data.contactEmail }, 'Created new Stripe customer for invoice');
     }
 
-    // Create invoice with line item
-    const invoice = await stripe.invoices.create({
+    // Verify the price exists and has a valid amount before creating subscription
+    const price = await stripe.prices.retrieve(priceId);
+    if (!price || price.unit_amount === null || price.unit_amount === 0) {
+      logger.error({
+        priceId,
+        lookupKey: data.lookupKey,
+        unitAmount: price?.unit_amount,
+      }, 'createAndSendInvoice: Price has zero or null amount');
+      return null;
+    }
+
+    logger.info({
+      priceId,
+      lookupKey: data.lookupKey,
+      unitAmount: price.unit_amount,
+      currency: price.currency,
+    }, 'createAndSendInvoice: Creating subscription with verified price');
+
+    // Create subscription with invoice billing
+    // This creates a subscription AND generates an invoice for the first payment
+    // When the invoice is paid, the subscription becomes active and will auto-renew
+    const subscription = await stripe.subscriptions.create({
       customer: customer.id,
+      items: [{ price: priceId }],
       collection_method: 'send_invoice',
       days_until_due: 30,
-      auto_advance: true,
       metadata: {
         lookup_key: data.lookupKey,
         contact_name: data.contactName,
+        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
       },
     });
 
-    // Add line item with the price
-    await stripe.invoiceItems.create({
-      customer: customer.id,
-      invoice: invoice.id,
-      pricing: {
-        price: priceId,
-      },
-    });
+    // Get the invoice that was created with the subscription
+    const invoiceId = subscription.latest_invoice as string;
 
-    // Finalize and send the invoice
-    const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
-    await stripe.invoices.sendInvoice(invoice.id);
+    // Verify the invoice has the expected amount before sending
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    if (!invoice.amount_due || invoice.amount_due === 0) {
+      logger.error({
+        invoiceId,
+        subscriptionId: subscription.id,
+        amountDue: invoice.amount_due,
+        priceId,
+        lookupKey: data.lookupKey,
+      }, 'createAndSendInvoice: Invoice has zero amount - not sending');
+      // Clean up the subscription since we can't send the invoice
+      try {
+        await stripe.subscriptions.cancel(subscription.id);
+      } catch (cancelError) {
+        logger.error({
+          err: cancelError,
+          subscriptionId: subscription.id,
+        }, 'createAndSendInvoice: Failed to cancel orphaned subscription');
+      }
+      return null;
+    }
 
     logger.info({
-      invoiceId: invoice.id,
+      invoiceId,
+      subscriptionId: subscription.id,
+      amountDue: invoice.amount_due,
+    }, 'createAndSendInvoice: Sending invoice');
+
+    // Send the invoice email - this finalizes the invoice and returns the updated invoice
+    const sentInvoice = await stripe.invoices.sendInvoice(invoiceId);
+
+    logger.info({
+      subscriptionId: subscription.id,
+      invoiceId: invoiceId,
       customerId: customer.id,
       lookupKey: data.lookupKey,
       companyName: data.companyName,
-    }, 'Invoice created and sent');
+    }, 'Subscription created with invoice billing - invoice sent');
 
     return {
-      invoiceId: invoice.id,
-      invoiceUrl: finalizedInvoice.hosted_invoice_url || '',
+      invoiceId: invoiceId,
+      invoiceUrl: sentInvoice.hosted_invoice_url || '',
+      subscriptionId: subscription.id,
     };
   } catch (error) {
-    logger.error({ err: error, data }, 'Error creating invoice');
+    const stripeError = error as { type?: string; code?: string; message?: string };
+    logger.error({
+      err: error,
+      stripeErrorType: stripeError.type,
+      stripeErrorCode: stripeError.code,
+      stripeErrorMessage: stripeError.message,
+      lookupKey: data.lookupKey,
+      companyName: data.companyName,
+      contactEmail: data.contactEmail,
+    }, 'createAndSendInvoice: Error creating subscription with invoice');
     return null;
   }
 }
@@ -948,7 +1048,7 @@ export async function createCheckoutSession(
     };
   } catch (error) {
     logger.error({ err: error, data }, 'Error creating checkout session');
-    return null;
+    throw error;
   }
 }
 
@@ -1204,7 +1304,17 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       limit: 10,
     });
 
-    const allInvoices = [...openInvoices.data, ...draftInvoices.data];
+    // Combine and deduplicate invoices by ID (in case an invoice appears in both lists)
+    const invoiceMap = new Map<string, typeof openInvoices.data[0]>();
+    for (const inv of openInvoices.data) {
+      invoiceMap.set(inv.id, inv);
+    }
+    for (const inv of draftInvoices.data) {
+      if (!invoiceMap.has(inv.id)) {
+        invoiceMap.set(inv.id, inv);
+      }
+    }
+    const allInvoices = Array.from(invoiceMap.values());
 
     for (const invoice of allInvoices) {
       // Get product name from first line item
@@ -1365,7 +1475,8 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
   }
 
   try {
-    const openInvoices: OpenInvoiceWithCustomer[] = [];
+    // Use a Map to deduplicate invoices by ID
+    const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
 
     // Query Stripe directly for all open invoices (sent, waiting for payment)
     for await (const invoice of stripe.invoices.list({
@@ -1374,29 +1485,30 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
       expand: ['data.customer', 'data.lines.data.price.product'],
     })) {
       const parsed = parseStripeInvoice(invoice);
-      if (parsed) {
-        openInvoices.push(parsed);
-        if (openInvoices.length >= limit) break;
+      if (parsed && !invoiceMap.has(parsed.id)) {
+        invoiceMap.set(parsed.id, parsed);
+        if (invoiceMap.size >= limit) break;
       }
     }
 
     // Also get draft invoices (not yet sent)
-    if (openInvoices.length < limit) {
+    if (invoiceMap.size < limit) {
       for await (const invoice of stripe.invoices.list({
         status: 'draft',
         limit: 100,
         expand: ['data.customer', 'data.lines.data.price.product'],
       })) {
         const parsed = parseStripeInvoice(invoice);
-        if (parsed) {
-          openInvoices.push(parsed);
-          if (openInvoices.length >= limit) break;
+        if (parsed && !invoiceMap.has(parsed.id)) {
+          invoiceMap.set(parsed.id, parsed);
+          if (invoiceMap.size >= limit) break;
         }
       }
     }
 
-    logger.info({ count: openInvoices.length }, 'Fetched all open invoices from Stripe');
-    return openInvoices;
+    const allInvoices = Array.from(invoiceMap.values());
+    logger.info({ count: allInvoices.length }, 'Fetched all open invoices from Stripe');
+    return allInvoices;
   } catch (error) {
     logger.error({ err: error }, 'Error fetching all open invoices');
     return [];

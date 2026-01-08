@@ -171,6 +171,18 @@
       padding: var(--space-1) var(--space-2);
       font-size: var(--text-xs);
     }
+    .btn-success {
+      background: var(--color-success-500);
+      color: white;
+    }
+    .btn-error {
+      background: var(--color-error-500);
+      color: white;
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
 
     /* Organization Links */
     .org-link {
@@ -247,10 +259,10 @@
         <div class="section-header">
           <div>
             <div class="section-title">
-              Orphan Corporate Domains
+              Unlinked Corporate Domains
               <span class="section-badge" id="orphanBadge">0</span>
             </div>
-            <p class="section-description">Corporate email domains with users but no matching organization. Create prospects for these domains.</p>
+            <p class="section-description">Corporate email domains not linked to any organization. Users may already be members of existing orgs - link the domain to consolidate.</p>
           </div>
         </div>
         <div id="orphanDomainsContent"></div>
@@ -261,10 +273,10 @@
         <div class="section-header">
           <div>
             <div class="section-title">
-              Corporate Users in Personal Workspaces
+              Users Who Should Join Their Company
               <span class="section-badge" id="misalignedBadge">0</span>
             </div>
-            <p class="section-description">Users with company email addresses who are in personal workspaces instead of company organizations.</p>
+            <p class="section-description">Users in personal workspaces whose company already has an organization. Consider inviting them to join.</p>
           </div>
         </div>
         <div id="misalignedUsersContent"></div>
@@ -296,6 +308,20 @@
           </div>
         </div>
         <div id="domainConflictsContent"></div>
+      </div>
+
+      <!-- Related Domains Section -->
+      <div class="card" id="relatedDomainsSection">
+        <div class="section-header">
+          <div>
+            <div class="section-title">
+              Related Organizations (Potential Duplicates)
+              <span class="section-badge" id="relatedBadge">0</span>
+            </div>
+            <p class="section-description">Organizations that may be related based on similar domain names (e.g., yahoo.com and yahooinc.com). Consider merging these.</p>
+          </div>
+        </div>
+        <div id="relatedDomainsContent"></div>
       </div>
     </div>
   </div>
@@ -332,6 +358,19 @@
         .replace(/'/g, '&#039;');
     }
 
+    // Validate org ID format (alphanumeric, underscores, hyphens only)
+    function isValidOrgId(id) {
+      return /^[a-zA-Z0-9_-]+$/.test(id);
+    }
+
+    // Safe org ID for use in JS strings - validates and returns or throws
+    function safeOrgId(id) {
+      if (!isValidOrgId(id)) {
+        throw new Error('Invalid org ID format');
+      }
+      return id;
+    }
+
     function renderDomainHealth() {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('content').style.display = 'block';
@@ -341,12 +380,325 @@
       renderMisalignedUsers();
       renderUnverifiedOrgs();
       renderDomainConflicts();
+      renderRelatedDomains();
+
+      // Set up event delegation for merge buttons (avoiding inline onclick for XSS safety)
+      document.querySelectorAll('.merge-orgs-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const orgIds = btn.dataset.orgIds.split(',').map(decodeURIComponent);
+          const domain = decodeURIComponent(btn.dataset.domain);
+          showMergeModal(orgIds, domain);
+        });
+      });
+
+      // Set up event handlers for link domain buttons
+      document.querySelectorAll('.link-domain-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const orgId = btn.dataset.orgId;
+          const orgName = btn.dataset.orgName;
+          const domain = btn.dataset.domain;
+          linkDomainToOrg(btn, orgId, orgName, domain);
+        });
+      });
+
+      // Set up event handlers for link domain selects
+      document.querySelectorAll('.link-domain-select').forEach(select => {
+        select.addEventListener('change', () => {
+          const orgId = select.value;
+          if (!orgId) return;
+          const option = select.options[select.selectedIndex];
+          const orgName = option.dataset.orgName;
+          const domain = select.dataset.domain;
+          linkDomainToOrg(select, orgId, orgName, domain);
+        });
+      });
+
+      // Set up event handlers for mark as personal buttons
+      document.querySelectorAll('.mark-personal-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const domain = btn.dataset.domain;
+          markDomainAsPersonal(btn, domain);
+        });
+      });
+
+      // Set up event handlers for create prospect buttons
+      document.querySelectorAll('.create-prospect-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const domain = btn.dataset.domain;
+          createProspectFromDomain(btn, domain);
+        });
+      });
+    }
+
+    async function markDomainAsPersonal(button, domain) {
+      const reason = prompt(`Mark "${domain}" as a personal domain?\n\nEnter a reason (e.g., "alumni email", "forwarding service"):`, 'personal email domain');
+      if (reason === null) return; // User cancelled
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/personal-domains', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain, reason: reason || 'personal email domain' })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Failed to mark domain as personal');
+        }
+
+        // Success
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-success');
+        button.textContent = 'Marked!';
+
+        // Reload after brief delay
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1000);
+      } catch (error) {
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-secondary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
+    }
+
+    async function linkDomainToOrg(element, orgId, orgName, domain) {
+      // Validate orgId format before using in URL
+      if (!isValidOrgId(orgId)) {
+        alert('Invalid organization ID format');
+        return;
+      }
+
+      const originalText = element.tagName === 'BUTTON' ? element.textContent : null;
+      const originalDisabled = element.disabled;
+
+      // Disable and show loading state
+      element.disabled = true;
+      if (element.tagName === 'BUTTON') {
+        element.textContent = 'Linking...';
+      }
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain.toLowerCase(), is_primary: true })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed to link domain');
+        }
+
+        // Success - show success state briefly then reload data
+        element.classList.remove('btn-primary');
+        element.classList.add('btn-success');
+        if (element.tagName === 'BUTTON') {
+          element.textContent = 'Linked!';
+        } else {
+          // For select, reset and disable
+          element.value = '';
+          const firstOption = element.options[0];
+          if (firstOption) firstOption.textContent = 'Linked!';
+        }
+
+        // Reload after brief delay to show success
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1000);
+      } catch (error) {
+        // Show error state
+        element.classList.remove('btn-primary');
+        element.classList.add('btn-error');
+        if (element.tagName === 'BUTTON') {
+          element.textContent = 'Failed';
+          element.title = error.message;
+        } else {
+          element.value = '';
+          const firstOption = element.options[0];
+          if (firstOption) firstOption.textContent = 'Failed: ' + error.message;
+        }
+
+        // Reset after delay
+        setTimeout(() => {
+          element.disabled = originalDisabled;
+          element.classList.remove('btn-error');
+          element.classList.add('btn-primary');
+          if (element.tagName === 'BUTTON') {
+            element.textContent = originalText;
+            element.title = '';
+          } else {
+            const firstOption = element.options[0];
+            if (firstOption) firstOption.textContent = 'Link to org...';
+          }
+        }, 3000);
+      }
+    }
+
+    async function createProspectFromDomain(button, domain) {
+      // Validate domain format
+      if (!domain || !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(domain)) {
+        console.error('Invalid domain format:', domain);
+        return;
+      }
+
+      const originalText = button.textContent;
+      const wasPrimary = button.classList.contains('btn-primary');
+      button.disabled = true;
+      button.textContent = 'Creating...';
+
+      // Generate org name from domain
+      const parts = domain.split('.');
+      let orgName = parts
+        .slice(0, -1)  // Remove TLD
+        .filter(part => part.length > 2 || parts.length <= 2)  // Filter short parts like 'co' unless simple domain
+        .map(part => {
+          // Handle hyphens and capitalize each word
+          return part.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        })
+        .join(' ')
+        .trim();
+
+      // Fallback if name generation produced empty result
+      if (!orgName) {
+        orgName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      }
+
+      try {
+        const response = await fetch('/api/admin/prospects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: orgName,
+            domain: domain.toLowerCase(),
+            prospect_source: 'domain_health',
+            prospect_notes: 'Auto-created from Domain Health page. Users with this domain are already in the system.'
+          })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed to create prospect');
+        }
+
+        const org = await response.json();
+
+        // Success - show success state and link to org
+        button.classList.remove('btn-primary', 'btn-secondary');
+        button.classList.add('btn-success');
+        button.textContent = 'Created!';
+        button.title = `Created ${org.name}. Enrichment running in background.`;
+
+        // Reload after brief delay to show the domain is now linked
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1500);
+      } catch (error) {
+        // Show error state
+        button.classList.remove('btn-primary', 'btn-secondary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+
+        // Reset after delay
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add(wasPrimary ? 'btn-primary' : 'btn-secondary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
+    }
+
+    async function addUsersToOrg(button, orgId, orgName, userIds) {
+      // Validate inputs
+      if (!isValidOrgId(orgId)) {
+        alert('Invalid organization ID format');
+        return;
+      }
+
+      if (!confirm(`Add ${userIds.length} user(s) to "${orgName}"?\n\nThis will add them to the company organization. They will keep access to their personal workspace.`)) {
+        return;
+      }
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Adding...';
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/add-users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_ids: userIds })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed to add users');
+        }
+
+        const result = await response.json();
+
+        // Success
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+        button.textContent = `Added ${result.added_count || userIds.length}!`;
+
+        // Reload after brief delay
+        setTimeout(() => {
+          loadDomainHealth();
+        }, 1500);
+      } catch (error) {
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-error');
+        button.textContent = 'Failed';
+        button.title = error.message;
+
+        setTimeout(() => {
+          button.disabled = false;
+          button.classList.remove('btn-error');
+          button.classList.add('btn-primary');
+          button.textContent = originalText;
+          button.title = '';
+        }, 3000);
+      }
     }
 
     function renderSummary() {
       const { summary } = healthData;
       const totalIssues = summary.issues.orphan_domains + summary.issues.misaligned_users +
-                          summary.issues.unverified_orgs + summary.issues.domain_conflicts;
+                          summary.issues.unverified_orgs + summary.issues.domain_conflicts +
+                          (summary.issues.related_domains || 0);
 
       const grid = document.getElementById('summaryGrid');
       grid.innerHTML = `
@@ -385,7 +737,7 @@
         content.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-icon">&#10003;</div>
-            <p>No orphan domains found. All corporate users are mapped to organizations.</p>
+            <p>No unlinked domains found. All corporate domains are properly linked to organizations.</p>
           </div>
         `;
         return;
@@ -397,26 +749,73 @@
             <tr>
               <th>Domain</th>
               <th>Users</th>
-              <th>Sample Users</th>
+              <th>Existing Organizations</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${orphan_domains.map(d => `
+            ${orphan_domains.map(d => {
+              // Filter to non-personal orgs first, then personal
+              // Sort by value: Stripe customers first, then active subscriptions, then by user count
+              const scoreOrg = (o) => {
+                let score = 0;
+                if (o.has_stripe) score += 100;
+                if (o.subscription_status === 'active') score += 50;
+                score += (o.user_count || 0) * 5;
+                return score;
+              };
+              const nonPersonalOrgs = (d.existing_orgs || [])
+                .filter(o => !o.is_personal)
+                .sort((a, b) => scoreOrg(b) - scoreOrg(a));
+              const personalOrgs = (d.existing_orgs || []).filter(o => o.is_personal);
+              const hasExistingOrgs = nonPersonalOrgs.length > 0;
+              const hasMultipleOrgs = nonPersonalOrgs.length > 1;
+
+              return `
               <tr>
                 <td><span class="domain-name">${escapeHtml(d.domain)}</span></td>
                 <td><span class="user-count">${d.user_count}</span></td>
                 <td>
-                  <ul class="user-list">
-                    ${d.users.slice(0, 3).map(u => `<li>${escapeHtml(u.email)}</li>`).join('')}
-                    ${d.user_count > 3 ? `<li>... and ${d.user_count - 3} more</li>` : ''}
-                  </ul>
+                  ${hasExistingOrgs ? `
+                    <ul class="org-list">
+                      ${nonPersonalOrgs.map(o => `
+                        <li>
+                          <a href="/admin/organizations/${o.org_id}" class="org-link">${escapeHtml(o.name)}</a>
+                          <span class="user-count">${o.user_count} users</span>
+                        </li>
+                      `).join('')}
+                    </ul>
+                    ${personalOrgs.length > 0 ? `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">+ ${personalOrgs.length} personal workspace${personalOrgs.length > 1 ? 's' : ''}</div>` : ''}
+                  ` : `
+                    <span style="color: var(--color-text-muted);">
+                      ${personalOrgs.length > 0 ? `${personalOrgs.length} personal workspace${personalOrgs.length > 1 ? 's' : ''} only` : 'No existing orgs'}
+                    </span>
+                  `}
                 </td>
                 <td>
-                  <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-primary btn-sm">Create Prospect</a>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${hasExistingOrgs ? `
+                      ${nonPersonalOrgs.length === 1 ? `
+                        <button class="btn btn-primary btn-sm link-domain-btn" data-org-id="${escapeHtml(nonPersonalOrgs[0].org_id)}" data-org-name="${escapeHtml(nonPersonalOrgs[0].name)}" data-domain="${escapeHtml(d.domain)}">Link to ${escapeHtml(nonPersonalOrgs[0].name)}</button>
+                      ` : `
+                        <select class="btn btn-sm link-domain-select" data-domain="${escapeHtml(d.domain)}" style="padding: var(--space-1) var(--space-2); cursor: pointer;">
+                          <option value="">Link to org...</option>
+                          ${nonPersonalOrgs.map(o => `
+                            <option value="${escapeHtml(o.org_id)}" data-org-name="${escapeHtml(o.name)}">${escapeHtml(o.name)}</option>
+                          `).join('')}
+                        </select>
+                      `}
+                      ${hasMultipleOrgs ? `
+                        <button class="btn btn-secondary btn-sm merge-orgs-btn" data-org-ids="${nonPersonalOrgs.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(d.domain)}">Merge ${nonPersonalOrgs.length} orgs</button>
+                      ` : ''}
+                    ` : `
+                      <button class="btn btn-primary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
+                    `}
+                    <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
+                  </div>
                 </td>
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
       `;
@@ -435,7 +834,7 @@
         content.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-icon">&#10003;</div>
-            <p>No misaligned users found. All corporate users are in proper company workspaces.</p>
+            <p>No users found who should join their company. Personal workspace users with corporate emails are only flagged when their company already has an organization.</p>
           </div>
         `;
         return;
@@ -454,7 +853,10 @@
           <tbody>
             ${misaligned_users.map(d => `
               <tr>
-                <td><span class="domain-name">${escapeHtml(d.domain)}</span></td>
+                <td>
+                  <span class="domain-name">${escapeHtml(d.domain)}</span>
+                  ${d.target_org_name ? `<br><small style="color: var(--color-text-muted);">→ <a href="/admin/accounts/${escapeHtml(d.target_org_id)}" class="org-link">${escapeHtml(d.target_org_name)}</a></small>` : ''}
+                </td>
                 <td><span class="user-count">${d.user_count}</span></td>
                 <td>
                   <ul class="user-list">
@@ -465,13 +867,37 @@
                   </ul>
                 </td>
                 <td>
-                  <a href="/admin/prospects?create=${encodeURIComponent(d.domain)}" class="btn btn-secondary btn-sm">Create Org</a>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${d.target_org_id ? `
+                      <button class="btn btn-primary btn-sm add-to-org-btn"
+                              data-domain="${escapeHtml(d.domain)}"
+                              data-org-id="${escapeHtml(d.target_org_id)}"
+                              data-org-name="${escapeHtml(d.target_org_name)}"
+                              data-user-ids="${d.users.map(u => escapeHtml(u.user_id)).join(',')}"
+                              title="Add all ${d.user_count} user(s) to ${escapeHtml(d.target_org_name)}">
+                        Add to ${escapeHtml(d.target_org_name)}
+                      </button>
+                    ` : `
+                      <button class="btn btn-secondary btn-sm create-prospect-btn" data-domain="${escapeHtml(d.domain)}">Create Prospect</button>
+                    `}
+                    <button class="btn btn-secondary btn-sm mark-personal-btn" data-domain="${escapeHtml(d.domain)}" title="Mark this domain as a personal email domain (not corporate)">Mark as Personal</button>
+                  </div>
                 </td>
               </tr>
             `).join('')}
           </tbody>
         </table>
       `;
+
+      // Set up event handlers for add to org buttons
+      document.querySelectorAll('.add-to-org-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const orgId = btn.dataset.orgId;
+          const orgName = btn.dataset.orgName;
+          const userIds = btn.dataset.userIds.split(',').filter(Boolean);
+          addUsersToOrg(btn, orgId, orgName, userIds);
+        });
+      });
     }
 
     function renderUnverifiedOrgs() {
@@ -492,6 +918,9 @@
         return;
       }
 
+      // Common personal email domains to filter out
+      const personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'protonmail.com', 'me.com', 'live.com', 'msn.com'];
+
       content.innerHTML = `
         <table class="issue-table">
           <thead>
@@ -504,7 +933,12 @@
             </tr>
           </thead>
           <tbody>
-            ${unverified_orgs.map(o => `
+            ${unverified_orgs.map(o => {
+              // Find the first corporate domain (not a personal email domain)
+              const corporateDomains = (o.user_domains || []).filter(d => d && !personalDomains.includes(d.toLowerCase()));
+              const suggestedDomain = corporateDomains[0] || null;
+
+              return `
               <tr>
                 <td>
                   <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
@@ -522,10 +956,21 @@
                   </span>
                 </td>
                 <td>
-                  <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm">View Org</a>
+                  <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    ${suggestedDomain ? `
+                      <button class="btn btn-primary btn-sm link-domain-btn"
+                              data-org-id="${escapeHtml(o.org_id)}"
+                              data-org-name="${escapeHtml(o.name)}"
+                              data-domain="${escapeHtml(suggestedDomain)}"
+                              title="Link ${escapeHtml(suggestedDomain)} to ${escapeHtml(o.name)}">
+                        Link ${escapeHtml(suggestedDomain)}
+                      </button>
+                    ` : ''}
+                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="btn btn-secondary btn-sm">View Org</a>
+                  </div>
                 </td>
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
       `;
@@ -578,7 +1023,7 @@
                   </ul>
                 </td>
                 <td>
-                  <button class="btn btn-primary btn-sm" onclick="alert('Use Addie to merge: merge_organizations')">
+                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${c.organizations.map(o => encodeURIComponent(o.id)).join(',')}" data-domain="${encodeURIComponent(c.domain)}">
                     Merge Orgs
                   </button>
                 </td>
@@ -587,6 +1032,403 @@
           </tbody>
         </table>
       `;
+    }
+
+    function renderRelatedDomains() {
+      const relatedDomains = healthData.related_domains || [];
+      const badge = document.getElementById('relatedBadge');
+      const content = document.getElementById('relatedDomainsContent');
+
+      badge.textContent = relatedDomains.length;
+      badge.className = relatedDomains.length === 0 ? 'section-badge success' : 'section-badge';
+
+      if (relatedDomains.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>No related organizations found based on domain similarity.</p>
+          </div>
+        `;
+        return;
+      }
+
+      content.innerHTML = `
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>Root Domain</th>
+              <th>Related Organizations</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${relatedDomains.map(r => `
+              <tr>
+                <td>
+                  <span class="domain-name">${escapeHtml(r.root_domain)}</span>
+                  <br><small style="color: var(--color-text-muted);">${r.org_count} organizations</small>
+                </td>
+                <td>
+                  <ul class="org-list">
+                    ${r.organizations.map(o => `
+                      <li>
+                        <a href="/admin/org/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
+                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
+                          ${escapeHtml(o.subscription_status || 'prospect')}
+                        </span>
+                        ${o.domains && o.domains.length > 0 ? `<br><small style="color: var(--color-text-muted);">${o.domains.filter(Boolean).map(d => escapeHtml(d)).join(', ')}</small>` : ''}
+                      </li>
+                    `).join('')}
+                  </ul>
+                </td>
+                <td>
+                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${r.organizations.map(o => encodeURIComponent(o.org_id)).join(',')}" data-domain="${encodeURIComponent(r.root_domain)}">
+                    Review &amp; Merge
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Merge modal functionality
+    let mergeModalElement = null;
+
+    function showMergeModal(orgIds, domain) {
+      // Create modal if doesn't exist
+      if (!mergeModalElement) {
+        mergeModalElement = document.createElement('div');
+        mergeModalElement.id = 'mergeModal';
+        document.body.appendChild(mergeModalElement);
+      }
+
+      mergeModalElement.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 700px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+            <h3 style="margin-bottom: var(--space-4);">Loading organizations...</h3>
+            <div style="color: var(--color-text-muted);">Fetching details for merge preview...</div>
+          </div>
+        </div>
+      `;
+
+      // Fetch org details
+      loadMergePreview(orgIds, domain);
+    }
+
+    async function loadMergePreview(orgIds, domain) {
+      try {
+        // Fetch all org details in parallel
+        const responses = await Promise.all(
+          orgIds.map(id => fetch(`/api/admin/organizations/${id}`))
+        );
+
+        const orgs = await Promise.all(responses.map(async (r, i) => {
+          if (!r.ok) return { id: orgIds[i], name: 'Unknown', error: true };
+          return await r.json();
+        }));
+
+        // Sort by user count descending to suggest largest as primary
+        orgs.sort((a, b) => (b.member_count || 0) - (a.member_count || 0));
+
+        mergeModalElement.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 700px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>Merge Organizations for ${escapeHtml(domain)}</h3>
+                <button onclick="closeMergeModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+
+              <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary);">
+                Select which organization should be the <strong>primary</strong> (kept). All others will be merged into it.
+              </p>
+
+              <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4);">
+                ${orgs.map((org, i) => {
+                  const memberNames = (org.members || []).slice(0, 3).map(m => {
+                    const name = m.firstName || m.lastName
+                      ? `${m.firstName || ''} ${m.lastName || ''}`.trim()
+                      : m.email;
+                    return escapeHtml(name);
+                  });
+                  const remainingMembers = Math.max(0, (org.member_count || 0) - memberNames.length);
+
+                  return `
+                  <label style="display: flex; align-items: start; gap: var(--space-3); padding: var(--space-3); border: 2px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer;" class="merge-org-option" data-org-id="${org.workos_organization_id || org.id}">
+                    <input type="radio" name="primaryOrg" value="${org.workos_organization_id || org.id}" ${i === 0 ? 'checked' : ''} style="margin-top: 4px;">
+                    <div style="flex: 1;">
+                      <div style="font-weight: var(--font-semibold);">${escapeHtml(org.name)}</div>
+                      <div style="font-size: var(--text-xs); color: var(--color-text-muted);">
+                        ${org.member_count || 0} members
+                        ${org.subscription_status ? ` • ${escapeHtml(org.subscription_status)}` : ''}
+                        ${org.company_type ? ` • ${escapeHtml(org.company_type)}` : ''}
+                      </div>
+                      ${memberNames.length > 0 ? `
+                        <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">
+                          ${memberNames.join(', ')}${remainingMembers > 0 ? `, +${remainingMembers} more` : ''}
+                        </div>
+                      ` : ''}
+                    </div>
+                    ${i === 0 ? '<span style="font-size: var(--text-xs); background: var(--color-success-100); color: var(--color-success-700); padding: 2px 8px; border-radius: var(--radius-full);">Recommended</span>' : ''}
+                  </label>
+                `}).join('')}
+              </div>
+
+              <div style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+                <strong style="color: var(--color-warning-700);">Warning:</strong>
+                <span style="color: var(--color-warning-800);">Merging cannot be undone. All data from secondary organizations will be moved to the primary.</span>
+              </div>
+
+              <div style="display: flex; justify-content: space-between;">
+                <button class="btn btn-secondary" onclick="closeMergeModal()">Cancel</button>
+                <button class="btn btn-primary" id="previewMergeBtn" data-org-ids="${orgs.map(o => encodeURIComponent(o.workos_organization_id || o.id)).join(',')}">
+                  Preview Merge
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Add click handler for preview merge button
+        document.getElementById('previewMergeBtn').addEventListener('click', function() {
+          const orgIds = this.dataset.orgIds.split(',').map(decodeURIComponent).join(',');
+          executeMergeFromModal(orgIds);
+        });
+
+        // Add click handlers for radio buttons to update styling
+        document.querySelectorAll('.merge-org-option').forEach(label => {
+          label.addEventListener('click', () => {
+            document.querySelectorAll('.merge-org-option').forEach(l => {
+              l.style.borderColor = 'var(--color-border)';
+            });
+            label.style.borderColor = 'var(--color-brand)';
+          });
+        });
+
+        // Initialize first option as selected
+        const firstOption = document.querySelector('.merge-org-option');
+        if (firstOption) firstOption.style.borderColor = 'var(--color-brand)';
+
+      } catch (error) {
+        console.error('Error loading merge preview:', error);
+        mergeModalElement.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 500px; width: 95%;">
+              <h3 style="color: var(--color-error-600);">Error</h3>
+              <p>Failed to load organization details: ${escapeHtml(error.message)}</p>
+              <button class="btn btn-secondary" onclick="closeMergeModal()">Close</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function executeMergeFromModal(allOrgIds) {
+      const primaryOrgId = document.querySelector('input[name="primaryOrg"]:checked')?.value;
+      if (!primaryOrgId) {
+        alert('Please select a primary organization');
+        return;
+      }
+
+      const orgIds = allOrgIds.split(',');
+      const secondaryOrgIds = orgIds.filter(id => id !== primaryOrgId);
+
+      if (secondaryOrgIds.length === 0) {
+        alert('No organizations to merge');
+        return;
+      }
+
+      // Preview the first merge
+      const secondaryOrgId = secondaryOrgIds[0];
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/preview-merge?primary=${primaryOrgId}&secondary=${secondaryOrgId}`);
+        if (!response.ok) throw new Error('Failed to load preview');
+        const preview = await response.json();
+
+        const warningsHtml = preview.warnings.length > 0 ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-warning-700);">Warnings:</strong>
+            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+              ${preview.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
+            </ul>
+          </div>
+        ` : '';
+
+        const changesHtml = preview.estimated_changes.length > 0 ? `
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Data to be moved:</strong>
+            <table style="width: 100%; margin-top: var(--space-2); border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--color-bg-subtle);">
+                  <th style="padding: var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border);">Table</th>
+                  <th style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${preview.estimated_changes.map(c => `
+                  <tr>
+                    <td style="padding: var(--space-2); border-bottom: 1px solid var(--color-border);">${escapeHtml(c.table_name)}</td>
+                    <td style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">${c.rows_to_move}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<p>No data to move - secondary organization appears empty.</p>';
+
+        mergeModalElement.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>Merge Preview${secondaryOrgIds.length > 1 ? ` (1 of ${secondaryOrgIds.length})` : ''}</h3>
+                <button onclick="closeMergeModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
+                <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.primary_org.name)}</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
+                    <div><strong>Members:</strong> ${preview.primary_org.member_count || 0}</div>
+                    ${preview.primary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.primary_org.company_type)}</div>` : ''}
+                    ${preview.primary_org.prospect_status ? `<div><strong>Status:</strong> ${escapeHtml(preview.primary_org.prospect_status)}</div>` : ''}
+                    ${preview.primary_org.created_by ? `<div><strong>Created by:</strong> ${escapeHtml(preview.primary_org.created_by)}</div>` : ''}
+                    ${preview.primary_org.has_enrichment ? `<div style="color: var(--color-success-600);">Has enrichment data</div>` : ''}
+                    ${preview.primary_org.has_notes ? `<div style="color: var(--color-brand);">Has admin notes</div>` : ''}
+                  </div>
+                </div>
+
+                <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">SECONDARY (delete)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-2);">
+                    <div><strong>Members:</strong> ${preview.secondary_org.member_count || 0}</div>
+                    ${preview.secondary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.secondary_org.company_type)}</div>` : ''}
+                    ${preview.secondary_org.prospect_status ? `<div><strong>Status:</strong> ${escapeHtml(preview.secondary_org.prospect_status)}</div>` : ''}
+                    ${preview.secondary_org.created_by ? `<div><strong>Created by:</strong> ${escapeHtml(preview.secondary_org.created_by)}</div>` : ''}
+                    ${preview.secondary_org.has_enrichment ? `<div style="color: var(--color-success-600);">Has enrichment data</div>` : ''}
+                    ${preview.secondary_org.has_notes ? `<div style="color: var(--color-brand);">Has admin notes</div>` : ''}
+                  </div>
+                </div>
+              </div>
+
+              ${warningsHtml}
+              ${changesHtml}
+
+              <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
+                <button class="btn btn-secondary" onclick="closeMergeModal()">Cancel</button>
+                <button class="btn btn-primary" id="confirmMergeBtn" style="background: var(--color-error-600);"
+                        data-primary-id="${encodeURIComponent(primaryOrgId)}"
+                        data-secondary-id="${encodeURIComponent(secondaryOrgId)}"
+                        data-remaining-ids="${secondaryOrgIds.slice(1).map(encodeURIComponent).join(',')}">
+                  Confirm Merge
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Add click handler for confirm merge button
+        document.getElementById('confirmMergeBtn').addEventListener('click', function() {
+          const primaryId = decodeURIComponent(this.dataset.primaryId);
+          const secondaryId = decodeURIComponent(this.dataset.secondaryId);
+          const remainingIds = this.dataset.remainingIds ? this.dataset.remainingIds.split(',').map(decodeURIComponent).join(',') : '';
+          confirmMerge(primaryId, secondaryId, remainingIds);
+        });
+      } catch (error) {
+        alert('Failed to load merge preview: ' + error.message);
+      }
+    }
+
+    async function confirmMerge(primaryOrgId, secondaryOrgId, remainingOrgIds) {
+      // Disable all buttons immediately to prevent double-clicks
+      document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => {
+        btn.disabled = true;
+      });
+
+      if (!confirm('Are you sure you want to merge these organizations? This cannot be undone.')) {
+        // Re-enable buttons if user cancels
+        document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => {
+          btn.disabled = false;
+        });
+        return;
+      }
+
+      mergeModalElement.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+            <h3 style="margin-bottom: var(--space-4);">Merging organizations...</h3>
+            <div style="color: var(--color-text-muted);">Please wait...</div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const response = await fetch('/api/admin/cleanup/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Merge failed');
+        }
+
+        const result = await response.json();
+        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+
+        // Check if there are more orgs to merge
+        if (remainingOrgIds && remainingOrgIds.length > 0) {
+          const remainingCount = remainingOrgIds.split(',').filter(Boolean).length;
+          mergeModalElement.innerHTML = `
+            <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+              <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+                <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">Merge Complete</h3>
+                <p>Successfully merged. ${totalMoved} records moved.</p>
+                <p style="margin-top: var(--space-3);">There are ${remainingCount} more organization(s) to merge.</p>
+                <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
+                  <button class="btn btn-secondary" onclick="closeMergeModal(); loadDomainHealth();">Done for Now</button>
+                  <button class="btn btn-primary" id="continueMergeBtn"
+                          data-org-ids="${encodeURIComponent(primaryOrgId)},${remainingOrgIds.split(',').map(encodeURIComponent).join(',')}">
+                    Continue Merging
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+
+          // Add click handler for continue merge button
+          document.getElementById('continueMergeBtn').addEventListener('click', function() {
+            const orgIds = this.dataset.orgIds.split(',').map(decodeURIComponent).join(',');
+            executeMergeFromModal(orgIds);
+          });
+        } else {
+          mergeModalElement.innerHTML = `
+            <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+              <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+                <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">All Merges Complete</h3>
+                <p>Successfully merged all organizations. ${totalMoved} records moved in this merge.</p>
+                <div style="margin-top: var(--space-4); text-align: right;">
+                  <button class="btn btn-primary" onclick="closeMergeModal(); loadDomainHealth();">Done</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      } catch (error) {
+        alert('Merge failed: ' + error.message);
+        closeMergeModal();
+        loadDomainHealth();
+      }
+    }
+
+    function closeMergeModal() {
+      if (mergeModalElement) {
+        mergeModalElement.innerHTML = '';
+      }
     }
 
     // Initialize

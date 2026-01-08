@@ -759,4 +759,150 @@ describe('Addie Learning System Integration Tests', () => {
       });
     });
   });
+
+  describe('Recent News', () => {
+    const TEST_NEWS_PREFIX = 'test_news_';
+
+    beforeEach(async () => {
+      // Clean up test data
+      await pool.query('DELETE FROM addie_knowledge WHERE title LIKE $1', [`${TEST_NEWS_PREFIX}%`]);
+    });
+
+    afterEach(async () => {
+      await pool.query('DELETE FROM addie_knowledge WHERE title LIKE $1', [`${TEST_NEWS_PREFIX}%`]);
+    });
+
+    async function insertTestArticle(options: {
+      title: string;
+      daysAgo?: number;
+      qualityScore?: number;
+      tags?: string[];
+      topic?: string;
+    }) {
+      const fetchedAt = new Date();
+      if (options.daysAgo) {
+        fetchedAt.setDate(fetchedAt.getDate() - options.daysAgo);
+      }
+
+      await pool.query(
+        `INSERT INTO addie_knowledge (
+          title, category, content, source_url, source_type, fetch_status,
+          last_fetched_at, quality_score, relevance_tags, summary, is_active
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          `${TEST_NEWS_PREFIX}${options.title}`,
+          'news',
+          options.topic ? `Content about ${options.topic}` : 'Test article content',
+          `https://example.com/${options.title.toLowerCase().replace(/\s+/g, '-')}`,
+          'rss',
+          'success',
+          fetchedAt,
+          options.qualityScore ?? 4,
+          options.tags ?? [],
+          `Summary of ${options.title}`,
+          true,
+        ]
+      );
+    }
+
+    describe('getRecentNews', () => {
+      it('should return recent articles sorted by date', async () => {
+        await insertTestArticle({ title: 'Old Article', daysAgo: 3 });
+        await insertTestArticle({ title: 'New Article', daysAgo: 1 });
+        await insertTestArticle({ title: 'Newest Article', daysAgo: 0 });
+
+        const results = await db.getRecentNews({ days: 7 });
+
+        const testResults = results.filter(r => r.title.startsWith(TEST_NEWS_PREFIX));
+        expect(testResults.length).toBe(3);
+        // Should be sorted by date, newest first
+        expect(testResults[0].title).toContain('Newest');
+        expect(testResults[1].title).toContain('New Article');
+        expect(testResults[2].title).toContain('Old');
+      });
+
+      it('should filter by time window', async () => {
+        await insertTestArticle({ title: 'Recent', daysAgo: 2 });
+        await insertTestArticle({ title: 'Too Old', daysAgo: 10 });
+
+        const results = await db.getRecentNews({ days: 7 });
+
+        const testResults = results.filter(r => r.title.startsWith(TEST_NEWS_PREFIX));
+        expect(testResults.length).toBe(1);
+        expect(testResults[0].title).toContain('Recent');
+      });
+
+      it('should filter by minimum quality score', async () => {
+        await insertTestArticle({ title: 'High Quality', qualityScore: 5 });
+        await insertTestArticle({ title: 'Medium Quality', qualityScore: 3 });
+        await insertTestArticle({ title: 'Low Quality', qualityScore: 2 });
+
+        // Default minQuality is 3
+        const results = await db.getRecentNews({ days: 7 });
+
+        const testResults = results.filter(r => r.title.startsWith(TEST_NEWS_PREFIX));
+        expect(testResults.length).toBe(2);
+        expect(testResults.find(r => r.title.includes('Low'))).toBeUndefined();
+      });
+
+      it('should filter by relevance tags', async () => {
+        await insertTestArticle({ title: 'MCP Article', tags: ['mcp', 'protocol'] });
+        await insertTestArticle({ title: 'A2A Article', tags: ['a2a', 'agents'] });
+        await insertTestArticle({ title: 'General Article', tags: ['industry-trend'] });
+
+        const results = await db.getRecentNews({ days: 7, tags: ['mcp'] });
+
+        const testResults = results.filter(r => r.title.startsWith(TEST_NEWS_PREFIX));
+        expect(testResults.length).toBe(1);
+        expect(testResults[0].title).toContain('MCP');
+      });
+
+      it('should filter by topic using full-text search', async () => {
+        await insertTestArticle({ title: 'Agentic Article', topic: 'agentic advertising and AI agents' });
+        await insertTestArticle({ title: 'CTV Article', topic: 'connected TV and streaming' });
+
+        const results = await db.getRecentNews({ days: 7, topic: 'agentic advertising' });
+
+        const testResults = results.filter(r => r.title.startsWith(TEST_NEWS_PREFIX));
+        expect(testResults.length).toBe(1);
+        expect(testResults[0].title).toContain('Agentic');
+      });
+
+      it('should respect limit parameter', async () => {
+        // Use unique tags to isolate test data from production data
+        const isolationTag = 'test-limit-isolation';
+        await insertTestArticle({ title: 'Article 1', tags: [isolationTag] });
+        await insertTestArticle({ title: 'Article 2', tags: [isolationTag] });
+        await insertTestArticle({ title: 'Article 3', tags: [isolationTag] });
+
+        const results = await db.getRecentNews({ days: 7, limit: 2, tags: [isolationTag] });
+
+        expect(results.length).toBe(2);
+      });
+
+      it('should return empty array when no matching articles', async () => {
+        const results = await db.getRecentNews({ days: 1, topic: 'nonexistent-topic-xyz' });
+
+        expect(results).toEqual([]);
+      });
+
+      it('should include article metadata in results', async () => {
+        await insertTestArticle({
+          title: 'Full Article',
+          qualityScore: 5,
+          tags: ['mcp', 'test'],
+        });
+
+        const results = await db.getRecentNews({ days: 7 });
+
+        const article = results.find(r => r.title.includes('Full Article'));
+        expect(article).toBeDefined();
+        expect(article!.source_url).toContain('full-article');
+        expect(article!.summary).toContain('Summary');
+        expect(article!.quality_score).toBe(5);
+        expect(article!.relevance_tags).toContain('mcp');
+        expect(article!.last_fetched_at).toBeInstanceOf(Date);
+      });
+    });
+  });
 });

@@ -14,7 +14,7 @@ import {
   getBillingChannel,
   setBillingChannel,
 } from '../../db/system-settings-db.js';
-import { getSlackChannels, isSlackConfigured } from '../../slack/client.js';
+import { getSlackChannels, getChannelInfo, isSlackConfigured } from '../../slack/client.js';
 
 const logger = createLogger('admin-settings');
 
@@ -51,8 +51,11 @@ export function createAdminSettingsRouter(): Router {
         return;
       }
 
-      // Get public channels the bot can see
-      const channels = await getSlackChannels({ types: 'public_channel', exclude_archived: true });
+      // Only private channels - billing info should not go to public channels
+      const channels = await getSlackChannels({
+        types: 'private_channel',
+        exclude_archived: true,
+      });
 
       // Sort by name and return minimal info
       const sorted = channels
@@ -88,6 +91,18 @@ export function createAdminSettingsRouter(): Router {
             message: 'Channel ID should start with C or G followed by alphanumeric characters',
           });
           return;
+        }
+
+        // Verify the channel is private (billing info should not go to public channels)
+        if (isSlackConfigured()) {
+          const channelInfo = await getChannelInfo(channel_id);
+          if (channelInfo && !channelInfo.is_private) {
+            res.status(400).json({
+              error: 'Invalid channel',
+              message: 'Only private channels are allowed for billing notifications',
+            });
+            return;
+          }
         }
       }
 

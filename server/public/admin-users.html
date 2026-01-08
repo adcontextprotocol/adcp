@@ -145,6 +145,14 @@
       font-weight: var(--font-medium);
       color: var(--color-text-heading);
     }
+    .user-name-link {
+      color: var(--color-brand);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .user-name-link:hover {
+      text-decoration: underline;
+    }
     .user-email {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
@@ -152,6 +160,13 @@
     .user-org {
       font-size: var(--text-sm);
       color: var(--color-text-muted);
+    }
+    a.user-org {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+    a.user-org:hover {
+      text-decoration: underline;
     }
     .group-badges {
       display: flex;
@@ -880,6 +895,83 @@
     </div>
   </div>
 
+  <!-- Add Insight Modal -->
+  <div id="addInsightModal" class="modal-backdrop hidden" onclick="closeAddInsightModal(event)">
+    <div class="modal-content" style="max-width: 500px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Add Insight</h2>
+        <button class="modal-close" onclick="closeAddInsightModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="addInsightForm" onsubmit="submitInsight(event)">
+          <input type="hidden" id="insightSlackUserId" />
+
+          <div class="form-group" style="margin-bottom: var(--space-4);">
+            <label for="insightType" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Insight Type</label>
+            <select id="insightType" required style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm);">
+              <option value="">Select type...</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: var(--space-4);">
+            <label for="insightValue" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Value</label>
+            <textarea id="insightValue" required rows="3" placeholder="What do you know about this person?" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm); resize: vertical;"></textarea>
+          </div>
+
+          <div class="form-group" style="margin-bottom: var(--space-4);">
+            <label for="insightConfidence" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Confidence</label>
+            <select id="insightConfidence" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm);">
+              <option value="high">High - Directly told to me</option>
+              <option value="medium" selected>Medium - Inferred from context</option>
+              <option value="low">Low - Guess/assumption</option>
+            </select>
+          </div>
+
+          <div style="display: flex; gap: var(--space-2); justify-content: flex-end;">
+            <button type="button" onclick="closeAddInsightModal()" class="btn btn-secondary">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="submitInsightBtn">Add Insight</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nudge/Override Modal -->
+  <div id="nudgeModal" class="modal-backdrop hidden" onclick="closeNudgeModal(event)">
+    <div class="modal-content" style="max-width: 550px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Different Approach</h2>
+        <button class="modal-close" onclick="closeNudgeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="nudgeSlackUserId" />
+        <input type="hidden" id="nudgeGoalId" />
+
+        <div id="nudgeGoalInfo" style="background: var(--color-primary-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+          <div style="font-weight: var(--font-medium); margin-bottom: var(--space-1);" id="nudgeGoalName">Loading...</div>
+          <div style="font-size: var(--text-sm); color: var(--color-text-secondary);" id="nudgeGoalDescription"></div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: var(--space-4);">
+          <label for="nudgeContext" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Additional Context (optional)</label>
+          <textarea id="nudgeContext" rows="3" placeholder="Share what you know about this person that might help personalize the message... (this will be saved as an insight)" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm); resize: vertical;"></textarea>
+          <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">If provided, this will be recorded as an "admin_context" insight for future reference.</p>
+        </div>
+
+        <div id="nudgeMessagePreview" style="margin-bottom: var(--space-4); display: none;">
+          <label style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Message Preview</label>
+          <div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 150px; overflow-y: auto;" id="nudgeMessageText"></div>
+        </div>
+
+        <div style="display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap;">
+          <button type="button" onclick="closeNudgeModal()" class="btn btn-secondary">Cancel</button>
+          <button type="button" onclick="saveNudgeAsInsight()" class="btn btn-secondary" id="saveNudgeBtn" style="display: none;">Just Save Context</button>
+          <button type="button" onclick="sendNudgeOutreach()" class="btn btn-primary" id="sendNudgeBtn">Send with This Goal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allUsers = [];
     let allGroups = [];
@@ -1136,7 +1228,7 @@
               ${account.open_action_items > 0 ? `⚠️ ${account.open_action_items} action items` : '✓ No pending actions'}
             </div>
             <div style="margin-top: var(--space-3); display: flex; gap: var(--space-2);">
-              <button class="btn btn-info btn-small" onclick="showUserContext('${escapeHtml(account.account_id)}', '${account.account_type === 'user' ? 'workos' : 'org'}', '${escapeHtml(account.account_name || 'Account')}')">View</button>
+              <button class="btn btn-info btn-small" onclick="showUserContext('${escapeJs(account.account_id)}', '${account.account_type === 'user' ? 'workos' : 'org'}', '${escapeJs(account.account_name || 'Account')}')">View</button>
             </div>
           </div>
         `;
@@ -1363,7 +1455,7 @@
         const contextUserId = user.workos_user_id || user.slack_user_id;
         const contextType = user.workos_user_id ? 'workos' : 'slack';
         if (contextUserId) {
-          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${escapeHtml(contextUserId)}', '${contextType}', '${escapeHtml(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
+          actions += `<button class="btn btn-info btn-small" onclick="showUserContext('${escapeJs(contextUserId)}', '${contextType}', '${escapeJs(user.name || user.slack_real_name || user.slack_display_name || 'User')}', event)" title="View full context">View</button>`;
         }
 
         if (user.mapping_status === 'suggested_match') {
@@ -1378,14 +1470,21 @@
         const displayEmail = user.email || user.slack_email || '';
         const displayOrg = user.org_name || '';
 
+        // Make name clickable if user has context (reuse contextUserId/contextType from above)
+        const nameHtml = contextUserId
+          ? `<a href="#" class="user-name-link" onclick="showUserContext('${escapeJs(contextUserId)}', '${contextType}', '${escapeJs(displayName)}', event); return false;">${escapeHtml(displayName)}</a>`
+          : escapeHtml(displayName);
+
         return `
           <tr>
             <td>
-              <div class="user-name">${escapeHtml(displayName)} ${sourceIcon} ${aaoIcon}</div>
+              <div class="user-name">${nameHtml} ${sourceIcon} ${aaoIcon}</div>
               <div class="user-email">${escapeHtml(displayEmail)}</div>
             </td>
             <td>
-              <span class="user-org">${escapeHtml(displayOrg) || '<em style="color: var(--color-text-muted);">No org</em>'}</span>
+              ${user.org_id && displayOrg
+                ? `<a href="/admin/organizations/${encodeURIComponent(user.org_id)}" class="user-org">${escapeHtml(displayOrg)}</a>`
+                : '<span class="user-org"><em style="color: var(--color-text-muted);">No org</em></span>'}
             </td>
             <td>
               ${engagementHtml}
@@ -1524,6 +1623,33 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // Escape for use in JavaScript string literals within onclick attributes
+    function escapeJs(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+    }
+
+    function formatInsightLabel(typeName) {
+      const labels = {
+        'plans_2026': '2026 Plans',
+        'membership_goals': 'Membership Goals',
+        'challenges': 'Challenges',
+        'feedback': 'Feedback',
+        'satisfaction': 'Satisfaction',
+        'use_case': 'Use Cases',
+        'timeline': 'Timeline',
+        'decision_role': 'Decision Role',
+        'competitors': 'Competitors',
+        'intro_interest': 'Intro Interest'
+      };
+      return labels[typeName] || typeName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
 
     // =========================================================================
@@ -1665,7 +1791,7 @@
         modalBody.innerHTML = `
           <div style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
             <p>Failed to load context.</p>
-            <button class="btn btn-secondary btn-small" onclick="showUserContext('${escapeHtml(userId)}', '${type}', '${escapeHtml(userName)}')">Retry</button>
+            <button class="btn btn-secondary btn-small" onclick="showUserContext('${escapeJs(userId)}', '${type}', '${escapeJs(userName)}')">Retry</button>
           </div>
         `;
       }
@@ -1685,6 +1811,31 @@
     function closeContextModal(event) {
       if (event && event.target !== event.currentTarget) return;
       document.getElementById('contextModal').classList.add('hidden');
+    }
+
+    // Wrapper to show context modal with automatic type detection
+    // Called after adding insights or sending outreach
+    function showContextModal(userId, userName) {
+      // Find user in allUsers to determine the appropriate type
+      const user = allUsers.find(u =>
+        u.id === userId ||
+        u.workos_user_id === userId ||
+        u.slack_user_id === userId
+      );
+
+      if (user) {
+        const contextUserId = user.workos_user_id || user.slack_user_id;
+        if (!contextUserId) {
+          // User found but has no identifiers - use original userId
+          showUserContext(userId, 'slack', userName);
+          return;
+        }
+        const contextType = user.workos_user_id ? 'workos' : 'slack';
+        showUserContext(contextUserId, contextType, userName);
+      } else {
+        // Fallback: assume slack type if we can't find the user
+        showUserContext(userId, 'slack', userName);
+      }
     }
 
     async function loadAddieHomePreview(workosUserId, slackUserId) {
@@ -1741,19 +1892,93 @@
     function renderContext(context, userId) {
       let html = '';
 
-      // Addie's Goal Section - Most important, show first
-      if (context.addie_goal) {
-        html += '<div class="context-section" style="background: var(--color-primary-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
-        html += '<h3 style="margin-bottom: var(--space-2);">Addie\'s Goal</h3>';
-        html += `<div style="margin-bottom: var(--space-2);">
-          <span class="goal-badge goal-${context.addie_goal.goal_key}" style="font-size: var(--text-sm); padding: var(--space-1) var(--space-3);">
-            ${escapeHtml(context.addie_goal.goal_name || formatGoalKey(context.addie_goal.goal_key))}
-          </span>
+      // Planner Recommendation Section - Most important, show first
+      if (context.planner?.recommended_action) {
+        const action = context.planner.recommended_action;
+        const slackUserId = context.slack_user?.slack_user_id;
+        html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-primary-50), var(--color-gray-50)); border-left: 4px solid var(--color-brand); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="margin-bottom: var(--space-2);">Planner Recommendation</h3>';
+        html += `<div style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">${escapeHtml(action.goal_name)}</div>`;
+        html += `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2);">${escapeHtml(action.reason)}</div>`;
+        html += `<div style="font-size: var(--text-xs); color: var(--color-text-muted); display: flex; gap: var(--space-3); margin-bottom: var(--space-3);">
+          <span>Priority: ${action.priority_score}</span>
+          <span>Category: ${escapeHtml(action.category)}</span>
+          <span>Method: ${escapeHtml(action.decision_method)}</span>
         </div>`;
-        if (context.addie_goal.reasoning) {
-          html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0;">${escapeHtml(context.addie_goal.reasoning)}</p>`;
+
+        // Show message preview
+        if (context.planner.message_preview) {
+          html += '<div style="margin-top: var(--space-3); border-top: 1px solid var(--color-gray-200); padding-top: var(--space-3);">';
+          html += '<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2);">Message Preview:</div>';
+          html += `<div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${escapeHtml(context.planner.message_preview)}</div>`;
+
+          // Send button and different approach link
+          if (slackUserId && !context.outreach?.opted_out) {
+            html += `<div style="margin-top: var(--space-3); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+              <button onclick="sendOutreach('${slackUserId}')" class="btn btn-primary btn-small" id="sendOutreachBtn-${slackUserId}">Send This Message</button>
+              <span style="font-size: var(--text-xs); color: var(--color-text-muted);">via Slack DM</span>
+              <a href="#" onclick="openNudgeModal('${slackUserId}', ${action.goal_id}); return false;" style="font-size: var(--text-xs); color: var(--color-brand); margin-left: auto;">Different approach?</a>
+            </div>`;
+          }
+          html += '</div>';
+        }
+
+        if (context.planner.alternative_goals && context.planner.alternative_goals.length > 0) {
+          html += '<div style="margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--color-gray-200);">';
+          html += '<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2);">Alternative goals (click to use instead):</div>';
+          html += '<div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">';
+          html += context.planner.alternative_goals.map(g =>
+            `<button onclick="openNudgeModal('${slackUserId}', ${g.id})" style="display: inline-block; padding: 4px var(--space-2); background: var(--color-gray-100); border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); font-size: var(--text-xs); cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='var(--color-primary-50)';this.style.borderColor='var(--color-brand)'" onmouseout="this.style.background='var(--color-gray-100)';this.style.borderColor='var(--color-gray-200)'">${escapeHtml(g.name)}</button>`
+          ).join('');
+          html += '</div></div>';
         }
         html += '</div>';
+      } else if (context.planner && !context.planner.recommended_action) {
+        html += '<div class="context-section" style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<h3 style="margin-bottom: var(--space-2);">Planner Status</h3>';
+        const eligibility = context.planner.contact_eligibility;
+        if (!eligibility?.can_contact) {
+          html += `<div style="font-size: var(--text-sm); color: var(--color-warning-600);">Cannot contact: ${escapeHtml(eligibility?.reason || 'Unknown reason')}</div>`;
+        } else {
+          html += '<div style="font-size: var(--text-sm); color: var(--color-text-muted); font-style: italic;">No action recommended at this time.</div>';
+        }
+        html += '</div>';
+      }
+
+      // Capabilities Section - What has this member done?
+      if (context.capabilities) {
+        const caps = context.capabilities;
+        html += '<div class="context-section">';
+        html += '<h3>Capabilities</h3>';
+        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2);">';
+
+        // Account setup capabilities
+        html += renderCapabilityItem('Account Linked', caps.account_linked);
+        html += renderCapabilityItem('Profile Complete', caps.profile_complete);
+        html += renderCapabilityItem('Offerings Set', caps.offerings_set);
+        html += renderCapabilityItem('Email Prefs', caps.email_prefs_configured);
+
+        // Team
+        html += renderCapabilityItem('Has Team', caps.has_team_members);
+        html += renderCapabilityItem('Org Admin', caps.is_org_admin);
+
+        // Participation
+        html += renderCapabilityCount('Working Groups', caps.working_group_count);
+        html += renderCapabilityCount('Councils', caps.council_count);
+        html += renderCapabilityCount('Events Registered', caps.events_registered);
+        html += renderCapabilityCount('Events Attended', caps.events_attended);
+
+        // Activity
+        html += `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+          <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Slack (30d)</span>
+          <span style="font-weight: var(--font-medium); color: ${caps.slack_message_count_30d > 0 ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${caps.slack_message_count_30d}</span>
+        </div>`;
+        html += `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+          <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Last Active</span>
+          <span style="font-weight: var(--font-medium); color: ${caps.last_active_days_ago !== null && caps.last_active_days_ago < 30 ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${caps.last_active_days_ago !== null ? caps.last_active_days_ago + 'd ago' : 'Never'}</span>
+        </div>`;
+
+        html += '</div></div>';
       }
 
       // Identity & Status Section - Compact overview
@@ -1864,17 +2089,50 @@
       }
 
       // Insights Section - From collected member insights
+      // Strategic insights are highlighted at top, others shown below
+      const slackUserIdForInsight = context.slack_user?.slack_user_id;
       if (context.insights && context.insights.length > 0) {
-        html += '<div class="context-section">';
-        html += '<h3>Insights</h3>';
-        html += '<div style="max-height: 200px; overflow-y: auto;">';
-        context.insights.forEach(insight => {
-          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
-            <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
-            <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+        const strategicTypes = ['plans_2026', 'membership_goals', 'challenges', 'feedback', 'satisfaction', 'use_case', 'admin_context'];
+        const strategicInsights = context.insights.filter(i => strategicTypes.includes(i.type_name));
+        const otherInsights = context.insights.filter(i => !strategicTypes.includes(i.type_name));
+
+        // Strategic insights get prominent display
+        if (strategicInsights.length > 0) {
+          html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-success-50), var(--color-gray-50)); border-left: 4px solid var(--color-success-600); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+          html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+            <h3 style="margin: 0;">Strategic Insights</h3>
+            ${slackUserIdForInsight ? `<button onclick="openAddInsightModal('${slackUserIdForInsight}')" class="btn btn-small" style="font-size: var(--text-xs);">+ Add Insight</button>` : ''}
           </div>`;
-        });
-        html += '</div></div>';
+          html += '<div style="display: grid; gap: var(--space-3);">';
+          strategicInsights.forEach(insight => {
+            const label = formatInsightLabel(insight.type_name);
+            html += `<div style="background: white; border-radius: var(--radius-sm); padding: var(--space-3); box-shadow: var(--shadow-xs);">
+              <div style="font-weight: var(--font-semibold); font-size: var(--text-xs); color: var(--color-success-700); text-transform: uppercase; margin-bottom: var(--space-1);">${escapeHtml(label)}</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+            </div>`;
+          });
+          html += '</div></div>';
+        }
+
+        // Other insights shown in a more compact list
+        if (otherInsights.length > 0) {
+          html += '<div class="context-section">';
+          html += '<h3>Other Insights</h3>';
+          html += '<div style="max-height: 150px; overflow-y: auto;">';
+          otherInsights.forEach(insight => {
+            html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+              <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
+            </div>`;
+          });
+          html += '</div></div>';
+        }
+      } else if (slackUserIdForInsight) {
+        // No insights yet - show add button
+        html += '<div class="context-section" style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4); text-align: center;">';
+        html += '<p style="color: var(--color-text-muted); margin-bottom: var(--space-3);">No insights recorded yet</p>';
+        html += `<button onclick="openAddInsightModal('${slackUserIdForInsight}')" class="btn btn-primary btn-small">+ Add First Insight</button>`;
+        html += '</div>';
       }
 
       // Recent Conversations Section (from new threads API)
@@ -1918,39 +2176,68 @@
         html += '</div>';
       }
 
-      // Outreach Section (for Slack users)
-      if (context.outreach || context.slack_user) {
+      // Outreach History Section (for Slack users)
+      if (context.outreach) {
         html += '<div class="context-section">';
-        html += '<h3>Proactive Outreach</h3>';
+        html += '<h3>Outreach History</h3>';
         html += '<div class="context-grid">';
 
-        if (context.outreach) {
-          if (context.outreach.last_outreach_at) {
-            const lastDate = new Date(context.outreach.last_outreach_at).toLocaleDateString();
-            const daysAgo = context.outreach.days_since_outreach;
-            html += renderContextItem('Last Outreach', `${lastDate} (${daysAgo} days ago)`);
-          } else {
-            html += renderContextItem('Last Outreach', 'Never contacted');
-          }
-          html += renderContextItem('Total Outreaches', context.outreach.total_outreach_count.toString());
-          html += renderContextItem('Responses', context.outreach.responses_received.toString());
-          if (context.outreach.opted_out) {
-            html += `<div class="context-item" style="grid-column: 1 / -1;">
-              <span class="context-badge" style="background: var(--color-error-100); color: var(--color-error-700);">Opted Out</span>
-            </div>`;
-          }
+        if (context.outreach.last_outreach_at) {
+          const lastDate = new Date(context.outreach.last_outreach_at).toLocaleDateString();
+          const daysAgo = context.outreach.days_since_outreach;
+          html += renderContextItem('Last Outreach', `${lastDate} (${daysAgo} days ago)`);
+        } else {
+          html += renderContextItem('Last Outreach', 'Never contacted');
         }
-
+        html += renderContextItem('Total Outreaches', context.outreach.total_outreach_count.toString());
+        html += renderContextItem('Responses', context.outreach.responses_received.toString());
+        if (context.outreach.opted_out) {
+          html += `<div class="context-item" style="grid-column: 1 / -1;">
+            <span class="context-badge" style="background: var(--color-error-100); color: var(--color-error-700);">Opted Out</span>
+          </div>`;
+        }
         html += '</div>';
 
-        // Show outreach actions if user has Slack
-        const slackUserId = context.slack_user?.slack_user_id;
-        if (slackUserId && !context.outreach?.opted_out) {
-          html += `<div style="margin-top: var(--space-3); display: flex; gap: var(--space-2);">
-            <button onclick="previewOutreach('${slackUserId}')" class="btn btn-secondary btn-small">Preview Outreach</button>
-            <button onclick="sendOutreach('${slackUserId}')" class="btn btn-primary btn-small" id="sendOutreachBtn-${slackUserId}">Send Outreach</button>
-          </div>`;
-          html += `<div id="outreachPreview-${slackUserId}" style="display: none; margin-top: var(--space-3);"></div>`;
+        // Detailed outreach history with conversation threads
+        if (context.outreach_history && context.outreach_history.length > 0) {
+          html += '<div style="margin-top: var(--space-3); max-height: 250px; overflow-y: auto;">';
+          context.outreach_history.forEach(outreach => {
+            const date = new Date(outreach.sent_at).toLocaleDateString();
+            const goalName = outreach.goal_name || 'General';
+            const hasResponse = outreach.user_responded;
+            const sentiment = outreach.response_sentiment;
+            const intent = outreach.response_intent;
+
+            // Sentiment badge colors
+            let sentimentBadge = '';
+            if (sentiment) {
+              const colors = {
+                positive: 'background: var(--color-success-100); color: var(--color-success-700);',
+                neutral: 'background: var(--color-gray-100); color: var(--color-gray-700);',
+                negative: 'background: var(--color-warning-100); color: var(--color-warning-700);',
+                refusal: 'background: var(--color-error-100); color: var(--color-error-700);'
+              };
+              sentimentBadge = `<span style="font-size: var(--text-xs); padding: 2px 6px; border-radius: var(--radius-sm); ${colors[sentiment] || ''}">${sentiment}</span>`;
+            }
+
+            // Thread link if available
+            const threadLink = outreach.thread_id
+              ? `<a href="/admin/addie?thread=${encodeURIComponent(outreach.thread_id)}" target="_blank" style="color: var(--color-brand); font-size: var(--text-xs);">View Thread (${outreach.thread_message_count || 0} msgs)</a>`
+              : '';
+
+            html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
+                <span style="font-weight: var(--font-medium); font-size: var(--text-sm); color: var(--color-text-heading);">${escapeHtml(goalName)}</span>
+                <span style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${date}</span>
+              </div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1);">
+                ${hasResponse ? '✓ Responded' : '○ No response'} ${sentimentBadge}
+              </div>
+              ${outreach.response_text ? `<div style="font-size: var(--text-xs); color: var(--color-text-secondary); font-style: italic; margin-bottom: var(--space-1);">"${escapeHtml(outreach.response_text.substring(0, 100))}${outreach.response_text.length > 100 ? '...' : ''}"</div>` : ''}
+              ${threadLink}
+            </div>`;
+          });
+          html += '</div>';
         }
 
         html += '</div>';
@@ -2009,10 +2296,350 @@
       `;
     }
 
+    function renderCapabilityItem(label, value) {
+      const done = !!value;
+      return `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+        <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(label)}</span>
+        <span style="font-weight: var(--font-medium); color: ${done ? 'var(--color-success-600)' : 'var(--color-error-600)'}; float: right;">${done ? 'Yes' : 'No'}</span>
+      </div>`;
+    }
+
+    function renderCapabilityCount(label, count) {
+      const hasAny = count > 0;
+      return `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+        <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(label)}</span>
+        <span style="font-weight: var(--font-medium); color: ${hasAny ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${count}</span>
+      </div>`;
+    }
+
+    // =========================================================================
+    // Add Insight Modal Functions
+    // =========================================================================
+
+    let insightTypes = [];
+    let currentInsightSlackUserId = null;
+
+    async function loadInsightTypes() {
+      if (insightTypes.length > 0) return; // Already loaded
+      try {
+        const response = await fetch('/api/admin/insight-types');
+        if (response.ok) {
+          const types = await response.json();
+          insightTypes = types.filter(t => t.is_active);
+          populateInsightTypeDropdown();
+        }
+      } catch (error) {
+        console.error('Error loading insight types:', error);
+      }
+    }
+
+    function populateInsightTypeDropdown() {
+      const select = document.getElementById('insightType');
+      select.innerHTML = '<option value="">Select type...</option>';
+
+      // Group by strategic vs other
+      const strategicTypes = ['plans_2026', 'membership_goals', 'challenges', 'feedback', 'satisfaction', 'use_case', 'admin_context'];
+      const strategic = insightTypes.filter(t => strategicTypes.includes(t.name));
+      const other = insightTypes.filter(t => !strategicTypes.includes(t.name));
+
+      if (strategic.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = 'Strategic Insights';
+        strategic.forEach(type => {
+          const option = document.createElement('option');
+          option.value = type.id;
+          option.textContent = type.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          if (type.description) option.title = type.description;
+          group.appendChild(option);
+        });
+        select.appendChild(group);
+      }
+
+      if (other.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = 'Other Insights';
+        other.forEach(type => {
+          const option = document.createElement('option');
+          option.value = type.id;
+          option.textContent = type.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          if (type.description) option.title = type.description;
+          group.appendChild(option);
+        });
+        select.appendChild(group);
+      }
+    }
+
+    async function openAddInsightModal(slackUserId) {
+      currentInsightSlackUserId = slackUserId;
+      document.getElementById('insightSlackUserId').value = slackUserId;
+      document.getElementById('insightValue').value = '';
+      document.getElementById('insightConfidence').value = 'medium';
+
+      await loadInsightTypes();
+      document.getElementById('addInsightModal').classList.remove('hidden');
+      document.getElementById('insightType').focus();
+    }
+
+    function closeAddInsightModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('addInsightModal').classList.add('hidden');
+      currentInsightSlackUserId = null;
+    }
+
+    async function submitInsight(event) {
+      event.preventDefault();
+
+      const slackUserId = document.getElementById('insightSlackUserId').value;
+      const typeId = document.getElementById('insightType').value;
+      const value = document.getElementById('insightValue').value.trim();
+      const confidence = document.getElementById('insightConfidence').value;
+
+      if (!slackUserId || !typeId || !value) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      const btn = document.getElementById('submitInsightBtn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Adding...';
+      btn.disabled = true;
+
+      try {
+        const response = await fetch('/api/admin/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slack_user_id: slackUserId,
+            insight_type_id: parseInt(typeId),
+            value: value,
+            confidence: confidence,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to add insight');
+        }
+
+        closeAddInsightModal();
+
+        // Refresh the context modal to show the new insight
+        const user = allUsers.find(u => u.slack_user_id === slackUserId);
+        if (user) {
+          showContextModal(user.id || slackUserId, user.display_name || user.email || 'User');
+        }
+      } catch (error) {
+        alert('Error adding insight: ' + error.message);
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    // =========================================================================
+    // NUDGE/OVERRIDE MODAL FUNCTIONS
+    // =========================================================================
+
+    let currentNudgeSlackUserId = null;
+    let currentNudgeGoalId = null;
+    let currentNudgeGoal = null;
+
+    async function openNudgeModal(slackUserId, goalId) {
+      currentNudgeSlackUserId = slackUserId;
+      currentNudgeGoalId = goalId;
+
+      // Set hidden fields
+      document.getElementById('nudgeSlackUserId').value = slackUserId;
+      document.getElementById('nudgeGoalId').value = goalId;
+
+      // Reset form
+      document.getElementById('nudgeContext').value = '';
+      document.getElementById('nudgeGoalName').textContent = 'Loading...';
+      document.getElementById('nudgeGoalDescription').textContent = '';
+      document.getElementById('nudgeMessagePreview').style.display = 'none';
+
+      // Show modal
+      document.getElementById('nudgeModal').classList.remove('hidden');
+
+      // Fetch goal details
+      try {
+        const response = await fetch(`/api/admin/outbound/goals/${goalId}`);
+        if (!response.ok) throw new Error('Failed to load goal');
+
+        currentNudgeGoal = await response.json();
+        document.getElementById('nudgeGoalName').textContent = currentNudgeGoal.name;
+        document.getElementById('nudgeGoalDescription').textContent = currentNudgeGoal.description || '';
+
+        // Build and show message preview
+        const user = allUsers.find(u => u.slack_user_id === slackUserId);
+        const displayName = user?.display_name || user?.slack_real_name || 'there';
+        const companyName = user?.company_name || 'your company';
+
+        // Simple template substitution for preview
+        let messagePreview = currentNudgeGoal.message_template || '';
+        messagePreview = messagePreview.replace(/\{\{user_name\}\}/g, displayName);
+        messagePreview = messagePreview.replace(/\{\{company_name\}\}/g, companyName);
+
+        document.getElementById('nudgeMessageText').textContent = messagePreview;
+        document.getElementById('nudgeMessagePreview').style.display = 'block';
+
+        // Show "Just Save Context" button if context field has focus
+        // Remove existing listener first to prevent accumulation on repeated modal opens
+        const nudgeContextEl = document.getElementById('nudgeContext');
+        nudgeContextEl.removeEventListener('input', toggleSaveContextButton);
+        nudgeContextEl.addEventListener('input', toggleSaveContextButton);
+      } catch (error) {
+        console.error('Error loading goal:', error);
+        document.getElementById('nudgeGoalName').textContent = 'Goal #' + goalId;
+        document.getElementById('nudgeGoalDescription').textContent = 'Could not load goal details';
+      }
+    }
+
+    function toggleSaveContextButton() {
+      const hasContext = document.getElementById('nudgeContext').value.trim().length > 0;
+      document.getElementById('saveNudgeBtn').style.display = hasContext ? 'inline-flex' : 'none';
+    }
+
+    function closeNudgeModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('nudgeModal').classList.add('hidden');
+      currentNudgeSlackUserId = null;
+      currentNudgeGoalId = null;
+      currentNudgeGoal = null;
+    }
+
+    async function sendNudgeOutreach() {
+      if (!currentNudgeSlackUserId || !currentNudgeGoalId) {
+        alert('Missing user or goal information');
+        return;
+      }
+
+      const adminContext = document.getElementById('nudgeContext').value.trim();
+
+      if (!confirm(`Send outreach to this user using the "${currentNudgeGoal?.name || 'selected'}" goal? This will DM them via Slack.`)) {
+        return;
+      }
+
+      const btn = document.getElementById('sendNudgeBtn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Sending...';
+      btn.disabled = true;
+
+      try {
+        const response = await fetch('/api/admin/outreach/send-with-goal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slack_user_id: currentNudgeSlackUserId,
+            goal_id: currentNudgeGoalId,
+            admin_context: adminContext || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to send outreach');
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          btn.textContent = 'Sent!';
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-success');
+
+          // Close modal and refresh context after a moment
+          setTimeout(() => {
+            closeNudgeModal();
+            // Refresh context modal
+            const user = allUsers.find(u => u.slack_user_id === currentNudgeSlackUserId);
+            if (user) {
+              showContextModal(user.id || currentNudgeSlackUserId, user.display_name || user.email || 'User');
+            }
+          }, 1000);
+        } else {
+          throw new Error(data.error || 'Unknown error');
+        }
+      } catch (error) {
+        alert('Error sending outreach: ' + error.message);
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    async function saveNudgeAsInsight() {
+      const adminContext = document.getElementById('nudgeContext').value.trim();
+
+      if (!adminContext) {
+        alert('Please enter some context to save');
+        return;
+      }
+
+      if (!currentNudgeSlackUserId) {
+        alert('Missing user information');
+        return;
+      }
+
+      const btn = document.getElementById('saveNudgeBtn');
+      const originalText = btn.textContent;
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      try {
+        // First get the admin_context insight type
+        const typesResponse = await fetch('/api/admin/insight-types');
+        if (!typesResponse.ok) throw new Error('Failed to load insight types');
+
+        const types = await typesResponse.json();
+        const adminContextType = types.find(t => t.name === 'admin_context');
+
+        if (!adminContextType) {
+          throw new Error('admin_context insight type not found');
+        }
+
+        // Save the insight
+        const response = await fetch('/api/admin/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slack_user_id: currentNudgeSlackUserId,
+            insight_type_id: adminContextType.id,
+            value: adminContext,
+            confidence: 'high',
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to save insight');
+        }
+
+        btn.textContent = 'Saved!';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-success');
+
+        // Close modal and refresh context after a moment
+        setTimeout(() => {
+          closeNudgeModal();
+          // Refresh context modal
+          const user = allUsers.find(u => u.slack_user_id === currentNudgeSlackUserId);
+          if (user) {
+            showContextModal(user.id || currentNudgeSlackUserId, user.display_name || user.email || 'User');
+          }
+        }, 1000);
+      } catch (error) {
+        alert('Error saving insight: ' + error.message);
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
     // Close modal on Escape key
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         closeContextModal();
+        closeAddInsightModal();
+        closeNudgeModal();
       }
     });
 

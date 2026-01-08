@@ -402,6 +402,98 @@
       outline: 2px solid var(--color-brand);
       outline-offset: 2px;
     }
+
+    /* My Prospects Section */
+    .prospect-section {
+      background: linear-gradient(135deg, var(--color-brand-50) 0%, var(--color-bg-card) 100%);
+      border: 2px solid var(--color-brand-200);
+    }
+
+    .prospect-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .prospect-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .prospect-item:hover {
+      border-color: var(--color-brand-300);
+      transform: translateX(2px);
+    }
+
+    .prospect-item-name {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+
+    .prospect-item-meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .prospect-item-badge {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-full);
+      font-weight: var(--font-medium);
+    }
+
+    .prospect-item-badge.hot {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+
+    .prospect-item-badge.overdue {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
+    .prospect-item-badge.stale {
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-4);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+
+    .section-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+    }
+
+    @media (max-width: 768px) {
+      .section-columns {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .column-header {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
   </style>
 </head>
 <body>
@@ -416,6 +508,49 @@
       <div class="page-header">
         <h1>Dashboard</h1>
         <p class="subtitle">Tracking engagement, funnel health, and revenue</p>
+      </div>
+
+      <!-- MY PROSPECTS - Personal pipeline overview -->
+      <div class="goal-section prospect-section" id="myProspectsSection" style="display: none;">
+        <div class="goal-header clickable" onclick="window.location.href='/admin/prospects?mine=true'">
+          <div class="goal-title-group">
+            <span class="goal-icon">🎯</span>
+            <div>
+              <div class="goal-title">My Prospects</div>
+              <div class="goal-subtitle">Your personal pipeline and action items</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="hero-metric clickable" onclick="window.location.href='/admin/prospects?mine=true'">
+            <div class="metric-value" id="myTotalProspects">-</div>
+            <div class="metric-label">Total Owned</div>
+          </div>
+          <div class="metric-card clickable" onclick="window.location.href='/admin/prospects?mine=true&status=hot'">
+            <div class="metric-value" id="myHotProspects">-</div>
+            <div class="metric-label">Hot Prospects</div>
+          </div>
+          <div class="metric-card clickable" onclick="window.location.href='/admin/prospects?mine=true&status=followup'">
+            <div class="metric-value" id="myFollowups">-</div>
+            <div class="metric-label">Need Follow-up</div>
+          </div>
+        </div>
+
+        <div class="section-columns">
+          <div>
+            <div class="column-header">🔥 Hot Prospects</div>
+            <div class="prospect-list" id="hotProspectsList">
+              <div class="empty-state">No hot prospects</div>
+            </div>
+          </div>
+          <div>
+            <div class="column-header">⏰ Needs Attention</div>
+            <div class="prospect-list" id="followupsList">
+              <div class="empty-state">All caught up!</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- GOAL 1: ENGAGEMENT -->
@@ -472,7 +607,7 @@
 
       <!-- GOAL 2: FUNNEL -->
       <div class="goal-section">
-        <div class="goal-header clickable" onclick="window.location.href='/admin/prospects'">
+        <div class="goal-header clickable" onclick="window.location.href='/admin/accounts'">
           <div class="goal-title-group">
             <span class="goal-icon">📊</span>
             <div>
@@ -483,29 +618,19 @@
         </div>
 
         <div class="funnel">
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/members'">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/accounts?view=all'">
             <div class="funnel-value" id="totalOrgs">-</div>
             <div class="funnel-label">Total Orgs</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/prospects'">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/accounts?view=hot'">
             <div class="funnel-value" id="prospects">-</div>
-            <div class="funnel-label">Prospects</div>
+            <div class="funnel-label">Hot Prospects</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/prospects?filter=engaged'">
-            <div class="funnel-value" id="engagedProspects">-</div>
-            <div class="funnel-label">Engaged</div>
-          </div>
-          <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage clickable" onclick="window.location.href='/admin/prospects?filter=trial'">
-            <div class="funnel-value" id="trials">-</div>
-            <div class="funnel-label">Trials</div>
-          </div>
-          <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage active clickable" onclick="window.location.href='/admin/members?filter=paying'">
+          <div class="funnel-stage active clickable" onclick="window.location.href='/admin/accounts?view=members'">
             <div class="funnel-value" id="payingOrgs">-</div>
-            <div class="funnel-label">Paying</div>
+            <div class="funnel-label">Members</div>
           </div>
         </div>
 
@@ -517,6 +642,15 @@
           <div class="metric-card clickable" onclick="window.location.href='/admin/billing'">
             <div class="metric-value" id="activeSubscriptions">-</div>
             <div class="metric-label">Active Subscriptions</div>
+          </div>
+        </div>
+
+        <div class="insight-box clickable" id="accountsAttentionBox" onclick="window.location.href='/admin/accounts?view=needs_attention'" style="display: none;">
+          <div class="insight-label">📋 Accounts Needing Attention</div>
+          <div class="insight-text">
+            <span id="needsAttentionCount">-</span> need attention ·
+            <span id="newInsightsCount">-</span> with new insights ·
+            <span id="goingColdCount">-</span> going cold
           </div>
         </div>
       </div>
@@ -694,8 +828,6 @@
         // FUNNEL
         document.getElementById('totalOrgs').textContent = formatNumber(stats.total_orgs);
         document.getElementById('prospects').textContent = formatNumber(stats.prospects);
-        document.getElementById('engagedProspects').textContent = formatNumber(stats.engaged_prospects);
-        document.getElementById('trials').textContent = formatNumber(stats.trials);
         document.getElementById('payingOrgs').textContent = formatNumber(stats.paying_orgs);
         document.getElementById('totalUsers').textContent = formatNumber(stats.total_users);
         document.getElementById('activeSubscriptions').textContent = formatNumber(stats.active_subscriptions);
@@ -736,7 +868,92 @@
       }
     }
 
+    async function loadMyProspects() {
+      try {
+        const response = await fetch('/api/admin/my-prospects');
+        if (!response.ok) {
+          // Silently fail - user might not have any prospects
+          return;
+        }
+
+        const data = await response.json();
+
+        // Only show section if user has prospects
+        if (data.counts.total > 0) {
+          document.getElementById('myProspectsSection').style.display = 'block';
+
+          // Update counts
+          document.getElementById('myTotalProspects').textContent = formatNumber(data.counts.total);
+          document.getElementById('myHotProspects').textContent = formatNumber(data.counts.hot);
+          document.getElementById('myFollowups').textContent = formatNumber(data.counts.followup);
+
+          // Render hot prospects list
+          const hotList = document.getElementById('hotProspectsList');
+          if (data.hot_prospects.length > 0) {
+            hotList.innerHTML = data.hot_prospects.map(p => `
+              <div class="prospect-item" onclick="window.location.href='/admin/prospects/${p.org_id}'">
+                <div>
+                  <div class="prospect-item-name">${escapeHtml(p.name)}</div>
+                  <div class="prospect-item-meta">Score: ${p.engagement_score || 0}</div>
+                </div>
+                <span class="prospect-item-badge hot">🔥 Hot</span>
+              </div>
+            `).join('');
+          }
+
+          // Render followups list
+          const followupList = document.getElementById('followupsList');
+          if (data.needs_followup.length > 0) {
+            followupList.innerHTML = data.needs_followup.map(p => {
+              const isOverdue = p.reason === 'overdue';
+              const badgeClass = isOverdue ? 'overdue' : 'stale';
+              const badgeText = isOverdue ? '⚠️ Overdue' : `⏰ ${Math.round(p.days_since_activity)}d`;
+              return `
+                <div class="prospect-item" onclick="window.location.href='/admin/prospects/${p.org_id}'">
+                  <div>
+                    <div class="prospect-item-name">${escapeHtml(p.name)}</div>
+                    <div class="prospect-item-meta">${isOverdue ? p.next_step || 'Action needed' : 'Last activity: ' + (p.last_activity ? new Date(p.last_activity).toLocaleDateString() : 'Never')}</div>
+                  </div>
+                  <span class="prospect-item-badge ${badgeClass}">${badgeText}</span>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+      } catch (error) {
+        console.error('Error loading my prospects:', error);
+        // Don't show error to user - section will just stay hidden
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function loadAccountViewCounts() {
+      try {
+        const response = await fetch('/api/admin/accounts/view-counts');
+        if (!response.ok) return;
+
+        const counts = await response.json();
+        const hasAttention = counts.needs_attention > 0 || counts.new_insights > 0 || counts.going_cold > 0;
+
+        if (hasAttention) {
+          document.getElementById('accountsAttentionBox').style.display = 'block';
+          document.getElementById('needsAttentionCount').textContent = formatNumber(counts.needs_attention);
+          document.getElementById('newInsightsCount').textContent = formatNumber(counts.new_insights);
+          document.getElementById('goingColdCount').textContent = formatNumber(counts.going_cold);
+        }
+      } catch (error) {
+        console.error('Error loading account counts:', error);
+      }
+    }
+
     loadStats();
+    loadMyProspects();
+    loadAccountViewCounts();
   </script>
 </body>
 </html>

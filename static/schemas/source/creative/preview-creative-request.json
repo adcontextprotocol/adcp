@@ -33,7 +33,7 @@
               },
               "macros": {
                 "type": "object",
-                "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list. See docs/media-buy/creatives/universal-macros.md for available macros.",
+                "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list. See docs/creative/universal-macros.md for available macros.",
                 "additionalProperties": {
                   "type": "string"
                 }
@@ -46,7 +46,7 @@
             "required": [
               "name"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "template_id": {
@@ -70,7 +70,7 @@
         "format_id",
         "creative_manifest"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -120,7 +120,7 @@
                   "required": [
                     "name"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "template_id": {
@@ -137,7 +137,7 @@
               "format_id",
               "creative_manifest"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "minItems": 1,
           "maxItems": 50
@@ -158,7 +158,7 @@
         "request_type",
         "requests"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

@@ -1,0 +1,494 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/adagents.json",
+  "title": "Authorized Sales Agents",
+  "description": "Declaration of authorized sales agents for advertising inventory. Hosted at /.well-known/adagents.json on publisher domains. Can either contain the full structure inline or reference an authoritative URL.",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "URL reference variant - points to the authoritative location of the adagents.json file",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this adagents.json file"
+        },
+        "authoritative_location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data."
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp indicating when this reference was last updated"
+        }
+      },
+      "required": [
+        "authoritative_location"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Inline structure variant - contains full agent authorization data",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this adagents.json file"
+        },
+        "contact": {
+          "type": "object",
+          "description": "Contact information for the entity managing this adagents.json file (may be publisher or third-party operator)",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the entity managing this file (e.g., 'Meta Advertising Operations', 'Clear Channel Digital')",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Contact email for questions or issues with this authorization file",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "domain": {
+              "type": "string",
+              "description": "Primary domain of the entity managing this file",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "seller_id": {
+              "type": "string",
+              "description": "Seller ID from IAB Tech Lab sellers.json (if applicable)",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "tag_id": {
+              "type": "string",
+              "description": "TAG Certified Against Fraud ID for verification (if applicable)",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": true
+        },
+        "properties": {
+          "type": "array",
+          "description": "Array of all properties covered by this adagents.json file. Defines the canonical property list that authorized agents reference.",
+          "items": {
+            "$ref": "/schemas/2.6.0/core/property.json"
+          },
+          "minItems": 1
+        },
+        "tags": {
+          "type": "object",
+          "description": "Metadata for each tag referenced by properties. Provides human-readable context for property tag values.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Human-readable name for this tag"
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of what this tag represents"
+              }
+            },
+            "required": [
+              "name",
+              "description"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "authorized_agents": {
+          "type": "array",
+          "description": "Array of sales agents authorized to sell inventory for properties in this file",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The authorized agent's API endpoint URL"
+                  },
+                  "authorized_for": {
+                    "type": "string",
+                    "description": "Human-readable description of what this agent is authorized to sell",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "authorization_type": {
+                    "type": "string",
+                    "const": "property_ids",
+                    "description": "Discriminator indicating authorization by specific property IDs"
+                  },
+                  "property_ids": {
+                    "type": "array",
+                    "description": "Property IDs this agent is authorized for. Resolved against the top-level properties array in this file",
+                    "items": {
+                      "$ref": "/schemas/2.6.0/core/property-id.json"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "url",
+                  "authorized_for",
+                  "authorization_type",
+                  "property_ids"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The authorized agent's API endpoint URL"
+                  },
+                  "authorized_for": {
+                    "type": "string",
+                    "description": "Human-readable description of what this agent is authorized to sell",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "authorization_type": {
+                    "type": "string",
+                    "const": "property_tags",
+                    "description": "Discriminator indicating authorization by property tags"
+                  },
+                  "property_tags": {
+                    "type": "array",
+                    "description": "Tags identifying which properties this agent is authorized for. Resolved against the top-level properties array in this file using tag matching",
+                    "items": {
+                      "$ref": "/schemas/2.6.0/core/property-tag.json"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "url",
+                  "authorized_for",
+                  "authorization_type",
+                  "property_tags"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The authorized agent's API endpoint URL"
+                  },
+                  "authorized_for": {
+                    "type": "string",
+                    "description": "Human-readable description of what this agent is authorized to sell",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "authorization_type": {
+                    "type": "string",
+                    "const": "inline_properties",
+                    "description": "Discriminator indicating authorization by inline property definitions"
+                  },
+                  "properties": {
+                    "type": "array",
+                    "description": "Specific properties this agent is authorized for (alternative to property_ids/property_tags)",
+                    "items": {
+                      "$ref": "/schemas/2.6.0/core/property.json"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "url",
+                  "authorized_for",
+                  "authorization_type",
+                  "properties"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The authorized agent's API endpoint URL"
+                  },
+                  "authorized_for": {
+                    "type": "string",
+                    "description": "Human-readable description of what this agent is authorized to sell",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "authorization_type": {
+                    "type": "string",
+                    "const": "publisher_properties",
+                    "description": "Discriminator indicating authorization for properties from other publisher domains"
+                  },
+                  "publisher_properties": {
+                    "type": "array",
+                    "description": "Properties from other publisher domains this agent is authorized for. Each entry specifies a publisher domain and which of their properties this agent can sell",
+                    "items": {
+                      "$ref": "/schemas/2.6.0/core/publisher-property-selector.json"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "url",
+                  "authorized_for",
+                  "authorization_type",
+                  "publisher_properties"
+                ],
+                "additionalProperties": true
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp indicating when this file was last updated"
+        }
+      },
+      "required": [
+        "authorized_agents"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "examples": [
+    {
+      "$schema": "/schemas/2.6.0/adagents.json",
+      "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
+      "last_updated": "2025-01-15T10:00:00Z"
+    },
+    {
+      "$schema": "/schemas/2.6.0/adagents.json",
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "Example Site",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "example.com"
+            }
+          ],
+          "publisher_domain": "example.com"
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://agent.example.com",
+          "authorized_for": "Official sales agent",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "all"
+          ]
+        }
+      ],
+      "tags": {
+        "all": {
+          "name": "All Properties",
+          "description": "All properties in this file"
+        }
+      },
+      "last_updated": "2025-01-10T12:00:00Z"
+    },
+    {
+      "$schema": "/schemas/2.6.0/adagents.json",
+      "contact": {
+        "name": "Meta Advertising Operations",
+        "email": "adops@meta.com",
+        "domain": "meta.com",
+        "seller_id": "pub-meta-12345",
+        "tag_id": "12345"
+      },
+      "properties": [
+        {
+          "property_type": "mobile_app",
+          "name": "Instagram",
+          "identifiers": [
+            {
+              "type": "ios_bundle",
+              "value": "com.burbn.instagram"
+            },
+            {
+              "type": "android_package",
+              "value": "com.instagram.android"
+            }
+          ],
+          "tags": [
+            "meta_network",
+            "social_media"
+          ],
+          "publisher_domain": "instagram.com"
+        },
+        {
+          "property_type": "mobile_app",
+          "name": "Facebook",
+          "identifiers": [
+            {
+              "type": "ios_bundle",
+              "value": "com.facebook.Facebook"
+            },
+            {
+              "type": "android_package",
+              "value": "com.facebook.katana"
+            }
+          ],
+          "tags": [
+            "meta_network",
+            "social_media"
+          ],
+          "publisher_domain": "facebook.com"
+        },
+        {
+          "property_type": "mobile_app",
+          "name": "WhatsApp",
+          "identifiers": [
+            {
+              "type": "ios_bundle",
+              "value": "net.whatsapp.WhatsApp"
+            },
+            {
+              "type": "android_package",
+              "value": "com.whatsapp"
+            }
+          ],
+          "tags": [
+            "meta_network",
+            "messaging"
+          ],
+          "publisher_domain": "whatsapp.com"
+        }
+      ],
+      "tags": {
+        "meta_network": {
+          "name": "Meta Network",
+          "description": "All Meta-owned properties"
+        },
+        "social_media": {
+          "name": "Social Media Apps",
+          "description": "Social networking applications"
+        },
+        "messaging": {
+          "name": "Messaging Apps",
+          "description": "Messaging and communication apps"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://meta-ads.com",
+          "authorized_for": "All Meta properties",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "meta_network"
+          ]
+        }
+      ],
+      "last_updated": "2025-01-10T15:30:00Z"
+    },
+    {
+      "$schema": "/schemas/2.6.0/adagents.json",
+      "contact": {
+        "name": "Tumblr Advertising"
+      },
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "Tumblr Corporate",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "tumblr.com"
+            }
+          ],
+          "tags": [
+            "corporate"
+          ],
+          "publisher_domain": "tumblr.com"
+        }
+      ],
+      "tags": {
+        "corporate": {
+          "name": "Corporate Properties",
+          "description": "Tumblr-owned corporate properties (not user blogs)"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://tumblr-sales.com",
+          "authorized_for": "Tumblr corporate properties only",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "corporate"
+          ]
+        }
+      ],
+      "last_updated": "2025-01-10T16:00:00Z"
+    },
+    {
+      "$schema": "/schemas/2.6.0/adagents.json",
+      "contact": {
+        "name": "Example Third-Party Sales Agent",
+        "email": "sales@agent.example",
+        "domain": "agent.example"
+      },
+      "authorized_agents": [
+        {
+          "url": "https://agent.example/api",
+          "authorized_for": "CNN CTV properties via publisher authorization",
+          "authorization_type": "publisher_properties",
+          "publisher_properties": [
+            {
+              "publisher_domain": "cnn.com",
+              "selection_type": "by_id",
+              "property_ids": [
+                "cnn_ctv_app"
+              ]
+            }
+          ]
+        },
+        {
+          "url": "https://agent.example/api",
+          "authorized_for": "All CTV properties from multiple publishers",
+          "authorization_type": "publisher_properties",
+          "publisher_properties": [
+            {
+              "publisher_domain": "cnn.com",
+              "selection_type": "by_tag",
+              "property_tags": [
+                "ctv"
+              ]
+            },
+            {
+              "publisher_domain": "espn.com",
+              "selection_type": "by_tag",
+              "property_tags": [
+                "ctv"
+              ]
+            }
+          ]
+        }
+      ],
+      "last_updated": "2025-01-10T17:00:00Z"
+    }
+  ]
+}

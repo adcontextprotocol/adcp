@@ -720,36 +720,85 @@ export async function previewMerge(
     }
   }
 
-  // Check for member profile conflict
-  const profileCheck = await pool.query(
+  // Check org data to determine if user might have picked the wrong primary
+  const orgDataCheck = await pool.query(
     `SELECT
-       (SELECT COUNT(*) FROM member_profiles WHERE workos_organization_id = $1) as primary_count,
-       (SELECT COUNT(*) FROM member_profiles WHERE workos_organization_id = $2) as secondary_count`,
-    [primaryOrgId, secondaryOrgId]
-  );
-
-  if (profileCheck.rows[0].primary_count > 0 && profileCheck.rows[0].secondary_count > 0) {
-    warnings.push('Both organizations have member profiles - secondary profile will be deleted');
-  }
-
-  // Check for Stripe conflicts
-  const stripeCheck = await pool.query(
-    `SELECT
-       workos_organization_id, stripe_customer_id, stripe_subscription_id, subscription_status
-     FROM organizations
-     WHERE workos_organization_id = ANY($1)`,
+       o.workos_organization_id,
+       o.stripe_customer_id,
+       o.stripe_subscription_id,
+       o.subscription_status,
+       o.enrichment_at,
+       (SELECT COUNT(*) FROM organization_memberships WHERE workos_organization_id = o.workos_organization_id) as member_count,
+       (SELECT COUNT(*) FROM member_profiles WHERE workos_organization_id = o.workos_organization_id) as has_profile,
+       (SELECT COUNT(*) FROM working_group_memberships WHERE workos_organization_id = o.workos_organization_id) as wg_count,
+       (SELECT COUNT(*) FROM revenue_events WHERE workos_organization_id = o.workos_organization_id) as revenue_events
+     FROM organizations o
+     WHERE o.workos_organization_id = ANY($1)`,
     [[primaryOrgId, secondaryOrgId]]
   );
 
-  const secondaryStripe = stripeCheck.rows.find(r => r.workos_organization_id === secondaryOrgId);
+  const primaryData = orgDataCheck.rows.find(r => r.workos_organization_id === primaryOrgId);
+  const secondaryData = orgDataCheck.rows.find(r => r.workos_organization_id === secondaryOrgId);
 
-  if (secondaryStripe?.stripe_customer_id) {
-    warnings.push(`⚠️ STRIPE: Secondary org has Stripe customer ${secondaryStripe.stripe_customer_id} - this will NOT be merged automatically. Manual Stripe cleanup required.`);
+  // Calculate a "value score" for each org - higher = more valuable to keep as primary
+  const scoreOrg = (data: typeof primaryData) => {
+    if (!data) return 0;
+    let score = 0;
+    // Stripe is most important - paying customer
+    if (data.stripe_customer_id) score += 100;
+    if (data.stripe_subscription_id) score += 50;
+    if (data.subscription_status === 'active') score += 50;
+    // Revenue history
+    score += parseInt(data.revenue_events, 10) * 20;
+    // Member engagement
+    score += parseInt(data.member_count, 10) * 5;
+    score += parseInt(data.wg_count, 10) * 10;
+    if (parseInt(data.has_profile, 10) > 0) score += 15;
+    // Enrichment data
+    if (data.enrichment_at) score += 10;
+    return score;
+  };
+
+  const primaryScore = scoreOrg(primaryData);
+  const secondaryScore = scoreOrg(secondaryData);
+
+  // If secondary has significantly more "value", warn strongly
+  if (secondaryScore > primaryScore) {
+    const reasons: string[] = [];
+    if (secondaryData?.stripe_customer_id && !primaryData?.stripe_customer_id) {
+      reasons.push('has Stripe customer');
+    }
+    if (secondaryData?.stripe_subscription_id && !primaryData?.stripe_subscription_id) {
+      reasons.push('has active subscription');
+    }
+    if (parseInt(secondaryData?.revenue_events || '0', 10) > parseInt(primaryData?.revenue_events || '0', 10)) {
+      reasons.push('has payment history');
+    }
+    if (parseInt(secondaryData?.member_count || '0', 10) > parseInt(primaryData?.member_count || '0', 10)) {
+      reasons.push(`more members (${secondaryData?.member_count} vs ${primaryData?.member_count})`);
+    }
+    if (parseInt(secondaryData?.wg_count || '0', 10) > parseInt(primaryData?.wg_count || '0', 10)) {
+      reasons.push('more working group participation');
+    }
+
+    if (reasons.length > 0) {
+      warnings.unshift(`🔴 SWAP RECOMMENDED: The secondary org ${reasons.join(', ')}. Consider making it the primary instead.`);
+    }
   }
 
-  if (secondaryStripe?.stripe_subscription_id) {
-    const status = secondaryStripe.subscription_status || 'unknown';
-    warnings.push(`⚠️ STRIPE: Secondary org has subscription ${secondaryStripe.stripe_subscription_id} (status: ${status}) - cancel in Stripe before merging`);
+  // Check for member profile conflict
+  if (parseInt(primaryData?.has_profile || '0', 10) > 0 && parseInt(secondaryData?.has_profile || '0', 10) > 0) {
+    warnings.push('Both organizations have member profiles - secondary profile will be deleted');
+  }
+
+  // Stripe-specific warnings (these need manual handling regardless of which is primary)
+  if (secondaryData?.stripe_customer_id) {
+    warnings.push(`⚠️ STRIPE: Secondary org has Stripe customer ${secondaryData.stripe_customer_id} - this will NOT be merged automatically. Manual Stripe cleanup required.`);
+  }
+
+  if (secondaryData?.stripe_subscription_id) {
+    const status = secondaryData.subscription_status || 'unknown';
+    warnings.push(`⚠️ STRIPE: Secondary org has subscription ${secondaryData.stripe_subscription_id} (status: ${status}) - cancel in Stripe before merging`);
   }
 
   // Check for admin DM channel conflict
