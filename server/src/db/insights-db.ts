@@ -1001,6 +1001,24 @@ export class InsightsDatabase {
   }
 
   /**
+   * Mark outreach as converted (user completed the desired action, e.g., clicked link and signed up)
+   */
+  async markOutreachConverted(id: number, conversionNote: string): Promise<void> {
+    await query(
+      `UPDATE member_outreach
+       SET
+         user_responded = TRUE,
+         response_received_at = NOW(),
+         insight_extracted = TRUE,
+         response_text = $2,
+         response_sentiment = 'positive',
+         response_intent = 'converted'
+       WHERE id = $1`,
+      [id, conversionNote]
+    );
+  }
+
+  /**
    * Check if a user should be contacted (respects refusals, rate limits, grace period)
    */
   async canContactUser(slackUserId: string): Promise<{
