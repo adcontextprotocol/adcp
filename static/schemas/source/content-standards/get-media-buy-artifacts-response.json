@@ -36,9 +36,27 @@
                 "$ref": "/schemas/content-standards/artifact.json",
                 "description": "Full artifact with content assets"
               },
-              "creative_id": {
+              "country": {
                 "type": "string",
-                "description": "Which creative was delivered"
+                "description": "ISO 3166-1 alpha-2 country code where delivery occurred"
+              },
+              "channel": {
+                "type": "string",
+                "description": "Channel type (e.g., display, video, audio, social)"
+              },
+              "brand_context": {
+                "type": "object",
+                "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers.",
+                "properties": {
+                  "brand_id": {
+                    "type": "string",
+                    "description": "Brand identifier"
+                  },
+                  "sku_id": {
+                    "type": "string",
+                    "description": "Product/SKU identifier if applicable"
+                  }
+                }
               },
               "local_verdict": {
                 "type": "string",

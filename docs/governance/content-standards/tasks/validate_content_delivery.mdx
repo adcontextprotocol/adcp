@@ -41,7 +41,6 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | Standards configuration to validate against |
-| `media_buy_id` | string | No | Media buy these records belong to (for context) |
 | `records` | array | Yes | Delivery records to validate (max 10,000) |
 | `feature_ids` | array | No | Specific features to evaluate (defaults to all) |
 | `include_passed` | boolean | No | Include passed records in results (default: true) |
@@ -60,9 +59,24 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
       {"type": "text", "role": "title", "content": "Article Title"}
     ]
   },
-  "creative_id": "creative_abc"
+  "country": "US",
+  "channel": "display",
+  "brand_context": {
+    "brand_id": "nike_global",
+    "sku_id": "air_max_2025"
+  }
 }
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `record_id` | Yes | Unique identifier for this delivery record |
+| `artifact` | Yes | Content artifact where ad was delivered |
+| `media_buy_id` | No | Media buy this record belongs to (for multi-buy batches) |
+| `timestamp` | No | When the delivery occurred |
+| `country` | No | ISO 3166-1 alpha-2 country code for targeting context |
+| `channel` | No | Channel type (display, video, audio, social) |
+| `brand_context` | No | Brand/SKU information for policy evaluation (schema TBD) |
 
 ## Response
 

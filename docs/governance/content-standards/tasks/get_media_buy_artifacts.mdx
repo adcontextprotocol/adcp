@@ -79,7 +79,9 @@ The buyer requests artifacts from the seller using the same media buy parameters
           {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
         ]
       },
-      "creative_id": "creative_abc",
+      "country": "US",
+      "channel": "social",
+      "brand_context": {"brand_id": "nike_global", "sku_id": "air_max_2025"},
       "local_verdict": "pass"
     },
     {
@@ -94,7 +96,9 @@ The buyer requests artifacts from the seller using the same media buy parameters
           {"type": "text", "role": "paragraph", "content": "The latest polling data shows...", "language": "en"}
         ]
       },
-      "creative_id": "creative_abc",
+      "country": "US",
+      "channel": "social",
+      "brand_context": {"brand_id": "nike_global", "sku_id": "air_max_2025"},
       "local_verdict": "fail"
     }
   ],
@@ -116,6 +120,9 @@ The buyer requests artifacts from the seller using the same media buy parameters
 | Field | Description |
 |-------|-------------|
 | `artifacts` | Array of delivery records with full artifact content |
+| `artifacts[].country` | ISO 3166-1 alpha-2 country code where delivery occurred |
+| `artifacts[].channel` | Channel type (display, video, audio, social) |
+| `artifacts[].brand_context` | Brand/SKU information for policy evaluation (schema TBD) |
 | `artifacts[].local_verdict` | Seller's local model verdict (pass/fail/unevaluated) |
 | `sampling_info` | How the sample was generated |
 | `pagination` | Cursor for fetching more results |
@@ -138,7 +145,9 @@ records = [
         "timestamp": a["timestamp"],
         "media_buy_id": artifacts_response["media_buy_id"],
         "artifact": a["artifact"],
-        "creative_id": a["creative_id"]
+        "country": a.get("country"),
+        "channel": a.get("channel"),
+        "brand_context": a.get("brand_context")
     }
     for a in artifacts_response["artifacts"]
 ]
@@ -146,7 +155,6 @@ records = [
 # Validate against verification agent
 validation = verification_agent.validate_content_delivery(
     standards_id="nike_brand_safety",
-    media_buy_id="mb_nike_reddit_q1",
     records=records
 )
 
