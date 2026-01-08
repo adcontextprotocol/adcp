@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.2/media-buy/list-authorized-properties-request.json",
+  "title": "List Authorized Properties Request",
+  "description": "Request parameters for discovering which publishers this agent is authorized to represent",
+  "type": "object",
+  "properties": {
+    "publisher_domains": {
+      "type": "array",
+      "description": "Filter to specific publisher domains (optional). If omitted, returns all publishers this agent represents.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+        "description": "Publisher domain to filter by (e.g., 'cnn.com', 'espn.com')"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/2.5.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.5.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

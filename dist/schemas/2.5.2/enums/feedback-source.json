@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.2/enums/feedback-source.json",
+  "title": "Feedback Source",
+  "description": "Source of performance feedback data",
+  "type": "string",
+  "enum": [
+    "buyer_attribution",
+    "third_party_measurement",
+    "platform_analytics",
+    "verification_partner"
+  ]
+}

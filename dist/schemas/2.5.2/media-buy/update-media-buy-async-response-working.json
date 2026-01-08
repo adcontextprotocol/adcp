@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.2/media-buy/update-media-buy-async-response-working.json",
+  "title": "Update Media Buy - Working",
+  "description": "Progress payload for active update_media_buy task.",
+  "type": "object",
+  "properties": {
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Completion percentage (0-100)"
+    },
+    "current_step": {
+      "type": "string",
+      "description": "Current step or phase of the operation"
+    },
+    "total_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of steps in the operation"
+    },
+    "step_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Current step number"
+    },
+    "context": {
+      "$ref": "/schemas/2.5.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.5.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}
