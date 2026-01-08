@@ -39,6 +39,7 @@ import {
 } from '../db/account-management-db.js';
 import { runMomentumCheck, dryRunMomentumCheck, previewMomentumForUser } from '../addie/jobs/momentum-check.js';
 import { runTaskReminderJob, previewTaskReminders } from '../addie/jobs/task-reminder.js';
+import { runGoalFollowUpJob, previewFollowUps, previewReconciliation } from '../addie/jobs/goal-follow-up.js';
 
 const logger = createLogger('admin-insights-routes');
 const insightsDb = new InsightsDatabase();
@@ -961,6 +962,141 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       });
     } catch (error) {
       logger.error({ err: error }, 'Error previewing outreach');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =========================================================================
+  // GOAL FOLLOW-UP ROUTES
+  // =========================================================================
+
+  // GET /api/admin/outreach/follow-ups/preview - Preview pending follow-ups
+  apiRouter.get('/outreach/follow-ups/preview', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pending = await previewFollowUps();
+      res.json({ pending, count: pending.length });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing follow-ups');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/outreach/reconciliation/preview - Preview goals that could be reconciled
+  apiRouter.get('/outreach/reconciliation/preview', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const goals = await previewReconciliation();
+      res.json({ goals, count: goals.length });
+    } catch (error) {
+      logger.error({ err: error }, 'Error previewing reconciliation');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/outreach/follow-ups/run - Run the follow-up job
+  apiRouter.post('/outreach/follow-ups/run', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { dryRun, skipFollowUps, skipReconciliation } = req.body;
+      const result = await runGoalFollowUpJob({
+        dryRun: dryRun ?? false,
+        skipFollowUps: skipFollowUps ?? false,
+        skipReconciliation: skipReconciliation ?? false,
+      });
+
+      logger.info({ result, triggeredBy: req.user?.id, dryRun }, 'Goal follow-up job triggered');
+      res.json(result);
+    } catch (error) {
+      logger.error({ err: error }, 'Error running follow-up job');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/outreach/timeline/:slackUserId - Get outreach timeline for a user
+  apiRouter.get('/outreach/timeline/:slackUserId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { slackUserId } = req.params;
+
+      // Validate Slack user ID format (starts with U or W, followed by alphanumeric)
+      if (!/^[UW][A-Z0-9]+$/i.test(slackUserId)) {
+        return res.status(400).json({ error: 'Invalid Slack user ID format' });
+      }
+
+      const pool = getPool();
+
+      // Get all outreach events for this user with full details
+      const result = await pool.query(`
+        SELECT
+          mo.id,
+          mo.sent_at,
+          mo.outreach_type,
+          mo.initial_message,
+          mo.user_responded,
+          mo.response_received_at,
+          mo.response_text,
+          mo.response_sentiment,
+          mo.response_intent,
+          mo.insight_extracted,
+          mo.variant_id,
+          ov.name as variant_name,
+          ov.tone as variant_tone,
+          -- Goal info from user_goal_history if linked
+          ugh.goal_id,
+          og.name as goal_name,
+          og.category as goal_category,
+          ugh.status as goal_status,
+          ugh.attempt_count
+        FROM member_outreach mo
+        LEFT JOIN outreach_variants ov ON ov.id = mo.variant_id
+        LEFT JOIN user_goal_history ugh ON ugh.outreach_id = mo.id
+        LEFT JOIN outreach_goals og ON og.id = ugh.goal_id
+        WHERE mo.slack_user_id = $1
+        ORDER BY mo.sent_at DESC
+        LIMIT 50
+      `, [slackUserId]);
+
+      // Get user info
+      const userResult = await pool.query(`
+        SELECT
+          slack_user_id,
+          slack_display_name,
+          slack_real_name,
+          slack_email,
+          workos_user_id,
+          last_outreach_at,
+          outreach_opt_out
+        FROM slack_user_mappings
+        WHERE slack_user_id = $1
+      `, [slackUserId]);
+
+      res.json({
+        user: userResult.rows[0] || null,
+        timeline: result.rows.map(row => ({
+          id: row.id,
+          sent_at: row.sent_at,
+          outreach_type: row.outreach_type,
+          message_preview: row.initial_message?.substring(0, 200) + (row.initial_message?.length > 200 ? '...' : ''),
+          response: row.user_responded ? {
+            received_at: row.response_received_at,
+            text: row.response_text,
+            sentiment: row.response_sentiment,
+            intent: row.response_intent,
+            insight_extracted: row.insight_extracted,
+          } : null,
+          variant: row.variant_id ? {
+            id: row.variant_id,
+            name: row.variant_name,
+            tone: row.variant_tone,
+          } : null,
+          goal: row.goal_id ? {
+            id: row.goal_id,
+            name: row.goal_name,
+            category: row.goal_category,
+            status: row.goal_status,
+            attempt_count: row.attempt_count,
+          } : null,
+        })),
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Error fetching outreach timeline');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
