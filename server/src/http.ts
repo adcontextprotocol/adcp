@@ -1288,6 +1288,14 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
 
+    // My Content - unified CMS for all authenticated users
+    this.app.get('/my-content', async (req, res) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect('https://agenticadvertising.org/my-content');
+      }
+      await this.serveHtmlWithConfig(req, res, 'my-content.html');
+    });
+
     // API endpoints
 
     // Public config endpoint - returns feature flags and auth state for nav
@@ -3386,7 +3394,7 @@ export class HTTPServer {
         } = req.body;
 
         const validContentTypes = ['article', 'link'];
-        const validStatuses = ['draft', 'published', 'archived'];
+        const validStatuses = ['draft', 'published', 'archived', 'pending_review', 'rejected'];
 
         if (!slug || !title) {
           return res.status(400).json({
@@ -3405,7 +3413,7 @@ export class HTTPServer {
         if (!validStatuses.includes(status)) {
           return res.status(400).json({
             error: 'Invalid status',
-            message: 'status must be: draft, published, or archived'
+            message: 'status must be: draft, published, archived, pending_review, or rejected'
           });
         }
 
@@ -3492,7 +3500,7 @@ export class HTTPServer {
         } = req.body;
 
         const validContentTypes = ['article', 'link'];
-        const validStatuses = ['draft', 'published', 'archived'];
+        const validStatuses = ['draft', 'published', 'archived', 'pending_review', 'rejected'];
 
         if (!slug || !title) {
           return res.status(400).json({
@@ -3511,7 +3519,7 @@ export class HTTPServer {
         if (status && !validStatuses.includes(status)) {
           return res.status(400).json({
             error: 'Invalid status',
-            message: 'status must be: draft, published, or archived'
+            message: 'status must be: draft, published, archived, pending_review, or rejected'
           });
         }
 
@@ -3903,8 +3911,9 @@ Disallow: /api/admin/
 
     // Note: /admin/billing is now served from billing.ts router
 
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-perspectives.html');
+    // Redirect old admin perspectives to unified CMS
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
+      res.redirect(301, '/my-content');
     });
 
     this.app.get('/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
