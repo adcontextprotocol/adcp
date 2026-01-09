@@ -355,6 +355,150 @@ export const MEMBER_TOOLS: AddieTool[] = [
   },
 
   // ============================================
+  // UNIFIED CONTENT MANAGEMENT
+  // ============================================
+  {
+    name: 'propose_content',
+    description:
+      'Create content for the website (perspectives, committee posts). Content can be for personal perspectives or committee collections. Committee leads and admins can publish directly; others submit for review. Supports co-authors.',
+    usage_hints: 'use for "write a perspective", "post to the sustainability group", "create an article", "share my thoughts on X"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Content title',
+        },
+        content: {
+          type: 'string',
+          description: 'Article content in markdown format (required for article type)',
+        },
+        content_type: {
+          type: 'string',
+          enum: ['article', 'link'],
+          description: 'Type of content. article=original content, link=external link with commentary (default: article)',
+        },
+        external_url: {
+          type: 'string',
+          description: 'URL for link type content',
+        },
+        excerpt: {
+          type: 'string',
+          description: 'Short excerpt/summary (auto-generated from content if not provided)',
+        },
+        category: {
+          type: 'string',
+          description: 'Category for the content',
+        },
+        collection: {
+          type: 'object',
+          description: 'Where to publish: personal (perspectives page) or committee (committee page)',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['personal', 'committee'],
+              description: 'Collection type',
+            },
+            committee_slug: {
+              type: 'string',
+              description: 'Committee slug (required if type is committee)',
+            },
+          },
+          required: ['type'],
+        },
+        co_author_emails: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Email addresses of co-authors to add',
+        },
+      },
+      required: ['title', 'collection'],
+    },
+  },
+  {
+    name: 'get_my_content',
+    description:
+      'Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.',
+    usage_hints: 'use for "show my content", "my perspectives", "what have I written?", "my pending posts"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['draft', 'pending_review', 'published', 'archived', 'rejected', 'all'],
+          description: 'Filter by status (default: all)',
+        },
+        collection: {
+          type: 'string',
+          description: 'Filter by collection: "personal" or a committee slug',
+        },
+        relationship: {
+          type: 'string',
+          enum: ['author', 'proposer', 'owner'],
+          description: 'Filter by relationship type',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_pending_content',
+    description:
+      'List content pending review that the user can approve/reject. Only committee leads see their committee content; admins see all pending content.',
+    usage_hints: 'use for "what content needs approval?", "pending posts", "review queue"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'Filter to a specific committee',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'approve_content',
+    description:
+      'Approve pending content for publication. Only committee leads (for their committees) and admins can approve content.',
+    usage_hints: 'use for "approve this post", "publish this content"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content_id: {
+          type: 'string',
+          description: 'The ID of the content to approve',
+        },
+        publish_immediately: {
+          type: 'boolean',
+          description: 'Whether to publish immediately (default: true) or save as draft',
+        },
+      },
+      required: ['content_id'],
+    },
+  },
+  {
+    name: 'reject_content',
+    description:
+      'Reject pending content with a reason. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason.',
+    usage_hints: 'use for "reject this post", "decline this content"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content_id: {
+          type: 'string',
+          description: 'The ID of the content to reject',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for rejection (required - helps the author understand and improve)',
+        },
+      },
+      required: ['content_id', 'reason'],
+    },
+  },
+
+  // ============================================
   // ACCOUNT LINKING
   // ============================================
   {
@@ -1181,6 +1325,330 @@ export function createMemberToolHandlers(
     }
 
     return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
+  });
+
+  // ============================================
+  // UNIFIED CONTENT MANAGEMENT
+  // ============================================
+  handlers.set('propose_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to create content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const title = input.title as string;
+    const contentBody = input.content as string | undefined;
+    const contentType = (input.content_type as string) || 'article';
+    const externalUrl = input.external_url as string | undefined;
+    const excerpt = input.excerpt as string | undefined;
+    const category = input.category as string | undefined;
+    const collection = input.collection as { type: string; committee_slug?: string };
+    const coAuthorEmails = input.co_author_emails as string[] | undefined;
+
+    // Validate requirements
+    if (contentType === 'article' && !contentBody) {
+      return 'Content is required for article type. Please provide the content in markdown format.';
+    }
+    if (contentType === 'link' && !externalUrl) {
+      return 'A URL is required for link type content. Please provide the external_url.';
+    }
+    if (collection.type === 'committee' && !collection.committee_slug) {
+      return 'committee_slug is required when targeting a committee collection.';
+    }
+
+    // Build request body
+    const body: Record<string, unknown> = {
+      title,
+      content: contentBody,
+      content_type: contentType,
+      external_url: externalUrl,
+      excerpt,
+      category,
+      collection,
+    };
+
+    // Handle co-authors by looking up user IDs from emails
+    if (coAuthorEmails && coAuthorEmails.length > 0) {
+      // For now, co-authors are added via a separate call after content creation
+      // We'll note them in the response
+    }
+
+    const result = await callApi('POST', '/api/content/propose', memberContext, body);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return `Committee "${collection.committee_slug}" not found. Use list_working_groups to see available committees.`;
+      }
+      return `Failed to create content: ${result.error}`;
+    }
+
+    const data = result.data as { id: string; slug: string; status: string; message: string };
+
+    let response = `## Content ${data.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
+    response += `**Title:** ${title}\n`;
+    response += `**Status:** ${data.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
+
+    if (collection.type === 'committee') {
+      response += `**Collection:** ${collection.committee_slug}\n`;
+    } else {
+      response += `**Collection:** Personal (perspectives)\n`;
+    }
+
+    if (data.status === 'published') {
+      if (collection.type === 'committee') {
+        response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
+      } else {
+        response += `\n**View:** https://agenticadvertising.org/perspectives/${data.slug}\n`;
+      }
+    } else {
+      response += `\n_A committee lead or admin will review your submission. You'll be notified when it's approved._\n`;
+    }
+
+    if (coAuthorEmails && coAuthorEmails.length > 0) {
+      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${data.id}`;
+    }
+
+    return response;
+  });
+
+  handlers.set('get_my_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const status = input.status as string | undefined;
+    const collection = input.collection as string | undefined;
+    const relationship = input.relationship as string | undefined;
+
+    // Build query string
+    const params = new URLSearchParams();
+    if (status && status !== 'all') params.set('status', status);
+    if (collection) params.set('collection', collection);
+    if (relationship) params.set('relationship', relationship);
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const result = await callApi('GET', `/api/me/content${queryString}`, memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch your content: ${result.error}`;
+    }
+
+    const data = result.data as {
+      items: Array<{
+        id: string;
+        slug: string;
+        title: string;
+        status: string;
+        content_type: string;
+        collection: { type: string; committee_name?: string; committee_slug?: string };
+        relationships: string[];
+        authors: Array<{ display_name: string }>;
+        published_at?: string;
+        created_at: string;
+      }>;
+    };
+
+    if (data.items.length === 0) {
+      let response = "You don't have any content yet.\n\n";
+      response += 'Use `propose_content` to create your first article or perspective!';
+      return response;
+    }
+
+    let response = `## Your Content\n\n`;
+
+    // Group by status
+    const byStatus: Record<string, typeof data.items> = {};
+    for (const item of data.items) {
+      if (!byStatus[item.status]) byStatus[item.status] = [];
+      byStatus[item.status].push(item);
+    }
+
+    // Display order: pending_review first, then published, then others
+    const statusOrder = ['pending_review', 'published', 'draft', 'rejected', 'archived'];
+    const statusEmoji: Record<string, string> = {
+      pending_review: '⏳',
+      published: '✅',
+      draft: '📝',
+      rejected: '❌',
+      archived: '📦',
+    };
+    const statusLabel: Record<string, string> = {
+      pending_review: 'Pending Review',
+      published: 'Published',
+      draft: 'Drafts',
+      rejected: 'Rejected',
+      archived: 'Archived',
+    };
+
+    for (const statusKey of statusOrder) {
+      const items = byStatus[statusKey];
+      if (!items || items.length === 0) continue;
+
+      response += `### ${statusEmoji[statusKey] || ''} ${statusLabel[statusKey] || statusKey} (${items.length})\n\n`;
+
+      for (const item of items) {
+        const collectionLabel = item.collection.type === 'committee'
+          ? `📁 ${item.collection.committee_name || item.collection.committee_slug}`
+          : '📁 Personal';
+        const roleLabels = item.relationships.map(r => {
+          if (r === 'author') return '✍️ Author';
+          if (r === 'proposer') return '📤 Proposer';
+          if (r === 'owner') return '👑 Owner';
+          return r;
+        }).join(' | ');
+
+        response += `**${item.title}**\n`;
+        response += `${collectionLabel} | ${roleLabels}\n`;
+        if (item.authors.length > 1) {
+          response += `_Co-authors: ${item.authors.map(a => a.display_name).join(', ')}_\n`;
+        }
+        if (item.published_at) {
+          response += `_Published: ${new Date(item.published_at).toLocaleDateString()}_\n`;
+        }
+        response += `\n`;
+      }
+    }
+
+    return response;
+  });
+
+  handlers.set('list_pending_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see pending content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const committeeSlug = input.committee_slug as string | undefined;
+    const queryString = committeeSlug ? `?committee_slug=${encodeURIComponent(committeeSlug)}` : '';
+
+    const result = await callApi('GET', `/api/content/pending${queryString}`, memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch pending content: ${result.error}`;
+    }
+
+    const data = result.data as {
+      items: Array<{
+        id: string;
+        title: string;
+        slug: string;
+        excerpt?: string;
+        content_type: string;
+        proposer: { id: string; name: string };
+        proposed_at: string;
+        collection: { type: string; committee_name?: string; committee_slug?: string };
+        authors: Array<{ display_name: string }>;
+      }>;
+      summary: {
+        total: number;
+        by_collection: Record<string, number>;
+      };
+    };
+
+    if (data.items.length === 0) {
+      return '✅ No pending content to review! All caught up.';
+    }
+
+    let response = `## Pending Content for Review\n\n`;
+    response += `**Total:** ${data.summary.total} item(s)\n\n`;
+
+    // Show breakdown by collection
+    if (Object.keys(data.summary.by_collection).length > 1) {
+      response += `**By collection:**\n`;
+      for (const [col, count] of Object.entries(data.summary.by_collection)) {
+        const label = col === 'personal' ? 'Personal perspectives' : col;
+        response += `- ${label}: ${count}\n`;
+      }
+      response += `\n`;
+    }
+
+    for (const item of data.items) {
+      const collectionLabel = item.collection.type === 'committee'
+        ? `📁 ${item.collection.committee_name || item.collection.committee_slug}`
+        : '📁 Personal';
+      const proposedDate = new Date(item.proposed_at).toLocaleDateString();
+
+      response += `---\n\n`;
+      response += `### ${item.title}\n`;
+      response += `**ID:** \`${item.id}\`\n`;
+      response += `${collectionLabel} | Proposed by ${item.proposer.name} on ${proposedDate}\n`;
+      if (item.excerpt) {
+        response += `\n_${item.excerpt}_\n`;
+      }
+      response += `\n**Actions:** \`approve_content\` or \`reject_content\` with content_id: \`${item.id}\`\n\n`;
+    }
+
+    return response;
+  });
+
+  handlers.set('approve_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to approve content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const contentId = input.content_id as string;
+    const publishImmediately = input.publish_immediately !== false; // default true
+
+    const result = await callApi(
+      'POST',
+      `/api/content/${contentId}/approve`,
+      memberContext,
+      { publish_immediately: publishImmediately }
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return 'Permission denied. Only committee leads and admins can approve content.';
+      }
+      if (result.status === 404) {
+        return `Content not found with ID: ${contentId}`;
+      }
+      if (result.status === 400) {
+        return `This content is not pending review. It may have already been processed.`;
+      }
+      return `Failed to approve content: ${result.error}`;
+    }
+
+    const data = result.data as { status: string; message: string };
+
+    if (publishImmediately) {
+      return `✅ Content approved and published! The author will be notified.`;
+    } else {
+      return `✅ Content approved and saved as draft. The author can publish when ready.`;
+    }
+  });
+
+  handlers.set('reject_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to reject content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const contentId = input.content_id as string;
+    const reason = input.reason as string;
+
+    if (!reason) {
+      return 'A reason is required when rejecting content. This helps the author understand and improve.';
+    }
+
+    const result = await callApi(
+      'POST',
+      `/api/content/${contentId}/reject`,
+      memberContext,
+      { reason }
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return 'Permission denied. Only committee leads and admins can reject content.';
+      }
+      if (result.status === 404) {
+        return `Content not found with ID: ${contentId}`;
+      }
+      if (result.status === 400) {
+        return `This content is not pending review. It may have already been processed.`;
+      }
+      return `Failed to reject content: ${result.error}`;
+    }
+
+    return `❌ Content rejected. The author will see the following reason:\n\n> ${reason}\n\nThey can revise and resubmit if appropriate.`;
   });
 
   // ============================================
