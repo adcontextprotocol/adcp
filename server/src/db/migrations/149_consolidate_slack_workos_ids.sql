@@ -17,12 +17,13 @@ WHERE wgm.workos_user_id = sm.slack_user_id
 
 -- Step 2: Remove duplicate memberships after consolidation
 -- Keep the oldest record (first joined) when duplicates exist
+-- Note: id is UUID (not sequential), so we use joined_at timestamp
 DELETE FROM working_group_memberships wgm1
 WHERE EXISTS (
   SELECT 1 FROM working_group_memberships wgm2
   WHERE wgm1.working_group_id = wgm2.working_group_id
     AND wgm1.workos_user_id = wgm2.workos_user_id
-    AND wgm1.id > wgm2.id  -- Keep the older record
+    AND wgm1.joined_at > wgm2.joined_at  -- Keep the older record
 );
 
 -- Step 3: Update working_group_leaders to use WorkOS user IDs where mappings exist
