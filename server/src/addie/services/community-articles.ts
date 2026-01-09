@@ -69,16 +69,8 @@ function isLikelyArticleUrl(url: string): boolean {
     return false;
   }
 
-  // Skip docs/sheets/slides
-  const googlePatterns = [
-    /docs\.google\.com/,
-    /sheets\.google\.com/,
-    /slides\.google\.com/,
-    /drive\.google\.com/,
-  ];
-  if (googlePatterns.some(pattern => pattern.test(urlLower))) {
-    return false;
-  }
+  // Google Docs/Sheets/Slides ARE valid - we can read them via Google API
+  // (handled specially in content-curator.ts)
 
   return true;
 }

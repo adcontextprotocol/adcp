@@ -19,6 +19,7 @@ import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
 import { query } from '../../db/client.js';
 import { getActiveChannels, type NotificationChannel } from '../../db/notification-channels-db.js';
+import { isGoogleDocsUrl, createGoogleDocsToolHandlers } from '../mcp/google-docs.js';
 
 const addieDb = new AddieDatabase();
 
@@ -28,8 +29,14 @@ const CURATOR_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 /**
  * Fetch URL content and extract article text using Mozilla Readability
  * This extracts just the main article content, removing navigation, ads, footers, etc.
+ * For Google Docs URLs, uses the Google Docs API instead of HTTP fetching.
  */
 async function fetchUrlContent(url: string): Promise<string> {
+  // Handle Google Docs specially via API
+  if (isGoogleDocsUrl(url)) {
+    return fetchGoogleDocsContent(url);
+  }
+
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'AddieBot/1.0 (AgenticAdvertising.org knowledge curator)',
@@ -77,6 +84,36 @@ async function fetchUrlContent(url: string): Promise<string> {
   }
 
   return text;
+}
+
+/**
+ * Fetch content from Google Docs using the Google Docs API
+ */
+async function fetchGoogleDocsContent(url: string): Promise<string> {
+  const handlers = createGoogleDocsToolHandlers();
+
+  if (!handlers) {
+    throw new Error('Google Docs API not configured - missing credentials');
+  }
+
+  const result = await handlers.read_google_doc({ url });
+
+  // Check for errors in the result
+  if (result.startsWith('Error:') || result.startsWith("I don't have access")) {
+    throw new Error(result);
+  }
+
+  // Strip the title/format header if present (e.g., "**Document Name** (txt)\n\n")
+  const contentMatch = result.match(/^\*\*[^*]+\*\*[^\n]*\n\n([\s\S]*)$/);
+  const content = contentMatch ? contentMatch[1] : result;
+
+  // Limit content length
+  const maxLength = 50000;
+  if (content.length > maxLength) {
+    return content.substring(0, maxLength) + '\n\n[Content truncated...]';
+  }
+
+  return content;
 }
 
 /**

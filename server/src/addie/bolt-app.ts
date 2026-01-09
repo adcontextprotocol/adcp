@@ -72,6 +72,7 @@ import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
+import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
@@ -340,6 +341,18 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
+  }
+
+  // Register Google Docs tools (for reading Google Docs/Drive files)
+  const googleDocsHandlers = createGoogleDocsToolHandlers();
+  if (googleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = googleDocsHandlers[tool.name];
+      if (handler) {
+        claudeClient.registerTool(tool, handler);
+      }
+    }
+    logger.info('Addie: Google Docs tools registered');
   }
 
   // Create the Assistant
