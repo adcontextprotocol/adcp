@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.7.0
+
+### Minor Changes
+
+- e2b0b62: Add unified `assets` field to format schema for better asset discovery
+
+  - Add new `assets` array to format schema with `required` boolean per asset
+  - Deprecate `assets_required` (still supported for backward compatibility)
+  - Enables full asset discovery for buyers and AI agents to see all supported assets
+  - Optional assets like impression trackers can now be discovered and used
+
+### Patch Changes
+
+- 309a880: Allow additional properties in all JSON schemas for forward compatibility
+
+  Changes all schemas from `"additionalProperties": false` to `"additionalProperties": true`. This enables clients running older schema versions to accept responses from servers with newer schemas without breaking validation - a standard practice for protocol evolution in distributed systems.
+
+- 5d0ce75: Add explicit type definition to error.json details property
+
+  The `details` property in core/error.json now explicitly declares `"type": "object"` and `"additionalProperties": true`, consistent with other error details definitions in the codebase. This addresses issue #343 where the data type was unspecified.
+
 ## 2.6.0
 
 ### Minor Changes
@@ -16,10 +37,12 @@
   Previously, buyers and AI agents could only see required assets via `assets_required`. There was no way to discover optional assets that enhance creatives (companion banners, third-party tracking pixels, etc.).
 
   Since each asset already has a `required` boolean field, we introduced a unified `assets` array where:
+
   - `required: true` - Asset MUST be provided for a valid creative
   - `required: false` - Asset is optional, enhances the creative when provided
 
   This enables:
+
   - **Full asset discovery**: Buyers and AI agents can see ALL assets a format supports
   - **Richer creatives**: Optional assets like impression trackers can now be discovered and used
   - **Cleaner schema**: Single array instead of two separate arrays
@@ -28,11 +51,29 @@
 
   ```json
   {
-    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_30s"
+    },
     "assets": [
-      { "item_type": "individual", "asset_id": "video_file", "asset_type": "video", "required": true },
-      { "item_type": "individual", "asset_id": "end_card", "asset_type": "image", "required": false },
-      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "url", "required": false }
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "asset_type": "video",
+        "required": true
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "end_card",
+        "asset_type": "image",
+        "required": false
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "asset_type": "url",
+        "required": false
+      }
     ]
   }
   ```
