@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/extensions/extension-meta.json",
+  "title": "AdCP Extension File Schema",
+  "description": "Schema that all extension files must follow. Combines metadata (valid_from, docs_url) with the actual extension data schema. Extensions are auto-discovered from /schemas/extensions/*.json and included in versioned builds based on valid_from/valid_until.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "http://json-schema.org/draft-07/schema#"
+    },
+    "$id": {
+      "type": "string",
+      "pattern": "^/schemas/extensions/[a-z][a-z0-9_]*\\.json$",
+      "description": "Extension ID following pattern /schemas/extensions/{namespace}.json"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable title for the extension"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this extension provides"
+    },
+    "valid_from": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Minimum AdCP version this extension is compatible with (e.g., '2.5'). Extension will be included in all versioned schema builds >= this version."
+    },
+    "valid_until": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Last AdCP version this extension is compatible with (e.g., '3.0'). Omit if extension is still valid for current and future versions."
+    },
+    "docs_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to documentation for implementors of this extension"
+    },
+    "type": {
+      "const": "object",
+      "description": "Extensions must be objects (data within ext.{namespace})"
+    },
+    "properties": {
+      "type": "object",
+      "description": "Schema properties defining the structure of ext.{namespace} data",
+      "additionalProperties": true
+    },
+    "required": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Required properties within the extension data"
+    },
+    "additionalProperties": {
+      "description": "Whether additional properties are allowed in the extension data"
+    }
+  },
+  "required": ["$schema", "$id", "title", "description", "valid_from", "type", "properties"]
+}
