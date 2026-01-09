@@ -1,0 +1,247 @@
+---
+title: Overview
+sidebar_position: 1
+---
+
+# Content Standards Protocol
+
+The Content Standards Protocol controls *content safety and suitability* - what content contexts are appropriate for a brand's ads.
+
+## What It Does
+
+Content Standards agents evaluate placement contexts against brand policies. This enables:
+
+- **Brand safety** - Is this content safe for *any* brand? (universal thresholds like hate speech, illegal content)
+- **Brand suitability** - Is this content appropriate for *my* brand? (brand-specific preferences and tone)
+- **Competitive separation** - Avoid appearing near competitor content
+
+## Key Concepts
+
+Content standards evaluation involves four key questions that buyers and sellers negotiate:
+
+1. **What content?** - What [artifacts](/docs/governance/content-standards/artifacts) to evaluate (the ad-adjacent content)
+2. **How much adjacency?** - How many artifacts around the ad slot to consider
+3. **What sampling rate?** - What percentage of traffic to evaluate
+4. **How to calibrate?** - How to align on policy interpretation before runtime
+
+These parameters are negotiated between buyer and seller during product discovery and media buy creation.
+
+## Workflow
+
+```mermaid
+sequenceDiagram
+    participant Brand
+    participant Buyer as Buyer Agent
+    participant Seller as Seller Agent
+    participant Verifier as Verification Agent
+
+    Note over Brand,Verifier: 1. SETUP PHASE
+    Brand->>Verifier: create_content_standards (policy + calibration examples)
+    Verifier-->>Brand: standards_id
+
+    Note over Brand,Verifier: 2. ACTIVATION PHASE
+    Brand->>Buyer: "Buy inventory from Reddit, use standards_id X"
+    Buyer->>Seller: create_media_buy (includes content_standards reference)
+
+    Seller->>Verifier: calibrate_content (sample artifacts)
+    Verifier-->>Seller: verdict + explanation
+    Seller->>Verifier: "What about this edge case?"
+    Verifier-->>Seller: clarification
+    Note over Seller: Seller builds local model
+
+    Note over Brand,Verifier: 3. RUNTIME PHASE
+    loop High-volume decisioning
+        Note over Seller: Local model evaluates artifacts
+    end
+
+    Buyer->>Seller: get_media_buy_artifacts (sampled)
+    Seller-->>Buyer: Content artifacts
+    Buyer->>Verifier: validate_content_delivery
+    Verifier-->>Buyer: Validation results
+```
+
+**Key insight**: Runtime decisioning happens locally at the seller (for scale). Buyers pull content samples from sellers and validate against the verification agent.
+
+## Adjacency
+
+How much content around the ad slot should be evaluated?
+
+| Context | Adjacency Examples |
+|---------|-------------------|
+| **News article** | The article where the ad appears |
+| **Social feed** | 1-2 posts above and below the ad slot |
+| **Podcast** | The segment before and after the ad break |
+| **CTV** | 1-2 scenes before and after the ad pod |
+| **Infinite scroll** | Posts within the visible viewport |
+
+Adjacency requirements are defined by the seller in their product catalog (`get_products`). The buyer can filter products based on adjacency guarantees:
+
+```json
+{
+  "product_id": "reddit_feed_standard",
+  "content_standards_adjacency_definition": {
+    "before": 2,
+    "after": 2,
+    "unit": "posts"
+  }
+}
+```
+
+### Adjacency Units
+
+| Unit | Use Case |
+|------|----------|
+| `posts` | Social feeds, forums, comment threads |
+| `scenes` | CTV, streaming video content |
+| `segments` | Podcasts, audio content |
+| `seconds` | Time-based adjacency in video/audio |
+| `viewports` | Infinite scroll contexts |
+| `articles` | News sites, content aggregators |
+
+Different products may offer different adjacency guarantees at different price points.
+
+## Sampling Rate
+
+What percentage of traffic should be evaluated by the verification agent?
+
+| Rate | Use Case |
+|------|----------|
+| **100%** | Premium brand safety - every impression validated |
+| **10-25%** | Standard monitoring - statistical confidence |
+| **1-5%** | Spot checking - drift detection only |
+
+Sampling rate is negotiated in the media buy:
+
+```json
+{
+  "governance": {
+    "content_standards": {
+      "agent_url": "https://safety.ias.com/adcp",
+      "standards_id": "nike_brand_safety",
+      "sampling_rate": 0.25
+    }
+  }
+}
+```
+
+Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage.
+
+## Policies
+
+Content Standards uses **natural language prompts** rather than rigid keyword lists:
+
+```json
+{
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
+  "calibration": {
+    "acceptable": [
+      {
+        "property_id": {"type": "domain", "value": "espn.com"},
+        "artifact_id": "nba_championship_recap_2024",
+        "assets": [{"type": "text", "role": "title", "content": "Championship Game Recap"}]
+      }
+    ],
+    "unacceptable": [
+      {
+        "property_id": {"type": "domain", "value": "tabloid.example.com"},
+        "artifact_id": "scandal_story_123",
+        "assets": [{"type": "text", "role": "title", "content": "Celebrity Scandal Exposed"}]
+      }
+    ]
+  }
+}
+```
+
+The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly.
+
+See [Artifacts](/docs/governance/content-standards/artifacts) for details on artifact structure and secured asset access.
+
+## Scoped Standards
+
+Buyers typically maintain multiple standards configurations for different contexts - UK TV campaigns have different regulations than US display, and children's brands need stricter safety than adult beverages.
+
+```json
+{
+  "standards_id": "coke_uk_tv_zero",
+  "name": "UK TV - Coca-Cola zero-calorie brands",
+  "brand_ids": ["coke_zero", "diet_coke"],
+  "countries_all": ["GB"],
+  "channels_any": ["ctv", "linear_tv"]
+}
+```
+
+**The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves.
+
+## Calibration
+
+Before running campaigns, sellers calibrate their local models against the verification agent. This is a **dialogue-based process** that may involve human review on either side:
+
+1. Seller sends sample artifacts to the verification agent
+2. Verification agent returns verdicts with detailed explanations
+3. Seller asks follow-up questions about edge cases
+4. Process repeats until alignment is achieved
+
+**Human-in-the-loop**: Calibration often involves humans on both sides. A brand safety specialist at the buyer might review edge cases flagged by the verification agent. A content operations team at the seller might curate calibration samples and validate the local model's learning. The protocol supports async workflows where either party can pause for human review before responding.
+
+```json
+// Seller: "Does this pass?"
+{
+  "artifact": {
+    "property_id": {"type": "domain", "value": "reddit.com"},
+    "artifact_id": "r_news_politics_123",
+    "assets": [{"type": "text", "role": "title", "content": "Political News Article"}]
+  }
+}
+
+// Verification agent: "No, because..."
+{
+  "verdict": "fail",
+  "explanation": "Political content is excluded by brand policy, even when balanced.",
+  "policy_alignment": {
+    "violations": [{
+      "policy_text": "Avoid content about controversial politics",
+      "violation_reason": "Article discusses ongoing political controversy"
+    }]
+  }
+}
+```
+
+See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) for the full task specification.
+
+## Tasks
+
+### Discovery
+
+| Task | Description |
+|------|-------------|
+| [list_content_features](/docs/governance/content-standards/tasks/list_content_features) | Discover features the agent can evaluate |
+| [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) | List available standards configurations |
+| [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) | Retrieve a specific standards configuration |
+
+### Management
+
+| Task | Description |
+|------|-------------|
+| [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) | Create a new standards configuration |
+| [update_content_standards](/docs/governance/content-standards/tasks/update_content_standards) | Update an existing standards configuration |
+| [delete_content_standards](/docs/governance/content-standards/tasks/delete_content_standards) | Delete a standards configuration |
+
+### Calibration & Validation
+
+| Task | Description |
+|------|-------------|
+| [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) | Collaborative dialogue to align on policy interpretation |
+| [get_media_buy_artifacts](/docs/governance/content-standards/tasks/get_media_buy_artifacts) | Retrieve content artifacts from a media buy |
+| [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of content artifacts |
+
+## Typical Providers
+
+- **IAS** - Integral Ad Science
+- **DoubleVerify** - Brand safety and verification
+- **Scope3** - Sustainability-focused brand safety with prompt-based policies
+- **Custom** - Brand-specific implementations
+
+## Related
+
+- [Artifacts](/docs/governance/content-standards/artifacts) - What artifacts are and how to structure them
+- [Brand Manifest](/docs/creative/brand-manifest) - Static brand identity that can link to standards agents

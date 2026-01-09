@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/get-content-standards-response.json",
+  "title": "Get Content Standards Response",
+  "description": "Response payload with content safety policies",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "standards_id": {
+          "type": "string",
+          "description": "Identifier for this standards configuration"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of this standards configuration"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this standards version became effective. Null or absent means not yet effective. Multiple standards may be effective simultaneously for different scopes."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this standards configuration"
+        },
+        "brand_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Brand identifiers as defined in the Brand Manifest"
+        },
+        "countries_all": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "ISO 3166-1 alpha-2 country codes - standards apply in ALL listed countries"
+        },
+        "channels_any": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Advertising channels - standards apply to ANY of the listed channels"
+        },
+        "policy": {
+          "type": "string",
+          "description": "Natural language policy describing acceptable and unacceptable content contexts"
+        },
+        "calibration": {
+          "type": "object",
+          "description": "Training/test set to calibrate policy interpretation. Note: Large calibration sets may impact response size - consider using pagination or separate retrieval for large artifact collections.",
+          "properties": {
+            "acceptable": {
+              "type": "array",
+              "items": { "$ref": "/schemas/content-standards/artifact.json" },
+              "description": "Artifacts that are acceptable"
+            },
+            "unacceptable": {
+              "type": "array",
+              "items": { "$ref": "/schemas/content-standards/artifact.json" },
+              "description": "Artifacts that are unacceptable"
+            }
+          }
+        },
+        "competitive_separation": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Competitor brands to avoid adjacency with"
+        },
+        "floor": {
+          "type": "string",
+          "enum": ["garm_floor", "custom"],
+          "description": "Safety floor baseline"
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["standards_id", "version"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "standards_id": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

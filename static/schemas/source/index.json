@@ -562,6 +562,67 @@
         }
       }
     },
+    "content-standards": {
+      "description": "Content Standards protocol task request/response schemas for content safety and suitability evaluation",
+      "models": {
+        "artifact": {
+          "$ref": "/schemas/content-standards/artifact.json",
+          "description": "Content artifact for evaluation or calibration - represents content adjacent to an ad placement, identified by property_id + artifact_id"
+        }
+      },
+      "tasks": {
+        "list-content-features": {
+          "request": {
+            "$ref": "/schemas/content-standards/list-content-features-request.json",
+            "description": "Request parameters for discovering available content safety features"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/list-content-features-response.json",
+            "description": "Response payload with available content features"
+          }
+        },
+        "get-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/get-content-standards-request.json",
+            "description": "Request parameters for retrieving content safety policies"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/get-content-standards-response.json",
+            "description": "Response payload with content safety policies"
+          }
+        },
+        "calibrate-content": {
+          "request": {
+            "$ref": "/schemas/content-standards/calibrate-content-request.json",
+            "description": "Request parameters for collaborative calibration dialogue"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/calibrate-content-response.json",
+            "description": "Response payload with detailed explanations for policy alignment"
+          }
+        },
+        "validate-content-delivery": {
+          "request": {
+            "$ref": "/schemas/content-standards/validate-content-delivery-request.json",
+            "description": "Request parameters for batch validating delivery records"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/validate-content-delivery-response.json",
+            "description": "Response payload with batch validation results"
+          }
+        },
+        "get-media-buy-artifacts": {
+          "request": {
+            "$ref": "/schemas/content-standards/get-media-buy-artifacts-request.json",
+            "description": "Request parameters for retrieving content artifacts from a media buy"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/get-media-buy-artifacts-response.json",
+            "description": "Response payload with content artifacts for validation"
+          }
+        }
+      }
+    },
     "adagents": {
       "description": "Authorized sales agents file format specification",
       "$ref": "/schemas/adagents.json",
