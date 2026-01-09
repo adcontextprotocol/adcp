@@ -32,8 +32,9 @@ interface ProposeContentRequest {
   category?: string;
   tags?: string[];
   collection: {
-    type: 'personal' | 'committee';
+    type?: 'personal' | 'committee';  // Deprecated - kept for backwards compatibility
     committee_slug?: string;
+    slug?: string;  // New format - collection slug directly
   };
   authors?: ContentAuthor[];
 }
@@ -88,6 +89,59 @@ async function getUserInfo(userId: string): Promise<{ name: string; title?: stri
 export function createContentRouter(): Router {
   const router = Router();
 
+  // GET /api/content/collections - Get available collections for content submission
+  router.get('/collections', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const pool = getPool();
+
+      // Get public collections (anyone can submit)
+      const publicResult = await pool.query(
+        `SELECT id, slug, name, description
+         FROM working_groups
+         WHERE accepts_public_submissions = TRUE
+         ORDER BY name`
+      );
+
+      // Get committees user is a member of (non-public ones)
+      const memberResult = await pool.query(
+        `SELECT wg.id, wg.slug, wg.name, wg.description,
+                EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1) as is_leader
+         FROM working_group_memberships wgm
+         JOIN working_groups wg ON wg.id = wgm.working_group_id
+         WHERE wgm.workos_user_id = $1
+           AND wg.accepts_public_submissions = FALSE
+         ORDER BY wg.name`,
+        [user.id]
+      );
+
+      const collections = [
+        ...publicResult.rows.map(row => ({
+          slug: row.slug,
+          name: row.name,
+          description: row.description,
+          type: 'public' as const,
+          can_publish_directly: false, // Public collections always require approval
+        })),
+        ...memberResult.rows.map(row => ({
+          slug: row.slug,
+          name: row.name,
+          description: row.description,
+          type: 'committee' as const,
+          can_publish_directly: row.is_leader,
+        })),
+      ];
+
+      res.json({ collections });
+    } catch (error) {
+      logger.error({ err: error }, 'GET /api/content/collections error');
+      res.status(500).json({
+        error: 'Failed to get collections',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // POST /api/content/propose - Submit content to any collection
   router.post('/propose', requireAuth, async (req, res) => {
     try {
@@ -113,10 +167,12 @@ export function createContentRouter(): Router {
         });
       }
 
-      if (!collection || !collection.type) {
+      // Support both old format (collection.type + committee_slug) and new format (just committee_slug)
+      const committeeSlug = collection?.committee_slug || collection?.slug;
+      if (!committeeSlug) {
         return res.status(400).json({
           error: 'Missing collection',
-          message: 'collection.type is required (personal or committee)',
+          message: 'collection.committee_slug or collection.slug is required',
         });
       }
 
@@ -136,40 +192,43 @@ export function createContentRouter(): Router {
       }
 
       const pool = getPool();
-      let committeeId: string | null = null;
-      let canPublishDirectly = false;
 
-      // Resolve committee if specified
-      if (collection.type === 'committee') {
-        if (!collection.committee_slug) {
-          return res.status(400).json({
-            error: 'Missing committee_slug',
-            message: 'committee_slug is required for committee content',
-          });
-        }
+      // Resolve the collection (working group)
+      const committeeResult = await pool.query(
+        `SELECT id, accepts_public_submissions FROM working_groups WHERE slug = $1`,
+        [committeeSlug]
+      );
 
-        const committeeResult = await pool.query(
-          `SELECT id FROM working_groups WHERE slug = $1`,
-          [collection.committee_slug]
+      if (committeeResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Collection not found',
+          message: `No collection found with slug: ${committeeSlug}`,
+        });
+      }
+
+      const committeeId = committeeResult.rows[0].id as string;
+      const acceptsPublicSubmissions = committeeResult.rows[0].accepts_public_submissions;
+
+      // Check if user can submit to this collection
+      const userIsLead = await isCommitteeLead(committeeId, user.id);
+      const userIsAdmin = await isAdmin(user.id);
+
+      // For non-public collections, user must be a member
+      if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
+        const membershipResult = await pool.query(
+          `SELECT 1 FROM working_group_memberships WHERE working_group_id = $1 AND workos_user_id = $2`,
+          [committeeId, user.id]
         );
-
-        if (committeeResult.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Committee not found',
-            message: `No committee found with slug: ${collection.committee_slug}`,
+        if (membershipResult.rows.length === 0) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this committee to submit content',
           });
         }
-
-        committeeId = committeeResult.rows[0].id as string;
-
-        // Check if user is a lead - can publish directly
-        canPublishDirectly = await isCommitteeLead(committeeId, user.id);
       }
 
-      // Site admins can always publish directly
-      if (await isAdmin(user.id)) {
-        canPublishDirectly = true;
-      }
+      // Determine if user can publish directly (leads and admins only)
+      const canPublishDirectly = userIsLead || userIsAdmin;
 
       // Generate slug from title
       const baseSlug = title
@@ -436,6 +495,93 @@ export function createContentRouter(): Router {
       logger.error({ err: error }, 'POST /api/content/:id/approve error');
       res.status(500).json({
         error: 'Failed to approve content',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/content/fetch-url - Fetch URL metadata for auto-fill
+  router.post('/fetch-url', requireAuth, async (req, res) => {
+    try {
+      const { url } = req.body;
+
+      if (!url) {
+        return res.status(400).json({
+          error: 'URL required',
+          message: 'Please provide a URL to fetch',
+        });
+      }
+
+      // Fetch the page
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+        redirect: 'follow',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch URL: ${response.status}`);
+      }
+
+      const html = await response.text();
+
+      // Extract metadata from HTML
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+      const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+      const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+      const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+      // Decode HTML entities helper
+      const decodeHtmlEntities = (text: string): string => {
+        return text
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec))
+          .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      };
+
+      // Determine title (prefer og:title, then <title>)
+      let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+      title = decodeHtmlEntities(title.trim());
+
+      // Determine description (prefer og:description, then meta description)
+      let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+      excerpt = decodeHtmlEntities(excerpt.trim());
+
+      // Site name from og:site_name or parse from URL
+      let site_name = ogSiteMatch?.[1] || '';
+      if (!site_name) {
+        try {
+          const parsedUrl = new URL(url);
+          site_name = parsedUrl.hostname.replace('www.', '');
+          // Capitalize first letter
+          site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+        } catch {
+          // ignore URL parse errors
+        }
+      }
+      site_name = decodeHtmlEntities(site_name);
+
+      res.json({
+        title,
+        excerpt,
+        site_name,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'POST /api/content/fetch-url error');
+      res.status(500).json({
+        error: 'Failed to fetch URL',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

@@ -485,8 +485,7 @@
             </select>
             <select id="collectionFilter" onchange="renderMyContent()">
               <option value="">All Collections</option>
-              <option value="personal">Personal</option>
-              <!-- Committee options added dynamically -->
+              <!-- Collections added dynamically -->
             </select>
           </div>
 
@@ -540,8 +539,7 @@
         <div class="form-group">
           <label>Publish To</label>
           <select id="collection" required>
-            <option value="personal">My Perspectives (Personal)</option>
-            <!-- Committee options added dynamically -->
+            <!-- Collections loaded dynamically from /api/content/collections -->
           </select>
           <small>Where this content will appear on the site</small>
         </div>
@@ -665,8 +663,8 @@
         currentUser = await meResponse.json();
         isAdmin = currentUser.is_admin;
 
-        // Load committees user can post to
-        await loadCommittees();
+        // Load collections user can post to
+        await loadCollections();
 
         // Load user's content
         await loadMyContent();
@@ -683,24 +681,24 @@
       }
     }
 
-    // Load committees for dropdowns
-    async function loadCommittees() {
+    // Load available collections for content submission
+    async function loadCollections() {
       try {
-        // Get committees user is a member of
-        const response = await fetch('/api/me/working-groups');
+        const response = await fetch('/api/content/collections');
         if (response.ok) {
           const data = await response.json();
-          committees = data.map(m => ({
-            slug: m.working_group.slug,
-            name: m.working_group.name,
-            isLeader: m.role === 'leader'
+          committees = data.collections.map(c => ({
+            slug: c.slug,
+            name: c.name,
+            type: c.type,
+            canPublishDirectly: c.can_publish_directly
           }));
 
           // Populate dropdowns
           populateCommitteeDropdowns();
         }
       } catch (error) {
-        console.error('Failed to load committees:', error);
+        console.error('Failed to load collections:', error);
       }
     }
 
@@ -709,15 +707,41 @@
       const collectionFilter = document.getElementById('collectionFilter');
       const reviewFilter = document.getElementById('reviewCollectionFilter');
 
-      // Add committee options to create modal
-      committees.forEach(c => {
-        const option = document.createElement('option');
-        option.value = `committee:${c.slug}`;
-        option.textContent = c.name;
-        collectionSelect.appendChild(option);
-      });
+      // Clear existing options
+      collectionSelect.innerHTML = '';
+      collectionFilter.innerHTML = '<option value="">All Collections</option>';
 
-      // Add to filter
+      // Group collections by type
+      const publicCollections = committees.filter(c => c.type === 'public');
+      const committeeCollections = committees.filter(c => c.type === 'committee');
+
+      // Add public collections first (site-wide)
+      if (publicCollections.length > 0) {
+        const publicGroup = document.createElement('optgroup');
+        publicGroup.label = 'Site-wide';
+        publicCollections.forEach(c => {
+          const option = document.createElement('option');
+          option.value = c.slug;
+          option.textContent = c.name;
+          publicGroup.appendChild(option);
+        });
+        collectionSelect.appendChild(publicGroup);
+      }
+
+      // Add committee collections
+      if (committeeCollections.length > 0) {
+        const committeeGroup = document.createElement('optgroup');
+        committeeGroup.label = 'Your Committees';
+        committeeCollections.forEach(c => {
+          const option = document.createElement('option');
+          option.value = c.slug;
+          option.textContent = c.name;
+          committeeGroup.appendChild(option);
+        });
+        collectionSelect.appendChild(committeeGroup);
+      }
+
+      // Add all to filter dropdown
       committees.forEach(c => {
         const option = document.createElement('option');
         option.value = c.slug;
@@ -725,9 +749,9 @@
         collectionFilter.appendChild(option);
       });
 
-      // Add led committees to review filter
-      const ledCommittees = committees.filter(c => c.isLeader);
-      ledCommittees.forEach(c => {
+      // Add collections user can review to review filter
+      const reviewableCollections = committees.filter(c => c.canPublishDirectly);
+      reviewableCollections.forEach(c => {
         const option = document.createElement('option');
         option.value = c.slug;
         option.textContent = c.name;
@@ -754,8 +778,8 @@
 
     // Check if user can review and load pending content
     async function checkReviewPermissions() {
-      const ledCommittees = committees.filter(c => c.isLeader);
-      canReview = isAdmin || ledCommittees.length > 0;
+      const reviewableCollections = committees.filter(c => c.canPublishDirectly);
+      canReview = isAdmin || reviewableCollections.length > 0;
 
       if (canReview) {
         document.getElementById('reviewTab').classList.remove('hidden');
@@ -798,11 +822,9 @@
         filtered = filtered.filter(c => c.status === statusFilter);
       }
       if (collectionFilter) {
-        if (collectionFilter === 'personal') {
-          filtered = filtered.filter(c => c.collection?.type === 'personal');
-        } else {
-          filtered = filtered.filter(c => c.collection?.committee_slug === collectionFilter);
-        }
+        filtered = filtered.filter(c =>
+          c.collection?.committee_slug === collectionFilter ||
+          c.collection?.slug === collectionFilter);
       }
 
       if (filtered.length === 0) {
@@ -847,9 +869,8 @@
     function renderContentItem(item, isPendingView) {
       const statusBadge = `<span class="badge badge-${item.status}">${formatStatus(item.status)}</span>`;
       const typeBadge = `<span class="badge badge-${item.content_type}">${item.content_type}</span>`;
-      const collectionBadge = item.collection?.type === 'committee'
-        ? `<span class="badge badge-committee">${item.collection.committee_name || item.collection.committee_slug}</span>`
-        : `<span class="badge badge-personal">Personal</span>`;
+      const collectionName = item.collection?.committee_name || item.collection?.name || item.collection?.committee_slug || 'Unknown';
+      const collectionBadge = `<span class="badge badge-committee">${collectionName}</span>`;
 
       const relationships = (item.relationships || []).map(r =>
         `<span class="badge badge-${r}">${r}</span>`
@@ -939,10 +960,9 @@
       document.getElementById('statusSelect').value = item.status === 'published' ? 'published' : 'draft';
 
       // Set collection
-      if (item.collection?.type === 'committee') {
-        document.getElementById('collection').value = `committee:${item.collection.committee_slug}`;
-      } else {
-        document.getElementById('collection').value = 'personal';
+      const collectionSlug = item.collection?.committee_slug || item.collection?.slug;
+      if (collectionSlug) {
+        document.getElementById('collection').value = collectionSlug;
       }
 
       setContentType(item.content_type || 'article');
@@ -957,12 +977,8 @@
       const item = myContent.find(c => c.id === id);
       if (!item) return;
 
-      let url;
-      if (item.collection?.type === 'committee') {
-        url = `/committees/${item.collection.committee_slug}`;
-      } else {
-        url = `/perspectives/${item.slug}`;
-      }
+      // All content now lives under perspectives
+      const url = `/perspectives/${item.slug}`;
       window.open(url, '_blank');
     }
 
@@ -1009,25 +1025,21 @@
 
     // Update status hint based on collection
     function updateStatusHint() {
-      const collection = document.getElementById('collection').value;
+      const collectionSlug = document.getElementById('collection').value;
       const hint = document.getElementById('statusHint');
       const statusSelect = document.getElementById('statusSelect');
 
-      if (collection.startsWith('committee:')) {
-        const slug = collection.replace('committee:', '');
-        const committee = committees.find(c => c.slug === slug);
+      const collection = committees.find(c => c.slug === collectionSlug);
 
-        if (committee?.isLeader || isAdmin) {
-          hint.textContent = 'As a lead, you can publish directly.';
-          statusSelect.disabled = false;
-        } else {
-          hint.textContent = 'Will be submitted for review by committee leads.';
-          statusSelect.value = 'draft';
-          statusSelect.disabled = true;
-        }
-      } else {
-        hint.textContent = 'Personal perspectives can be published directly.';
+      if (collection?.canPublishDirectly || isAdmin) {
+        hint.textContent = collection?.type === 'committee'
+          ? 'As a lead, you can publish directly.'
+          : 'You can publish directly.';
         statusSelect.disabled = false;
+      } else {
+        hint.textContent = 'Will be submitted for review.';
+        statusSelect.value = 'draft';
+        statusSelect.disabled = true;
       }
     }
 
@@ -1041,7 +1053,7 @@
       btn.textContent = 'Fetching...';
 
       try {
-        const response = await fetch('/api/admin/perspectives/fetch-url', {
+        const response = await fetch('/api/content/fetch-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url })
@@ -1066,19 +1078,8 @@
       event.preventDefault();
 
       const id = document.getElementById('contentId').value;
-      const collectionValue = document.getElementById('collection').value;
+      const collectionSlug = document.getElementById('collection').value;
       const statusValue = document.getElementById('statusSelect').value;
-
-      // Parse collection
-      let collection;
-      if (collectionValue.startsWith('committee:')) {
-        collection = {
-          type: 'committee',
-          committee_slug: collectionValue.replace('committee:', '')
-        };
-      } else {
-        collection = { type: 'personal' };
-      }
 
       const data = {
         title: document.getElementById('title').value.trim(),
@@ -1087,7 +1088,7 @@
         external_url: document.getElementById('externalUrl').value.trim() || null,
         excerpt: document.getElementById('excerpt').value.trim() || null,
         category: document.getElementById('category').value || null,
-        collection,
+        collection: { slug: collectionSlug },
       };
 
       const btn = document.getElementById('saveBtn');
