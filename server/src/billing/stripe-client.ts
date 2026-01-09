@@ -785,6 +785,7 @@ export interface InvoiceRequestData {
   };
   lookupKey: string; // Stripe price lookup key (e.g., 'aao_invoice_membership_10k')
   workosOrganizationId?: string;
+  couponId?: string; // Stripe coupon ID to apply discount to the invoice
 }
 
 /**
@@ -871,6 +872,8 @@ export async function createAndSendInvoice(
       items: [{ price: priceId }],
       collection_method: 'send_invoice',
       days_until_due: 30,
+      // Apply coupon if provided (for discounts)
+      ...(data.couponId && { discounts: [{ coupon: data.couponId }] }),
       metadata: {
         lookup_key: data.lookupKey,
         contact_name: data.contactName,

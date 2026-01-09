@@ -39,6 +39,8 @@ export type ExecutionPlanBase = {
   tokens_output?: number;
   /** Model used (only for LLM decisions) */
   model?: string;
+  /** When true, use a more capable model (Opus) for this query - for billing, financial, or precision-critical tasks */
+  requires_precision?: boolean;
 };
 
 export type ExecutionPlan = ExecutionPlanBase & (
@@ -47,6 +49,18 @@ export type ExecutionPlan = ExecutionPlanBase & (
   | { action: 'clarify'; question: string; reason: string }
   | { action: 'respond'; tools: string[]; reason: string }
 );
+
+/**
+ * Billing-related tools that require precision mode
+ * When these tools are selected, we'll use Opus instead of Sonnet
+ */
+export const PRECISION_REQUIRED_TOOLS = [
+  'find_membership_products',
+  'create_payment_link',
+  'send_invoice',
+  'send_payment_request',
+  'grant_discount',
+];
 
 /**
  * Context for routing decisions
@@ -472,6 +486,14 @@ export class AddieRouter {
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
 
+      // Check if any selected tools require precision mode (billing, financial)
+      let requiresPrecision = false;
+      if (parsedPlan.action === 'respond') {
+        requiresPrecision = parsedPlan.tools.some(tool =>
+          PRECISION_REQUIRED_TOOLS.includes(tool)
+        );
+      }
+
       const plan: ExecutionPlan = {
         ...parsedPlan,
         decision_method: 'llm',
@@ -479,6 +501,7 @@ export class AddieRouter {
         tokens_input: response.usage?.input_tokens,
         tokens_output: response.usage?.output_tokens,
         model: ModelConfig.fast,
+        requires_precision: requiresPrecision,
       };
 
       logger.debug({
@@ -488,6 +511,7 @@ export class AddieRouter {
         durationMs: latencyMs,
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
+        requiresPrecision,
       }, 'Router: Execution plan generated');
 
       return plan;

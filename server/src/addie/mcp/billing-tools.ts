@@ -69,7 +69,8 @@ Returns a URL the user can click to complete payment.`,
     name: 'send_invoice',
     description: `Send an invoice for a membership product to a customer.
 Use this when the customer needs to pay via invoice/PO instead of credit card.
-Requires full billing information including address.`,
+Requires full billing information including address.
+To apply a discount, first call grant_discount to create a coupon, then pass the coupon_id here.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -101,6 +102,10 @@ Requires full billing information including address.`,
             country: { type: 'string', description: 'Country code (e.g., US)' },
           },
           required: ['line1', 'city', 'state', 'postal_code', 'country'],
+        },
+        coupon_id: {
+          type: 'string',
+          description: 'Stripe coupon ID to apply a discount (get this from grant_discount tool)',
         },
       },
       required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
@@ -264,9 +269,10 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
       postal_code: string;
       country: string;
     };
+    const couponId = input.coupon_id as string | undefined;
 
     logger.info(
-      { lookupKey, contactEmail, companyName },
+      { lookupKey, contactEmail, companyName, hasCoupon: !!couponId },
       'Addie: Sending invoice'
     );
 
@@ -277,6 +283,7 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
         contactName,
         contactEmail,
         billingAddress,
+        couponId,
       });
 
       if (!result) {

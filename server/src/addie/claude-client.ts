@@ -43,6 +43,8 @@ export interface UserScopedToolsResult {
 export interface ProcessMessageOptions {
   /** Maximum tool iterations (default: DEFAULT_MAX_ITERATIONS) */
   maxIterations?: number;
+  /** Override the default model for this request (e.g., for billing queries requiring precision) */
+  modelOverride?: string;
 }
 
 /**
@@ -267,7 +269,13 @@ export class AddieClaudeClient {
     }));
 
     const maxIterations = options?.maxIterations ?? 10;
+    const effectiveModel = options?.modelOverride ?? this.model;
     let iteration = 0;
+
+    // Log if using precision model
+    if (options?.modelOverride && options.modelOverride !== this.model) {
+      logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
+    }
 
     // Combine global tools with per-request tools
     const allTools = [...this.tools, ...(requestTools?.tools || [])];
@@ -286,7 +294,7 @@ export class AddieClaudeClient {
       // Use beta API to access web search
       const llmStart = Date.now();
       const response = await this.client.beta.messages.create({
-        model: this.model,
+        model: effectiveModel,
         max_tokens: 4096,
         system: systemPrompt,
         tools: [

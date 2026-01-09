@@ -594,10 +594,9 @@ For discounts: Can create a new discount or auto-apply an existing org discount.
           enum: ['payment_link', 'invoice', 'lookup_only'],
           description: 'What to do: payment_link (default), invoice (sends email), or lookup_only (just show info)',
         },
-        product: {
+        lookup_key: {
           type: 'string',
-          enum: ['bronze', 'silver', 'gold', 'platinum'],
-          description: 'Membership tier (will suggest based on company size if not specified)',
+          description: 'Product lookup_key from find_membership_products (e.g., aao_membership_corporate_under5m). ALWAYS call find_membership_products first to get valid lookup keys. Do NOT use tier names like bronze/silver/gold.',
         },
         billing_address: {
           type: 'object',
@@ -2572,7 +2571,7 @@ export function createAdminToolHandlers(
     const contactEmail = input.contact_email as string | undefined;
     const contactTitle = input.contact_title as string | undefined;
     const action = (input.action as string) || 'payment_link';
-    const productTier = input.product as string | undefined;
+    const lookupKey = input.lookup_key as string | undefined;
     const billingAddress = input.billing_address as {
       line1?: string;
       line2?: string;
@@ -2733,30 +2732,38 @@ export function createAdminToolHandlers(
       logger.error({ err }, 'Failed to fetch products');
     }
 
-    // Suggest a product based on company size/revenue if not specified
+    // Select product by lookup_key if provided, otherwise suggest based on company size
     let suggestedProduct: BillingProduct | undefined;
     let selectedProduct: BillingProduct | undefined;
 
-    if (productTier) {
-      selectedProduct = products.find(p =>
-        p.lookup_key?.toLowerCase().includes(productTier.toLowerCase())
-      );
+    if (lookupKey) {
+      // Exact match on lookup_key
+      selectedProduct = products.find(p => p.lookup_key === lookupKey);
+      if (!selectedProduct) {
+        // Try partial match as fallback
+        selectedProduct = products.find(p =>
+          p.lookup_key?.toLowerCase().includes(lookupKey.toLowerCase())
+        );
+      }
+      if (!selectedProduct) {
+        return `❌ Product not found for lookup_key: "${lookupKey}". Use find_membership_products to get valid lookup keys.`;
+      }
     }
 
     if (!selectedProduct && products.length > 0) {
-      // Suggest based on enrichment data
+      // Suggest based on enrichment data (revenue tier based)
       const employeeCount = org.enrichment_employee_count || 0;
       const revenue = org.enrichment_revenue || 0;
 
-      // Simple heuristic for suggestion
+      // Match to actual product lookup_keys
       if (revenue > 250000000 || employeeCount > 500) {
-        suggestedProduct = products.find(p => p.lookup_key?.includes('platinum'));
-      } else if (revenue > 50000000 || employeeCount > 100) {
-        suggestedProduct = products.find(p => p.lookup_key?.includes('gold'));
+        suggestedProduct = products.find(p => p.lookup_key?.includes('industry_council'));
       } else if (revenue > 5000000 || employeeCount > 20) {
-        suggestedProduct = products.find(p => p.lookup_key?.includes('silver'));
+        suggestedProduct = products.find(p => p.lookup_key?.includes('corporate_5m'));
+      } else {
+        suggestedProduct = products.find(p => p.lookup_key?.includes('under5m'));
       }
-      suggestedProduct = suggestedProduct || products.find(p => p.lookup_key?.includes('bronze')) || products[0];
+      suggestedProduct = suggestedProduct || products[0];
     }
 
     const finalProduct = selectedProduct || suggestedProduct;
@@ -2791,9 +2798,10 @@ export function createAdminToolHandlers(
       for (const p of products.slice(0, 5)) {
         const amount = p.amount_cents ? `$${(p.amount_cents / 100).toLocaleString()}/yr` : 'Custom';
         const suggested = p === suggestedProduct ? ' ⭐ Suggested' : '';
-        response += `• ${p.display_name} - ${amount}${suggested}\n`;
+        response += `• **${p.display_name}** - ${amount}${suggested}\n`;
+        response += `  lookup_key: \`${p.lookup_key}\`\n`;
       }
-      response += `\n_Use this tool again with action="payment_link" or action="invoice" to proceed._`;
+      response += `\n_Use this tool again with action="payment_link" or action="invoice" and the lookup_key to proceed._`;
       return response;
     }
 
@@ -2912,6 +2920,51 @@ export function createAdminToolHandlers(
       }
 
       try {
+        // Handle discounts for invoices (similar to payment links)
+        let couponId: string | undefined;
+        let appliedDiscount: string | undefined;
+
+        // Check if a new discount was requested
+        if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+          if (!discountReason) {
+            return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+          }
+
+          // Create a new discount/coupon for this org
+          const grantedBy = memberContext?.workos_user?.email || 'Addie';
+          const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
+            percent_off: discountPercent,
+            amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
+            duration: 'forever',
+            reason: discountReason,
+          });
+
+          if (stripeDiscount) {
+            couponId = stripeDiscount.coupon_id;
+            // Also save to the org record
+            await orgDb.setDiscount(org.workos_organization_id, {
+              discount_percent: discountPercent ?? null,
+              discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+              reason: discountReason,
+              granted_by: grantedBy,
+              stripe_coupon_id: stripeDiscount.coupon_id,
+              stripe_promotion_code: stripeDiscount.promotion_code,
+            });
+            appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
+            logger.info({
+              orgId: org.workos_organization_id,
+              discount: appliedDiscount,
+              reason: discountReason,
+            }, 'Created discount for invoice');
+          }
+        } else if (useExistingDiscount && org.stripe_coupon_id) {
+          // Use the org's existing discount
+          couponId = org.stripe_coupon_id;
+          appliedDiscount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : `$${(org.discount_amount_cents || 0) / 100} off`;
+        }
+
         const invoiceResult = await createAndSendInvoice({
           companyName: org.name,
           contactName: org.prospect_contact_name || contactName || 'Billing',
@@ -2926,6 +2979,7 @@ export function createAdminToolHandlers(
           },
           lookupKey: finalProduct.lookup_key || '',
           workosOrganizationId: org.workos_organization_id,
+          couponId, // Apply discount if available
         });
 
         if (!invoiceResult) {
@@ -2935,7 +2989,19 @@ export function createAdminToolHandlers(
         response += `### 📧 Invoice Sent!\n\n`;
         response += `**Product:** ${finalProduct.display_name}\n`;
         if (finalProduct.amount_cents) {
-          response += `**Amount:** $${(finalProduct.amount_cents / 100).toLocaleString()}\n`;
+          const originalAmount = finalProduct.amount_cents / 100;
+          response += `**Amount:** $${originalAmount.toLocaleString()}`;
+          if (appliedDiscount) {
+            // Calculate discounted amount for display
+            let discountedAmount = originalAmount;
+            if (discountPercent) {
+              discountedAmount = originalAmount * (1 - discountPercent / 100);
+            } else if (discountAmountDollars) {
+              discountedAmount = originalAmount - discountAmountDollars;
+            }
+            response += ` → **$${discountedAmount.toLocaleString()}** (${appliedDiscount} applied)`;
+          }
+          response += `\n`;
         }
         response += `**Sent to:** ${emailToUse}\n`;
         response += `**Invoice ID:** ${invoiceResult.invoiceId}\n`;
@@ -2945,7 +3011,7 @@ export function createAdminToolHandlers(
         response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
 
         logger.info(
-          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId },
+          { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId, discount: appliedDiscount },
           'Addie sent invoice'
         );
 
