@@ -55,7 +55,7 @@ import {
   createBillingToolHandlers,
 } from './mcp/billing-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
-import { AddieModelConfig } from '../config/models.js';
+import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
   sanitizeInput,
@@ -2407,7 +2407,11 @@ async function handleChannelMessage({
 
     // Generate a response with the specified tools (includes admin tools if user is admin)
     const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+    // Use precision model (Opus) for billing/financial queries
+    const processOptions = {
+      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+      ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
+    };
     const response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
 
     if (!response.text || response.text.trim().length === 0) {
