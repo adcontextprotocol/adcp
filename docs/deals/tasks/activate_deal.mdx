@@ -1,0 +1,319 @@
+---
+sidebar_position: 2
+title: activate_deal
+---
+
+# activate_deal
+
+**Task**: Activate a deal on a specific SSP platform.
+
+**Response Time**: Seconds to minutes (typically fast, may be asynchronous for complex deals)
+
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/deals/activate-deal-request.json`](https://adcontextprotocol.org/schemas/v1/deals/activate-deal-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/deals/activate-deal-response.json`](https://adcontextprotocol.org/schemas/v1/deals/activate-deal-response.json)
+
+The `activate_deal` task activates a discovered deal on one or more SSP platforms, making it available for use in campaigns.
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `deal_id` | string | Yes | The unique identifier for the deal to activate (from `get_deals` response) |
+| `destinations` | Destination[] | Yes | Target SSP platform(s) for activation (see Destination Object below) |
+| `context` | object | No | Initiator-provided context for correlation tracking |
+| `ext` | object | No | Extension object for platform-specific or vendor-namespaced parameters |
+
+### Destination Object
+
+Each destination uses a `type` field to discriminate between platform-based and agent-based destinations:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | Discriminator: "platform" for SSPs, "agent" for other agents |
+| `platform_id` | string | Conditional* | Platform identifier (e.g., 'magnite', 'pubmatic', 'openx'). Required when type="platform" |
+| `agent_url` | string (URI) | Conditional* | URL identifying the agent. Required when type="agent" |
+| `account_id` | string | No | Account identifier on the platform or agent |
+
+*`platform_id` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
+
+**Important**: The destination platform must be in the deal's `platforms` array (from `get_deals` response). Attempting to activate on an unsupported platform will result in an error.
+
+## Response Structure
+
+The response uses an **atomic** pattern - it returns either success data OR error information, never both:
+
+### Success Response
+
+```json
+{
+  "deployments": [
+    {
+      "type": "platform",
+      "platform_id": "string",
+      "account_id": "string",
+      "deal_id": "string",
+      "status": "activated",
+      "activated_at": "string"
+    }
+  ],
+  "context": {},
+  "ext": {}
+}
+```
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "string",
+      "message": "string",
+      "field": "string",
+      "suggestion": "string",
+      "details": {}
+    }
+  ],
+  "context": {},
+  "ext": {}
+}
+```
+
+## Field Descriptions
+
+### Deployment Object (Success)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | "platform" or "agent" |
+| `platform_id` | string | SSP platform identifier (when type="platform") |
+| `agent_url` | string | Agent URL (when type="agent") |
+| `account_id` | string | Account identifier if applicable |
+| `deal_id` | string | The activated deal identifier |
+| `status` | string | "activated" when successful |
+| `activated_at` | string | ISO 8601 timestamp when activation completed |
+
+### Error Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `code` | string | Error code (see Error Codes below) |
+| `message` | string | Human-readable error description |
+| `field` | string | Field that caused the error (if applicable) |
+| `suggestion` | string | Suggested resolution |
+| `details` | object | Additional error context |
+
+## Example Request
+
+```json
+{
+  "deal_id": "deal_auto_premium_001",
+  "destinations": [
+    {
+      "type": "platform",
+      "platform_id": "magnite",
+      "account_id": "seller_acme123"
+    }
+  ]
+}
+```
+
+## Example Success Response
+
+```json
+{
+  "deployments": [
+    {
+      "type": "platform",
+      "platform_id": "magnite",
+      "account_id": "seller_acme123",
+      "deal_id": "deal_auto_premium_001",
+      "status": "activated",
+      "activated_at": "2025-11-18T20:45:00Z"
+    }
+  ],
+  "context": {
+    "request_id": "req_12345"
+  },
+  "ext": {}
+}
+```
+
+## Example Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "PLATFORM_NOT_SUPPORTED",
+      "message": "Deal 'deal_auto_premium_001' is not available on platform 'openx'",
+      "field": "destinations[0].platform_id",
+      "suggestion": "This deal is only available on platforms: ['magnite', 'pubmatic']. Use one of these platforms instead.",
+      "details": {
+        "deal_id": "deal_auto_premium_001",
+        "requested_platform": "openx",
+        "available_platforms": ["magnite", "pubmatic"]
+      }
+    }
+  ],
+  "context": {
+    "request_id": "req_12345"
+  },
+  "ext": {}
+}
+```
+
+## Multi-Platform Activation
+
+You can activate the same deal on multiple platforms if it's available on all of them:
+
+```json
+{
+  "deal_id": "deal_auto_premium_001",
+  "destinations": [
+    {
+      "type": "platform",
+      "platform_id": "magnite",
+      "account_id": "seller_acme123"
+    },
+    {
+      "type": "platform",
+      "platform_id": "pubmatic",
+      "account_id": "seller_acme456"
+    }
+  ]
+}
+```
+
+**Success Response** (all platforms activated):
+```json
+{
+  "deployments": [
+    {
+      "type": "platform",
+      "platform_id": "magnite",
+      "account_id": "seller_acme123",
+      "deal_id": "deal_auto_premium_001",
+      "status": "activated",
+      "activated_at": "2025-11-18T20:45:00Z"
+    },
+    {
+      "type": "platform",
+      "platform_id": "pubmatic",
+      "account_id": "seller_acme456",
+      "deal_id": "deal_auto_premium_001",
+      "status": "activated",
+      "activated_at": "2025-11-18T20:45:02Z"
+    }
+  ]
+}
+```
+
+## Error Codes
+
+### Activation Errors
+
+- **DEAL_NOT_FOUND**: The specified deal_id doesn't exist or is not accessible
+- **DEAL_INACTIVE**: Deal status is "inactive" and cannot be activated
+- **PLATFORM_NOT_SUPPORTED**: Requested platform is not in the deal's platforms array
+- **ACCOUNT_NOT_AUTHORIZED**: The principal is not authorized for the specified account
+- **DEAL_EXPIRED**: Deal end_date has passed
+- **DEAL_NOT_STARTED**: Deal start_date is in the future
+- **ACTIVATION_FAILED**: Platform connectivity or configuration issue prevented activation
+
+### Authorization Errors
+
+- **PRINCIPAL_NOT_AUTHORIZED**: Principal does not have access to this deal
+- **ADVERTISER_MISMATCH**: Deal advertiser doesn't match the authenticated principal
+
+## Asynchronous Activation
+
+For complex deals, activation may be asynchronous:
+
+### Initial Response
+
+```json
+{
+  "operation_id": "op_abc123",
+  "status": "pending",
+  "estimated_duration_minutes": 5,
+  "context": {
+    "request_id": "req_12345"
+  }
+}
+```
+
+### Status Tracking
+
+Use the `operation_id` to poll for status or configure webhooks for updates:
+
+```json
+{
+  "operation_id": "op_abc123",
+  "status": "completed",
+  "deployments": [
+    {
+      "type": "platform",
+      "platform_id": "magnite",
+      "deal_id": "deal_auto_premium_001",
+      "status": "activated",
+      "activated_at": "2025-11-18T20:50:00Z"
+    }
+  ]
+}
+```
+
+## Best Practices
+
+1. **Verify Platform Availability**: Check the deal's `platforms` array before calling `activate_deal`
+2. **Handle Atomic Responses**: Check for either `deployments` (success) or `errors` (failure)
+3. **Check Deal Status**: Only activate deals with status "draft" or "active"
+4. **Verify Dates**: Ensure current date is between deal `start_date` and `end_date`
+5. **Account Identifiers**: Provide `account_id` when activating for specific accounts
+6. **Error Recovery**: Implement retry logic for transient failures (e.g., ACTIVATION_FAILED)
+7. **Multi-Platform Strategy**: Activate on all available platforms for maximum reach, or choose specific platforms based on your strategy
+
+## Workflow Integration
+
+### Typical Flow
+
+1. **Discover deals** using `get_deals`
+2. **Review deal details**: pricing, targeting, platform availability
+3. **Select deal and platform(s)** from the `platforms` array
+4. **Activate deal** using `activate_deal` on chosen platform(s)
+5. **Use activated deal** in your campaign setup
+
+### Example Complete Workflow
+
+```javascript
+// Step 1: Discover deals
+const dealsResponse = await get_deals({
+  brief: "Premium video for automotive, US, max $25 CPM"
+});
+
+// Step 2: Select a deal
+const selectedDeal = dealsResponse.deals[0];
+console.log(`Selected: ${selectedDeal.name}`);
+console.log(`Available on: ${selectedDeal.platforms.join(', ')}`);
+
+// Step 3: Activate on preferred platform
+const activationResponse = await activate_deal({
+  deal_id: selectedDeal.deal_id,
+  destinations: [{
+    type: "platform",
+    platform_id: "magnite",
+    account_id: "my_seller_account"
+  }]
+});
+
+if (activationResponse.deployments) {
+  console.log(`Deal activated on ${activationResponse.deployments[0].platform_id}`);
+  // Proceed with campaign setup
+} else {
+  console.error(`Activation failed: ${activationResponse.errors[0].message}`);
+}
+```
+
+## Next Steps
+
+After activating a deal, use the deal_id in your campaign setup on the SSP platform to start serving ads through the deal.

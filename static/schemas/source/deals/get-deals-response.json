@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deals-response.json",
+  "title": "Get Deals Response",
+  "description": "Response payload for get_deals task",
+  "type": "object",
+  "properties": {
+    "deals": {
+      "type": "array",
+      "description": "Array of matching deal packages",
+      "items": {
+        "$ref": "/schemas/core/deal.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., deal discovery or pricing issues)",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deals"],
+  "additionalProperties": false
+}
