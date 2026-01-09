@@ -68,7 +68,7 @@ function validateRssContent(content: string, contentType: string): { valid: bool
 }
 
 interface FeedItem {
-  guid?: string;
+  guid?: string | { _: string };
   link?: string;
   title?: string;
   pubDate?: string;
@@ -144,7 +144,11 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
     }
 
     // Generate a stable GUID
-    const guid = item.guid || item.link;
+    // Handle RSS guids that may be objects with _ property (from XML attributes)
+    const rawGuid = item.guid;
+    const guid = typeof rawGuid === 'object' && rawGuid !== null && '_' in rawGuid
+      ? rawGuid._
+      : (rawGuid || item.link);
 
     // Parse publication date
     let publishedAt: Date | undefined;
