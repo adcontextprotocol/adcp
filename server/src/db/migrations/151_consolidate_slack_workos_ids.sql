@@ -1,50 +1,55 @@
--- Migration: 149_consolidate_slack_workos_ids.sql
+-- Migration: 151_consolidate_slack_workos_ids.sql
 -- Consolidate duplicate membership and leader records where users have both Slack and WorkOS IDs
 --
 -- Problem: Users who joined via Slack and later linked their WorkOS account have duplicate records.
 -- The same user appears with their Slack ID (e.g., U123) and their WorkOS ID (e.g., user_abc).
 -- The slack_user_mappings table links these together.
 --
--- Solution: Update all records to use the canonical WorkOS user ID, then remove duplicates.
+-- Solution: Delete duplicates first (where both Slack and WorkOS records exist), then update remaining records.
 
--- Step 1: Update working_group_memberships to use WorkOS user IDs where mappings exist
--- This converts Slack IDs to their linked WorkOS IDs
+-- Step 1: Delete the Slack-ID-based membership records where a WorkOS-ID-based record already exists
+-- This handles the case where both U123 and user_abc records exist for the same user/group
+DELETE FROM working_group_memberships wgm_slack
+WHERE EXISTS (
+  SELECT 1 FROM slack_user_mappings sm
+  WHERE wgm_slack.workos_user_id = sm.slack_user_id
+    AND sm.workos_user_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM working_group_memberships wgm_workos
+      WHERE wgm_workos.working_group_id = wgm_slack.working_group_id
+        AND wgm_workos.workos_user_id = sm.workos_user_id
+    )
+);
+
+-- Step 2: Now safely update remaining Slack IDs to WorkOS IDs (no duplicates possible)
 UPDATE working_group_memberships wgm
 SET workos_user_id = sm.workos_user_id
 FROM slack_user_mappings sm
 WHERE wgm.workos_user_id = sm.slack_user_id
   AND sm.workos_user_id IS NOT NULL;
 
--- Step 2: Remove duplicate memberships after consolidation
--- Keep the oldest record (first joined) when duplicates exist
--- Note: id is UUID (not sequential), so we use joined_at timestamp
-DELETE FROM working_group_memberships wgm1
+-- Step 3: Delete the Slack-ID-based leader records where a WorkOS-ID-based record already exists
+DELETE FROM working_group_leaders wgl_slack
 WHERE EXISTS (
-  SELECT 1 FROM working_group_memberships wgm2
-  WHERE wgm1.working_group_id = wgm2.working_group_id
-    AND wgm1.workos_user_id = wgm2.workos_user_id
-    AND wgm1.joined_at > wgm2.joined_at  -- Keep the older record
+  SELECT 1 FROM slack_user_mappings sm
+  WHERE wgl_slack.user_id = sm.slack_user_id
+    AND sm.workos_user_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM working_group_leaders wgl_workos
+      WHERE wgl_workos.working_group_id = wgl_slack.working_group_id
+        AND wgl_workos.user_id = sm.workos_user_id
+    )
 );
 
--- Step 3: Update working_group_leaders to use WorkOS user IDs where mappings exist
+-- Step 4: Now safely update remaining Slack IDs to WorkOS IDs (no duplicates possible)
 UPDATE working_group_leaders wgl
 SET user_id = sm.workos_user_id
 FROM slack_user_mappings sm
 WHERE wgl.user_id = sm.slack_user_id
   AND sm.workos_user_id IS NOT NULL;
 
--- Step 4: Remove duplicate leaders after consolidation
--- Keep the oldest record when duplicates exist
-DELETE FROM working_group_leaders wgl1
-WHERE EXISTS (
-  SELECT 1 FROM working_group_leaders wgl2
-  WHERE wgl1.working_group_id = wgl2.working_group_id
-    AND wgl1.user_id = wgl2.user_id
-    AND wgl1.created_at > wgl2.created_at  -- Keep the older record
-);
-
 -- Log the migration completion
 DO $$
 BEGIN
-  RAISE NOTICE 'Migration 149: Consolidated Slack/WorkOS user IDs in working_group_memberships and working_group_leaders';
+  RAISE NOTICE 'Migration 151: Consolidated Slack/WorkOS user IDs in working_group_memberships and working_group_leaders';
 END $$;
