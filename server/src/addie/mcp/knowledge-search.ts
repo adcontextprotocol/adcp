@@ -229,18 +229,22 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_slack',
     description:
-      'Search Slack messages from public channels in the AAO workspace. Use this when you need community discussions, Q&A threads, or real-world implementation examples. Recent messages are searched instantly from local index; older messages may fall back to live API (slower). Cite the Slack permalink when using information from results.',
-    usage_hints: 'use for community Q&A, "what did someone say about X?", real-world discussions',
+      'Search Slack messages from public channels in the AAO workspace. Use this when you need community discussions, Q&A threads, or real-world implementation examples. When asked about a specific channel or working group (e.g., "Governance working group"), use the channel parameter to filter results. When asked to summarize discussions, search for relevant keywords then synthesize the results. Cite the Slack permalink when using information from results.',
+    usage_hints: 'use for community Q&A, "what did someone say about X?", channel summaries, working group discussions',
     input_schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query - keywords or phrases to find in Slack messages',
+          description: 'Search query - keywords or phrases to find in Slack messages. Use broad terms when summarizing a channel (e.g., "governance" for governance discussions).',
+        },
+        channel: {
+          type: 'string',
+          description: 'Optional channel name to filter results (e.g., "governance-wg", "general"). Partial matches work.',
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results (default 5, max 10)',
+          description: 'Maximum number of results (default 10, max 25 for summaries)',
         },
       },
       required: ['query'],
@@ -610,12 +614,13 @@ ${excerpt}`;
   });
 
   handlers.set('search_slack', async (input) => {
-    const query = input.query as string;
-    const limit = Math.min((input.limit as number) || 5, 10);
+    const searchQuery = input.query as string;
+    const channel = input.channel as string | undefined;
+    const limit = Math.min((input.limit as number) || 10, 25);
 
     try {
-      // First, try local database search (instant, ~100ms)
-      const localResults = await addieDb.searchSlackMessages(query, { limit });
+      // Search local database with optional channel filter
+      const localResults = await addieDb.searchSlackMessages(searchQuery, { limit, channel });
 
       if (localResults.length > 0) {
         const formatted = localResults
@@ -634,13 +639,15 @@ ${excerpt}`;
           })
           .join('\n\n');
 
-        return `Found ${localResults.length} Slack messages (from local index):\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
+        const channelNote = channel ? ` in channels matching "${channel}"` : '';
+        return `Found ${localResults.length} Slack messages${channelNote}:\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
       }
 
-      // No local results found
-      return `No Slack discussions found for: "${query}"\n\nTry search_docs for documentation or web_search for external sources.`;
+      // No local results found - provide helpful guidance
+      const channelNote = channel ? ` in channel "${channel}"` : '';
+      return `No Slack discussions found for: "${searchQuery}"${channelNote}\n\nTry:\n- Broader search terms\n- Removing the channel filter\n- search_docs for documentation`;
     } catch (error) {
-      logger.error({ error, query }, 'Addie: Slack search failed');
+      logger.error({ error, query: searchQuery, channel }, 'Addie: Slack search failed');
       return `Slack search failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });

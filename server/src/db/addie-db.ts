@@ -616,8 +616,19 @@ export class AddieDatabase {
    */
   async searchSlackMessages(searchQuery: string, options: {
     limit?: number;
+    channel?: string;
   } = {}): Promise<SlackSearchResult[]> {
     const limit = options.limit ?? 10;
+    const channel = options.channel;
+
+    // Build query with optional channel filter
+    const channelFilter = channel
+      ? `AND LOWER(slack_channel_name) LIKE LOWER($3)`
+      : '';
+    const params: (string | number)[] = [searchQuery, limit];
+    if (channel) {
+      params.push(`%${channel}%`);
+    }
 
     const result = await query<SlackSearchResult>(
       `SELECT
@@ -633,9 +644,10 @@ export class AddieDatabase {
        WHERE is_active = TRUE
          AND source_type = 'slack'
          AND search_vector @@ websearch_to_tsquery('english', $1)
+         ${channelFilter}
        ORDER BY rank DESC
        LIMIT $2`,
-      [searchQuery, limit]
+      params
     );
     return result.rows;
   }
