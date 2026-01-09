@@ -662,6 +662,47 @@ export class AddieDatabase {
     return parseInt(result.rows[0]?.count ?? '0', 10);
   }
 
+  /**
+   * Get recent messages from a channel (no keyword search, just by recency)
+   */
+  async getChannelActivity(channel: string, options: {
+    days?: number;
+    limit?: number;
+  } = {}): Promise<Array<{
+    text: string;
+    channel_name: string;
+    username: string;
+    permalink: string;
+    created_at: Date;
+  }>> {
+    const days = Math.min(options.days ?? 30, 90);
+    const limit = Math.min(options.limit ?? 25, 50);
+
+    const result = await query<{
+      text: string;
+      channel_name: string;
+      username: string;
+      permalink: string;
+      created_at: Date;
+    }>(
+      `SELECT
+        content as text,
+        slack_channel_name as channel_name,
+        slack_username as username,
+        slack_permalink as permalink,
+        created_at
+       FROM addie_knowledge
+       WHERE is_active = TRUE
+         AND source_type = 'slack'
+         AND LOWER(slack_channel_name) LIKE LOWER($1)
+         AND created_at >= NOW() - INTERVAL '1 day' * $2
+       ORDER BY created_at DESC
+       LIMIT $3`,
+      [`%${channel}%`, days, limit]
+    );
+    return result.rows;
+  }
+
   // ============== Curated Resource Indexing ==============
 
   /**
