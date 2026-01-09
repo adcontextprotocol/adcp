@@ -592,11 +592,12 @@ export class WorkingGroupDatabase {
     // 3. organization_memberships (older sync table)
     // 4. Falls back to user_id if no name found
     //
-    // Note: canonical_user_id equals user_id since we store canonical IDs at write time
+    // canonical_user_id is resolved at read time via slack_user_mappings
+    // to handle cases where leaders were added via Slack ID before linking WorkOS
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
-         wgl.user_id AS canonical_user_id,
+         COALESCE(sm.workos_user_id, wgl.user_id) AS canonical_user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
            NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
@@ -608,13 +609,14 @@ export class WorkingGroupDatabase {
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
-       LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
-       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       LEFT JOIN working_group_memberships wgm ON COALESCE(sm.workos_user_id, wgl.user_id) = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON COALESCE(sm.workos_user_id, wgl.user_id) = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN LATERAL (
          SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
          FROM organization_memberships om
-         WHERE om.workos_user_id = wgl.user_id
+         WHERE om.workos_user_id = COALESCE(sm.workos_user_id, wgl.user_id)
          ORDER BY om.created_at DESC
          LIMIT 1
        ) om ON true
@@ -635,11 +637,13 @@ export class WorkingGroupDatabase {
       return new Map();
     }
 
+    // canonical_user_id is resolved at read time via slack_user_mappings
+    // to handle cases where leaders were added via Slack ID before linking WorkOS
     const result = await query<WorkingGroupLeader & { working_group_id: string }>(
       `SELECT
          wgl.working_group_id,
          wgl.user_id,
-         wgl.user_id AS canonical_user_id,
+         COALESCE(sm.workos_user_id, wgl.user_id) AS canonical_user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
            NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
@@ -651,13 +655,14 @@ export class WorkingGroupDatabase {
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
-       LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
-       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       LEFT JOIN working_group_memberships wgm ON COALESCE(sm.workos_user_id, wgl.user_id) = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON COALESCE(sm.workos_user_id, wgl.user_id) = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN LATERAL (
          SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
          FROM organization_memberships om
-         WHERE om.workos_user_id = wgl.user_id
+         WHERE om.workos_user_id = COALESCE(sm.workos_user_id, wgl.user_id)
          ORDER BY om.created_at DESC
          LIMIT 1
        ) om ON true
@@ -749,12 +754,18 @@ export class WorkingGroupDatabase {
 
   /**
    * Check if a user is a leader of a working group
+   * Handles both WorkOS and Slack user IDs by checking both directions of the mapping
    */
   async isLeader(workingGroupId: string, userId: string): Promise<boolean> {
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
+    // Check if:
+    // 1. The leader record has the canonical user ID directly, OR
+    // 2. The leader record has a Slack ID that maps to this WorkOS user ID
     const result = await query(
-      `SELECT 1 FROM working_group_leaders
-       WHERE working_group_id = $1 AND user_id = $2
+      `SELECT 1 FROM working_group_leaders wgl
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+       WHERE wgl.working_group_id = $1
+         AND (wgl.user_id = $2 OR sm.workos_user_id = $2)
        LIMIT 1`,
       [workingGroupId, canonicalUserId]
     );
@@ -764,15 +775,17 @@ export class WorkingGroupDatabase {
   /**
    * Get all committees led by a user
    * Returns committees of all types where the user is a leader
+   * Handles both WorkOS and Slack user IDs by checking both directions of the mapping
    */
   async getCommitteesLedByUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query<WorkingGroupWithMemberCount>(
-      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+      `SELECT wg.*, COUNT(DISTINCT wgm.id)::int AS member_count
        FROM working_groups wg
        INNER JOIN working_group_leaders wgl ON wg.id = wgl.working_group_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
-       WHERE wgl.user_id = $1
+       WHERE (wgl.user_id = $1 OR sm.workos_user_id = $1)
          AND wg.status = 'active'
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,
