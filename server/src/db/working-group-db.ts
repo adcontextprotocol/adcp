@@ -757,17 +757,16 @@ export class WorkingGroupDatabase {
    * Handles both WorkOS and Slack user IDs by checking both directions of the mapping
    */
   async isLeader(workingGroupId: string, userId: string): Promise<boolean> {
-    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     // Check if:
-    // 1. The leader record has the canonical user ID directly, OR
+    // 1. The leader record has the user ID directly, OR
     // 2. The leader record has a Slack ID that maps to this WorkOS user ID
     const result = await query(
       `SELECT 1 FROM working_group_leaders wgl
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
        WHERE wgl.working_group_id = $1
          AND (wgl.user_id = $2 OR sm.workos_user_id = $2)
        LIMIT 1`,
-      [workingGroupId, canonicalUserId]
+      [workingGroupId, userId]
     );
     return result.rows.length > 0;
   }
@@ -778,18 +777,17 @@ export class WorkingGroupDatabase {
    * Handles both WorkOS and Slack user IDs by checking both directions of the mapping
    */
   async getCommitteesLedByUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
-    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query<WorkingGroupWithMemberCount>(
       `SELECT wg.*, COUNT(DISTINCT wgm.id)::int AS member_count
        FROM working_groups wg
        INNER JOIN working_group_leaders wgl ON wg.id = wgl.working_group_id
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
        LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
        WHERE (wgl.user_id = $1 OR sm.workos_user_id = $1)
          AND wg.status = 'active'
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,
-      [canonicalUserId]
+      [userId]
     );
 
     const groups = result.rows;

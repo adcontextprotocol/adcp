@@ -109,7 +109,7 @@ export function createContentRouter(): Router {
         `SELECT wg.id, wg.slug, wg.name, wg.description,
                 EXISTS(
                   SELECT 1 FROM working_group_leaders wgl
-                  LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+                  LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
                   WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1)
                 ) as is_leader
          FROM working_group_memberships wgm
@@ -329,7 +329,7 @@ export function createContentRouter(): Router {
       const leaderResult = await pool.query(
         `SELECT wg.id, wg.name, wg.slug
          FROM working_group_leaders wgl
-         LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+         LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
          JOIN working_groups wg ON wg.id = wgl.working_group_id
          WHERE wgl.user_id = $1 OR sm.workos_user_id = $1`,
         [user.id]

@@ -746,7 +746,7 @@ export async function getMemberCapabilities(
          AND (
            EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
            OR EXISTS(SELECT 1 FROM working_group_leaders wgl
-                     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+                     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
                      WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1))
          )) as wg_count,
         (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
@@ -754,7 +754,7 @@ export async function getMemberCapabilities(
          AND (
            EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
            OR EXISTS(SELECT 1 FROM working_group_leaders wgl
-                     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
+                     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
                      WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1))
          )) as council_count`,
       [workosUserId]
