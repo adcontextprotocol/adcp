@@ -632,22 +632,60 @@ const adcpTools = tools.filter(t => t.name.startsWith('adcp_') ||
   ['get_products', 'create_media_buy'].includes(t.name));
 ```
 
-### AdCP Extension (Future)
+### AdCP Extension via MCP Server Card
 
-**Status**: MCP server cards are expected in a future MCP release. When available, AdCP servers will include the AdCP extension.
+MCP servers can declare AdCP support via a server card at `/.well-known/mcp.json` (or `/.well-known/server.json`). AdCP-specific metadata goes in the `_meta` field using the `adcontextprotocol.org` namespace.
 
 ```json
 {
-  "extensions": {
-    "adcp": {
-      "adcp_version": "2.4.0",
-      "protocols_supported": ["media_buy", "creative", "signals"]
+  "name": "io.adcontextprotocol/media-buy-agent",
+  "version": "1.0.0",
+  "title": "AdCP Media Buy Agent",
+  "description": "AI-powered media buying agent implementing AdCP",
+  "tools": [
+    { "name": "get_products" },
+    { "name": "create_media_buy" },
+    { "name": "list_creative_formats" }
+  ],
+  "_meta": {
+    "adcontextprotocol.org": {
+      "adcp_version": "2.6.0",
+      "protocols_supported": ["media_buy"],
+      "extensions_supported": ["sustainability"]
     }
   }
 }
 ```
 
-This will allow clients to programmatically discover which AdCP version and protocol domains an MCP server implements. See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for specification details.
+**Discovering AdCP support:**
+
+```javascript
+// Check both possible locations for MCP server card
+const serverCard = await fetch('https://sales.example.com/.well-known/mcp.json')
+  .then(r => r.ok ? r.json() : null)
+  .catch(() => null)
+  || await fetch('https://sales.example.com/.well-known/server.json')
+    .then(r => r.json());
+
+// Check for AdCP metadata
+const adcpMeta = serverCard?._meta?.['adcontextprotocol.org'];
+
+if (adcpMeta) {
+  console.log('AdCP Version:', adcpMeta.adcp_version);
+  console.log('Supported domains:', adcpMeta.protocols_supported);
+  // ["media_buy", "creative", "signals"]
+  console.log('Typed extensions:', adcpMeta.extensions_supported);
+  // ["sustainability"]
+}
+```
+
+**Benefits:**
+- Clients can discover AdCP capabilities without making test calls
+- Declare which protocol domains you implement (media_buy, creative, signals)
+- Declare which [typed extensions](/docs/reference/extensions-and-context#typed-extensions) you support
+- Enable compatibility checks based on version
+
+**Note:** The `_meta` field uses reverse DNS namespacing per the [MCP server.json spec](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md). AdCP servers should support both `/.well-known/mcp.json` and `/.well-known/server.json` locations.
 
 ### Parameter Validation
 ```javascript
