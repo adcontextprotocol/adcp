@@ -4131,9 +4131,9 @@ export function createAdminToolHandlers(
         return `❌ Committee "${committeeSlug}" not found. Use list_working_groups, list_chapters, or list_industry_gatherings to find the correct slug.`;
       }
 
-      // Check if already a leader
+      // Check if already a leader (use canonical_user_id for Slack/WorkOS resolution)
       const leaders = await wgDb.getLeaders(committee.id);
-      if (leaders.some((l: { user_id: string }) => l.user_id === userId)) {
+      if (leaders.some((l) => l.canonical_user_id === userId)) {
         return `ℹ️ User is already a leader of "${committee.name}".`;
       }
 
@@ -4199,9 +4199,9 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
         return `❌ Committee "${committeeSlug}" not found.`;
       }
 
-      // Check if they are a leader
+      // Check if they are a leader (use canonical_user_id for Slack/WorkOS resolution)
       const leaders = await wgDb.getLeaders(committee.id);
-      if (!leaders.some((l: { user_id: string }) => l.user_id === userId)) {
+      if (!leaders.some((l) => l.canonical_user_id === userId)) {
         return `ℹ️ User ${userId} is not a leader of "${committee.name}".`;
       }
 

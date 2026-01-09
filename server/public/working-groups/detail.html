@@ -1006,9 +1006,9 @@
         currentGroup = data.working_group;
         isMember = data.is_member || false;
 
-        // Check if current user is a leader
+        // Check if current user is a leader (use canonical_user_id for Slack/WorkOS ID resolution)
         if (currentUser && currentGroup) {
-          isLeader = currentGroup.leaders?.some(l => l.user_id === currentUser.id) ?? false;
+          isLeader = currentGroup.leaders?.some(l => l.canonical_user_id === currentUser.id) ?? false;
         }
 
         renderWorkingGroup();
