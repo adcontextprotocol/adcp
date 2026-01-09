@@ -229,21 +229,49 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_slack',
     description:
-      'Search Slack messages from public channels in the AAO workspace. Use this when you need community discussions, Q&A threads, or real-world implementation examples. Recent messages are searched instantly from local index; older messages may fall back to live API (slower). Cite the Slack permalink when using information from results.',
-    usage_hints: 'use for community Q&A, "what did someone say about X?", real-world discussions',
+      'Search Slack messages from public channels in the AAO workspace. Use this when you need community discussions, Q&A threads, or real-world implementation examples. When asked about a specific channel or working group (e.g., "Governance working group"), use the channel parameter to filter results. When asked to summarize discussions, search for relevant keywords then synthesize the results. Cite the Slack permalink when using information from results.',
+    usage_hints: 'use for community Q&A, "what did someone say about X?", channel summaries, working group discussions',
     input_schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query - keywords or phrases to find in Slack messages',
+          description: 'Search query - keywords or phrases to find in Slack messages. Use broad terms when summarizing a channel (e.g., "governance" for governance discussions).',
+        },
+        channel: {
+          type: 'string',
+          description: 'Optional channel name to filter results (e.g., "governance-wg", "general"). Partial matches work.',
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results (default 5, max 10)',
+          description: 'Maximum number of results (default 10, max 25 for summaries)',
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'get_channel_activity',
+    description:
+      'Get recent messages from a specific Slack channel. Use this when asked to summarize channel activity, see what a working group has been discussing, or get an overview of conversations in a channel. Returns messages sorted by recency. After getting results, synthesize them into a summary for the user.',
+    usage_hints: 'use for "summarize the governance channel", "what has the X working group been discussing?", channel overviews',
+    input_schema: {
+      type: 'object',
+      properties: {
+        channel: {
+          type: 'string',
+          description: 'Channel name to get activity from (e.g., "governance-wg", "general"). Partial matches work.',
+        },
+        days: {
+          type: 'number',
+          description: 'How many days back to look (default 30, max 90)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of messages to return (default 25, max 50)',
+        },
+      },
+      required: ['channel'],
     },
   },
   {
@@ -610,12 +638,13 @@ ${excerpt}`;
   });
 
   handlers.set('search_slack', async (input) => {
-    const query = input.query as string;
-    const limit = Math.min((input.limit as number) || 5, 10);
+    const searchQuery = input.query as string;
+    const channel = input.channel as string | undefined;
+    const limit = Math.min((input.limit as number) || 10, 25);
 
     try {
-      // First, try local database search (instant, ~100ms)
-      const localResults = await addieDb.searchSlackMessages(query, { limit });
+      // Search local database with optional channel filter
+      const localResults = await addieDb.searchSlackMessages(searchQuery, { limit, channel });
 
       if (localResults.length > 0) {
         const formatted = localResults
@@ -634,14 +663,77 @@ ${excerpt}`;
           })
           .join('\n\n');
 
-        return `Found ${localResults.length} Slack messages (from local index):\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
+        const channelNote = channel ? ` in channels matching "${channel}"` : '';
+        return `Found ${localResults.length} Slack messages${channelNote}:\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
       }
 
-      // No local results found
-      return `No Slack discussions found for: "${query}"\n\nTry search_docs for documentation or web_search for external sources.`;
+      // No local results found - provide helpful guidance
+      const channelNote = channel ? ` in channel "${channel}"` : '';
+      return `No Slack discussions found for: "${searchQuery}"${channelNote}\n\nTry:\n- Broader search terms\n- Removing the channel filter\n- search_docs for documentation`;
     } catch (error) {
-      logger.error({ error, query }, 'Addie: Slack search failed');
+      logger.error({ error, query: searchQuery, channel }, 'Addie: Slack search failed');
       return `Slack search failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_channel_activity', async (input) => {
+    const channel = input.channel as string;
+    const days = input.days as number | undefined;
+    const limit = input.limit as number | undefined;
+
+    try {
+      const messages = await addieDb.getChannelActivity(channel, { days, limit });
+
+      if (messages.length === 0) {
+        return `No recent activity found in channels matching "${channel}".\n\nThis could mean:\n- The channel name might be different (try partial matches like "govern" for "governance-wg")\n- No messages in the last ${days ?? 30} days\n- The channel may not be indexed yet`;
+      }
+
+      // Group messages by user to help with "who's most active" analysis
+      const userCounts = new Map<string, number>();
+      for (const msg of messages) {
+        userCounts.set(msg.username, (userCounts.get(msg.username) || 0) + 1);
+      }
+      const topUsers = [...userCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => `@${name} (${count})`)
+        .join(', ');
+
+      const formatted = messages
+        .map((msg, i) => {
+          const cleanText = msg.text
+            .replace(/\s+/g, ' ')
+            .trim()
+            .substring(0, 400);
+          const truncated = cleanText.length < msg.text.length ? '...' : '';
+          const date = new Date(msg.created_at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          });
+
+          return `### ${i + 1}. @${msg.username} (${date})
+"${cleanText}${truncated}"
+
+**Source:** ${msg.permalink}`;
+        })
+        .join('\n\n');
+
+      const channelName = messages[0]?.channel_name || channel;
+      return `## Recent activity in #${channelName}
+
+**${messages.length} messages** from the last ${days ?? 30} days
+**Most active:** ${topUsers}
+
+---
+
+${formatted}
+
+---
+
+**When summarizing:** Focus on key themes, decisions, and who contributed to each topic. Cite specific messages using their Slack permalinks.`;
+    } catch (error) {
+      logger.error({ error, channel }, 'Addie: get_channel_activity failed');
+      return `Failed to get channel activity: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
