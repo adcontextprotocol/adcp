@@ -15,7 +15,7 @@ Create a new content standards configuration.
 |-----------|------|----------|-------------|
 | `scope` | object | Yes | Where this standards configuration applies |
 | `policy` | string | Yes | Natural language policy prompt |
-| `examples` | object | No | Training set of acceptable/unacceptable content |
+| `calibration` | object | No | Training set of acceptable/unacceptable artifacts |
 | `competitive_separation` | array | No | Competitor brands to avoid |
 | `floor` | string | No | Safety floor baseline (`garm_floor` or `custom`) |
 
@@ -30,7 +30,7 @@ Create a new content standards configuration.
     "description": "Nike EMEA - all digital channels"
   },
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively.",
-  "examples": {
+  "calibration": {
     "acceptable": [
       { "type": "domain", "value": "espn.com", "language": "en" },
       { "type": "domain", "value": "healthline.com", "language": "en" }
@@ -56,7 +56,9 @@ Create a new content standards configuration.
 }
 ```
 
-### Error Response
+### Error Responses
+
+**Invalid Scope:**
 
 ```json
 {
@@ -68,6 +70,28 @@ Create a new content standards configuration.
   ]
 }
 ```
+
+**Scope Conflict:**
+
+```json
+{
+  "errors": [
+    {
+      "code": "SCOPE_CONFLICT",
+      "message": "Standards already exist for brand 'nike' in country 'DE' on channel 'display'",
+      "conflicting_standards_id": "nike_emea_safety"
+    }
+  ]
+}
+```
+
+## Scope Conflict Handling
+
+Multiple standards cannot have overlapping scopes for the same brand/country/channel combination. When creating standards that would conflict:
+
+1. **Check existing standards** - Use [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) filtered by your scope
+2. **Update rather than create** - If standards already exist, use [update_content_standards](/docs/governance/content-standards/tasks/update_content_standards)
+3. **Narrow the scope** - Adjust countries or channels to avoid overlap
 
 ## Related Tasks
 

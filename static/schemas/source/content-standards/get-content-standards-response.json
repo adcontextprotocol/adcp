@@ -20,7 +20,7 @@
         "effective_date": {
           "type": "string",
           "format": "date-time",
-          "description": "When this version became effective"
+          "description": "When this standards version became effective. Null or absent means not yet effective. Multiple standards may be effective simultaneously for different scopes."
         },
         "name": {
           "type": "string",
@@ -47,7 +47,7 @@
         },
         "calibration": {
           "type": "object",
-          "description": "Training/test set to calibrate policy interpretation",
+          "description": "Training/test set to calibrate policy interpretation. Note: Large calibration sets may impact response size - consider using pagination or separate retrieval for large artifact collections.",
           "properties": {
             "acceptable": {
               "type": "array",

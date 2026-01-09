@@ -16,8 +16,12 @@ List available content standards configurations.
 | `brand_ids` | array | No | Filter by brand identifiers |
 | `countries` | array | No | Filter by country codes |
 | `channels` | array | No | Filter by channels |
+| `effective_before` | string | No | Filter to standards effective before this date (ISO 8601) |
+| `effective_after` | string | No | Filter to standards effective after this date (ISO 8601) |
 
 ## Response
+
+Returns an abbreviated list of standards configurations. Use [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) to retrieve full details including policy text and calibration data.
 
 ### Success Response
 
@@ -27,6 +31,7 @@ List available content standards configurations.
     {
       "standards_id": "nike_emea_safety",
       "version": "1.2.0",
+      "effective_date": "2025-01-05T00:00:00Z",
       "scope": {
         "brand_ids": ["nike"],
         "countries_all": ["GB", "DE", "FR"],
@@ -37,6 +42,7 @@ List available content standards configurations.
     {
       "standards_id": "nike_us_display",
       "version": "1.0.0",
+      "effective_date": "2025-01-10T00:00:00Z",
       "scope": {
         "brand_ids": ["nike"],
         "countries_all": ["US"],

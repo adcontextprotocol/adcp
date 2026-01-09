@@ -34,7 +34,9 @@ Delete a content standards configuration.
 }
 ```
 
-### Error Response
+### Error Responses
+
+**Not Found:**
 
 ```json
 {
@@ -46,6 +48,21 @@ Delete a content standards configuration.
   ]
 }
 ```
+
+**Standards In Use:**
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_IN_USE",
+      "message": "Cannot delete standards 'nike_emea_safety' - currently referenced by active media buys"
+    }
+  ]
+}
+```
+
+Standards cannot be deleted while they are referenced by active media buys. Use [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) to identify usage, or archive standards by setting an expiration date rather than deleting.
 
 ## Related Tasks
 

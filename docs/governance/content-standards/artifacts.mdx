@@ -18,7 +18,7 @@ Artifacts represent the content context where an ad appears:
 - A **scene** in a CTV show
 - An **AI-generated image** in a chat conversation
 
-Artifacts are identified by `property_id` + `artifact_id` - the property defines where the content lives, and the artifact_id is the property owner's identifier for that specific piece of content.
+Artifacts are identified by `property_id` + `artifact_id` - the property defines where the content lives, and the artifact_id is an opaque identifier for that specific piece of content. The artifact_id scheme is flexible - it could be a URL path, a platform-specific ID, or any consistent identifier the property owner uses internally.
 
 ## Structure
 
@@ -202,6 +202,14 @@ When pre-configuration isn't possible, include access credentials with individua
   }
 }
 ```
+
+**Note on token size**: For artifacts with many assets, per-asset tokens can significantly increase payload size. Consider:
+
+1. **Pre-configured access** - Set up service account access once during onboarding
+2. **Shared token reference** - Define tokens at the artifact level and reference by ID
+3. **Signed URLs** - Use pre-signed URLs where the URL itself is the credential
+
+The `url` field is the access URL - it may differ from the artifact's canonical/published URL. For example, a published article at `https://news.example.com/article/123` might have assets served from `https://cdn.example.com/secured/...`.
 
 ### Access Methods
 
