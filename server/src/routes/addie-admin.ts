@@ -21,6 +21,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
+import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -2162,6 +2163,141 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unable to test router",
+      });
+    }
+  });
+
+  // =========================================================================
+  // SLACK HISTORY BACKFILL API (mounted at /api/admin/addie/backfill)
+  // =========================================================================
+
+  // POST /api/admin/addie/backfill/slack - Trigger Slack history backfill
+  apiRouter.post("/backfill/slack", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const {
+        days_back,
+        max_messages_per_channel,
+        channel_ids,
+        include_private_channels,
+        exclude_channel_names,
+        include_thread_replies,
+      } = req.body;
+
+      // Validate days_back
+      const daysBack = days_back ? parseInt(String(days_back), 10) : 90;
+      if (isNaN(daysBack) || daysBack < 1 || daysBack > 365) {
+        res.status(400).json({ error: "days_back must be between 1 and 365" });
+        return;
+      }
+
+      // Validate max_messages_per_channel
+      const maxMessagesPerChannel = max_messages_per_channel ? parseInt(String(max_messages_per_channel), 10) : 1000;
+      if (isNaN(maxMessagesPerChannel) || maxMessagesPerChannel < 1 || maxMessagesPerChannel > 10000) {
+        res.status(400).json({ error: "max_messages_per_channel must be between 1 and 10000" });
+        return;
+      }
+
+      // Validate channel_ids format if provided
+      if (channel_ids !== undefined) {
+        if (!Array.isArray(channel_ids)) {
+          res.status(400).json({ error: "channel_ids must be an array" });
+          return;
+        }
+        for (const id of channel_ids) {
+          if (typeof id !== 'string' || !/^C[A-Z0-9]+$/i.test(id)) {
+            res.status(400).json({ error: `Invalid channel ID format: ${id}` });
+            return;
+          }
+        }
+      }
+
+      // Validate exclude_channel_names if provided
+      if (exclude_channel_names !== undefined) {
+        if (!Array.isArray(exclude_channel_names) || !exclude_channel_names.every(n => typeof n === 'string')) {
+          res.status(400).json({ error: "exclude_channel_names must be an array of strings" });
+          return;
+        }
+      }
+
+      logger.info({
+        daysBack,
+        maxMessagesPerChannel,
+        channelIds: channel_ids,
+        includePrivateChannels: include_private_channels,
+        excludeChannelNames: exclude_channel_names,
+        includeThreadReplies: include_thread_replies,
+      }, "Starting Slack history backfill");
+
+      // Run backfill (this may take a while for large workspaces)
+      const result = await runSlackHistoryBackfill({
+        daysBack,
+        maxMessagesPerChannel,
+        channelIds: channel_ids,
+        includePrivateChannels: include_private_channels ?? false,
+        excludeChannelNames: exclude_channel_names,
+        includeThreadReplies: include_thread_replies ?? true,
+      });
+
+      logger.info({
+        channelsProcessed: result.channelsProcessed,
+        messagesIndexed: result.messagesIndexed,
+        threadRepliesIndexed: result.threadRepliesIndexed,
+      }, "Slack history backfill complete");
+
+      res.json({
+        success: true,
+        result,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error running Slack history backfill");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unable to run backfill",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/backfill/slack/status - Get current Slack index status
+  apiRouter.get("/backfill/slack/status", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      // Get count of indexed messages
+      const totalCount = await addieDb.getSlackMessageCount();
+
+      // Get channel breakdown
+      const channelResult = await query<{ slack_channel_name: string; count: string }>(
+        `SELECT slack_channel_name, COUNT(*)::text as count
+         FROM addie_knowledge
+         WHERE source_type = 'slack' AND is_active = TRUE
+         GROUP BY slack_channel_name
+         ORDER BY COUNT(*) DESC`
+      );
+
+      // Get date range
+      const dateResult = await query<{ oldest: string; newest: string }>(
+        `SELECT
+           MIN(created_at)::text as oldest,
+           MAX(created_at)::text as newest
+         FROM addie_knowledge
+         WHERE source_type = 'slack'`
+      );
+
+      res.json({
+        success: true,
+        status: {
+          totalMessages: totalCount,
+          channels: channelResult.rows.map(r => ({
+            name: r.slack_channel_name,
+            count: parseInt(r.count, 10),
+          })),
+          oldestIndexed: dateResult.rows[0]?.oldest || null,
+          newestIndexed: dateResult.rows[0]?.newest || null,
+        },
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error getting Slack index status");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unable to get status",
       });
     }
   });

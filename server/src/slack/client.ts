@@ -722,3 +722,108 @@ export async function getUserChannels(userId: string): Promise<string[]> {
   logger.debug({ userId, channelCount: channelIds.length }, 'Fetched user channel memberships');
   return channelIds;
 }
+
+/**
+ * Message from conversations.history
+ */
+export interface SlackHistoryMessage {
+  type: string;
+  user?: string;
+  bot_id?: string;
+  text?: string;
+  ts: string;
+  thread_ts?: string;
+  subtype?: string;
+  reply_count?: number;  // Number of replies in thread (for parent messages)
+}
+
+/**
+ * Get channel message history (conversations.history)
+ * Returns messages from a channel, paginated
+ *
+ * @param channelId - The channel ID to fetch history from
+ * @param options - Pagination and filtering options
+ * @returns Array of messages and pagination info
+ */
+export async function getChannelHistory(
+  channelId: string,
+  options: {
+    oldest?: string;  // Unix timestamp - only messages after this time
+    latest?: string;  // Unix timestamp - only messages before this time
+    limit?: number;   // Max messages per request (default 100, max 1000)
+    cursor?: string;  // Pagination cursor
+  } = {}
+): Promise<{ messages: SlackHistoryMessage[]; hasMore: boolean; nextCursor?: string }> {
+  try {
+    const response = await slackRequest<{
+      messages: SlackHistoryMessage[];
+      has_more: boolean;
+      response_metadata?: { next_cursor?: string };
+    }>('conversations.history', {
+      channel: channelId,
+      oldest: options.oldest,
+      latest: options.latest,
+      limit: options.limit ?? 100,
+      cursor: options.cursor,
+    });
+
+    return {
+      messages: response.messages ?? [],
+      hasMore: response.has_more ?? false,
+      nextCursor: response.response_metadata?.next_cursor,
+    };
+  } catch (error) {
+    logger.error({ error, channelId }, 'Failed to get channel history');
+    return { messages: [], hasMore: false };
+  }
+}
+
+/**
+ * Get all messages from a channel within a time range
+ * Handles pagination automatically with rate limiting
+ *
+ * @param channelId - The channel ID to fetch history from
+ * @param options - Time range and limit options
+ * @returns Array of all messages in the time range
+ */
+export async function getFullChannelHistory(
+  channelId: string,
+  options: {
+    oldest?: string;  // Unix timestamp - only messages after this time
+    latest?: string;  // Unix timestamp - only messages before this time
+    maxMessages?: number;  // Stop after this many messages (default: no limit)
+    onProgress?: (count: number) => void;  // Callback for progress updates
+  } = {}
+): Promise<SlackHistoryMessage[]> {
+  const allMessages: SlackHistoryMessage[] = [];
+  let cursor: string | undefined;
+  const maxMessages = options.maxMessages ?? Infinity;
+
+  do {
+    const result = await getChannelHistory(channelId, {
+      oldest: options.oldest,
+      latest: options.latest,
+      limit: 200,  // Fetch in larger batches for efficiency
+      cursor,
+    });
+
+    allMessages.push(...result.messages);
+
+    if (options.onProgress) {
+      options.onProgress(allMessages.length);
+    }
+
+    if (allMessages.length >= maxMessages) {
+      break;
+    }
+
+    cursor = result.nextCursor;
+
+    if (cursor) {
+      await sleep(RATE_LIMIT_DELAY_MS);
+    }
+  } while (cursor);
+
+  logger.debug({ channelId, messageCount: allMessages.length }, 'Fetched full channel history');
+  return allMessages.slice(0, maxMessages);
+}
