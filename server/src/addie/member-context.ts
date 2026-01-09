@@ -34,11 +34,13 @@ async function getPendingContentForUser(
   const pool = getPool();
 
   // Get committees user leads
+  // Join with slack_user_mappings to handle users who were added as leader via Slack ID
   const leaderResult = await pool.query(
     `SELECT wg.id, wg.name, wg.slug
      FROM working_group_leaders wgl
+     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
      JOIN working_groups wg ON wg.id = wgl.working_group_id
-     WHERE wgl.user_id = $1`,
+     WHERE wgl.user_id = $1 OR sm.workos_user_id = $1`,
     [workosUserId]
   );
   const ledCommitteeIds = leaderResult.rows.map(c => c.id);
