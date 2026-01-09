@@ -1162,8 +1162,8 @@ export function setupOrganizationRoutes(
             // Add membership to the new org
             await pool.query(
               `INSERT INTO organization_memberships
-               (workos_user_id, workos_organization_id, email, first_name, last_name, role)
-               VALUES ($1, $2, $3, $4, $5, 'member')
+               (workos_user_id, workos_organization_id, email, first_name, last_name)
+               VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (workos_user_id, workos_organization_id)
                DO UPDATE SET email = EXCLUDED.email, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
               [userId, orgId, user.email, user.first_name, user.last_name]
