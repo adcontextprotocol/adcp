@@ -60,6 +60,21 @@ function extractSlackChannelId(url: string | null | undefined): string | null {
  * Database operations for working groups
  */
 export class WorkingGroupDatabase {
+  /**
+   * Resolve a user ID to its canonical WorkOS user ID.
+   * If the ID is a Slack user ID with a linked WorkOS account, returns the WorkOS ID.
+   * Otherwise returns the original ID unchanged.
+   */
+  async resolveToCanonicalUserId(userId: string): Promise<string> {
+    // Check if this is a Slack user ID with a linked WorkOS account
+    const result = await query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM slack_user_mappings
+       WHERE slack_user_id = $1 AND workos_user_id IS NOT NULL`,
+      [userId]
+    );
+    return result.rows[0]?.workos_user_id ?? userId;
+  }
+
   // ============== Working Groups ==============
 
   /**
@@ -408,6 +423,9 @@ export class WorkingGroupDatabase {
    * Add a member to a working group
    */
   async addMembership(input: AddWorkingGroupMemberInput): Promise<WorkingGroupMembership> {
+    // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
+
     const result = await query<WorkingGroupMembership>(
       `INSERT INTO working_group_memberships (
         working_group_id, workos_user_id, user_email, user_name, user_org_name,
@@ -418,7 +436,7 @@ export class WorkingGroupDatabase {
       RETURNING *`,
       [
         input.working_group_id,
-        input.workos_user_id,
+        canonicalUserId,
         input.user_email || null,
         input.user_name || null,
         input.user_org_name || null,
@@ -434,11 +452,12 @@ export class WorkingGroupDatabase {
    * Remove a member from a working group (soft delete by setting status to inactive)
    */
   async removeMembership(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `UPDATE working_group_memberships
        SET status = 'inactive', updated_at = NOW()
        WHERE working_group_id = $1 AND workos_user_id = $2`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return (result.rowCount || 0) > 0;
   }
@@ -447,10 +466,11 @@ export class WorkingGroupDatabase {
    * Hard delete a membership record
    */
   async deleteMembership(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `DELETE FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return (result.rowCount || 0) > 0;
   }
@@ -459,10 +479,11 @@ export class WorkingGroupDatabase {
    * Get a specific membership
    */
   async getMembership(workingGroupId: string, userId: string): Promise<WorkingGroupMembership | null> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query<WorkingGroupMembership>(
       `SELECT * FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return result.rows[0] || null;
   }
@@ -471,11 +492,12 @@ export class WorkingGroupDatabase {
    * Check if user is a member of a working group
    */
   async isMember(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `SELECT 1 FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'
        LIMIT 1`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return result.rows.length > 0;
   }
@@ -568,19 +590,19 @@ export class WorkingGroupDatabase {
     // 1. working_group_memberships (if they're a member with cached name)
     // 2. users table (canonical user data synced from WorkOS)
     // 3. organization_memberships (older sync table)
-    // 4. slack_user_mappings (if user_id is a Slack ID)
-    // 5. Falls back to user_id if no name found
+    // 4. Falls back to user_id if no name found
+    //
+    // Note: canonical_user_id equals user_id since we store canonical IDs at write time
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
+         wgl.user_id AS canonical_user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
            NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
-           NULLIF(sm.slack_real_name, ''),
-           sm.slack_email,
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
@@ -597,7 +619,6 @@ export class WorkingGroupDatabase {
          LIMIT 1
        ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = $1
        ORDER BY wgl.created_at`,
       [workingGroupId]
@@ -618,14 +639,13 @@ export class WorkingGroupDatabase {
       `SELECT
          wgl.working_group_id,
          wgl.user_id,
+         wgl.user_id AS canonical_user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
            NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
-           NULLIF(sm.slack_real_name, ''),
-           sm.slack_email,
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
@@ -642,7 +662,6 @@ export class WorkingGroupDatabase {
          LIMIT 1
        ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = ANY($1)
        ORDER BY wgl.created_at`,
       [workingGroupIds]
@@ -657,6 +676,7 @@ export class WorkingGroupDatabase {
       }
       leadersByGroup.get(groupId)!.push({
         user_id: row.user_id,
+        canonical_user_id: row.canonical_user_id,
         name: row.name,
         org_name: row.org_name,
         created_at: row.created_at,
@@ -670,6 +690,13 @@ export class WorkingGroupDatabase {
    * Set leaders for a working group (replaces existing leaders)
    */
   async setLeaders(workingGroupId: string, userIds: string[]): Promise<void> {
+    // Resolve all Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserIds = await Promise.all(
+      userIds.map(id => this.resolveToCanonicalUserId(id))
+    );
+    // Dedupe in case multiple Slack IDs resolve to the same WorkOS ID
+    const uniqueUserIds = [...new Set(canonicalUserIds)];
+
     // Remove existing leaders
     await query(
       'DELETE FROM working_group_leaders WHERE working_group_id = $1',
@@ -677,13 +704,13 @@ export class WorkingGroupDatabase {
     );
 
     // Add new leaders in a single bulk insert
-    if (userIds.length > 0) {
-      const values = userIds.map((_, i) => `($1, $${i + 2})`).join(', ');
+    if (uniqueUserIds.length > 0) {
+      const values = uniqueUserIds.map((_, i) => `($1, $${i + 2})`).join(', ');
       await query(
         `INSERT INTO working_group_leaders (working_group_id, user_id)
          VALUES ${values}
          ON CONFLICT DO NOTHING`,
-        [workingGroupId, ...userIds]
+        [workingGroupId, ...uniqueUserIds]
       );
     }
 
@@ -695,11 +722,14 @@ export class WorkingGroupDatabase {
    * Add a leader to a working group
    */
   async addLeader(workingGroupId: string, userId: string): Promise<void> {
+    // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
+
     await query(
       `INSERT INTO working_group_leaders (working_group_id, user_id)
        VALUES ($1, $2)
        ON CONFLICT DO NOTHING`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
 
     // Ensure leader is a member
@@ -710,9 +740,10 @@ export class WorkingGroupDatabase {
    * Remove a leader from a working group
    */
   async removeLeader(workingGroupId: string, userId: string): Promise<void> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     await query(
       'DELETE FROM working_group_leaders WHERE working_group_id = $1 AND user_id = $2',
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
   }
 
@@ -720,11 +751,12 @@ export class WorkingGroupDatabase {
    * Check if a user is a leader of a working group
    */
   async isLeader(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `SELECT 1 FROM working_group_leaders
        WHERE working_group_id = $1 AND user_id = $2
        LIMIT 1`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return result.rows.length > 0;
   }
@@ -734,6 +766,7 @@ export class WorkingGroupDatabase {
    * Returns committees of all types where the user is a leader
    */
   async getCommitteesLedByUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query<WorkingGroupWithMemberCount>(
       `SELECT wg.*, COUNT(wgm.id)::int AS member_count
        FROM working_groups wg
@@ -743,7 +776,7 @@ export class WorkingGroupDatabase {
          AND wg.status = 'active'
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,
-      [userId]
+      [canonicalUserId]
     );
 
     const groups = result.rows;
@@ -1238,6 +1271,9 @@ export class WorkingGroupDatabase {
     interest_level?: EventInterestLevel;
     interest_source?: EventInterestSource;
   }): Promise<WorkingGroupMembership> {
+    // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
+
     const result = await query<WorkingGroupMembership>(
       `INSERT INTO working_group_memberships (
         working_group_id, workos_user_id, user_email, user_name, user_org_name,
@@ -1252,7 +1288,7 @@ export class WorkingGroupDatabase {
       RETURNING *`,
       [
         input.working_group_id,
-        input.workos_user_id,
+        canonicalUserId,
         input.user_email || null,
         input.user_name || null,
         input.user_org_name || null,

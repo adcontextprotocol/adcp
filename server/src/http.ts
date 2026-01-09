@@ -62,11 +62,13 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
-import { processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
+import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
+import { InsightsDatabase } from "./db/insights-db.js";
 import { sendCommunityReplies } from "./addie/services/community-articles.js";
 import { sendChannelMessage } from "./slack/client.js";
 import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
 import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
+import { runGoalFollowUpJob } from "./addie/jobs/goal-follow-up.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -385,6 +387,7 @@ export class HTTPServer {
   private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
   private taskReminderIntervalId: NodeJS.Timeout | null = null;
   private engagementScoringIntervalId: NodeJS.Timeout | null = null;
+  private goalFollowUpIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -4306,6 +4309,26 @@ Disallow: /api/admin/
                 'Auto-linked Slack account after signup'
               );
 
+              // Track this as an outreach conversion if there was pending outreach
+              try {
+                const insightsDb = new InsightsDatabase();
+                const pendingOutreach = await insightsDb.getPendingOutreach(slackUserIdToLink);
+                if (pendingOutreach) {
+                  // Mark as converted - they clicked the link and completed account linking
+                  await insightsDb.markOutreachConverted(
+                    pendingOutreach.id,
+                    'Converted via link click - account linked'
+                  );
+                  logger.info({
+                    slackUserId: slackUserIdToLink,
+                    outreachId: pendingOutreach.id,
+                    outreachType: pendingOutreach.outreach_type,
+                  }, 'Recorded outreach conversion from link click');
+                }
+              } catch (trackingError) {
+                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to track outreach conversion');
+              }
+
               // Send proactive Addie message if user has a recent conversation
               const firstName = user.firstName || undefined;
               sendAccountLinkedMessage(slackUserIdToLink, firstName).catch((err) => {
@@ -6843,6 +6866,10 @@ Disallow: /api/admin/
     // Updates user and org engagement scores periodically
     this.startEngagementScoring();
 
+    // Start goal follow-up job
+    // Sends follow-up messages and reconciles goal outcomes
+    this.startGoalFollowUp();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -7062,6 +7089,56 @@ Disallow: /api/admin/
   }
 
   /**
+   * Start periodic goal follow-up job
+   * Sends follow-up messages for unanswered outreach and reconciles goal outcomes
+   */
+  private startGoalFollowUp(): void {
+    const FOLLOW_UP_INTERVAL_HOURS = 4; // Check every 4 hours
+
+    // Run after a delay on startup
+    setTimeout(async () => {
+      try {
+        const result = await runGoalFollowUpJob();
+        logger.info(result, 'Goal follow-up: initial run completed');
+      } catch (err) {
+        logger.error({ err }, 'Goal follow-up: initial run failed');
+      }
+    }, 180000); // 3 minute delay
+
+    // Then run periodically
+    this.goalFollowUpIntervalId = setInterval(async () => {
+      try {
+        // Only run during business hours (9am-6pm ET)
+        const now = new Date();
+        const etHour = parseInt(now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          hour: 'numeric',
+          hour12: false,
+        }), 10);
+        const etDay = now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          weekday: 'short',
+        });
+
+        // Skip weekends and outside business hours
+        if (['Sat', 'Sun'].includes(etDay) || etHour < 9 || etHour >= 18) {
+          logger.debug({ etHour, etDay }, 'Goal follow-up: skipping outside business hours');
+          return;
+        }
+
+        const result = await runGoalFollowUpJob();
+        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
+          logger.info(result, 'Goal follow-up: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Goal follow-up: job failed');
+      }
+    }, FOLLOW_UP_INTERVAL_HOURS * 60 * 60 * 1000);
+
+    logger.info({ intervalHours: FOLLOW_UP_INTERVAL_HOURS }, 'Goal follow-up job started');
+  }
+
+  /**
    * Setup graceful shutdown handlers for SIGTERM and SIGINT
    */
   private setupShutdownHandlers(): void {
@@ -7119,6 +7196,13 @@ Disallow: /api/admin/
       clearInterval(this.engagementScoringIntervalId);
       this.engagementScoringIntervalId = null;
       logger.info('Engagement scoring job stopped');
+    }
+
+    // Stop goal follow-up job
+    if (this.goalFollowUpIntervalId) {
+      clearInterval(this.goalFollowUpIntervalId);
+      this.goalFollowUpIntervalId = null;
+      logger.info('Goal follow-up job stopped');
     }
 
     // Close HTTP server

@@ -22,6 +22,16 @@ export const ModelConfig = {
    * Override: CLAUDE_MODEL_FAST
    */
   fast: process.env.CLAUDE_MODEL_FAST || 'claude-haiku-4-5',
+
+  /**
+   * Precision model for high-stakes tasks (billing, financial, legal)
+   * Default: claude-opus-4 (most capable, but more expensive)
+   * Override: CLAUDE_MODEL_PRECISION
+   *
+   * Use this when accuracy is critical and hallucinations are costly.
+   * Examples: sending invoices, quoting prices, handling payments.
+   */
+  precision: process.env.CLAUDE_MODEL_PRECISION || 'claude-opus-4',
 } as const;
 
 /**

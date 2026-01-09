@@ -55,7 +55,7 @@ import {
   createBillingToolHandlers,
 } from './mcp/billing-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
-import { AddieModelConfig } from '../config/models.js';
+import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
   sanitizeInput,
@@ -78,6 +78,7 @@ import {
   extractArticleUrls,
   queueCommunityArticle,
 } from './services/community-articles.js';
+import { InsightsDatabase } from '../db/insights-db.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -751,6 +752,28 @@ async function handleUserMessage({
 
   // Sanitize input
   const inputValidation = sanitizeInput(messageText || '');
+
+  // Check if this is a response to proactive outreach
+  try {
+    const insightsDb = new InsightsDatabase();
+    const pendingOutreach = await insightsDb.getPendingOutreach(userId);
+    if (pendingOutreach) {
+      const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
+        pendingOutreach.id,
+        messageText || '',
+        false
+      );
+      logger.info({
+        userId,
+        outreachId: pendingOutreach.id,
+        outreachType: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+      }, 'Addie Bolt: Recorded outreach response (Assistant)');
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
+  }
 
   // Set status with rotating loading messages
   try {
@@ -1627,6 +1650,32 @@ async function handleDirectMessage(
 
   logger.info({ userId, channelId }, 'Addie Bolt: Processing direct message');
 
+  // Check if this is a response to proactive outreach
+  // We do this early to track responses even if later processing fails
+  try {
+    const insightsDb = new InsightsDatabase();
+    const pendingOutreach = await insightsDb.getPendingOutreach(userId);
+    if (pendingOutreach) {
+      // Mark the outreach as responded with full analysis
+      const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
+        pendingOutreach.id,
+        messageText,
+        false // insight_extracted - will be updated later if we extract insights
+      );
+      logger.info({
+        userId,
+        outreachId: pendingOutreach.id,
+        outreachType: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+        followUpDays: analysis.followUpDays,
+      }, 'Addie Bolt: Recorded outreach response');
+    }
+  } catch (err) {
+    // Don't fail the DM handling if outreach tracking fails
+    logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
+  }
+
   // Get member context
   let memberContext: MemberContext | null = null;
   try {
@@ -2358,7 +2407,11 @@ async function handleChannelMessage({
 
     // Generate a response with the specified tools (includes admin tools if user is admin)
     const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+    // Use precision model (Opus) for billing/financial queries
+    const processOptions = {
+      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+      ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
+    };
     const response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
 
     if (!response.text || response.text.trim().length === 0) {

@@ -243,8 +243,14 @@ function generateSlug(title: string, guid: string): string {
     .replace(/^-|-$/g, '')
     .substring(0, 80);
 
+  // Ensure guid is a string (defensive against RSS parser quirks)
+  if (typeof guid !== 'string') {
+    logger.warn({ guid, title }, 'generateSlug received non-string guid');
+  }
+  const guidStr = String(guid || '');
+
   // Add a hash of the guid to ensure uniqueness
-  const hash = Math.abs(guid.split('').reduce((a, b) => {
+  const hash = Math.abs(guidStr.split('').reduce((a, b) => {
     a = ((a << 5) - a) + b.charCodeAt(0);
     return a & a;
   }, 0)).toString(36).substring(0, 6);

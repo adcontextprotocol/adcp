@@ -358,6 +358,7 @@ export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
 
 export interface WorkingGroupLeader {
   user_id: string;
+  canonical_user_id: string; // WorkOS user ID if Slack user is mapped, else user_id
   name?: string;
   org_name?: string;
   created_at: Date;

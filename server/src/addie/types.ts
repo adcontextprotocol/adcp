@@ -199,6 +199,11 @@ export interface OutreachGoal {
   // Messages
   message_template: string;
   follow_up_on_question: string | null;
+  follow_up_template: string | null;
+
+  // Retry settings
+  max_attempts: number;
+  days_between_attempts: number;
 
   // Status
   is_enabled: boolean;
