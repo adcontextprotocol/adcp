@@ -129,6 +129,7 @@ asyncio.run(discover_with_filters())
 | `brief` | string | No | Natural language description of campaign requirements |
 | `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
 | `filters` | Filters | No | Structured filters (see below) |
+| `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 
 ### Filters Object
 
@@ -171,6 +172,12 @@ Returns an array of `products`, each containing:
 | `delivery_measurement` | DeliveryMeasurement | How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.) |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
+
+### Response Metadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
@@ -475,6 +482,80 @@ asyncio.run(discover_standard_formats())
 ```
 
 </CodeGroup>
+
+### Property List Filtering
+
+<Info>
+**AdCP 3.0** - Property list filtering requires governance agent support.
+</Info>
+
+Filter products to only those available on properties in your approved list:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+// Filter products by property list from governance agent
+const result = await testAgent.getProducts({
+  brief: 'Brand-safe inventory for family brand',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
+  property_list: {
+    agent_url: 'https://governance.example.com',
+    list_id: 'pl_brand_safe_2024'
+  }
+});
+
+if (result.success && result.data) {
+  // Check if filtering was actually applied
+  if (result.data.property_list_applied) {
+    console.log(`Found ${result.data.products.length} products on approved properties`);
+  } else {
+    console.log('Agent does not support property list filtering');
+    console.log(`Found ${result.data.products.length} products (unfiltered)`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def discover_with_property_list():
+    # Filter products by property list from governance agent
+    result = await test_agent.simple.get_products(
+        brief='Brand-safe inventory for family brand',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
+        property_list={
+            'agent_url': 'https://governance.example.com',
+            'list_id': 'pl_brand_safe_2024'
+        }
+    )
+
+    # Check if filtering was actually applied
+    if result.get('property_list_applied'):
+        print(f"Found {len(result['products'])} products on approved properties")
+    else:
+        print("Agent does not support property list filtering")
+        print(f"Found {len(result['products'])} products (unfiltered)")
+
+asyncio.run(discover_with_property_list())
+```
+
+</CodeGroup>
+
+**Note**: If `property_list_applied` is absent or `false`, the sales agent did not filter products. This can happen if:
+- The agent doesn't support property governance features
+- The agent couldn't access the property list
+- The property list had no effect on the available inventory
+
+See [Property Governance](/docs/governance/property/specification) for more on property lists.
 
 ## Error Handling
 

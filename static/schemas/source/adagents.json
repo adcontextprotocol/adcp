@@ -264,6 +264,38 @@
           "type": "string",
           "format": "date-time",
           "description": "ISO 8601 timestamp indicating when this file was last updated"
+        },
+        "property_features": {
+          "type": "array",
+          "description": "[AdCP 3.0] Optional list of agents that provide property feature data (certifications, scores, compliance status). Used for discovery - actual data comes from querying the agent's get_property_features task.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "The agent's API endpoint URL (must implement get_property_features)"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable name of the vendor/agent (e.g., 'Scope3', 'TAG', 'OneTrust')"
+              },
+              "features": {
+                "type": "array",
+                "description": "Feature IDs this agent provides (e.g., 'carbon_score', 'tag_certified_against_fraud'). Use list_property_features on the agent for full definitions.",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "publisher_id": {
+                "type": "string",
+                "description": "Optional publisher identifier at this agent (for lookup)"
+              }
+            },
+            "required": ["url", "name", "features"],
+            "additionalProperties": true
+          }
         }
       },
       "required": [
@@ -489,6 +521,66 @@
         }
       ],
       "last_updated": "2025-01-10T17:00:00Z"
+    },
+    {
+      "$schema": "/schemas/adagents.json",
+      "contact": {
+        "name": "Premium News Publisher",
+        "email": "adops@news.example.com",
+        "domain": "news.example.com"
+      },
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "News Example",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "news.example.com"
+            }
+          ],
+          "tags": ["premium", "news"],
+          "publisher_domain": "news.example.com"
+        }
+      ],
+      "tags": {
+        "premium": {
+          "name": "Premium Properties",
+          "description": "High-quality, brand-safe properties"
+        },
+        "news": {
+          "name": "News Properties",
+          "description": "News and journalism content"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://sales.news.example.com",
+          "authorized_for": "All news properties",
+          "authorization_type": "property_tags",
+          "property_tags": ["news"]
+        }
+      ],
+      "property_features": [
+        {
+          "url": "https://api.scope3.com",
+          "name": "Scope3",
+          "features": ["carbon_score", "sustainability_grade"],
+          "publisher_id": "pub_news_12345"
+        },
+        {
+          "url": "https://api.tagtoday.net",
+          "name": "TAG",
+          "features": ["tag_certified_against_fraud", "tag_brand_safety_certified"]
+        },
+        {
+          "url": "https://api.onetrust.com",
+          "name": "OneTrust",
+          "features": ["gdpr_compliant", "tcf_registered", "ccpa_compliant"],
+          "publisher_id": "ot_news_67890"
+        }
+      ],
+      "last_updated": "2025-01-10T18:00:00Z"
     }
   ]
 }

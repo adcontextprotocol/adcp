@@ -16,6 +16,10 @@
     "filters": {
       "$ref": "/schemas/core/product-filters.json"
     },
+    "property_list": {
+      "$ref": "/schemas/core/property-list-ref.json",
+      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

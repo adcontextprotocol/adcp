@@ -19,6 +19,10 @@
         "$ref": "/schemas/core/error.json"
       }
     },
+    "property_list_applied": {
+      "type": "boolean",
+      "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

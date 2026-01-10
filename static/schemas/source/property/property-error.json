@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/property-error.json",
+  "title": "Property Error",
+  "description": "Error information for a property that could not be evaluated",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "Error code",
+      "enum": [
+        "PROPERTY_NOT_FOUND",
+        "PROPERTY_NOT_MONITORED",
+        "LIST_NOT_FOUND",
+        "LIST_ACCESS_DENIED",
+        "METHODOLOGY_NOT_SUPPORTED",
+        "JURISDICTION_NOT_SUPPORTED"
+      ]
+    },
+    "property": {
+      "$ref": "/schemas/core/property.json",
+      "description": "The property that caused the error"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable error message"
+    }
+  },
+  "required": ["code", "message"],
+  "additionalProperties": false
+}
