@@ -521,6 +521,7 @@ export function setupAccountRoutes(
               OR t.normalized_name LIKE '%' || oo.normalized_name || '%'
             )
             WHERE LENGTH(t.normalized_name) >= 3
+              AND LENGTH(oo.normalized_name) >= 3
               AND t.is_personal = false
             ORDER BY oo.name ASC
           `,

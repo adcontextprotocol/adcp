@@ -1506,7 +1506,8 @@ export function setupDomainRoutes(
                 OR o1.normalized_name LIKE '%' || o2.normalized_name || '%'
                 OR o2.normalized_name LIKE '%' || o1.normalized_name || '%'
               )
-            WHERE LENGTH(o1.normalized_name) >= 3  -- Avoid matching very short names
+            WHERE LENGTH(o1.normalized_name) >= 3
+              AND LENGTH(o2.normalized_name) >= 3  -- Avoid matching very short names
             GROUP BY o1.normalized_name
             HAVING COUNT(DISTINCT o1.workos_organization_id) > 1
           )
