@@ -35,6 +35,7 @@ import {
   isKnowledgeReady,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import {
   MEMBER_TOOLS,
@@ -73,6 +74,7 @@ import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
+import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
@@ -356,6 +358,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     logger.info('Addie: Google Docs tools registered');
   }
 
+  // Register directory tools (member/agent/publisher lookup)
+  const directoryHandlers = createDirectoryToolHandlers();
+  for (const tool of DIRECTORY_TOOLS) {
+    const handler = directoryHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   // Create the Assistant
   const assistant = new Assistant({
     threadContextStore,
@@ -633,6 +644,11 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie Bolt: Event tools enabled for this user');
+  }
+
+  // Override bookmark_resource handler with user-scoped version (for attribution)
+  if (slackUserId) {
+    allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
   }
 
   return {
