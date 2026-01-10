@@ -38,36 +38,31 @@ These operations require valid credentials:
 
 **Rationale**: These operations involve financial commitments, access to proprietary data, or modifications to active campaigns.
 
-## Authentication Methods
+## Authentication Method
 
-AdCP supports multiple authentication methods. Implementations must support at least one method:
+AdCP uses Bearer token authentication, consistent with the MCP specification:
 
-### JWT Bearer Token
-```http
-Authorization: Bearer <jwt_token>
+```
+Authorization: Bearer <token>
 ```
 
-JWT tokens must include standard claims:
+Tokens may be:
+- **Opaque tokens**: Server-validated strings mapped to principals
+- **JWT tokens**: Self-contained tokens with embedded claims
+
+### JWT Token Claims
+
+When using JWT tokens, include these standard claims:
+
 ```json
 {
   "sub": "principal_123",
   "exp": 1706745600,
-  "iat": 1706742000,
-  "permissions": {
-    "products": ["read"],
-    "media_buys": ["read", "write"],
-    "creatives": ["read", "write"],
-    "reports": ["read"]
-  }
+  "iat": 1706742000
 }
 ```
 
-### API Key
-```http
-X-API-Key: <api_key>
-```
-
-API keys are mapped to principals and their associated permissions.
+Sales agents may require additional claims for authorization.
 
 ## Principal Model
 
@@ -85,25 +80,20 @@ interface Principal {
 type Permission = 'read' | 'write' | 'delete' | 'approve';
 ```
 
-## Required Headers by Protocol
+## Protocol Configuration
 
-### MCP
+Both MCP and A2A protocols use the same authentication header. Configure your client with:
+
 ```json
 {
-  "headers": {
-    "Authorization": "Bearer <token>"
+  "auth": {
+    "type": "bearer",
+    "token": "<your_token>"
   }
 }
 ```
 
-### A2A
-```json
-{
-  "headers": {
-    "Authorization": "Bearer <token>"
-  }
-}
-```
+The client library handles adding the `Authorization: Bearer <token>` header to requests.
 
 ## Obtaining Credentials
 
@@ -189,11 +179,17 @@ Consider using aggregation platforms (like Scope3) that manage credentials and r
 
 ## Testing Authentication
 
-Use dry run mode to test authenticated operations without affecting production:
+Use the public test agent to validate your authentication setup:
 
-```http
-X-Dry-Run: true
-Authorization: Bearer <token>
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/mcp",
+  "protocol": "mcp",
+  "auth": {
+    "type": "bearer",
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+  }
+}
 ```
 
-See [Testing & Development Guide](/docs/media-buy/advanced-topics/testing) for complete testing capabilities.
+See [Testing & Development Guide](/docs/media-buy/advanced-topics/testing) for complete testing capabilities including dry run mode and time simulation.
