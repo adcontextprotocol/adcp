@@ -307,6 +307,15 @@ export function setupCleanupRoutes(apiRouter: Router): void {
       res.json(result);
     } catch (error) {
       logger.error({ err: error }, "Error executing merge");
+
+      // Return 400 for validation errors (e.g., personal workspace merge attempts)
+      if (error instanceof Error && error.message.startsWith('Cannot merge personal workspaces')) {
+        return res.status(400).json({
+          error: "Validation error",
+          message: error.message,
+        });
+      }
+
       res.status(500).json({
         error: "Internal server error",
         message:

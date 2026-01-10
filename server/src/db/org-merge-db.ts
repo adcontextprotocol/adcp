@@ -68,7 +68,7 @@ export async function mergeOrganizations(
 
     // Validate both organizations exist and fetch all needed fields
     const orgsResult = await client.query(
-      `SELECT workos_organization_id, name, prospect_notes,
+      `SELECT workos_organization_id, name, is_personal, prospect_notes,
               enrichment_at, enrichment_industry, enrichment_sub_industry,
               enrichment_employee_count, enrichment_revenue, enrichment_revenue_range,
               enrichment_country, enrichment_city, enrichment_description
@@ -86,6 +86,11 @@ export async function mergeOrganizations(
 
     if (!primaryOrg || !secondaryOrg) {
       throw new Error('Could not load organization details');
+    }
+
+    // Block merging personal workspaces
+    if (primaryOrg.is_personal || secondaryOrg.is_personal) {
+      throw new Error('Cannot merge personal workspaces. Personal workspaces represent individual users and should not be merged with company organizations.');
     }
 
     logger.info(
@@ -662,9 +667,9 @@ export async function previewMerge(
 }> {
   const pool = getPool();
 
-  // Get organization names
+  // Get organization names and personal workspace status
   const orgsResult = await pool.query(
-    `SELECT workos_organization_id, name FROM organizations
+    `SELECT workos_organization_id, name, is_personal FROM organizations
      WHERE workos_organization_id = ANY($1)`,
     [[primaryOrgId, secondaryOrgId]]
   );
@@ -681,6 +686,14 @@ export async function previewMerge(
   }
 
   const warnings: string[] = [];
+
+  // Warn if either organization is a personal workspace
+  if (primaryOrg.is_personal) {
+    warnings.unshift(`🔴 PRIMARY IS PERSONAL WORKSPACE: "${primaryOrg.name}" is a personal workspace and should not be merged with company organizations.`);
+  }
+  if (secondaryOrg.is_personal) {
+    warnings.unshift(`🔴 SECONDARY IS PERSONAL WORKSPACE: "${secondaryOrg.name}" is a personal workspace and should not be merged with company organizations.`);
+  }
   const estimatedChanges: { table_name: string; rows_to_move: number }[] = [];
 
   // Count rows in each table
