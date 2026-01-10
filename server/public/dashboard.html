@@ -1613,6 +1613,11 @@
         const customerType = org.is_personal ? 'individual' : 'company';
         const revenueTier = org.revenue_tier || '';
 
+        // Get discount info from billing data
+        const discountPercent = org.billing?.discount_percent || null;
+        const discountAmountCents = org.billing?.discount_amount_cents || null;
+        const hasDiscount = discountPercent || discountAmountCents;
+
         // Fetch products filtered by customer type and revenue tier
         const url = new URL('/api/billing-products', window.location.origin);
         url.searchParams.set('customer_type', customerType);
@@ -1637,25 +1642,70 @@
           return;
         }
 
+        // Helper to calculate discounted price
+        function calculateDiscountedPrice(amountCents) {
+          if (discountPercent) {
+            return Math.round(amountCents * (1 - discountPercent / 100));
+          } else if (discountAmountCents) {
+            return Math.max(0, amountCents - discountAmountCents);
+          }
+          return amountCents;
+        }
+
+        // Build discount banner if applicable
+        let discountBanner = '';
+        if (hasDiscount) {
+          const discountText = discountPercent
+            ? `${discountPercent}% discount`
+            : formatCurrency(discountAmountCents) + ' discount';
+          discountBanner = `
+            <div style="margin-bottom: 16px; padding: 12px 16px; background: linear-gradient(135deg, var(--color-success-50), var(--color-success-100)); border-radius: 8px; border: 1px solid var(--color-success-200); text-align: center;">
+              <span style="color: var(--color-success-700); font-weight: 600;">
+                Your organization has a ${discountText} applied to membership
+              </span>
+            </div>
+          `;
+        }
+
         // Render product cards
         const productCards = products.map(product => {
-          const price = formatCurrency(product.amount_cents, product.currency);
+          const listPrice = product.amount_cents;
+          const netPrice = hasDiscount ? calculateDiscountedPrice(listPrice) : listPrice;
+          const listPriceFormatted = formatCurrency(listPrice, product.currency);
+          const netPriceFormatted = formatCurrency(netPrice, product.currency);
           const interval = product.billing_interval === 'year' ? '/year' : product.billing_interval === 'month' ? '/month' : '';
           const isSubscription = product.billing_type === 'subscription';
 
-          return `
-            <div class="product-card" style="border: 2px solid var(--color-border); border-radius: 12px; padding: 24px; text-align: center; transition: all 0.2s; cursor: pointer;"
-                 onmouseover="this.style.borderColor='var(--aao-primary)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.15)';"
-                 onmouseout="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
-              <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--color-text-heading);">${escapeHtml(product.display_name)}</h3>
-              ${product.description ? `<p style="margin: 0 0 16px 0; font-size: 14px; color: var(--color-text-secondary);">${escapeHtml(product.description)}</p>` : ''}
+          // Build price display
+          let priceDisplay;
+          if (hasDiscount && listPrice !== netPrice) {
+            priceDisplay = `
               <div style="margin: 16px 0;">
-                <span style="font-size: 32px; font-weight: 700; color: var(--color-text-heading);">${price}</span>
+                <div style="margin-bottom: 4px;">
+                  <span style="font-size: 18px; text-decoration: line-through; color: var(--color-text-muted);">${listPriceFormatted}</span>
+                </div>
+                <span style="font-size: 32px; font-weight: 700; color: var(--color-success-600);">${netPriceFormatted}</span>
                 <span style="font-size: 14px; color: var(--color-text-secondary);">${interval}</span>
               </div>
+            `;
+          } else {
+            priceDisplay = `
+              <div style="margin: 16px 0;">
+                <span style="font-size: 32px; font-weight: 700; color: var(--color-text-heading);">${listPriceFormatted}</span>
+                <span style="font-size: 14px; color: var(--color-text-secondary);">${interval}</span>
+              </div>
+            `;
+          }
+
+          return `
+            <div class="product-card" style="border: 2px solid var(--color-border); border-radius: 12px; padding: 24px; text-align: center; transition: all 0.2s; cursor: pointer;">
+              <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--color-text-heading);">${escapeHtml(product.display_name)}</h3>
+              ${product.description ? `<p style="margin: 0 0 16px 0; font-size: 14px; color: var(--color-text-secondary);">${escapeHtml(product.description)}</p>` : ''}
+              ${priceDisplay}
               <button
-                onclick="startCheckout('${product.price_id}', '${org.id}')"
-                class="btn btn-primary"
+                data-price-id="${escapeHtml(product.price_id)}"
+                data-org-id="${escapeHtml(org.id)}"
+                class="btn btn-primary checkout-btn"
                 style="width: 100%; padding: 12px 24px; font-size: 16px;"
               >
                 ${isSubscription ? 'Subscribe' : 'Purchase'}
@@ -1665,10 +1715,28 @@
         }).join('');
 
         container.innerHTML = `
+          ${discountBanner}
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
             ${productCards}
           </div>
         `;
+
+        // Add event listeners to avoid XSS from inline handlers
+        container.querySelectorAll('.product-card').forEach(card => {
+          card.addEventListener('mouseover', () => {
+            card.style.borderColor = 'var(--aao-primary)';
+            card.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.15)';
+          });
+          card.addEventListener('mouseout', () => {
+            card.style.borderColor = 'var(--color-border)';
+            card.style.boxShadow = 'none';
+          });
+        });
+        container.querySelectorAll('.checkout-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            startCheckout(btn.dataset.priceId, btn.dataset.orgId);
+          });
+        });
       } catch (error) {
         console.error('Error loading products:', error);
         container.innerHTML = `
@@ -2673,6 +2741,10 @@
                       is_personal: billingData.is_personal,
                       suggested_company_type: billingData.suggested_company_type,
                       suggested_revenue_tier: billingData.suggested_revenue_tier,
+                      // Discount info
+                      discount_percent: billingData.discount_percent,
+                      discount_amount_cents: billingData.discount_amount_cents,
+                      stripe_promotion_code: billingData.stripe_promotion_code,
                     },
                     stripeCustomerId: billingData.stripe_customer_id,
                     customerSessionSecret: billingData.customer_session_secret,
@@ -3303,6 +3375,385 @@
         window.history.replaceState({}, '', newUrl);
       }
     });
+
+    // =========================================================================
+    // Invoice Request Modal Functions (Two-Step Draft Process)
+    // =========================================================================
+
+    let invoiceProducts = [];
+    let selectedInvoiceProductData = null;
+
+    function openInvoiceRequestModal(options = {}) {
+      const modal = document.getElementById('invoiceRequestModal');
+      const productSelect = document.getElementById('invoice-product');
+
+      // Reset modal state
+      document.getElementById('invoiceFormSection').style.display = 'block';
+      document.getElementById('invoiceDraftReviewSection').style.display = 'none';
+      document.getElementById('invoiceSuccessSection').style.display = 'none';
+      document.getElementById('invoiceFormError').style.display = 'none';
+      document.getElementById('invoiceRequestForm').reset();
+      document.getElementById('prepareDraftInvoiceBtn').style.display = 'inline-block';
+      document.getElementById('backToEditInvoiceBtn').style.display = 'none';
+      document.getElementById('sendInvoiceRequestBtn').style.display = 'none';
+
+      // Pre-fill company name if provided
+      if (options.companyName) {
+        document.getElementById('invoice-company').value = options.companyName;
+      }
+
+      // Load products and populate dropdown
+      loadInvoiceProducts(options.selectedProduct);
+
+      modal.style.display = 'flex';
+      document.getElementById('invoice-company').focus();
+    }
+
+    async function loadInvoiceProducts(preSelectedKey) {
+      const productSelect = document.getElementById('invoice-product');
+
+      try {
+        const response = await fetch('/api/products');
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        invoiceProducts = (data.products || []).filter(p => p.billing_type === 'subscription' && p.is_invoiceable);
+
+        // Sort by price
+        invoiceProducts.sort((a, b) => (a.amount_cents || 0) - (b.amount_cents || 0));
+
+        // Check if org has discount
+        const hasDiscount = currentOrg?.billing?.discount_percent || currentOrg?.billing?.discount_amount_cents;
+
+        productSelect.innerHTML = '<option value="">Select a product...</option>';
+        invoiceProducts.forEach(product => {
+          const listPrice = product.amount_cents || 0;
+          const netPrice = hasDiscount ? calculateInvoiceDiscountedPrice(listPrice) : listPrice;
+          const priceText = hasDiscount && netPrice !== listPrice
+            ? `${formatInvoiceCurrency(netPrice)}/year (was ${formatInvoiceCurrency(listPrice)})`
+            : `${formatInvoiceCurrency(listPrice)}/year`;
+          productSelect.innerHTML += `<option value="${product.lookup_key}">${escapeHtml(product.display_name)} - ${priceText}</option>`;
+        });
+
+        // Pre-select if specified
+        if (preSelectedKey) {
+          productSelect.value = preSelectedKey;
+        }
+      } catch (error) {
+        console.error('Error loading products:', error);
+        productSelect.innerHTML = '<option value="">Failed to load products</option>';
+      }
+    }
+
+    function calculateInvoiceDiscountedPrice(amountCents) {
+      if (currentOrg?.billing?.discount_percent) {
+        return Math.round(amountCents * (1 - currentOrg.billing.discount_percent / 100));
+      } else if (currentOrg?.billing?.discount_amount_cents) {
+        return Math.max(0, amountCents - currentOrg.billing.discount_amount_cents);
+      }
+      return amountCents;
+    }
+
+    function formatInvoiceCurrency(cents) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0
+      }).format(cents / 100);
+    }
+
+    function closeInvoiceRequestModal() {
+      document.getElementById('invoiceRequestModal').style.display = 'none';
+      selectedInvoiceProductData = null;
+    }
+
+    function prepareDraftInvoice() {
+      // Collect form data
+      const companyName = document.getElementById('invoice-company').value;
+      const contactName = document.getElementById('invoice-contact').value;
+      const contactEmail = document.getElementById('invoice-email').value;
+      const lookupKey = document.getElementById('invoice-product').value;
+      const addressLine1 = document.getElementById('invoice-address1').value;
+      const addressLine2 = document.getElementById('invoice-address2').value;
+      const city = document.getElementById('invoice-city').value;
+      const state = document.getElementById('invoice-state').value;
+      const postalCode = document.getElementById('invoice-postal').value;
+      const country = document.getElementById('invoice-country').value;
+
+      // Find selected product
+      const product = invoiceProducts.find(p => p.lookup_key === lookupKey);
+      if (!product) {
+        document.getElementById('invoiceFormError').textContent = 'Please select a product';
+        document.getElementById('invoiceFormError').style.display = 'block';
+        return;
+      }
+
+      // Check for missing required fields
+      const missingFields = [];
+      if (!companyName) missingFields.push('Company Name');
+      if (!contactName) missingFields.push('Contact Name');
+      if (!contactEmail) missingFields.push('Billing Email');
+      if (!addressLine1) missingFields.push('Address Line 1');
+      if (!city) missingFields.push('City');
+      if (!state) missingFields.push('State/Province');
+      if (!postalCode) missingFields.push('Postal Code');
+      if (!country) missingFields.push('Country');
+
+      // Store selected product data
+      selectedInvoiceProductData = { product, lookupKey };
+
+      // Calculate pricing
+      const hasDiscount = currentOrg?.billing?.discount_percent || currentOrg?.billing?.discount_amount_cents;
+      const listPrice = product.amount_cents || 0;
+      const netPrice = hasDiscount ? calculateInvoiceDiscountedPrice(listPrice) : listPrice;
+
+      // Build discount info
+      let discountHtml = '';
+      if (hasDiscount && listPrice !== netPrice) {
+        const discountText = currentOrg.billing.discount_percent
+          ? `${currentOrg.billing.discount_percent}% discount`
+          : `${formatInvoiceCurrency(currentOrg.billing.discount_amount_cents)} off`;
+        const savings = formatInvoiceCurrency(listPrice - netPrice);
+        discountHtml = `
+          <div style="margin-top: 8px; padding: 8px; background: var(--color-success-50); border-radius: 4px;">
+            <span style="color: var(--color-success-700); font-size: 13px;">${discountText} applied (saves ${savings})</span>
+          </div>
+        `;
+      }
+
+      // Build address display
+      const addressParts = [addressLine1];
+      if (addressLine2) addressParts.push(addressLine2);
+      addressParts.push(`${city}, ${state} ${postalCode}`);
+      addressParts.push(country);
+      const fullAddress = addressParts.filter(Boolean).join('<br>');
+
+      // Populate draft review content
+      document.getElementById('invoiceDraftReviewContent').innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Company</div>
+            <div style="font-weight: 600;">${escapeHtml(companyName) || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Contact</div>
+            <div style="font-weight: 600;">${escapeHtml(contactName) || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+            <div style="color: var(--color-text-secondary); font-size: 13px;">${escapeHtml(contactEmail) || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+          </div>
+        </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--color-border);">
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Product</div>
+            <div style="font-weight: 600;">${escapeHtml(product.display_name)}</div>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Amount</div>
+            ${hasDiscount && listPrice !== netPrice
+              ? `<div><span style="text-decoration: line-through; color: var(--color-text-muted);">${formatInvoiceCurrency(listPrice)}</span> <span style="color: var(--color-success-600); font-weight: 600;">${formatInvoiceCurrency(netPrice)}/year</span></div>`
+              : `<div style="font-weight: 600;">${formatInvoiceCurrency(listPrice)}/year</div>`
+            }
+            ${discountHtml}
+          </div>
+        </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--color-border);">
+
+        <div>
+          <div style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Billing Address</div>
+          <div style="line-height: 1.5;">${fullAddress || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+        </div>
+      `;
+
+      // Show/hide missing fields warning
+      const missingFieldsDiv = document.getElementById('invoiceMissingFields');
+      if (missingFields.length > 0) {
+        missingFieldsDiv.innerHTML = `<strong style="font-size: 13px;">Missing Information:</strong> ${missingFields.join(', ')}`;
+        missingFieldsDiv.style.display = 'block';
+      } else {
+        missingFieldsDiv.style.display = 'none';
+      }
+
+      // Update UI state
+      document.getElementById('invoiceFormSection').style.display = 'none';
+      document.getElementById('invoiceDraftReviewSection').style.display = 'block';
+      document.getElementById('prepareDraftInvoiceBtn').style.display = 'none';
+      document.getElementById('backToEditInvoiceBtn').style.display = 'inline-block';
+      document.getElementById('sendInvoiceRequestBtn').style.display = missingFields.length === 0 ? 'inline-block' : 'none';
+    }
+
+    function backToEditInvoiceRequest() {
+      document.getElementById('invoiceDraftReviewSection').style.display = 'none';
+      document.getElementById('invoiceFormSection').style.display = 'block';
+      document.getElementById('prepareDraftInvoiceBtn').style.display = 'inline-block';
+      document.getElementById('backToEditInvoiceBtn').style.display = 'none';
+      document.getElementById('sendInvoiceRequestBtn').style.display = 'none';
+    }
+
+    async function submitInvoiceRequest(event) {
+      event.preventDefault();
+
+      const submitBtn = document.getElementById('sendInvoiceRequestBtn');
+      const errorDiv = document.getElementById('invoiceFormError');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+      errorDiv.style.display = 'none';
+
+      const form = document.getElementById('invoiceRequestForm');
+      const formData = new FormData(form);
+
+      const requestData = {
+        companyName: formData.get('companyName'),
+        contactName: formData.get('contactName'),
+        contactEmail: formData.get('contactEmail'),
+        lookupKey: formData.get('lookupKey'),
+        billingAddress: {
+          line1: formData.get('line1'),
+          line2: formData.get('line2') || undefined,
+          city: formData.get('city'),
+          state: formData.get('state'),
+          postal_code: formData.get('postal_code'),
+          country: formData.get('country'),
+        },
+      };
+
+      try {
+        const response = await fetch('/api/invoice-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(requestData),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to send invoice');
+        }
+
+        // Show success state
+        document.getElementById('invoiceDraftReviewSection').style.display = 'none';
+        document.getElementById('backToEditInvoiceBtn').style.display = 'none';
+        document.getElementById('sendInvoiceRequestBtn').style.display = 'none';
+
+        document.getElementById('invoiceSuccessSection').innerHTML = `
+          <div style="text-align: center; padding: 24px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
+            <h3 style="color: var(--color-success-600); margin-bottom: 8px;">Invoice Sent!</h3>
+            <p style="color: var(--color-text-secondary); margin-bottom: 16px;">We've sent an invoice to <strong>${escapeHtml(requestData.contactEmail)}</strong>. Please check your email for payment instructions.</p>
+            <p style="font-size: 14px; color: var(--color-text-muted);">The invoice is due within 30 days. You can pay online via the link in the email.</p>
+          </div>
+        `;
+        document.getElementById('invoiceSuccessSection').style.display = 'block';
+
+      } catch (error) {
+        errorDiv.textContent = error.message || 'Something went wrong. Please try again or contact finance@agenticadvertising.org';
+        errorDiv.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send Invoice';
+      }
+    }
   </script>
+
+  <!-- Invoice Request Modal (Two-Step Draft Process) -->
+  <div id="invoiceRequestModal" class="modal-overlay" style="display: none;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Request an Invoice</h2>
+        <button onclick="closeInvoiceRequestModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <form id="invoiceRequestForm" onsubmit="submitInvoiceRequest(event)">
+        <!-- Step 1: Form Section -->
+        <div id="invoiceFormSection" style="padding: 24px;">
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Company Name *</label>
+            <input type="text" id="invoice-company" name="companyName" required placeholder="Acme Corporation" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Contact Name *</label>
+              <input type="text" id="invoice-contact" name="contactName" required placeholder="John Smith" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Email *</label>
+              <input type="email" id="invoice-email" name="contactEmail" required placeholder="billing@acme.com" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Product *</label>
+            <select id="invoice-product" name="lookupKey" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;">
+              <option value="">Select a product...</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 1 *</label>
+            <input type="text" id="invoice-address1" name="line1" required placeholder="123 Main Street" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 2</label>
+            <input type="text" id="invoice-address2" name="line2" placeholder="Suite 100" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">City *</label>
+              <input type="text" id="invoice-city" name="city" required placeholder="San Francisco" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">State/Province *</label>
+              <input type="text" id="invoice-state" name="state" required placeholder="CA" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Postal Code *</label>
+              <input type="text" id="invoice-postal" name="postal_code" required placeholder="94105" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
+              <input type="text" id="invoice-country" name="country" required value="US" placeholder="US" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+
+          <div id="invoiceFormError" style="display: none; color: var(--color-error-600); font-size: 14px; padding: 12px; background: var(--color-error-50); border-radius: 8px;"></div>
+        </div>
+
+        <!-- Step 2: Draft Review Section -->
+        <div id="invoiceDraftReviewSection" style="display: none; padding: 24px;">
+          <div style="background: var(--color-info-50); border: 1px solid var(--color-info-200); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <strong style="color: var(--color-info-700);">Review Invoice Draft</strong>
+            <p style="margin: 4px 0 0; font-size: 13px; color: var(--color-text-secondary);">
+              Please review all details before sending. The invoice will be emailed to the billing contact.
+            </p>
+          </div>
+
+          <div id="invoiceDraftReviewContent" style="background: var(--color-bg-subtle); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <!-- Populated by JavaScript -->
+          </div>
+
+          <div id="invoiceMissingFields" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: 8px; padding: 12px; color: var(--color-warning-700);"></div>
+        </div>
+
+        <!-- Step 3: Success Section -->
+        <div id="invoiceSuccessSection" style="display: none;">
+          <!-- Populated by JavaScript -->
+        </div>
+
+        <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeInvoiceRequestModal()">Cancel</button>
+          <button type="button" class="btn btn-secondary" id="backToEditInvoiceBtn" style="display: none;" onclick="backToEditInvoiceRequest()">Edit Details</button>
+          <button type="button" class="btn btn-primary" id="prepareDraftInvoiceBtn" onclick="prepareDraftInvoice()">Prepare Draft</button>
+          <button type="submit" class="btn btn-primary" id="sendInvoiceRequestBtn" style="display: none;">Send Invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </body>
 </html>

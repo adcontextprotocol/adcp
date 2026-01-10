@@ -375,6 +375,10 @@ export function createPublicBillingRouter(): Router {
           workosOrganizationId: orgId,
           workosUserId: user.id,
           isPersonalWorkspace: org.is_personal || false,
+          // Apply org's stored coupon if available
+          couponId: org.stripe_coupon_id || undefined,
+          // Only use promotion code if no coupon ID (coupon takes precedence)
+          promotionCode: !org.stripe_coupon_id ? (org.stripe_promotion_code || undefined) : undefined,
         };
 
         const result = await createCheckoutSession(checkoutData);
@@ -607,6 +611,10 @@ export function createPublicBillingRouter(): Router {
           // Enrichment-based suggestions for prefilling the profile modal
           suggested_company_type: suggestedCompanyType,
           suggested_revenue_tier: suggestedRevenueTier,
+          // Discount info for display (if any)
+          discount_percent: org.discount_percent || null,
+          discount_amount_cents: org.discount_amount_cents || null,
+          stripe_promotion_code: org.stripe_promotion_code || null,
         });
       } catch (error) {
         logger.error({ err: error }, "Get billing info error:");

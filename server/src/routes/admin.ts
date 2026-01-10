@@ -590,6 +590,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           contact_name,
           contact_email,
           billing_address,
+          coupon_id,
         } = req.body;
 
         if (!lookup_key || !company_name || !contact_name || !contact_email || !billing_address) {
@@ -609,7 +610,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
         const pool = getPool();
         const orgResult = await pool.query(
-          `SELECT workos_organization_id, name FROM organizations WHERE workos_organization_id = $1`,
+          `SELECT workos_organization_id, name, stripe_coupon_id FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         );
 
@@ -618,6 +619,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         }
 
         const org = orgResult.rows[0];
+
+        // Use explicit coupon_id from request, or fall back to org's saved coupon
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
 
         const result = await createAndSendInvoice({
           lookupKey: lookup_key,
@@ -633,6 +637,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
             country: billing_address.country,
           },
           workosOrganizationId: orgId,
+          couponId: effectiveCouponId,
         });
 
         if (!result) {
