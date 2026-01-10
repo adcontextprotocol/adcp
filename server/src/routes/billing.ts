@@ -25,6 +25,7 @@ import {
   type UpdateProductInput,
   type PendingInvoice,
 } from "../billing/stripe-client.js";
+import { OrganizationDatabase } from "../db/organization-db.js";
 
 const logger = createLogger("billing-routes");
 
@@ -913,6 +914,197 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Failed to delete customer",
+      });
+    }
+  });
+
+  // ========================================
+  // STRIPE CUSTOMER CONFLICT MANAGEMENT
+  // ========================================
+
+  /**
+   * GET /api/admin/stripe-conflicts
+   * List all Stripe customer ID conflicts between Stripe metadata and local DB
+   */
+  apiRouter.get("/stripe-conflicts", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const orgDb = new OrganizationDatabase();
+      const conflicts = await orgDb.findStripeCustomerConflicts();
+
+      res.json({
+        conflicts,
+        count: conflicts.length,
+        message: conflicts.length > 0
+          ? `Found ${conflicts.length} Stripe customer conflict(s). Review and resolve using POST /api/admin/stripe-conflicts/resolve`
+          : "No Stripe customer conflicts found",
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error finding Stripe customer conflicts");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to find conflicts",
+      });
+    }
+  });
+
+  /**
+   * POST /api/admin/stripe-conflicts/resolve
+   * Resolve a Stripe customer conflict by choosing which org should own the customer
+   * Body: { stripe_customer_id, keep_org_id, action: "unlink_other" | "update_stripe_metadata" }
+   */
+  apiRouter.post("/stripe-conflicts/resolve", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { stripe_customer_id, keep_org_id, action } = req.body;
+
+      if (!stripe_customer_id || !keep_org_id || !action) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          message: "Required: stripe_customer_id, keep_org_id, action (unlink_other or update_stripe_metadata)",
+        });
+      }
+
+      if (!["unlink_other", "update_stripe_metadata"].includes(action)) {
+        return res.status(400).json({
+          error: "Invalid action",
+          message: "action must be 'unlink_other' or 'update_stripe_metadata'",
+        });
+      }
+
+      const orgDb = new OrganizationDatabase();
+
+      // Find the current state
+      const currentDbOrg = await orgDb.getOrganizationByStripeCustomerId(stripe_customer_id);
+      const keepOrg = await orgDb.getOrganization(keep_org_id);
+
+      if (!keepOrg) {
+        return res.status(404).json({
+          error: "Organization not found",
+          message: `Organization ${keep_org_id} not found`,
+        });
+      }
+
+      if (action === "unlink_other") {
+        // Unlink from current DB org, then link to keep_org
+        if (currentDbOrg && currentDbOrg.workos_organization_id !== keep_org_id) {
+          await orgDb.unlinkStripeCustomer(currentDbOrg.workos_organization_id);
+          logger.info(
+            { stripeCustomerId: stripe_customer_id, unlinkedFrom: currentDbOrg.workos_organization_id, adminEmail: req.user?.email },
+            "Unlinked Stripe customer from organization during conflict resolution"
+          );
+        }
+
+        // Link to the keep_org (force in case of race conditions)
+        await orgDb.setStripeCustomerId(keep_org_id, stripe_customer_id, { force: true });
+
+        logger.info(
+          { stripeCustomerId: stripe_customer_id, linkedTo: keep_org_id, adminEmail: req.user?.email },
+          "Resolved Stripe customer conflict - linked to chosen organization"
+        );
+
+        res.json({
+          success: true,
+          message: `Stripe customer ${stripe_customer_id} is now linked to ${keepOrg.name} (${keep_org_id})`,
+          action_taken: "unlink_other",
+          previous_org: currentDbOrg ? { id: currentDbOrg.workos_organization_id, name: currentDbOrg.name } : null,
+          current_org: { id: keep_org_id, name: keepOrg.name },
+        });
+
+      } else if (action === "update_stripe_metadata") {
+        // Update Stripe customer metadata to point to keep_org
+        if (!stripe) {
+          return res.status(500).json({
+            error: "Stripe not initialized",
+            message: "Cannot update Stripe metadata - Stripe is not configured",
+          });
+        }
+
+        await stripe.customers.update(stripe_customer_id, {
+          metadata: { workos_organization_id: keep_org_id },
+        });
+
+        // Also ensure DB is in sync
+        if (!currentDbOrg || currentDbOrg.workos_organization_id !== keep_org_id) {
+          if (currentDbOrg) {
+            await orgDb.unlinkStripeCustomer(currentDbOrg.workos_organization_id);
+          }
+          await orgDb.setStripeCustomerId(keep_org_id, stripe_customer_id, { force: true });
+        }
+
+        logger.info(
+          { stripeCustomerId: stripe_customer_id, linkedTo: keep_org_id, adminEmail: req.user?.email },
+          "Resolved Stripe customer conflict - updated Stripe metadata and DB"
+        );
+
+        res.json({
+          success: true,
+          message: `Updated Stripe customer ${stripe_customer_id} metadata and linked to ${keepOrg.name} (${keep_org_id})`,
+          action_taken: "update_stripe_metadata",
+          previous_org: currentDbOrg ? { id: currentDbOrg.workos_organization_id, name: currentDbOrg.name } : null,
+          current_org: { id: keep_org_id, name: keepOrg.name },
+        });
+      }
+    } catch (error) {
+      logger.error({ err: error }, "Error resolving Stripe customer conflict");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to resolve conflict",
+      });
+    }
+  });
+
+  /**
+   * POST /api/admin/stripe-customer/unlink
+   * Unlink a Stripe customer from an organization (without deleting the customer in Stripe)
+   * Body: { org_id }
+   */
+  apiRouter.post("/stripe-customer/unlink", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { org_id } = req.body;
+
+      if (!org_id) {
+        return res.status(400).json({
+          error: "Missing required field",
+          message: "Required: org_id",
+        });
+      }
+
+      const orgDb = new OrganizationDatabase();
+      const org = await orgDb.getOrganization(org_id);
+
+      if (!org) {
+        return res.status(404).json({
+          error: "Organization not found",
+          message: `Organization ${org_id} not found`,
+        });
+      }
+
+      if (!org.stripe_customer_id) {
+        return res.status(400).json({
+          error: "No Stripe customer linked",
+          message: `Organization ${org.name} has no Stripe customer linked`,
+        });
+      }
+
+      const previousCustomerId = org.stripe_customer_id;
+      await orgDb.unlinkStripeCustomer(org_id);
+
+      logger.info(
+        { orgId: org_id, stripeCustomerId: previousCustomerId, adminEmail: req.user?.email },
+        "Unlinked Stripe customer from organization"
+      );
+
+      res.json({
+        success: true,
+        message: `Unlinked Stripe customer ${previousCustomerId} from ${org.name}`,
+        org_id,
+        org_name: org.name,
+        unlinked_customer_id: previousCustomerId,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error unlinking Stripe customer");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to unlink customer",
       });
     }
   });

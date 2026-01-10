@@ -141,8 +141,6 @@ async function applyMigration(migration: Migration): Promise<void> {
  * Run all pending migrations
  */
 export async function runMigrations(config?: DatabaseConfig): Promise<void> {
-  console.log("Running database migrations...");
-
   // Initialize database if config provided
   if (config) {
     initializeDatabase(config);
@@ -155,16 +153,13 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
   const migrations = await loadMigrations();
   const appliedVersions = await getAppliedMigrations();
 
-  console.log(`Found ${migrations.length} migrations`);
-  console.log(`${appliedVersions.length} already applied`);
-
   // Find pending migrations
   const pendingMigrations = migrations.filter(
     (m) => !appliedVersions.includes(m.version)
   );
 
   if (pendingMigrations.length === 0) {
-    console.log("No pending migrations");
+    // Quiet startup - no output when nothing to do
     return;
   }
 
