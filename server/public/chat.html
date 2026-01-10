@@ -2645,22 +2645,29 @@
 
       // Show browser notification
       function notifyUser(title, body, tabId) {
-        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-          const notification = new Notification(title, {
-            body: body.slice(0, 100) + (body.length > 100 ? '...' : ''),
-            icon: '/AAo.svg',
-            tag: tabId // Prevents duplicate notifications
-          });
-          notification.onclick = () => {
-            window.focus();
-            if (tabId && tabId !== 'home') {
-              const tab = activeTabs.find(t => t.id === tabId);
-              if (tab) {
-                switchToConversation(tabId, tab.channel);
+        if ('Notification' in window &&
+            Notification.permission === 'granted' &&
+            document.hidden &&
+            typeof Notification === 'function') {
+          try {
+            const notification = new Notification(title, {
+              body: body.slice(0, 100) + (body.length > 100 ? '...' : ''),
+              icon: '/AAo.svg',
+              tag: tabId // Prevents duplicate notifications
+            });
+            notification.onclick = () => {
+              window.focus();
+              if (tabId && tabId !== 'home') {
+                const tab = activeTabs.find(t => t.id === tabId);
+                if (tab) {
+                  switchToConversation(tabId, tab.channel);
+                }
               }
-            }
-            notification.close();
-          };
+              notification.close();
+            };
+          } catch {
+            // Notifications are non-critical, silently fail
+          }
         }
       }
 
