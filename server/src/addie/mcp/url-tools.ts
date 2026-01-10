@@ -18,6 +18,17 @@ const MAX_BINARY_SIZE = 20 * 1024 * 1024; // 20MB for images/PDFs (Claude's limi
 // Maximum time to wait for fetch (10 seconds)
 const FETCH_TIMEOUT_MS = 10000;
 
+// Allowed image types for Claude's vision API
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
+export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
+
+/**
+ * Check if a media type is allowed for image processing
+ */
+export function isAllowedImageType(type: string | undefined): type is AllowedImageType {
+  return type !== undefined && ALLOWED_IMAGE_TYPES.includes(type as AllowedImageType);
+}
+
 /**
  * Result from reading a file - can be text or multimodal content
  */
@@ -33,6 +44,50 @@ export interface FileReadResult {
   filename?: string;
   /** Error message if failed */
   error?: string;
+}
+
+/**
+ * Read binary response body with streaming size limit protection.
+ * This prevents memory exhaustion if content-length header is missing or spoofed.
+ */
+async function readBinaryWithSizeLimit(
+  response: Response,
+  maxSize: number,
+  fileType: string
+): Promise<ArrayBuffer | { error: string }> {
+  const reader = response.body?.getReader();
+
+  if (!reader) {
+    return { error: 'Could not read response body' };
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalSize = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      totalSize += value.length;
+      if (totalSize > maxSize) {
+        reader.cancel();
+        return { error: `${fileType} exceeded ${Math.round(maxSize / 1024 / 1024)}MB limit during download` };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Combine chunks into single ArrayBuffer
+  const combined = new Uint8Array(totalSize);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return combined.buffer;
 }
 
 /**
@@ -348,13 +403,21 @@ async function readSlackFile(
 
     // Handle PDF - return as document for Claude's native PDF support
     if (contentType.includes('application/pdf') || ext === 'pdf') {
-      // Check size for binary files
-      if (contentLength && parseInt(contentLength) > MAX_BINARY_SIZE) {
-        return { type: 'text', error: `PDF too large (${Math.round(parseInt(contentLength) / 1024 / 1024)}MB > ${MAX_BINARY_SIZE / 1024 / 1024}MB limit)` };
+      // Use streaming reader for size-safe download
+      const bufferResult = await readBinaryWithSizeLimit(response, MAX_BINARY_SIZE, 'PDF');
+      if ('error' in bufferResult) {
+        return { type: 'text', error: bufferResult.error };
       }
-      const buffer = await response.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
-      logger.info({ fileName, size: buffer.byteLength }, 'Addie: Loaded PDF for multimodal processing');
+      if (bufferResult.byteLength === 0) {
+        return { type: 'text', error: 'PDF file is empty' };
+      }
+      // Basic PDF magic byte validation
+      const uint8 = new Uint8Array(bufferResult);
+      if (uint8.length < 4 || String.fromCharCode(uint8[0], uint8[1], uint8[2], uint8[3]) !== '%PDF') {
+        return { type: 'text', error: 'File does not appear to be a valid PDF' };
+      }
+      const base64 = Buffer.from(bufferResult).toString('base64');
+      logger.info({ fileName, size: bufferResult.byteLength }, 'Addie: Loaded PDF for multimodal processing');
       return {
         type: 'document',
         data: base64,
@@ -363,14 +426,25 @@ async function readSlackFile(
       };
     }
 
+    // Handle SVG explicitly - not supported for vision but give helpful message
+    if (contentType.includes('image/svg') || ext === 'svg') {
+      return {
+        type: 'text',
+        error: 'SVG files are not supported for visual processing. If you need the SVG content analyzed, please share it as text.',
+      };
+    }
+
     // Handle images - return as image for Claude's vision
     if (contentType.includes('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-      // Check size for binary files
-      if (contentLength && parseInt(contentLength) > MAX_BINARY_SIZE) {
-        return { type: 'text', error: `Image too large (${Math.round(parseInt(contentLength) / 1024 / 1024)}MB > ${MAX_BINARY_SIZE / 1024 / 1024}MB limit)` };
+      // Use streaming reader for size-safe download
+      const bufferResult = await readBinaryWithSizeLimit(response, MAX_BINARY_SIZE, 'Image');
+      if ('error' in bufferResult) {
+        return { type: 'text', error: bufferResult.error };
       }
-      const buffer = await response.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
+      if (bufferResult.byteLength === 0) {
+        return { type: 'text', error: 'Image file is empty' };
+      }
+      const base64 = Buffer.from(bufferResult).toString('base64');
       // Determine proper media type
       let mediaType = contentType.split(';')[0].trim();
       if (!mediaType.startsWith('image/')) {
@@ -384,7 +458,14 @@ async function readSlackFile(
         };
         mediaType = extToMime[ext] || 'image/png';
       }
-      logger.info({ fileName, size: buffer.byteLength, mediaType }, 'Addie: Loaded image for vision processing');
+      // Validate the media type is supported
+      if (!isAllowedImageType(mediaType)) {
+        return {
+          type: 'text',
+          error: `Image format '${mediaType}' is not supported. Supported formats: JPEG, PNG, GIF, WebP.`,
+        };
+      }
+      logger.info({ fileName, size: bufferResult.byteLength, mediaType }, 'Addie: Loaded image for vision processing');
       return {
         type: 'image',
         data: base64,
@@ -399,15 +480,18 @@ async function readSlackFile(
       contentType.includes('application/msword') ||
       ['docx', 'doc'].includes(ext)
     ) {
-      // Check size
-      if (contentLength && parseInt(contentLength) > MAX_BINARY_SIZE) {
-        return { type: 'text', error: `Word document too large (${Math.round(parseInt(contentLength) / 1024 / 1024)}MB > ${MAX_BINARY_SIZE / 1024 / 1024}MB limit)` };
+      // Use streaming reader for size-safe download
+      const bufferResult = await readBinaryWithSizeLimit(response, MAX_BINARY_SIZE, 'Word document');
+      if ('error' in bufferResult) {
+        return { type: 'text', error: bufferResult.error };
       }
-      const buffer = await response.arrayBuffer();
+      if (bufferResult.byteLength === 0) {
+        return { type: 'text', error: 'Word document is empty' };
+      }
       try {
         // Try to import mammoth dynamically
         const mammoth = await import('mammoth');
-        const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+        const result = await mammoth.extractRawText({ buffer: Buffer.from(bufferResult) });
         logger.info({ fileName, textLength: result.value.length }, 'Addie: Extracted text from Word document');
         return {
           type: 'text',
@@ -510,7 +594,8 @@ export function isMultimodalContent(content: string): boolean {
 }
 
 /**
- * Extract multimodal content from a tool result
+ * Extract and validate multimodal content from a tool result.
+ * Returns null if the content is malformed or missing required fields.
  */
 export function extractMultimodalContent(content: string): FileReadResult | null {
   if (!isMultimodalContent(content)) {
@@ -518,7 +603,31 @@ export function extractMultimodalContent(content: string): FileReadResult | null
   }
   try {
     const jsonStr = content.replace('__MULTIMODAL_CONTENT__', '').replace('__END_MULTIMODAL__', '');
-    return JSON.parse(jsonStr) as FileReadResult;
+    const parsed = JSON.parse(jsonStr);
+
+    // Validate required fields exist
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+
+    const { type, data, media_type, filename } = parsed;
+
+    // Type must be a valid FileReadResult type
+    if (type !== 'text' && type !== 'image' && type !== 'document') {
+      return null;
+    }
+
+    // For image/document types, data is required
+    if ((type === 'image' || type === 'document') && typeof data !== 'string') {
+      return null;
+    }
+
+    return {
+      type,
+      data: typeof data === 'string' ? data : undefined,
+      media_type: typeof media_type === 'string' ? media_type : undefined,
+      filename: typeof filename === 'string' ? filename : undefined,
+    };
   } catch {
     return null;
   }

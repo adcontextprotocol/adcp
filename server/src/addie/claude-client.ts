@@ -12,9 +12,65 @@ import { ADDIE_SYSTEM_PROMPT, buildMessageTurns } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
-import { isMultimodalContent, extractMultimodalContent, type FileReadResult } from './mcp/url-tools.js';
+import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+/**
+ * Build Claude content blocks from multimodal file content.
+ * Returns null if the content cannot be converted to valid content blocks.
+ */
+function buildMultimodalContentBlocks(
+  multimodal: FileReadResult
+): { content: Anthropic.ToolResultBlockParam['content']; summary: string } | null {
+  if (!multimodal.data) {
+    return null;
+  }
+
+  const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
+
+  if (multimodal.type === 'image') {
+    // Validate media type before using
+    if (!isAllowedImageType(multimodal.media_type)) {
+      logger.warn(
+        { mediaType: multimodal.media_type },
+        'Addie: Invalid image media type in multimodal content'
+      );
+      return null;
+    }
+    contentBlocks.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: multimodal.media_type,
+        data: multimodal.data,
+      },
+    });
+    contentBlocks.push({
+      type: 'text',
+      text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
+    });
+  } else if (multimodal.type === 'document') {
+    contentBlocks.push({
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: multimodal.data,
+      },
+    });
+    contentBlocks.push({
+      type: 'text',
+      text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
+    });
+  } else {
+    // Unknown multimodal type
+    return null;
+  }
+
+  const summary = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
+  return { content: contentBlocks, summary };
+}
 
 /** Default max tool iterations for regular users */
 export const DEFAULT_MAX_ITERATIONS = 10;
@@ -566,55 +622,22 @@ export class AddieClaudeClient {
             // Check if result contains multimodal content (images, PDFs)
             if (isMultimodalContent(result)) {
               const multimodal = extractMultimodalContent(result);
-              if (multimodal && multimodal.data) {
-                // Convert to Claude content blocks
-                const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
+              const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
 
-                if (multimodal.type === 'image') {
-                  contentBlocks.push({
-                    type: 'image',
-                    source: {
-                      type: 'base64',
-                      media_type: multimodal.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                      data: multimodal.data,
-                    },
-                  });
-                  // Add context text
-                  contentBlocks.push({
-                    type: 'text',
-                    text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
-                  });
-                } else if (multimodal.type === 'document') {
-                  // For PDFs, use document content block
-                  contentBlocks.push({
-                    type: 'document',
-                    source: {
-                      type: 'base64',
-                      media_type: 'application/pdf',
-                      data: multimodal.data,
-                    },
-                  });
-                  // Add context text
-                  contentBlocks.push({
-                    type: 'text',
-                    text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
-                  });
-                }
-
-                toolResults.push({ tool_use_id: toolUseId, content: contentBlocks });
-                const summaryText = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
+              if (multimodalBlocks) {
+                toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
                 toolExecutions.push({
                   tool_name: toolName,
                   parameters: toolInput,
-                  result: summaryText,
-                  result_summary: summaryText,
+                  result: multimodalBlocks.summary,
+                  result_summary: multimodalBlocks.summary,
                   is_error: false,
                   duration_ms: durationMs,
                   sequence: executionSequence,
                 });
-                logger.info({ toolName, multimodalType: multimodal.type, filename: multimodal.filename }, 'Addie: Processed multimodal tool result');
+                logger.info({ toolName, multimodalType: multimodal?.type, filename: multimodal?.filename }, 'Addie: Processed multimodal tool result');
               } else {
-                // Failed to parse multimodal content
+                // Failed to parse or validate multimodal content
                 toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
                 toolExecutions.push({
                   tool_name: toolName,
@@ -937,51 +960,21 @@ export class AddieClaudeClient {
               // Check if result contains multimodal content (images, PDFs)
               if (isMultimodalContent(result)) {
                 const multimodal = extractMultimodalContent(result);
-                if (multimodal && multimodal.data) {
-                  // Convert to Claude content blocks
-                  const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
+                const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
 
-                  if (multimodal.type === 'image') {
-                    contentBlocks.push({
-                      type: 'image',
-                      source: {
-                        type: 'base64',
-                        media_type: multimodal.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                        data: multimodal.data,
-                      },
-                    });
-                    contentBlocks.push({
-                      type: 'text',
-                      text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
-                    });
-                  } else if (multimodal.type === 'document') {
-                    contentBlocks.push({
-                      type: 'document',
-                      source: {
-                        type: 'base64',
-                        media_type: 'application/pdf',
-                        data: multimodal.data,
-                      },
-                    });
-                    contentBlocks.push({
-                      type: 'text',
-                      text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
-                    });
-                  }
-
-                  toolResults.push({ tool_use_id: toolUseId, content: contentBlocks });
-                  const summaryText = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
+                if (multimodalBlocks) {
+                  toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
                   toolExecutions.push({
                     tool_name: toolName,
                     parameters: toolInput,
-                    result: summaryText,
-                    result_summary: summaryText,
+                    result: multimodalBlocks.summary,
+                    result_summary: multimodalBlocks.summary,
                     is_error: false,
                     duration_ms: durationMs,
                     sequence: executionSequence,
                   });
-                  yield { type: 'tool_end', tool_name: toolName, result: summaryText, is_error: false };
-                  logger.info({ toolName, multimodalType: multimodal.type, filename: multimodal.filename }, 'Addie Stream: Processed multimodal tool result');
+                  yield { type: 'tool_end', tool_name: toolName, result: multimodalBlocks.summary, is_error: false };
+                  logger.info({ toolName, multimodalType: multimodal?.type, filename: multimodal?.filename }, 'Addie Stream: Processed multimodal tool result');
                 } else {
                   toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
                   toolExecutions.push({
