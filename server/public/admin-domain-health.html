@@ -131,6 +131,28 @@
       color: var(--color-text-secondary);
       padding: var(--space-0.5) 0;
     }
+    .claimed-tag {
+      display: inline-block;
+      margin-left: var(--space-1);
+      padding: var(--space-0.5) var(--space-1);
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .claimed-tag:hover {
+      background: var(--color-warning-50);
+    }
+    .personal-tag {
+      display: inline-block;
+      margin-left: var(--space-1);
+      padding: var(--space-0.5) var(--space-1);
+      background: var(--color-gray-100);
+      color: var(--color-text-muted);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
     .user-count {
       background: var(--color-gray-100);
       color: var(--color-text-secondary);
@@ -1058,10 +1080,17 @@
           </thead>
           <tbody>
             ${unverified_orgs.map(o => {
+              // Build a map of claimed domains to their claiming org info
+              const claimedDomainsMap = new Map();
+              (o.claimed_by_others || []).forEach(claim => {
+                if (claim && claim.domain) {
+                  claimedDomainsMap.set(claim.domain.toLowerCase(), claim);
+                }
+              });
+
               // Find the first corporate domain (not a personal email domain AND not claimed by another org)
-              const claimedByOthers = new Set((o.claimed_by_others || []).map(d => d.toLowerCase()));
               const corporateDomains = (o.user_domains || []).filter(d =>
-                d && !personalDomains.includes(d.toLowerCase()) && !claimedByOthers.has(d.toLowerCase())
+                d && !personalDomains.includes(d.toLowerCase()) && !claimedDomainsMap.has(d.toLowerCase())
               );
               const suggestedDomain = corporateDomains[0] || null;
 
@@ -1074,7 +1103,16 @@
                 <td><span class="user-count">${o.user_count}</span></td>
                 <td>
                   <ul class="user-list">
-                    ${o.user_domains.slice(0, 3).map(d => `<li>${escapeHtml(d)}</li>`).join('')}
+                    ${o.user_domains.slice(0, 3).map(d => {
+                      const claim = claimedDomainsMap.get(d.toLowerCase());
+                      if (claim) {
+                        return `<li>${escapeHtml(d)} <span class="claimed-tag" title="Claimed by ${escapeHtml(claim.org_name)}"><a href="/admin/accounts/${encodeURIComponent(claim.org_id)}" style="color: inherit; text-decoration: none;">→ ${escapeHtml(claim.org_name)}</a></span></li>`;
+                      }
+                      if (personalDomains.includes(d.toLowerCase())) {
+                        return `<li>${escapeHtml(d)} <span class="personal-tag">personal</span></li>`;
+                      }
+                      return `<li>${escapeHtml(d)}</li>`;
+                    }).join('')}
                   </ul>
                 </td>
                 <td>

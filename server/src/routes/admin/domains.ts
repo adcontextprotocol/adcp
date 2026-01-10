@@ -1345,8 +1345,9 @@ export function setupDomainRoutes(
         // Also identify which user domains are already claimed by other orgs
         const unverifiedResult = await pool.query(`
           WITH claimed_domains AS (
-            SELECT LOWER(domain) as domain, workos_organization_id
-            FROM organization_domains
+            SELECT LOWER(od.domain) as domain, od.workos_organization_id, org.name as claiming_org_name
+            FROM organization_domains od
+            JOIN organizations org ON org.workos_organization_id = od.workos_organization_id
           )
           SELECT
             o.workos_organization_id,
@@ -1355,8 +1356,12 @@ export function setupDomainRoutes(
             o.subscription_status,
             COUNT(DISTINCT om.workos_user_id) as user_count,
             array_agg(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2))) FILTER (WHERE om.email IS NOT NULL) as user_domains,
-            -- Domains that are claimed by OTHER orgs (not this one)
-            array_agg(DISTINCT cd.domain) FILTER (
+            -- Domains that are claimed by OTHER orgs (not this one) with org details
+            json_agg(DISTINCT jsonb_build_object(
+              'domain', cd.domain,
+              'org_id', cd.workos_organization_id,
+              'org_name', cd.claiming_org_name
+            )) FILTER (
               WHERE cd.domain IS NOT NULL
               AND cd.workos_organization_id != o.workos_organization_id
               AND cd.domain = LOWER(SPLIT_PART(om.email, '@', 2))
