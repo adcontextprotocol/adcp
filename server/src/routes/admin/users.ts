@@ -14,6 +14,7 @@ import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import { backfillOrganizationMemberships, backfillUsers } from '../workos-webhooks.js';
+import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 
 const logger = createLogger('admin-users-routes');
 
@@ -422,6 +423,192 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Backfill users error');
       res.status(500).json({
         error: 'Failed to backfill users',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/admin/users/website-only - Get users who have website accounts but not Slack
+  // These are candidates for Slack invite emails
+  router.get('/website-only', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const pool = getPool();
+
+      // Get users who:
+      // 1. Have an organization membership (website account)
+      // 2. Are NOT linked to a Slack account
+      // 3. Don't have a matching email in slack_user_mappings (not in Slack at all)
+      const result = await pool.query<{
+        workos_user_id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        org_name: string;
+        workos_organization_id: string;
+        slack_invite_sent: boolean;
+      }>(`
+        SELECT DISTINCT ON (om.workos_user_id)
+          om.workos_user_id,
+          om.email,
+          om.first_name,
+          om.last_name,
+          o.name as org_name,
+          om.workos_organization_id,
+          EXISTS (
+            SELECT 1 FROM email_events ee
+            WHERE ee.workos_user_id = om.workos_user_id
+              AND ee.email_type = 'slack_invite'
+              AND ee.sent_at IS NOT NULL
+          ) as slack_invite_sent
+        FROM organization_memberships om
+        INNER JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
+        LEFT JOIN slack_user_mappings sm_linked ON sm_linked.workos_user_id = om.workos_user_id
+        LEFT JOIN slack_user_mappings sm_email ON LOWER(sm_email.slack_email) = LOWER(om.email)
+        WHERE sm_linked.workos_user_id IS NULL  -- Not linked to Slack
+          AND sm_email.slack_user_id IS NULL    -- Email not in Slack either
+        ORDER BY om.workos_user_id, o.name
+      `);
+
+      const users = result.rows.map(row => ({
+        workos_user_id: row.workos_user_id,
+        email: row.email,
+        name: [row.first_name, row.last_name].filter(Boolean).join(' ') || null,
+        first_name: row.first_name,
+        org_name: row.org_name,
+        workos_organization_id: row.workos_organization_id,
+        slack_invite_sent: row.slack_invite_sent,
+      }));
+
+      res.json({
+        users,
+        count: users.length,
+        not_invited_count: users.filter(u => !u.slack_invite_sent).length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Get website-only users error');
+      res.status(500).json({
+        error: 'Failed to get website-only users',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/admin/users/send-slack-invites - Send Slack invite emails to website-only users
+  // Can send to all uninvited users or specific user IDs
+  router.post('/send-slack-invites', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { user_ids, send_to_all } = req.body;
+      const pool = getPool();
+
+      let targetUsers: Array<{
+        workos_user_id: string;
+        email: string;
+        first_name: string | null;
+        workos_organization_id: string;
+      }>;
+
+      if (send_to_all) {
+        // Get all website-only users who haven't been sent an invite
+        const result = await pool.query<{
+          workos_user_id: string;
+          email: string;
+          first_name: string | null;
+          workos_organization_id: string;
+        }>(`
+          SELECT DISTINCT ON (om.workos_user_id)
+            om.workos_user_id,
+            om.email,
+            om.first_name,
+            om.workos_organization_id
+          FROM organization_memberships om
+          LEFT JOIN slack_user_mappings sm_linked ON sm_linked.workos_user_id = om.workos_user_id
+          LEFT JOIN slack_user_mappings sm_email ON LOWER(sm_email.slack_email) = LOWER(om.email)
+          WHERE sm_linked.workos_user_id IS NULL
+            AND sm_email.slack_user_id IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM email_events ee
+              WHERE ee.workos_user_id = om.workos_user_id
+                AND ee.email_type = 'slack_invite'
+                AND ee.sent_at IS NOT NULL
+            )
+          ORDER BY om.workos_user_id
+        `);
+        targetUsers = result.rows;
+      } else if (Array.isArray(user_ids) && user_ids.length > 0) {
+        // Get specific users
+        const result = await pool.query<{
+          workos_user_id: string;
+          email: string;
+          first_name: string | null;
+          workos_organization_id: string;
+        }>(`
+          SELECT DISTINCT ON (om.workos_user_id)
+            om.workos_user_id,
+            om.email,
+            om.first_name,
+            om.workos_organization_id
+          FROM organization_memberships om
+          WHERE om.workos_user_id = ANY($1)
+          ORDER BY om.workos_user_id
+        `, [user_ids]);
+        targetUsers = result.rows;
+      } else {
+        return res.status(400).json({
+          error: 'Invalid request',
+          message: 'Either send_to_all: true or user_ids array is required',
+        });
+      }
+
+      let sent = 0;
+      let skipped = 0;
+      let failed = 0;
+      const errors: string[] = [];
+
+      for (const user of targetUsers) {
+        try {
+          const success = await sendSlackInviteEmail({
+            to: user.email,
+            firstName: user.first_name || undefined,
+            workosUserId: user.workos_user_id,
+            workosOrganizationId: user.workos_organization_id,
+          });
+
+          if (success) {
+            // Check if it was actually sent or skipped (already sent)
+            const wasPreviouslySent = await hasSlackInviteBeenSent(user.workos_user_id);
+            if (wasPreviouslySent) {
+              skipped++;
+            } else {
+              sent++;
+            }
+          } else {
+            failed++;
+            errors.push(`Failed to send to ${user.email}`);
+          }
+        } catch (error) {
+          failed++;
+          errors.push(`Error sending to ${user.email}: ${error instanceof Error ? error.message : 'Unknown'}`);
+        }
+
+        // Small delay between sends to avoid rate limiting
+        if (targetUsers.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      logger.info({ sent, skipped, failed, total: targetUsers.length }, 'Slack invite emails batch complete');
+
+      res.json({
+        sent,
+        skipped,
+        failed,
+        total: targetUsers.length,
+        errors: errors.length > 0 ? errors.slice(0, 10) : undefined, // Limit error list
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Send Slack invites error');
+      res.status(500).json({
+        error: 'Failed to send Slack invites',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

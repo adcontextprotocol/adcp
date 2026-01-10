@@ -24,6 +24,7 @@ import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { workos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
+import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 
 const logger = createLogger('workos-webhooks');
 
@@ -644,7 +645,28 @@ export function createWorkOSWebhooksRouter(): Router {
         const event = req.body as WorkOSWebhookEvent;
 
         switch (event.event) {
-          case 'organization_membership.created':
+          case 'organization_membership.created': {
+            const membership = event.data as unknown as OrganizationMembershipData;
+            await upsertMembership(membership);
+            // Try to auto-link to Slack account by email (in case user.created didn't catch it)
+            if (membership.status === 'active') {
+              try {
+                const workosUser = await workos.userManagement.getUser(membership.user_id);
+                const linkResult = await tryAutoLinkWebsiteUserToSlack(membership.user_id, workosUser.email);
+                if (linkResult.linked) {
+                  logger.info(
+                    { userId: membership.user_id, email: workosUser.email, slackUserId: linkResult.slack_user_id },
+                    'Auto-linked website user to Slack account on membership creation'
+                  );
+                }
+              } catch (error) {
+                logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
+              }
+            }
+            invalidateUnifiedUsersCache();
+            break;
+          }
+
           case 'organization_membership.updated': {
             const membership = event.data as unknown as OrganizationMembershipData;
             await upsertMembership(membership);
@@ -662,6 +684,14 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'user.created': {
             const user = event.data as unknown as UserData;
             await upsertUser(user);
+            // Try to auto-link to Slack account by email
+            const linkResult = await tryAutoLinkWebsiteUserToSlack(user.id, user.email);
+            if (linkResult.linked) {
+              logger.info(
+                { userId: user.id, email: user.email, slackUserId: linkResult.slack_user_id },
+                'Auto-linked new website user to Slack account'
+              );
+            }
             invalidateUnifiedUsersCache();
             break;
           }

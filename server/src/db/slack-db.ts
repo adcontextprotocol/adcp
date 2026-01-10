@@ -29,12 +29,13 @@ export class SlackDatabase {
     slack_real_name: string | null;
     slack_is_bot: boolean;
     slack_is_deleted: boolean;
+    slack_tz_offset?: number | null;
   }): Promise<SlackUserMapping> {
     const result = await query<SlackUserMapping>(
       `INSERT INTO slack_user_mappings (
         slack_user_id, slack_email, slack_display_name, slack_real_name,
-        slack_is_bot, slack_is_deleted, last_slack_sync_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        slack_is_bot, slack_is_deleted, slack_tz_offset, last_slack_sync_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       ON CONFLICT (slack_user_id)
       DO UPDATE SET
         slack_email = EXCLUDED.slack_email,
@@ -42,6 +43,7 @@ export class SlackDatabase {
         slack_real_name = EXCLUDED.slack_real_name,
         slack_is_bot = EXCLUDED.slack_is_bot,
         slack_is_deleted = EXCLUDED.slack_is_deleted,
+        slack_tz_offset = EXCLUDED.slack_tz_offset,
         last_slack_sync_at = NOW(),
         updated_at = NOW()
       RETURNING *`,
@@ -52,6 +54,7 @@ export class SlackDatabase {
         user.slack_real_name,
         user.slack_is_bot,
         user.slack_is_deleted,
+        user.slack_tz_offset ?? null,
       ]
     );
 

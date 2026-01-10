@@ -19,6 +19,7 @@ if (!RESEND_API_KEY) {
 }
 
 const FROM_EMAIL = 'AgenticAdvertising.org <hello@updates.agenticadvertising.org>';
+const FROM_EMAIL_ADDIE = 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>';
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 /**
@@ -100,7 +101,12 @@ async function getUnsubscribeToken(workosUserId: string, email: string): Promise
 /**
  * Email types for tracking
  */
-export type EmailType = 'welcome_member' | 'signup_user' | 'signup_user_member' | 'signup_user_nonmember';
+export type EmailType =
+  | 'welcome_member'
+  | 'signup_user'
+  | 'signup_user_member'
+  | 'signup_user_nonmember'
+  | 'slack_invite';
 
 /**
  * Send welcome email to new members after subscription is created
@@ -280,6 +286,7 @@ export async function sendUserSignupEmail(data: {
   hasActiveSubscription: boolean;
   workosUserId?: string;
   workosOrganizationId?: string;
+  isLinkedToSlack?: boolean; // If true, skip Slack invite section
 }): Promise<boolean> {
   if (!resend) {
     logger.debug('Resend not configured, skipping signup email');
@@ -295,19 +302,19 @@ export async function sendUserSignupEmail(data: {
     }
   }
 
-  const greeting = data.firstName ? `Hi ${data.firstName},` : 'Hi there,';
+  const greeting = data.firstName ? `Hi ${data.firstName}!` : 'Hi there!';
   const emailType: EmailType = data.hasActiveSubscription ? 'signup_user_member' : 'signup_user_nonmember';
 
   // Different content based on subscription status
   const { subject, ctaText, ctaDestination, ctaLinkName } = data.hasActiveSubscription
     ? {
-        subject: `Welcome to ${data.organizationName || 'your team'} on AgenticAdvertising.org`,
+        subject: `Welcome to AgenticAdvertising.org! I'm Addie, your AI assistant`,
         ctaText: 'Go to Dashboard',
         ctaDestination: 'https://agenticadvertising.org/dashboard',
         ctaLinkName: 'cta_dashboard',
       }
     : {
-        subject: 'Welcome to AgenticAdvertising.org',
+        subject: `Welcome to AgenticAdvertising.org! I'm Addie`,
         ctaText: 'Become a Member',
         ctaDestination: 'https://agenticadvertising.org/dashboard/membership',
         ctaLinkName: 'cta_membership',
@@ -332,6 +339,7 @@ export async function sendUserSignupEmail(data: {
 
     // Build tracked URLs
     const ctaUrl = trackedUrl(trackingId, ctaLinkName, ctaDestination);
+    const slackUrl = trackedUrl(trackingId, 'cta_slack_invite', SLACK_INVITE_URL);
 
     // Signup email is transactional - no unsubscribe link
     // Future marketing emails will include unsubscribe via:
@@ -339,38 +347,67 @@ export async function sendUserSignupEmail(data: {
     const footerHtml = generateFooterHtml(trackingId, null);
     const footerText = generateFooterText(null);
 
+    // Addie section - different content based on whether user is on Slack
+    const addieSectionHtml = data.isLinkedToSlack
+      ? `
+  <div style="background: #f0f9ff; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #2563eb;">
+    <p style="margin: 0 0 10px 0;"><strong>Need help? I'm here!</strong></p>
+    <p style="margin: 0; font-size: 14px;">I noticed you're already on Slack - you can DM me anytime at <strong>@Addie</strong>. I can help you find members, answer questions about the community, or just chat about agentic advertising.</p>
+  </div>`
+      : `
+  <div style="background: #f8f4ff; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #4A154B;">
+    <p style="margin: 0 0 10px 0;"><strong>Join our Slack community!</strong></p>
+    <p style="margin: 0 0 15px 0; font-size: 14px;">Most of our community hangs out in Slack - it's where the conversations happen! You can also DM me there anytime.</p>
+    <a href="${slackUrl}" style="background-color: #4A154B; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; display: inline-block; font-size: 14px;">Join Slack</a>
+  </div>`;
+
+    const addieSectionText = data.isLinkedToSlack
+      ? `
+---
+NEED HELP? I'M HERE!
+I noticed you're already on Slack - you can DM me anytime at @Addie. I can help you find members, answer questions about the community, or just chat about agentic advertising.
+---
+`
+      : `
+---
+JOIN OUR SLACK COMMUNITY
+Most of our community hangs out in Slack - it's where the conversations happen! You can also DM me there anytime.
+Join Slack: ${SLACK_INVITE_URL}
+---
+`;
+
     const mainContent = data.hasActiveSubscription
       ? `
   <p>${greeting}</p>
 
-  <p>You've joined <strong>${data.organizationName || 'your organization'}</strong> on AgenticAdvertising.org. Your team is already a member!</p>
+  <p>I'm Addie, the AI assistant for AgenticAdvertising.org. Welcome! I see you've joined <strong>${data.organizationName || 'your organization'}</strong> - great to have you here.</p>
 
-  <p>Here's what you can do:</p>
+  <p>Since your team is already a member, you have full access to everything:</p>
 
   <ul style="padding-left: 20px;">
-    <li><strong>View the Member Directory</strong> - Connect with other members building agentic advertising</li>
-    <li><strong>Access your Dashboard</strong> - Manage your organization's profile and settings</li>
-    <li><strong>Invite Teammates</strong> - Add more people from your organization</li>
+    <li><strong>Member Directory</strong> - Find and connect with others building agentic advertising</li>
+    <li><strong>Your Dashboard</strong> - Manage your organization's profile and settings</li>
+    <li><strong>Invite Teammates</strong> - Bring more people from your team on board</li>
   </ul>
 
-  <p>Get started by visiting your dashboard:</p>`
+  <p>Here's your dashboard:</p>`
       : `
   <p>${greeting}</p>
 
-  <p>Thanks for signing up for AgenticAdvertising.org${data.organizationName ? ` with <strong>${data.organizationName}</strong>` : ''}!</p>
+  <p>I'm Addie, the AI assistant for AgenticAdvertising.org. Thanks for signing up${data.organizationName ? ` with <strong>${data.organizationName}</strong>` : ''}!</p>
 
-  <p>You've created an account, but your organization isn't a member yet. Membership gives you access to:</p>
+  <p>You've created an account, but your organization isn't a member yet. Membership unlocks:</p>
 
   <ul style="padding-left: 20px;">
     <li><strong>Member Directory</strong> - Connect with companies building agentic advertising</li>
-    <li><strong>Working Groups</strong> - Participate in shaping the future of AdCP</li>
-    <li><strong>Member Profile</strong> - Showcase your organization's capabilities</li>
+    <li><strong>Working Groups</strong> - Help shape the future of AdCP</li>
+    <li><strong>Member Profile</strong> - Show off what your organization does</li>
   </ul>
 
-  <p>Ready to become a member?</p>`;
+  <p>Want to become a member?</p>`;
 
     const { data: sendData, error } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_EMAIL_ADDIE,
       to: data.to,
       subject,
       html: `
@@ -391,11 +428,13 @@ export async function sendUserSignupEmail(data: {
     <a href="${ctaUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">${ctaText}</a>
   </p>
 
-  <p>If you have any questions, just reply to this email - we're happy to help.</p>
+  ${addieSectionHtml}
+
+  <p>If you have any questions, just reply to this email and I'll help you out!</p>
 
   <p style="margin-top: 30px;">
-    Best,<br>
-    The AgenticAdvertising.org Team
+    Talk soon,<br>
+    Addie
   </p>
   ${footerHtml}
 </body>
@@ -404,42 +443,42 @@ export async function sendUserSignupEmail(data: {
       text: data.hasActiveSubscription
         ? `Welcome!
 
-${data.firstName ? `Hi ${data.firstName},` : 'Hi there,'}
+${data.firstName ? `Hi ${data.firstName}!` : 'Hi there!'}
 
-You've joined ${data.organizationName || 'your organization'} on AgenticAdvertising.org. Your team is already a member!
+I'm Addie, the AI assistant for AgenticAdvertising.org. Welcome! I see you've joined ${data.organizationName || 'your organization'} - great to have you here.
 
-Here's what you can do:
-- View the Member Directory - Connect with other members building agentic advertising
-- Access your Dashboard - Manage your organization's profile and settings
-- Invite Teammates - Add more people from your organization
+Since your team is already a member, you have full access to everything:
+- Member Directory - Find and connect with others building agentic advertising
+- Your Dashboard - Manage your organization's profile and settings
+- Invite Teammates - Bring more people from your team on board
 
-Get started by visiting your dashboard:
+Here's your dashboard:
 https://agenticadvertising.org/dashboard
+${addieSectionText}
+If you have any questions, just reply to this email and I'll help you out!
 
-If you have any questions, just reply to this email - we're happy to help.
-
-Best,
-The AgenticAdvertising.org Team
+Talk soon,
+Addie
 
 ${footerText}`
         : `Welcome!
 
-${data.firstName ? `Hi ${data.firstName},` : 'Hi there,'}
+${data.firstName ? `Hi ${data.firstName}!` : 'Hi there!'}
 
-Thanks for signing up for AgenticAdvertising.org${data.organizationName ? ` with ${data.organizationName}` : ''}!
+I'm Addie, the AI assistant for AgenticAdvertising.org. Thanks for signing up${data.organizationName ? ` with ${data.organizationName}` : ''}!
 
-You've created an account, but your organization isn't a member yet. Membership gives you access to:
+You've created an account, but your organization isn't a member yet. Membership unlocks:
 - Member Directory - Connect with companies building agentic advertising
-- Working Groups - Participate in shaping the future of AdCP
-- Member Profile - Showcase your organization's capabilities
+- Working Groups - Help shape the future of AdCP
+- Member Profile - Show off what your organization does
 
-Ready to become a member?
+Want to become a member?
 https://agenticadvertising.org/dashboard/membership
+${addieSectionText}
+If you have any questions, just reply to this email and I'll help you out!
 
-If you have any questions, just reply to this email - we're happy to help.
-
-Best,
-The AgenticAdvertising.org Team
+Talk soon,
+Addie
 
 ${footerText}`,
     });
@@ -866,6 +905,158 @@ Update your profile: https://agenticadvertising.org/member-profile
   } catch (error) {
     logger.error({ error }, 'Error sending introduction email');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// ============== Slack Invite Email ==============
+
+export const SLACK_INVITE_URL = process.env.SLACK_INVITE_URL || 'https://join.slack.com/t/agenticads/shared_invite/your-invite-link';
+
+/**
+ * Check if we've already sent a Slack invite email to this user
+ */
+export async function hasSlackInviteBeenSent(workosUserId: string): Promise<boolean> {
+  return emailDb.hasEmailBeenSent({
+    email_type: 'slack_invite',
+    workos_user_id: workosUserId,
+  });
+}
+
+/**
+ * Send Slack invite email to website-only users
+ * These are users who have a website account but aren't in Slack yet
+ */
+export async function sendSlackInviteEmail(data: {
+  to: string;
+  firstName?: string;
+  workosUserId: string;
+  workosOrganizationId?: string;
+}): Promise<boolean> {
+  if (!resend) {
+    logger.debug('Resend not configured, skipping Slack invite email');
+    return false;
+  }
+
+  // Check if already sent
+  const alreadySent = await hasSlackInviteBeenSent(data.workosUserId);
+  if (alreadySent) {
+    logger.debug({ userId: data.workosUserId }, 'Slack invite email already sent to this user, skipping');
+    return true; // Return true since this isn't a failure
+  }
+
+  const emailType: EmailType = 'slack_invite';
+  const subject = 'Join the AgenticAdvertising.org Slack community';
+  const greeting = data.firstName ? `Hi ${data.firstName},` : 'Hi there,';
+
+  try {
+    // Create tracking record first
+    const emailEvent = await emailDb.createEmailEvent({
+      email_type: emailType,
+      recipient_email: data.to,
+      subject,
+      workos_user_id: data.workosUserId,
+      workos_organization_id: data.workosOrganizationId,
+      metadata: {},
+    });
+
+    const trackingId = emailEvent.tracking_id;
+
+    // Build tracked URLs
+    const slackUrl = trackedUrl(trackingId, 'cta_slack_invite', SLACK_INVITE_URL);
+
+    // Get unsubscribe token for marketing email
+    const unsubscribeToken = await getUnsubscribeToken(data.workosUserId, data.to);
+    const footerHtml = generateFooterHtml(trackingId, unsubscribeToken, 'community updates');
+    const footerText = generateFooterText(unsubscribeToken, 'community updates');
+
+    const { data: sendData, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: data.to,
+      subject,
+      headers: {
+        'List-Unsubscribe': `<${BASE_URL}/unsubscribe/${unsubscribeToken}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Join our Slack community!</h1>
+  </div>
+
+  <p>${greeting}</p>
+
+  <p>Thanks for being part of AgenticAdvertising.org! We wanted to let you know about our <strong>Slack community</strong> where members connect, share ideas, and collaborate on agentic advertising.</p>
+
+  <p>In Slack, you can:</p>
+
+  <ul style="padding-left: 20px;">
+    <li><strong>Connect with other members</strong> working on AI-powered advertising</li>
+    <li><strong>Join working groups</strong> and participate in discussions</li>
+    <li><strong>Get updates</strong> on events, specs, and community news</li>
+    <li><strong>Ask questions</strong> and get help from the community</li>
+  </ul>
+
+  <p style="text-align: center; margin: 30px 0;">
+    <a href="${slackUrl}" style="background-color: #4A154B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 500;">Join Slack</a>
+  </p>
+
+  <p style="font-size: 14px; color: #666;">Already have a Slack account? Just use the same email address you used to sign up for the website, and your accounts will be automatically linked.</p>
+
+  <p>See you in Slack!</p>
+
+  <p style="margin-top: 30px;">
+    Best,<br>
+    The AgenticAdvertising.org Team
+  </p>
+  ${footerHtml}
+</body>
+</html>
+      `.trim(),
+      text: `
+Join our Slack community!
+
+${greeting}
+
+Thanks for being part of AgenticAdvertising.org! We wanted to let you know about our Slack community where members connect, share ideas, and collaborate on agentic advertising.
+
+In Slack, you can:
+- Connect with other members working on AI-powered advertising
+- Join working groups and participate in discussions
+- Get updates on events, specs, and community news
+- Ask questions and get help from the community
+
+Join Slack: ${SLACK_INVITE_URL}
+
+Already have a Slack account? Just use the same email address you used to sign up for the website, and your accounts will be automatically linked.
+
+See you in Slack!
+
+Best,
+The AgenticAdvertising.org Team
+
+${footerText}
+      `.trim(),
+    });
+
+    if (error) {
+      logger.error({ error, to: data.to, trackingId }, 'Failed to send Slack invite email');
+      return false;
+    }
+
+    // Mark as sent with Resend's email ID
+    await emailDb.markEmailSent(trackingId, sendData?.id);
+
+    logger.info({ to: data.to, trackingId }, 'Slack invite email sent');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Error sending Slack invite email');
+    return false;
   }
 }
 
