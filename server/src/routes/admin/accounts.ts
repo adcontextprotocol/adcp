@@ -520,6 +520,11 @@ export function setupAccountRoutes(
             JOIN other_orgs oo ON (
               -- Exact match on normalized name
               oo.normalized_name = t.normalized_name
+              -- Or one is a prefix/suffix of the other (e.g., "Yahoo" vs "Yahoo Inc")
+              OR oo.normalized_name LIKE t.normalized_name || '%'
+              OR oo.normalized_name LIKE '%' || t.normalized_name
+              OR t.normalized_name LIKE oo.normalized_name || '%'
+              OR t.normalized_name LIKE '%' || oo.normalized_name
               -- Or high trigram similarity (0.4+ catches typos and variations)
               OR similarity(oo.normalized_name, t.normalized_name) >= 0.4
             )

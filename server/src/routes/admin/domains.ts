@@ -1502,6 +1502,11 @@ export function setupDomainRoutes(
               AND (
                 -- Exact match on normalized name
                 o1.normalized_name = o2.normalized_name
+                -- Or one is a prefix/suffix of the other (e.g., "Yahoo" vs "Yahoo Inc")
+                OR o1.normalized_name LIKE o2.normalized_name || '%'
+                OR o1.normalized_name LIKE '%' || o2.normalized_name
+                OR o2.normalized_name LIKE o1.normalized_name || '%'
+                OR o2.normalized_name LIKE '%' || o1.normalized_name
                 -- Or high trigram similarity (0.4+ catches typos and variations)
                 OR similarity(o1.normalized_name, o2.normalized_name) >= 0.4
               )
