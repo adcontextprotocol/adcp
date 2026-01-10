@@ -1356,6 +1356,25 @@
           </div>
         </div>
 
+        <!-- Draft Review Section (shown after billing details, before sending) -->
+        <div id="invoiceDraftReview" style="display: none;">
+          <div style="background: var(--color-info-50); border: 1px solid var(--color-info-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <strong style="color: var(--color-info-700);">Review Invoice Draft</strong>
+            <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+              Please review all details before sending. The invoice will be emailed to the contact.
+            </p>
+          </div>
+
+          <div id="draftReviewContent" style="background: var(--color-bg-subtle); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <!-- Populated by JavaScript -->
+          </div>
+
+          <div id="draftMissingFields" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+            <strong style="color: var(--color-warning-700); font-size: var(--text-sm);">Missing Information</strong>
+            <ul id="missingFieldsList" style="margin: var(--space-2) 0 0; padding-left: var(--space-4); font-size: var(--text-sm); color: var(--color-warning-700);"></ul>
+          </div>
+        </div>
+
         <!-- Success Message -->
         <div id="invoiceResult" style="display: none;">
           <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
@@ -1372,6 +1391,8 @@
 
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Close</button>
+          <button type="button" class="btn btn-secondary" id="backToEditBtn" style="display: none;" onclick="backToEditInvoice()">Edit Details</button>
+          <button type="button" class="btn btn-primary" id="prepareDraftBtn" style="display: none;" onclick="prepareDraft()">Prepare Draft</button>
           <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invoice</button>
         </div>
       </form>
@@ -3351,8 +3372,11 @@
       document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
       document.getElementById('invoiceProductSection').style.display = 'block';
       document.getElementById('invoiceBillingSection').style.display = 'none';
+      document.getElementById('invoiceDraftReview').style.display = 'none';
       document.getElementById('invoiceResult').style.display = 'none';
       document.getElementById('sendInvoiceBtn').style.display = 'none';
+      document.getElementById('prepareDraftBtn').style.display = 'none';
+      document.getElementById('backToEditBtn').style.display = 'none';
       document.getElementById('invoiceForm').reset();
 
       // Pre-fill from org data
@@ -3375,12 +3399,62 @@
         const data = await response.json();
         const invoiceableProducts = data.products.filter(p => p.is_invoiceable);
 
+        // Sort products by price (lowest first for better UX)
+        invoiceableProducts.sort((a, b) => (a.amount_cents || 0) - (b.amount_cents || 0));
+
         renderInvoiceProducts(invoiceableProducts);
       } catch (error) {
         console.error('Error loading products:', error);
         document.getElementById('invoiceProducts').innerHTML =
           '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
       }
+    }
+
+    function getRecommendedInvoiceProduct(products) {
+      // Get the org's revenue tier
+      let orgRevenueTier = orgData?.revenue_tier;
+
+      // If no revenue_tier set, try to derive from enrichment data
+      if (!orgRevenueTier && orgData?.enrichment_revenue_range) {
+        const rangeMap = {
+          'under $1m': 'under_1m',
+          '$1m-$5m': '1m_5m',
+          '$5m-$50m': '5m_50m',
+          '$50m-$250m': '50m_250m',
+          '$250m-$1b': '250m_1b',
+          'over $1b': '1b_plus'
+        };
+        const lowerRange = orgData.enrichment_revenue_range.toLowerCase();
+        for (const [key, value] of Object.entries(rangeMap)) {
+          if (lowerRange.includes(key.replace('$', '').replace('-', ' to '))) {
+            orgRevenueTier = value;
+            break;
+          }
+        }
+      }
+
+      if (!orgRevenueTier) return null;
+
+      // Find products that match the org's revenue tier
+      const matchingProducts = products.filter(p => {
+        if (!p.revenue_tiers || p.revenue_tiers.length === 0) return true;
+        return p.revenue_tiers.includes(orgRevenueTier);
+      });
+
+      // Return highest priced matching product (same logic as pricing section)
+      if (matchingProducts.length > 0) {
+        return matchingProducts.reduce((a, b) => (b.amount_cents || 0) > (a.amount_cents || 0) ? b : a);
+      }
+      return null;
+    }
+
+    function calculateDiscountedPrice(amountCents) {
+      if (orgData?.discount_percent) {
+        return Math.round(amountCents * (1 - orgData.discount_percent / 100));
+      } else if (orgData?.discount_amount_cents) {
+        return Math.max(0, amountCents - orgData.discount_amount_cents);
+      }
+      return amountCents;
     }
 
     function renderInvoiceProducts(products) {
@@ -3391,54 +3465,277 @@
         return;
       }
 
-      container.innerHTML = products.map(product => {
-        const price = new Intl.NumberFormat('en-US', {
+      const recommendedProduct = getRecommendedInvoiceProduct(products);
+      const hasDiscount = orgData?.discount_percent || orgData?.discount_amount_cents;
+
+      // Show discount info at top if applicable
+      let headerHtml = '';
+      if (hasDiscount) {
+        const discountText = orgData.discount_percent
+          ? `${orgData.discount_percent}% discount`
+          : `${formatPriceCurrency(orgData.discount_amount_cents)} discount`;
+        headerHtml = `
+          <div style="margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--color-success-50); border-radius: var(--radius-md); border: 1px solid var(--color-success-200);">
+            <span style="color: var(--color-success-700); font-weight: var(--font-medium);">
+              ${discountText} will be applied
+            </span>
+          </div>
+        `;
+      }
+
+      container.innerHTML = headerHtml + products.map(product => {
+        const listPrice = product.amount_cents || 0;
+        const netPrice = hasDiscount ? calculateDiscountedPrice(listPrice) : listPrice;
+
+        const listPriceFormatted = new Intl.NumberFormat('en-US', {
           style: 'currency',
-          currency: 'USD'
-        }).format(product.amount_cents / 100);
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(listPrice / 100);
+
+        const netPriceFormatted = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(netPrice / 100);
 
         const interval = product.billing_interval ? `/${product.billing_interval}` : '';
         const displayName = escapeHtml(product.display_name || product.product_name);
         const lookupKey = escapeHtml(product.lookup_key);
         const description = product.description ? escapeHtml(product.description) : '';
+        const isRecommended = recommendedProduct && product.lookup_key === recommendedProduct.lookup_key;
+
+        // Build price display
+        let priceHtml;
+        if (hasDiscount && listPrice !== netPrice) {
+          priceHtml = `
+            <span style="text-decoration: line-through; color: var(--color-text-muted); margin-right: var(--space-2);">${listPriceFormatted}</span>
+            <span style="color: var(--color-success-600); font-weight: var(--font-semibold);">${netPriceFormatted}${interval}</span>
+          `;
+        } else {
+          priceHtml = `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${listPriceFormatted}${interval}</span>`;
+        }
+
+        // Build recommended badge
+        const recommendedBadge = isRecommended
+          ? `<span style="display: inline-block; margin-left: var(--space-2); padding: 2px 8px; font-size: var(--text-xs); background: var(--color-brand); color: white; border-radius: var(--radius-full);">Recommended</span>`
+          : '';
+
+        const borderColor = isRecommended ? 'var(--color-brand)' : 'var(--color-border)';
+        const borderWidth = isRecommended ? '2px' : '1px';
 
         return `
-          <button type="button" class="product-select-btn" onclick="selectInvoiceProduct('${lookupKey}', '${displayName}', ${product.amount_cents})" style="
+          <button type="button" class="product-select-btn"
+            data-lookup-key="${lookupKey}"
+            data-display-name="${displayName}"
+            data-amount="${listPrice}"
+            data-border-color="${borderColor}"
+            style="
             display: block;
             width: 100%;
             text-align: left;
             padding: var(--space-3);
             margin-bottom: var(--space-2);
-            border: 1px solid var(--color-border);
+            border: ${borderWidth} solid ${borderColor};
             border-radius: var(--radius-md);
             background: var(--color-bg-card);
             cursor: pointer;
             transition: var(--transition-all);
-          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
-            <strong>${displayName}</strong>
+          ">
+            <strong>${displayName}</strong>${recommendedBadge}
             <br>
-            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${priceHtml}
             ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
           </button>
         `;
       }).join('');
+
+      // Add event listeners to avoid XSS from inline onclick
+      container.querySelectorAll('.product-select-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectInvoiceProduct(
+            btn.dataset.lookupKey,
+            btn.dataset.displayName,
+            parseInt(btn.dataset.amount, 10)
+          );
+        });
+        btn.addEventListener('mouseover', () => {
+          btn.style.borderColor = 'var(--color-brand)';
+        });
+        btn.addEventListener('mouseout', () => {
+          btn.style.borderColor = btn.dataset.borderColor;
+        });
+      });
     }
 
     function selectInvoiceProduct(lookupKey, productName, amountCents) {
       selectedInvoiceProduct = { lookupKey, productName, amountCents };
 
-      const price = new Intl.NumberFormat('en-US', {
+      const hasDiscount = orgData?.discount_percent || orgData?.discount_amount_cents;
+      const netPrice = hasDiscount ? calculateDiscountedPrice(amountCents) : amountCents;
+
+      const listPriceFormatted = new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'USD'
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
       }).format(amountCents / 100);
 
+      const netPriceFormatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(netPrice / 100);
+
+      let priceDisplay;
+      if (hasDiscount && amountCents !== netPrice) {
+        priceDisplay = `
+          <span style="text-decoration: line-through; color: var(--color-text-muted);">${listPriceFormatted}</span>
+          <span style="color: var(--color-success-600); font-weight: var(--font-semibold); margin-left: var(--space-2);">${netPriceFormatted}</span>
+        `;
+      } else {
+        priceDisplay = `<span style="color: var(--color-brand);">${listPriceFormatted}</span>`;
+      }
+
       document.getElementById('selectedProductDisplay').innerHTML = `
-        <strong>${productName}</strong> - <span style="color: var(--color-brand);">${price}</span>
+        <strong>${productName}</strong> - ${priceDisplay}
       `;
 
       document.getElementById('invoiceProductSection').style.display = 'none';
       document.getElementById('invoiceBillingSection').style.display = 'block';
-      document.getElementById('sendInvoiceBtn').style.display = 'inline-block';
+      document.getElementById('invoiceDraftReview').style.display = 'none';
+      document.getElementById('prepareDraftBtn').style.display = 'inline-block';
+      document.getElementById('sendInvoiceBtn').style.display = 'none';
+      document.getElementById('backToEditBtn').style.display = 'none';
+    }
+
+    function prepareDraft() {
+      // Collect all invoice data for review
+      const contactName = document.getElementById('invoiceContactName').value;
+      const contactEmail = document.getElementById('invoiceContactEmail').value;
+      const companyName = document.getElementById('invoiceCompanyName').value;
+      const addressLine1 = document.getElementById('invoiceAddressLine1').value;
+      const addressLine2 = document.getElementById('invoiceAddressLine2').value;
+      const city = document.getElementById('invoiceCity').value;
+      const state = document.getElementById('invoiceState').value;
+      const postalCode = document.getElementById('invoicePostalCode').value;
+      const country = document.getElementById('invoiceCountry').value;
+
+      // Check for missing required fields
+      const missingFields = [];
+      if (!contactName) missingFields.push('Contact Name');
+      if (!contactEmail) missingFields.push('Contact Email');
+      if (!companyName) missingFields.push('Company Name');
+      if (!addressLine1) missingFields.push('Street Address');
+      if (!city) missingFields.push('City');
+      if (!state) missingFields.push('State/Province');
+      if (!postalCode) missingFields.push('Postal Code');
+      if (!country) missingFields.push('Country');
+
+      // Calculate pricing
+      const hasDiscount = orgData?.discount_percent || orgData?.discount_amount_cents;
+      const listPrice = selectedInvoiceProduct.amountCents;
+      const netPrice = hasDiscount ? calculateDiscountedPrice(listPrice) : listPrice;
+
+      const listPriceFormatted = new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0
+      }).format(listPrice / 100);
+
+      const netPriceFormatted = new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0
+      }).format(netPrice / 100);
+
+      // Build discount info
+      let discountHtml = '';
+      if (hasDiscount && listPrice !== netPrice) {
+        const discountText = orgData.discount_percent
+          ? `${orgData.discount_percent}% discount`
+          : `${formatPriceCurrency(orgData.discount_amount_cents)} off`;
+        const savingsFormatted = new Intl.NumberFormat('en-US', {
+          style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0
+        }).format((listPrice - netPrice) / 100);
+        discountHtml = `
+          <div style="margin-top: var(--space-2); padding: var(--space-2); background: var(--color-success-50); border-radius: var(--radius-sm);">
+            <span style="color: var(--color-success-700); font-size: var(--text-sm);">
+              ${discountText} applied (saves ${savingsFormatted})
+            </span>
+          </div>
+        `;
+      }
+
+      // Build address display
+      const addressParts = [addressLine1];
+      if (addressLine2) addressParts.push(addressLine2);
+      addressParts.push(`${city}, ${state} ${postalCode}`);
+      addressParts.push(country);
+      const fullAddress = addressParts.filter(Boolean).join('<br>');
+
+      // Populate review content
+      document.getElementById('draftReviewContent').innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+          <div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; margin-bottom: var(--space-1);">Company</div>
+            <div style="font-weight: var(--font-semibold);">${escapeHtml(companyName) || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+          </div>
+          <div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; margin-bottom: var(--space-1);">Contact</div>
+            <div style="font-weight: var(--font-semibold);">${escapeHtml(contactName) || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+            <div style="color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(contactEmail) || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+          </div>
+        </div>
+
+        <hr style="margin: var(--space-4) 0; border: none; border-top: 1px solid var(--color-border);">
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+          <div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; margin-bottom: var(--space-1);">Product</div>
+            <div style="font-weight: var(--font-semibold);">${escapeHtml(selectedInvoiceProduct.productName)}</div>
+          </div>
+          <div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; margin-bottom: var(--space-1);">Amount</div>
+            ${hasDiscount && listPrice !== netPrice
+              ? `<div><span style="text-decoration: line-through; color: var(--color-text-muted);">${listPriceFormatted}</span> <span style="color: var(--color-success-600); font-weight: var(--font-semibold);">${netPriceFormatted}</span></div>`
+              : `<div style="font-weight: var(--font-semibold);">${listPriceFormatted}</div>`
+            }
+            ${discountHtml}
+          </div>
+        </div>
+
+        <hr style="margin: var(--space-4) 0; border: none; border-top: 1px solid var(--color-border);">
+
+        <div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; margin-bottom: var(--space-1);">Billing Address</div>
+          <div style="line-height: 1.5;">${fullAddress || '<em style="color: var(--color-error-500);">Not provided</em>'}</div>
+        </div>
+      `;
+
+      // Show/hide missing fields warning
+      const missingFieldsDiv = document.getElementById('draftMissingFields');
+      const missingFieldsList = document.getElementById('missingFieldsList');
+      if (missingFields.length > 0) {
+        missingFieldsList.innerHTML = missingFields.map(f => `<li>${f}</li>`).join('');
+        missingFieldsDiv.style.display = 'block';
+      } else {
+        missingFieldsDiv.style.display = 'none';
+      }
+
+      // Update UI state
+      document.getElementById('invoiceBillingSection').style.display = 'none';
+      document.getElementById('invoiceDraftReview').style.display = 'block';
+      document.getElementById('prepareDraftBtn').style.display = 'none';
+      document.getElementById('backToEditBtn').style.display = 'inline-block';
+      document.getElementById('sendInvoiceBtn').style.display = missingFields.length === 0 ? 'inline-block' : 'none';
+    }
+
+    function backToEditInvoice() {
+      document.getElementById('invoiceDraftReview').style.display = 'none';
+      document.getElementById('invoiceBillingSection').style.display = 'block';
+      document.getElementById('prepareDraftBtn').style.display = 'inline-block';
+      document.getElementById('backToEditBtn').style.display = 'none';
+      document.getElementById('sendInvoiceBtn').style.display = 'none';
     }
 
     async function submitInvoice(event) {
@@ -3468,6 +3765,11 @@
         }
       };
 
+      // Include coupon_id if the org has a discount configured
+      if (orgData?.stripe_coupon_id) {
+        data.coupon_id = orgData.stripe_coupon_id;
+      }
+
       try {
         const response = await fetch(`/api/admin/prospects/${orgId}/invoice`, {
           method: 'POST',
@@ -3484,7 +3786,9 @@
 
         if (result.success && result.invoice_url) {
           document.getElementById('invoiceBillingSection').style.display = 'none';
+          document.getElementById('invoiceDraftReview').style.display = 'none';
           document.getElementById('sendInvoiceBtn').style.display = 'none';
+          document.getElementById('backToEditBtn').style.display = 'none';
           document.getElementById('invoiceUrl').value = result.invoice_url;
           document.getElementById('invoiceResult').style.display = 'block';
 

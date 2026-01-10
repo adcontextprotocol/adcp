@@ -555,6 +555,7 @@ USE THIS when an admin says things like:
 - "Help [company] pay for membership"
 - "Give Acme a 20% discount and send them a payment link"
 - "Send a discounted link to the startup"
+- "Let's issue an invoice to Boltive" (use draft_invoice first, then send_invoice to confirm)
 
 This tool will:
 1. Find the company (or create it if it doesn't exist)
@@ -563,9 +564,13 @@ This tool will:
 4. Generate a direct Stripe payment link OR send an invoice
 
 For payment links: Returns a direct Stripe checkout URL you can share with the prospect.
-For invoices: Sends an email from Stripe with a payment link - good for companies that need NET30/PO.
-For discounts: Can create a new discount or auto-apply an existing org discount.`,
-    usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed.',
+For invoices: Use action="draft_invoice" FIRST to prepare and review, then action="send_invoice" to send.
+For discounts: Can create a new discount or auto-apply an existing org discount.
+
+IMPORTANT: For invoices, ALWAYS use the two-step process:
+1. First call with action="draft_invoice" to prepare and show the draft for admin review
+2. Then call with action="send_invoice" after admin confirms (or makes changes)`,
+    usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed. For invoices, use draft_invoice first.',
     input_schema: {
       type: 'object',
       properties: {
@@ -591,8 +596,8 @@ For discounts: Can create a new discount or auto-apply an existing org discount.
         },
         action: {
           type: 'string',
-          enum: ['payment_link', 'invoice', 'lookup_only'],
-          description: 'What to do: payment_link (default), invoice (sends email), or lookup_only (just show info)',
+          enum: ['payment_link', 'draft_invoice', 'send_invoice', 'lookup_only'],
+          description: 'What to do: payment_link (default), draft_invoice (prepare invoice for review), send_invoice (send after review), or lookup_only (just show info). For invoices, ALWAYS use draft_invoice first, then send_invoice to confirm.',
         },
         lookup_key: {
           type: 'string',
@@ -2897,8 +2902,120 @@ export function createAdminToolHandlers(
       }
     }
 
-    // Send invoice
-    if (action === 'invoice') {
+    // Draft invoice - prepare and show for review (TWO-STEP PROCESS: Step 1)
+    if (action === 'draft_invoice') {
+      if (!finalProduct) {
+        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+      }
+
+      // Determine what discount would be applied
+      let appliedDiscount: string | undefined;
+      let finalAmount = finalProduct.amount_cents || 0;
+
+      // Check if a new discount is being requested
+      if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+        if (!discountReason) {
+          return response + `\n❌ Please provide a discount_reason when applying a discount.`;
+        }
+        appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
+        if (discountPercent) {
+          finalAmount = Math.round(finalAmount * (1 - discountPercent / 100));
+        } else if (discountAmountDollars) {
+          finalAmount = Math.max(0, finalAmount - (discountAmountDollars * 100));
+        }
+      } else if (useExistingDiscount && (org.discount_percent || org.discount_amount_cents)) {
+        // Use existing org discount
+        appliedDiscount = org.discount_percent
+          ? `${org.discount_percent}% off`
+          : `$${(org.discount_amount_cents || 0) / 100} off`;
+        if (org.discount_percent) {
+          finalAmount = Math.round(finalAmount * (1 - org.discount_percent / 100));
+        } else if (org.discount_amount_cents) {
+          finalAmount = Math.max(0, finalAmount - org.discount_amount_cents);
+        }
+      }
+
+      response += `### 📋 Draft Invoice for Review\n\n`;
+      response += `---\n\n`;
+
+      // Company info
+      response += `**Company:** ${org.name}\n`;
+      if (org.revenue_tier) {
+        const tierLabels: Record<string, string> = {
+          'under_1m': 'Under $1M',
+          '1m_5m': '$1M-$5M',
+          '5m_50m': '$5M-$50M',
+          '50m_250m': '$50M-$250M',
+          '250m_1b': '$250M-$1B',
+          '1b_plus': 'Over $1B'
+        };
+        response += `**Revenue Tier:** ${tierLabels[org.revenue_tier] || org.revenue_tier}\n`;
+      }
+
+      // Contact info
+      response += `\n**Contact:** ${org.prospect_contact_name || contactName || '_Not set_'}\n`;
+      response += `**Email:** ${emailToUse || '_Not set - required for invoice_'}\n`;
+
+      // Billing address
+      response += `\n**Billing Address:**\n`;
+      if (billingAddress?.line1) {
+        response += `${billingAddress.line1}\n`;
+        if (billingAddress.line2) response += `${billingAddress.line2}\n`;
+        response += `${billingAddress.city || ''}, ${billingAddress.state || ''} ${billingAddress.postal_code || ''}\n`;
+        response += `${billingAddress.country || 'US'}\n`;
+      } else {
+        response += `_Not provided - required for invoice_\n`;
+      }
+
+      // Product and pricing
+      response += `\n---\n\n`;
+      response += `**Product:** ${finalProduct.display_name}\n`;
+      if (finalProduct.amount_cents) {
+        const listPrice = finalProduct.amount_cents / 100;
+        const netPrice = finalAmount / 100;
+        if (appliedDiscount) {
+          response += `**List Price:** ~~$${listPrice.toLocaleString()}~~/year\n`;
+          response += `**Discount:** ${appliedDiscount}`;
+          if (org.discount_percent || org.discount_amount_cents) {
+            response += ` (existing org discount)`;
+          }
+          response += `\n`;
+          response += `**Invoice Amount:** **$${netPrice.toLocaleString()}**/year\n`;
+        } else {
+          response += `**Invoice Amount:** $${listPrice.toLocaleString()}/year\n`;
+        }
+      }
+      response += `**Payment Terms:** NET 30\n`;
+
+      // What's missing
+      const missingFields: string[] = [];
+      if (!emailToUse) missingFields.push('contact_email');
+      if (!billingAddress?.line1) missingFields.push('billing_address');
+
+      if (missingFields.length > 0) {
+        response += `\n---\n\n`;
+        response += `⚠️ **Missing required fields:** ${missingFields.join(', ')}\n`;
+        response += `\n_Please provide these fields to proceed._\n`;
+      } else {
+        response += `\n---\n\n`;
+        response += `✅ **Ready to send!**\n\n`;
+        response += `To send this invoice, confirm with the admin then call this tool again with:\n`;
+        response += `- \`action: "send_invoice"\`\n`;
+        response += `- Same company_name and all other parameters\n`;
+        response += `\nOr if changes are needed, ask the admin what to modify.\n`;
+      }
+
+      logger.info(
+        { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
+        'Addie prepared draft invoice'
+      );
+
+      return response;
+    }
+
+    // Send invoice - actually send after review (TWO-STEP PROCESS: Step 2)
+    // Also support legacy 'invoice' action for backward compatibility
+    if (action === 'send_invoice' || action === 'invoice') {
       if (!emailToUse) {
         return response + `\n❌ Cannot send invoice without an email address. Please provide contact_email.`;
       }
@@ -2998,6 +3115,10 @@ export function createAdminToolHandlers(
               discountedAmount = originalAmount * (1 - discountPercent / 100);
             } else if (discountAmountDollars) {
               discountedAmount = originalAmount - discountAmountDollars;
+            } else if (org.discount_percent) {
+              discountedAmount = originalAmount * (1 - org.discount_percent / 100);
+            } else if (org.discount_amount_cents) {
+              discountedAmount = originalAmount - (org.discount_amount_cents / 100);
             }
             response += ` → **$${discountedAmount.toLocaleString()}** (${appliedDiscount} applied)`;
           }
@@ -3022,7 +3143,7 @@ export function createAdminToolHandlers(
       }
     }
 
-    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "invoice", or "lookup_only".`;
+    return response + `\n❌ Unknown action: ${action}. Use "payment_link", "draft_invoice", "send_invoice", or "lookup_only".`;
   });
 
   // Search Lusha for prospects
