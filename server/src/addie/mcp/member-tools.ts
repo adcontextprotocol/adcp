@@ -725,7 +725,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'draft_github_issue',
     description:
-      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool\'s entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
+      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool\'s entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. All issues go to the "adcp" repository which contains the protocol, schemas, AgenticAdvertising.org server, and documentation.',
     usage_hints: 'use when user wants to report a bug or request a feature - MUST include full output in response',
     input_schema: {
       type: 'object',
@@ -737,12 +737,12 @@ export const MEMBER_TOOLS: AddieTool[] = [
         body: {
           type: 'string',
           description:
-            'Issue body in markdown format. Include context, steps to reproduce (for bugs), or detailed description (for features). Reference the Slack conversation if relevant.',
+            'Issue body in markdown format. CRITICAL: Never include customer names, emails, org IDs, or any PII - GitHub issues are public. Use generic placeholders like [Customer] or [Organization]. For bugs, ALWAYS include the exact error message. Include anonymized steps to reproduce.',
         },
         repo: {
           type: 'string',
           description:
-            'Repository name within adcontextprotocol org (e.g., "adcp" for protocol/docs, "aao-server" for website/community). Default: "adcp"',
+            'Repository name within adcontextprotocol org. Always use "adcp" - it contains the protocol, schemas, server, and docs. Default: "adcp"',
         },
         labels: {
           type: 'array',
