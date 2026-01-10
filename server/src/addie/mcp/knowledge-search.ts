@@ -800,11 +800,12 @@ ${resource.addie_notes ? `**Addie's Take:** ${resource.addie_notes}` : ''}`;
         return `This resource is already in the knowledge base: ${url}`;
       }
 
-      // Queue for indexing
+      // Queue for indexing (no user context in default handler)
       const id = await queueWebSearchResult({
         url,
         title,
         searchQuery: reason, // Use reason as context
+        created_by: 'system', // Default when no user context available
       });
 
       if (id === 0) {
@@ -874,4 +875,51 @@ ${article.addie_notes ? `**Addie's Take:** ${article.addie_notes}` : ''}`;
   });
 
   return handlers;
+}
+
+/**
+ * Create a user-scoped bookmark_resource handler
+ * Used by Slack handlers to attribute bookmarks to the user who created them
+ */
+export function createUserScopedBookmarkHandler(
+  slackUserId: string
+): (input: Record<string, unknown>) => Promise<string> {
+  return async (input) => {
+    const url = input.url as string;
+    const title = input.title as string;
+    const reason = input.reason as string;
+
+    // Validate URL
+    try {
+      new URL(url);
+    } catch {
+      return `Invalid URL: "${url}". Please provide a valid URL.`;
+    }
+
+    try {
+      // Check if already indexed
+      const isIndexed = await addieDb.isUrlIndexed(url);
+      if (isIndexed) {
+        return `This resource is already in the knowledge base: ${url}`;
+      }
+
+      // Queue for indexing with user attribution
+      const id = await queueWebSearchResult({
+        url,
+        title,
+        searchQuery: reason,
+        created_by: slackUserId,
+      });
+
+      if (id === 0) {
+        return `Resource was already queued or could not be added: ${url}`;
+      }
+
+      logger.info({ url, title, reason, slackUserId }, 'Addie bookmarked resource (user-scoped)');
+      return `Bookmarked "${title}" for indexing. The content will be fetched, summarized, and added to the knowledge base shortly. You can search for it later using search_resources.`;
+    } catch (error) {
+      logger.error({ error, url, slackUserId }, 'Addie: User-scoped bookmark failed');
+      return `Failed to bookmark resource: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  };
 }

@@ -21,6 +21,7 @@ import {
   isKnowledgeReady,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import {
   BILLING_TOOLS,
@@ -40,6 +41,10 @@ import {
   createEventToolHandlers,
   canCreateEvents,
 } from './mcp/event-tools.js';
+import {
+  DIRECTORY_TOOLS,
+  createDirectoryToolHandlers,
+} from './mcp/directory-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -131,6 +136,15 @@ export async function initializeAddie(): Promise<void> {
   const adminHandlers = createAdminToolHandlers();
   for (const tool of ADMIN_TOOLS) {
     const handler = adminHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register directory tools (lookup members, agents, publishers)
+  const directoryHandlers = createDirectoryToolHandlers();
+  for (const tool of DIRECTORY_TOOLS) {
+    const handler = directoryHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
@@ -251,6 +265,11 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Event tools enabled for this user');
+  }
+
+  // Override bookmark_resource handler with user-scoped version (for attribution)
+  if (slackUserId) {
+    allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
   }
 
   return {

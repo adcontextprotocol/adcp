@@ -110,6 +110,8 @@ export interface CuratedResourceInput {
   discovery_source: 'perspective_publish' | 'web_search' | 'slack_link' | 'manual';
   discovery_context?: Record<string, unknown>;
   relevance_tags?: string[];
+  /** Who created this resource - Slack user ID, WorkOS user ID, or 'system' */
+  created_by?: string;
 }
 
 export interface CuratedResourceSearchResult {
@@ -715,7 +717,7 @@ export class AddieDatabase {
         title, category, content, source_url, fetch_url, source_type,
         fetch_status, discovery_source, discovery_context, relevance_tags,
         created_by
-      ) VALUES ($1, $2, '', $3, $3, $4, 'pending', $5, $6, $7, 'system')
+      ) VALUES ($1, $2, '', $3, $3, $4, 'pending', $5, $6, $7, $8)
       ON CONFLICT DO NOTHING
       RETURNING id`,
       [
@@ -726,6 +728,7 @@ export class AddieDatabase {
         input.discovery_source,
         input.discovery_context ? JSON.stringify(input.discovery_context) : null,
         input.relevance_tags || null,
+        input.created_by || 'system',
       ]
     );
     return result.rows[0]?.id ?? 0;

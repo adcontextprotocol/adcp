@@ -393,6 +393,8 @@ export async function queueWebSearchResult(result: {
   url: string;
   title: string;
   searchQuery: string;
+  /** Who bookmarked this - Slack user ID, WorkOS user ID, or 'system' */
+  created_by?: string;
 }): Promise<number> {
   // Check if already indexed
   const isIndexed = await addieDb.isUrlIndexed(result.url);
@@ -409,6 +411,7 @@ export async function queueWebSearchResult(result: {
     discovery_context: {
       search_query: result.searchQuery,
     },
+    created_by: result.created_by,
   });
 }
 

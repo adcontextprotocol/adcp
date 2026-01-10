@@ -4,10 +4,9 @@ import * as fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
-import { createMCPServer } from "./mcp-tools.js";
+import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp/index.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
@@ -1475,76 +1474,10 @@ export class HTTPServer {
       });
     });
 
-    // MCP endpoint - for AI agents to discover other agents
-    // Uses StreamableHTTPServerTransport from the MCP SDK for stateless HTTP transport
-    
-    // CORS preflight for MCP endpoint
-    this.app.options("/mcp", (req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-      res.status(204).end();
-    });
-
-    // MCP POST handler - stateless mode (new server/transport per request)
-    this.app.post("/mcp", async (req, res) => {
-      // Add CORS headers
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-
-      try {
-        // Create a new MCP server and transport for each request (stateless mode)
-        const server = createMCPServer();
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined, // Stateless mode - no sessions
-        });
-
-        // Connect server to transport
-        await server.connect(transport);
-
-        // Handle the request
-        await transport.handleRequest(req, res, req.body);
-
-        // Clean up after response is sent
-        res.on('close', () => {
-          transport.close();
-          server.close();
-        });
-      } catch (error: any) {
-        if (!res.headersSent) {
-          res.status(500).json({
-            jsonrpc: "2.0",
-            error: {
-              code: -32603,
-              message: error?.message || "Internal error",
-            },
-          });
-        }
-      }
-    });
-
-    // MCP GET handler - not supported in stateless mode
-    this.app.get("/mcp", (req, res) => {
-      res.status(405).json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32601,
-          message: "Method not allowed. Use POST for MCP requests.",
-        },
-      });
-    });
-
-    // MCP DELETE handler - not needed in stateless mode
-    this.app.delete("/mcp", (req, res) => {
-      res.status(405).json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32601,
-          message: "Method not allowed. Session management not supported in stateless mode.",
-        },
-      });
-    });
+    // MCP endpoint - unified server with all Addie capabilities
+    // Supports OAuth 2.1 (users adding to Claude/ChatGPT) and M2M (partner bots)
+    // Auth via WorkOS AuthKit
+    configureMCPRoutes(this.app);
 
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {
@@ -1564,6 +1497,12 @@ export class HTTPServer {
       // Check Addie status
       checks.addie = isAddieBoltReady();
       if (!checks.addie) {
+        allHealthy = false;
+      }
+
+      // Check MCP server status
+      checks.mcp = isMCPServerReady();
+      if (!checks.mcp) {
         allHealthy = false;
       }
 
