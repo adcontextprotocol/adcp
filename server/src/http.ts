@@ -4240,6 +4240,16 @@ Disallow: /api/admin/
               const workosOrg = await workos!.organizations.getOrganization(orgId);
               const hasActiveSubscription = org?.subscription_status === 'active';
 
+              // Check if user is linked to Slack (to decide whether to include Slack invite)
+              let isLinkedToSlack = false;
+              try {
+                const slackDb = new SlackDatabase();
+                const slackMapping = await slackDb.getByWorkosUserId(user.id);
+                isLinkedToSlack = !!slackMapping?.slack_user_id;
+              } catch (slackError) {
+                logger.warn({ error: slackError, userId: user.id }, 'Failed to check Slack mapping, defaulting to not linked');
+              }
+
               await sendUserSignupEmail({
                 to: user.email,
                 firstName: user.firstName || undefined,
@@ -4247,9 +4257,10 @@ Disallow: /api/admin/
                 hasActiveSubscription,
                 workosUserId: user.id,
                 workosOrganizationId: orgId,
+                isLinkedToSlack,
               });
 
-              logger.info({ userId: user.id, orgId, hasActiveSubscription }, 'First-time user signup email sent');
+              logger.info({ userId: user.id, orgId, hasActiveSubscription, isLinkedToSlack }, 'First-time user signup email sent');
             } catch (emailError) {
               logger.error({ error: emailError, userId: user.id }, 'Failed to send signup email');
             }
