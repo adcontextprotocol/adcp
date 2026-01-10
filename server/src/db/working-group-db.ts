@@ -590,7 +590,8 @@ export class WorkingGroupDatabase {
     // 1. working_group_memberships (if they're a member with cached name)
     // 2. users table (canonical user data synced from WorkOS)
     // 3. organization_memberships (older sync table)
-    // 4. Falls back to user_id if no name found
+    // 4. slack_user_mappings (Slack profile name for unmapped Slack users)
+    // 5. Falls back to user_id if no name found
     //
     // canonical_user_id is resolved at read time via slack_user_mappings
     // to handle cases where leaders were added via Slack ID before linking WorkOS
@@ -604,12 +605,17 @@ export class WorkingGroupDatabase {
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
+           NULLIF(slack_profile.slack_real_name, ''),
+           NULLIF(slack_profile.slack_display_name, ''),
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
+       -- sm: resolves Slack ID -> WorkOS ID (only for linked users)
        LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       -- slack_profile: gets Slack profile name (for all Slack users, including unlinked)
+       LEFT JOIN slack_user_mappings slack_profile ON wgl.user_id = slack_profile.slack_user_id
        LEFT JOIN working_group_memberships wgm ON COALESCE(sm.workos_user_id, wgl.user_id) = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN users u ON COALESCE(sm.workos_user_id, wgl.user_id) = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
@@ -650,12 +656,17 @@ export class WorkingGroupDatabase {
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
+           NULLIF(slack_profile.slack_real_name, ''),
+           NULLIF(slack_profile.slack_display_name, ''),
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
+       -- sm: resolves Slack ID -> WorkOS ID (only for linked users)
        LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       -- slack_profile: gets Slack profile name (for all Slack users, including unlinked)
+       LEFT JOIN slack_user_mappings slack_profile ON wgl.user_id = slack_profile.slack_user_id
        LEFT JOIN working_group_memberships wgm ON COALESCE(sm.workos_user_id, wgl.user_id) = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN users u ON COALESCE(sm.workos_user_id, wgl.user_id) = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
