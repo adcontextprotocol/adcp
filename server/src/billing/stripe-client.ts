@@ -795,7 +795,7 @@ export interface InvoiceRequestData {
  */
 export async function createAndSendInvoice(
   data: InvoiceRequestData
-): Promise<{ invoiceId: string; invoiceUrl: string; subscriptionId: string } | null> {
+): Promise<{ invoiceId: string; invoiceUrl: string; subscriptionId: string; discountApplied: boolean; discountWarning?: string } | null> {
   if (!stripe) {
     logger.warn('Stripe not initialized - cannot create invoice');
     return null;
@@ -864,6 +864,36 @@ export async function createAndSendInvoice(
       currency: price.currency,
     }, 'createAndSendInvoice: Creating subscription with verified price');
 
+    // Validate coupon exists if provided
+    let validatedCouponId: string | undefined;
+    let discountWarning: string | undefined;
+    if (data.couponId) {
+      try {
+        const coupon = await stripe.coupons.retrieve(data.couponId);
+        if (!coupon || !coupon.valid) {
+          discountWarning = `Coupon "${data.couponId}" is invalid or expired. Invoice sent without discount. Use grant_discount to create a valid coupon.`;
+          logger.warn({
+            couponId: data.couponId,
+            valid: coupon?.valid,
+          }, 'createAndSendInvoice: Coupon is invalid or expired, proceeding without discount');
+        } else {
+          validatedCouponId = data.couponId;
+          logger.info({
+            couponId: data.couponId,
+            percentOff: coupon.percent_off,
+            amountOff: coupon.amount_off,
+          }, 'createAndSendInvoice: Validated coupon');
+        }
+      } catch (couponError) {
+        // Coupon doesn't exist - log and proceed without it
+        discountWarning = `Coupon "${data.couponId}" does not exist in Stripe. Invoice sent without discount. Use grant_discount to create a valid coupon first.`;
+        logger.warn({
+          couponId: data.couponId,
+          error: couponError instanceof Error ? couponError.message : 'Unknown error',
+        }, 'createAndSendInvoice: Coupon not found in Stripe, proceeding without discount');
+      }
+    }
+
     // Create subscription with invoice billing
     // This creates a subscription AND generates an invoice for the first payment
     // When the invoice is paid, the subscription becomes active and will auto-renew
@@ -872,8 +902,8 @@ export async function createAndSendInvoice(
       items: [{ price: priceId }],
       collection_method: 'send_invoice',
       days_until_due: 30,
-      // Apply coupon if provided (for discounts)
-      ...(data.couponId && { discounts: [{ coupon: data.couponId }] }),
+      // Apply coupon if validated
+      ...(validatedCouponId && { discounts: [{ coupon: validatedCouponId }] }),
       metadata: {
         lookup_key: data.lookupKey,
         contact_name: data.contactName,
@@ -927,6 +957,8 @@ export async function createAndSendInvoice(
       invoiceId: invoiceId,
       invoiceUrl: sentInvoice.hosted_invoice_url || '',
       subscriptionId: subscription.id,
+      discountApplied: !!validatedCouponId,
+      discountWarning,
     };
   } catch (error) {
     const stripeError = error as { type?: string; code?: string; message?: string };

@@ -3108,7 +3108,7 @@ export function createAdminToolHandlers(
         if (finalProduct.amount_cents) {
           const originalAmount = finalProduct.amount_cents / 100;
           response += `**Amount:** $${originalAmount.toLocaleString()}`;
-          if (appliedDiscount) {
+          if (appliedDiscount && invoiceResult.discountApplied) {
             // Calculate discounted amount for display
             let discountedAmount = originalAmount;
             if (discountPercent) {
@@ -3130,6 +3130,11 @@ export function createAdminToolHandlers(
           response += `\n**Invoice URL:**\n${invoiceResult.invoiceUrl}\n`;
         }
         response += `\n_Stripe will email the invoice with a payment link. They have 30 days to pay._`;
+
+        // Warn if discount was requested but not applied
+        if (invoiceResult.discountWarning) {
+          response += `\n\n⚠️ **Warning:** ${invoiceResult.discountWarning}`;
+        }
 
         logger.info(
           { orgId: org.workos_organization_id, orgName: org.name, invoiceId: invoiceResult.invoiceId, discount: appliedDiscount },

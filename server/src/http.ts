@@ -6823,12 +6823,9 @@ Disallow: /api/admin/
         logger.warn({ error }, 'Failed to sync organizations from WorkOS (non-fatal)');
       }
 
-      // Then sync Stripe customer IDs
+      // Then sync Stripe customer IDs (method handles errors gracefully)
       try {
-        const result = await orgDb.syncStripeCustomers();
-        if (result.synced > 0) {
-          logger.info({ synced: result.synced, skipped: result.skipped }, 'Synced Stripe customer IDs');
-        }
+        await orgDb.syncStripeCustomers();
       } catch (error) {
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
@@ -6845,11 +6842,11 @@ Disallow: /api/admin/
 
     // Pre-warm caches for all agents in background
     const allAgents = await this.agentService.listAgents();
-    logger.info({ agentCount: allAgents.length }, 'Pre-warming caches');
+    logger.debug({ agentCount: allAgents.length }, 'Pre-warming caches');
 
     // Don't await - let this run in background
     this.prewarmCaches(allAgents).then(() => {
-      logger.info('Cache pre-warming complete');
+      logger.debug('Cache pre-warming complete');
     }).catch(err => {
       logger.error({ err }, 'Cache pre-warming failed');
     });
@@ -6857,7 +6854,7 @@ Disallow: /api/admin/
     // Start periodic property crawler for sales agents
     const salesAgents = await this.agentService.listAgents("sales");
     if (salesAgents.length > 0) {
-      logger.info({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
+      logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
@@ -6962,7 +6959,7 @@ Disallow: /api/admin/
       }
     }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
 
-    logger.info({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
+    logger.debug({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
   }
 
   /**
@@ -7023,7 +7020,7 @@ Disallow: /api/admin/
       }
     }, ALERT_CHECK_INTERVAL_MINUTES * 60 * 1000);
 
-    logger.info({
+    logger.debug({
       feedFetchIntervalMinutes: FEED_FETCH_INTERVAL_MINUTES,
       alertCheckIntervalMinutes: ALERT_CHECK_INTERVAL_MINUTES,
     }, 'Industry monitor started');
@@ -7068,7 +7065,7 @@ Disallow: /api/admin/
       }
     }, REMINDER_CHECK_INTERVAL_HOURS * 60 * 60 * 1000);
 
-    logger.info({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
+    logger.debug({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
   }
 
   /**
@@ -7096,7 +7093,7 @@ Disallow: /api/admin/
       }
     }, SCORING_INTERVAL_HOURS * 60 * 60 * 1000);
 
-    logger.info({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
+    logger.debug({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
   }
 
   /**
@@ -7110,7 +7107,9 @@ Disallow: /api/admin/
     setTimeout(async () => {
       try {
         const result = await runGoalFollowUpJob();
-        logger.info(result, 'Goal follow-up: initial run completed');
+        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
+          logger.info(result, 'Goal follow-up: initial run completed');
+        }
       } catch (err) {
         logger.error({ err }, 'Goal follow-up: initial run failed');
       }
@@ -7146,7 +7145,7 @@ Disallow: /api/admin/
       }
     }, FOLLOW_UP_INTERVAL_HOURS * 60 * 60 * 1000);
 
-    logger.info({ intervalHours: FOLLOW_UP_INTERVAL_HOURS }, 'Goal follow-up job started');
+    logger.debug({ intervalHours: FOLLOW_UP_INTERVAL_HOURS }, 'Goal follow-up job started');
   }
 
   /**

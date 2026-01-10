@@ -45,6 +45,7 @@
     }
     .stat-value.warning { color: var(--color-warning-600); }
     .stat-value.success { color: var(--color-success-600); }
+    .stat-value.error { color: var(--color-error-600); }
 
     .card {
       background: var(--color-bg-card);
@@ -273,6 +274,70 @@
       color: white;
       border-color: var(--color-brand);
     }
+
+    /* Conflicts section */
+    .conflicts-card {
+      border: var(--border-1) solid var(--color-error-200);
+      background: var(--color-error-50);
+    }
+    .conflicts-card .card-title {
+      color: var(--color-error-700);
+    }
+    .conflicts-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .conflicts-table th {
+      background: var(--color-gray-50);
+      padding: var(--space-3) var(--space-4);
+      text-align: left;
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      border-bottom: var(--border-1) solid var(--color-border);
+    }
+    .conflicts-table td {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: var(--border-1) solid var(--color-border);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+      background: white;
+    }
+    .conflicts-table tr:hover td {
+      background: var(--color-gray-50);
+    }
+    .conflict-choice {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-sm);
+    }
+    .conflict-choice-info {
+      flex: 1;
+    }
+    .conflict-choice-name {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .conflict-choice-id {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .conflict-info-box {
+      background: var(--color-primary-50);
+      border: var(--border-1) solid var(--color-primary-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-primary-800);
+    }
+    .btn-sm {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+    }
   </style>
 </head>
 <body>
@@ -302,6 +367,32 @@
         <div class="stat-label">Unlinked with Payments</div>
         <div class="stat-value warning" id="stat-unlinked-payments">-</div>
       </div>
+      <div class="stat-card" id="conflicts-stat-card" style="display: none;">
+        <div class="stat-label">Conflicts</div>
+        <div class="stat-value error" id="stat-conflicts">0</div>
+      </div>
+    </div>
+
+    <!-- Conflicts Section (only shown when conflicts exist) -->
+    <div class="card conflicts-card" id="conflicts-section" style="display: none;">
+      <div class="card-header">
+        <div class="card-title">Stripe Metadata Conflicts</div>
+      </div>
+      <div class="conflict-info-box">
+        A conflict occurs when a Stripe customer's metadata says it belongs to Organization A, but our database has it linked to Organization B. Choose which organization should own the customer.
+      </div>
+      <table class="conflicts-table">
+        <thead>
+          <tr>
+            <th>Stripe Customer</th>
+            <th>Stripe Says (metadata)</th>
+            <th>Database Has</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="conflicts-body">
+        </tbody>
+      </table>
     </div>
 
     <div class="card">
@@ -340,6 +431,7 @@
 
   <script>
     let allCustomers = [];
+    let allConflicts = [];
     let currentFilter = 'all';
 
     const formatCurrency = (cents) => {
@@ -613,6 +705,153 @@
       document.getElementById('stat-linked').textContent = linked;
       document.getElementById('stat-unlinked').textContent = unlinked;
       document.getElementById('stat-unlinked-payments').textContent = unlinkedWithPayments;
+
+      // Update conflicts stat
+      const conflictsStatCard = document.getElementById('conflicts-stat-card');
+      const conflictsSection = document.getElementById('conflicts-section');
+      if (allConflicts.length > 0) {
+        document.getElementById('stat-conflicts').textContent = allConflicts.length;
+        conflictsStatCard.style.display = 'block';
+        conflictsSection.style.display = 'block';
+      } else {
+        conflictsStatCard.style.display = 'none';
+        conflictsSection.style.display = 'none';
+      }
+    }
+
+    function renderConflicts() {
+      const tbody = document.getElementById('conflicts-body');
+      tbody.innerHTML = allConflicts.map((conflict, index) => `
+        <tr data-index="${index}">
+          <td>
+            <div><strong>${conflict.stripe_customer_id}</strong></div>
+            <div style="font-size: 11px;">
+              <a href="https://dashboard.stripe.com/customers/${conflict.stripe_customer_id}" target="_blank" rel="noopener" style="color: var(--color-brand);">
+                View in Stripe &rarr;
+              </a>
+            </div>
+          </td>
+          <td>
+            <div class="conflict-choice">
+              <div class="conflict-choice-info">
+                <div class="conflict-choice-name">${conflict.stripe_says_org_name || 'Unknown'}</div>
+                <div class="conflict-choice-id">${conflict.stripe_says_org_id}</div>
+                <span class="badge badge-gray">From Stripe metadata</span>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="resolveConflict(${index}, 'stripe')" title="Use Stripe's metadata as source of truth">
+                Use This
+              </button>
+            </div>
+          </td>
+          <td>
+            <div class="conflict-choice">
+              <div class="conflict-choice-info">
+                <div class="conflict-choice-name">${conflict.db_has_org_name}</div>
+                <div class="conflict-choice-id">${conflict.db_has_org_id}</div>
+                <span class="badge badge-warning">Currently in database</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="resolveConflict(${index}, 'database')" title="Keep database record, update Stripe metadata">
+                Keep This
+              </button>
+            </div>
+          </td>
+          <td>
+            <button class="btn btn-danger btn-sm" onclick="unlinkConflict(${index})" title="Unlink from both and resolve manually">
+              Unlink
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function resolveConflict(index, choice) {
+      const conflict = allConflicts[index];
+      const keepOrgId = choice === 'stripe' ? conflict.stripe_says_org_id : conflict.db_has_org_id;
+      const keepOrgName = choice === 'stripe' ? conflict.stripe_says_org_name : conflict.db_has_org_name;
+      const action = choice === 'stripe' ? 'unlink_other' : 'update_stripe_metadata';
+
+      if (!confirm(`Link Stripe customer ${conflict.stripe_customer_id} to "${keepOrgName}"?`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/admin/stripe-conflicts/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stripe_customer_id: conflict.stripe_customer_id,
+            keep_org_id: keepOrgId,
+            action: action,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to resolve conflict');
+        }
+
+        showSuccess(`Resolved: ${conflict.stripe_customer_id} is now linked to "${keepOrgName}"`);
+
+        // Remove from list and re-render
+        allConflicts.splice(index, 1);
+        updateStats();
+        renderConflicts();
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function unlinkConflict(index) {
+      const conflict = allConflicts[index];
+
+      if (!confirm(`Unlink Stripe customer ${conflict.stripe_customer_id} from "${conflict.db_has_org_name}"? You can then manually link it to the correct organization.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/admin/stripe-customer/unlink', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            org_id: conflict.db_has_org_id,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to unlink customer');
+        }
+
+        showSuccess(`Unlinked ${conflict.stripe_customer_id}. You can now link it manually below.`);
+
+        // Remove from list, refresh customers, and re-render
+        allConflicts.splice(index, 1);
+        updateStats();
+        renderConflicts();
+        loadCustomers(); // Refresh customers list to show the now-unlinked customer
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function loadConflicts() {
+      try {
+        const response = await fetch('/api/admin/stripe-conflicts');
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to load conflicts');
+        }
+
+        allConflicts = data.conflicts || [];
+        updateStats();
+        renderConflicts();
+      } catch (err) {
+        console.error('Failed to load conflicts:', err);
+        // Don't show error to user - conflicts are secondary to the main customer list
+      }
     }
 
     async function loadCustomers() {
@@ -647,6 +886,7 @@
 
     // Load on page load
     loadCustomers();
+    loadConflicts();
   </script>
 </body>
 </html>
