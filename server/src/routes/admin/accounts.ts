@@ -481,6 +481,7 @@ export function setupAccountRoutes(
           ),
 
           // Domain health: Similar organization names (potential duplicates)
+          // Uses pg_trgm trigram similarity for fuzzy matching
           // Skip for personal workspaces - they shouldn't have duplicates
           pool.query(
             `
@@ -513,17 +514,19 @@ export function setupAccountRoutes(
               oo.workos_organization_id as org_id,
               oo.name,
               oo.subscription_status,
-              oo.normalized_name
+              oo.normalized_name,
+              similarity(oo.normalized_name, t.normalized_name) as match_score
             FROM this_org t
             JOIN other_orgs oo ON (
+              -- Exact match on normalized name
               oo.normalized_name = t.normalized_name
-              OR oo.normalized_name LIKE '%' || t.normalized_name || '%'
-              OR t.normalized_name LIKE '%' || oo.normalized_name || '%'
+              -- Or high trigram similarity (0.4+ catches typos and variations)
+              OR similarity(oo.normalized_name, t.normalized_name) >= 0.4
             )
             WHERE LENGTH(t.normalized_name) >= 3
               AND LENGTH(oo.normalized_name) >= 3
               AND t.is_personal = false
-            ORDER BY oo.name ASC
+            ORDER BY similarity(oo.normalized_name, t.normalized_name) DESC, oo.name ASC
           `,
             [orgId]
           ),
