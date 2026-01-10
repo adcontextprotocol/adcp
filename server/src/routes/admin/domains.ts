@@ -1444,6 +1444,8 @@ export function setupDomainRoutes(
               SUBSTRING(domain FROM '([^.]+\\.[^.]+)$') as root_domain
             FROM org_domains
             WHERE domain IS NOT NULL
+              -- Exclude personal email domains (gmail.com, yahoo.com, admin-managed domains, etc.)
+              AND LOWER(SUBSTRING(domain FROM '([^.]+\\.[^.]+)$')) NOT IN (${freeEmailPlaceholders})
           ),
           root_groups AS (
             -- Group by root domain, only keep groups with multiple orgs
@@ -1466,8 +1468,8 @@ export function setupDomainRoutes(
           )
           SELECT * FROM root_groups
           ORDER BY org_count DESC
-          LIMIT $1
-        `, [limit]);
+          LIMIT $${allExcludedDomains.length + 1}
+        `, [...allExcludedDomains, limit]);
 
         // 7. Similar organization names - find orgs with similar names that might be duplicates
         // Uses trigram similarity (requires pg_trgm extension) or simple word matching
