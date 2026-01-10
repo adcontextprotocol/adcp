@@ -2636,7 +2636,9 @@
 
       // Request notification permission (opt-in)
       async function requestNotificationPermission() {
-        if ('Notification' in window && Notification.permission === 'default') {
+        if ('Notification' in window &&
+            Notification.permission === 'default' &&
+            typeof Notification.requestPermission === 'function') {
           await Notification.requestPermission();
         }
       }
