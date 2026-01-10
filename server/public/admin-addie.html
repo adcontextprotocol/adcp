@@ -3120,6 +3120,7 @@
     let currentThreadData = null;
     let currentConversationData = null;
     let extractedLinks = [];
+    let currentUserNames = {}; // Map of Slack user IDs to display names
 
     async function viewThread(threadId) {
       try {
@@ -3127,6 +3128,7 @@
         const data = await response.json();
         currentThreadData = data;
         currentConversationData = data;
+        currentUserNames = data.user_names || {};
 
         const channelLabel = data.channel.charAt(0).toUpperCase() + data.channel.slice(1);
         document.getElementById('conversation-modal-title').textContent =
@@ -3443,6 +3445,13 @@
     }
 
     function renderMarkdown(text) {
+      // Replace Slack user mentions with display names before escaping HTML
+      // Format: <@U1234567> -> @DisplayName
+      text = text.replace(/<@(U[A-Z0-9]+)>/g, (match, userId) => {
+        const displayName = currentUserNames[userId];
+        return displayName ? `@${displayName}` : match;
+      });
+
       // Escape HTML first
       text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

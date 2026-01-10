@@ -15,6 +15,7 @@ import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { resolveSlackUserDisplayName } from '../slack/client.js';
 
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
@@ -255,22 +256,23 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
   };
 
   try {
-    // Step 1: Look up Slack user mapping
-    const slackMapping = await slackDb.getBySlackUserId(slackUserId);
+    // Step 1: Look up Slack user (checks DB first, then API with persistence)
+    const resolved = await resolveSlackUserDisplayName(slackUserId);
 
-    if (!slackMapping) {
-      logger.debug({ slackUserId }, 'Addie: Slack user not found in mappings');
+    if (!resolved) {
+      logger.debug({ slackUserId }, 'Addie: Could not resolve Slack user');
       return context;
     }
 
     context.slack_user = {
-      slack_user_id: slackMapping.slack_user_id,
-      display_name: slackMapping.slack_display_name || slackMapping.slack_real_name,
-      email: slackMapping.slack_email,
+      slack_user_id: resolved.slack_user_id,
+      display_name: resolved.display_name,
+      email: resolved.email,
     };
 
-    // Step 2: Check if mapped to WorkOS user
-    if (!slackMapping.workos_user_id) {
+    // Step 2: Check if user is mapped to WorkOS (need full record for workos_user_id)
+    const slackMapping = await slackDb.getBySlackUserId(slackUserId);
+    if (!slackMapping || !slackMapping.workos_user_id) {
       logger.debug({ slackUserId }, 'Addie: Slack user not mapped to WorkOS');
       return context;
     }

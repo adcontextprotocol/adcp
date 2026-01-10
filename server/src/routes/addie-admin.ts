@@ -22,6 +22,10 @@ import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
+import {
+  resolveSlackUserDisplayName,
+  resolveSlackUserDisplayNames,
+} from "../slack/client.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -445,7 +449,39 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         return res.status(404).json({ error: "Thread not found" });
       }
 
-      res.json(thread);
+      // Collect all Slack user IDs that need resolution
+      const userIdsToResolve: string[] = [];
+      const slackMentionRegex = /<@(U[A-Z0-9]+)>/g;
+
+      // Add thread owner
+      if (thread.user_id && thread.channel === "slack") {
+        userIdsToResolve.push(thread.user_id);
+      }
+
+      // Extract from all message content
+      for (const msg of thread.messages) {
+        if (msg.content) {
+          let match;
+          while ((match = slackMentionRegex.exec(msg.content)) !== null) {
+            userIdsToResolve.push(match[1]);
+          }
+        }
+      }
+
+      // Resolve all user names with concurrency limiting
+      const userNames = await resolveSlackUserDisplayNames(userIdsToResolve);
+
+      // Get display name for thread owner (may already be resolved above)
+      let displayName: string | null = thread.user_display_name;
+      if (!displayName && thread.user_id && thread.channel === "slack") {
+        displayName = userNames[thread.user_id] ?? null;
+      }
+
+      res.json({
+        ...thread,
+        user_display_name: displayName || thread.user_display_name,
+        user_names: userNames,
+      });
     } catch (error) {
       logger.error({ err: error }, "Error fetching thread");
       res.status(500).json({

@@ -6,12 +6,22 @@
  */
 
 import { logger } from '../logger.js';
+import { SlackDatabase } from '../db/slack-db.js';
 import type {
   SlackUser,
   SlackChannel,
   SlackPaginatedResponse,
   SlackBlockMessage,
 } from './types.js';
+
+// Lazy-initialized database instance for user persistence
+let slackDb: SlackDatabase | null = null;
+function getSlackDb(): SlackDatabase {
+  if (!slackDb) {
+    slackDb = new SlackDatabase();
+  }
+  return slackDb;
+}
 
 // Use ADDIE_BOT_TOKEN as the primary token (fall back to SLACK_BOT_TOKEN for migration)
 const SLACK_BOT_TOKEN = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
@@ -206,6 +216,101 @@ export async function getSlackUser(userId: string): Promise<SlackUser | null> {
     logger.error({ error, userId }, 'Failed to get Slack user');
     return null;
   }
+}
+
+/**
+ * Result from resolving a Slack user's display name
+ */
+export interface ResolvedSlackUser {
+  slack_user_id: string;
+  display_name: string | null;
+  email: string | null;
+}
+
+/**
+ * Resolve a Slack user ID to display name, checking database first then API.
+ * Persists to database for future lookups.
+ */
+export async function resolveSlackUserDisplayName(
+  slackUserId: string
+): Promise<ResolvedSlackUser | null> {
+  const db = getSlackDb();
+
+  // Check database first
+  const existing = await db.getBySlackUserId(slackUserId);
+  if (existing) {
+    return {
+      slack_user_id: existing.slack_user_id,
+      display_name: existing.slack_display_name || existing.slack_real_name,
+      email: existing.slack_email,
+    };
+  }
+
+  // Fetch from Slack API and persist
+  try {
+    const slackUser = await getSlackUser(slackUserId);
+    if (!slackUser) {
+      return null;
+    }
+
+    const displayName = slackUser.profile?.display_name ||
+                       slackUser.profile?.real_name ||
+                       slackUser.real_name ||
+                       null;
+    const email = slackUser.profile?.email || null;
+
+    // Persist for future requests
+    await db.upsertSlackUser({
+      slack_user_id: slackUserId,
+      slack_email: email,
+      slack_display_name: slackUser.profile?.display_name || null,
+      slack_real_name: slackUser.profile?.real_name || slackUser.real_name || null,
+      slack_is_bot: slackUser.is_bot,
+      slack_is_deleted: slackUser.deleted,
+    });
+
+    logger.debug({ slackUserId, displayName }, 'Resolved and persisted Slack user from API');
+
+    return {
+      slack_user_id: slackUserId,
+      display_name: displayName,
+      email: email,
+    };
+  } catch (error) {
+    logger.debug({ slackUserId, error }, 'Failed to resolve Slack user');
+    return null;
+  }
+}
+
+/**
+ * Resolve multiple Slack user IDs to display names with concurrency limiting.
+ * Returns a map of user ID -> display name.
+ */
+export async function resolveSlackUserDisplayNames(
+  slackUserIds: string[],
+  concurrency = 5
+): Promise<Record<string, string>> {
+  const results: Record<string, string> = {};
+  const uniqueIds = [...new Set(slackUserIds)];
+
+  // Process in batches to avoid rate limiting
+  for (let i = 0; i < uniqueIds.length; i += concurrency) {
+    const batch = uniqueIds.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (userId) => {
+        const resolved = await resolveSlackUserDisplayName(userId);
+        return { userId, displayName: resolved?.display_name };
+      })
+    );
+
+    for (const { userId, displayName } of batchResults) {
+      if (displayName) {
+        results[userId] = displayName;
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
