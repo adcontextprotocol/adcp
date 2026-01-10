@@ -8,13 +8,15 @@
  * Requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN env vars
  */
 
-import { createGoogleDocsToolHandlers, isGoogleDocsUrl } from '../server/src/addie/mcp/google-docs.js';
-
-// Load env from .env.local
+// Load env from .env.local FIRST before any imports that read env vars
+// Use override: true to ensure .env.local values take precedence over shell env vars
 import { config } from 'dotenv';
-config({ path: '.env.local' });
+config({ path: '.env.local', override: true });
 
 async function main() {
+  // Dynamic import AFTER dotenv has loaded
+  const { createGoogleDocsToolHandlers, isGoogleDocsUrl } = await import('../server/src/addie/mcp/google-docs.js');
+
   const url = process.argv[2] || 'https://docs.google.com/document/d/1osokTr5Xk2PyLBUHbx2jpPad0TLrQIDh2I6ZWzpHMmY/edit?tab=t.0';
 
   console.log('\n🔍 Testing Google Docs Integration\n');
