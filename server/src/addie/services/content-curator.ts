@@ -19,7 +19,12 @@ import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
 import { query } from '../../db/client.js';
 import { getActiveChannels, type NotificationChannel } from '../../db/notification-channels-db.js';
-import { isGoogleDocsUrl, createGoogleDocsToolHandlers } from '../mcp/google-docs.js';
+import {
+  isGoogleDocsUrl,
+  createGoogleDocsToolHandlers,
+  GOOGLE_DOCS_ERROR_PREFIX,
+  GOOGLE_DOCS_ACCESS_DENIED_PREFIX,
+} from '../mcp/google-docs.js';
 
 const addieDb = new AddieDatabase();
 
@@ -98,8 +103,8 @@ async function fetchGoogleDocsContent(url: string): Promise<string> {
 
   const result = await handlers.read_google_doc({ url });
 
-  // Check for errors in the result
-  if (result.startsWith('Error:') || result.startsWith("I don't have access")) {
+  // Check for errors in the result (using exported constants for reliable detection)
+  if (result.startsWith(GOOGLE_DOCS_ERROR_PREFIX) || result.startsWith(GOOGLE_DOCS_ACCESS_DENIED_PREFIX)) {
     throw new Error(result);
   }
 

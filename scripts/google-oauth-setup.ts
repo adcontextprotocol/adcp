@@ -16,7 +16,7 @@ import { URL } from 'url';
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const REDIRECT_PORT = 3456;
+const REDIRECT_PORT = 9876;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 
 const SCOPES = [

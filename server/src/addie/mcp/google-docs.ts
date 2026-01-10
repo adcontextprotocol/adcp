@@ -11,6 +11,10 @@ import type { AddieTool } from '../types.js';
 // Addie's email for access requests
 const ADDIE_EMAIL = 'addie@agenticadvertising.org';
 
+// Error prefixes for reliable error detection
+export const GOOGLE_DOCS_ERROR_PREFIX = 'Error:';
+export const GOOGLE_DOCS_ACCESS_DENIED_PREFIX = "I don't have access";
+
 // Maximum content size (500KB)
 const MAX_CONTENT_SIZE = 500 * 1024;
 
@@ -109,6 +113,17 @@ function getAuthManager(config: GoogleAuthConfig): GoogleAuthManager {
   return authManager;
 }
 
+// Google Doc IDs are typically 44 characters of base64-ish characters
+// Minimum length of ~10 chars for valid IDs
+const DOC_ID_REGEX = /^[a-zA-Z0-9_-]{10,}$/;
+
+/**
+ * Validate a Google Doc ID format
+ */
+function isValidDocId(id: string): boolean {
+  return DOC_ID_REGEX.test(id);
+}
+
 /**
  * Extract Google Doc/Drive ID from various URL formats
  *
@@ -121,7 +136,7 @@ function getAuthManager(config: GoogleAuthConfig): GoogleAuthManager {
 function extractDocId(urlOrId: string): string | null {
   // Already just an ID (no slashes or dots indicating URL)
   if (!urlOrId.includes('/') && !urlOrId.includes('.')) {
-    return urlOrId;
+    return isValidDocId(urlOrId) ? urlOrId : null;
   }
 
   try {
@@ -129,19 +144,19 @@ function extractDocId(urlOrId: string): string | null {
 
     // docs.google.com/document/d/ID/...
     const docMatch = url.pathname.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
-    if (docMatch) return docMatch[1];
+    if (docMatch && isValidDocId(docMatch[1])) return docMatch[1];
 
     // drive.google.com/file/d/ID/...
     const driveMatch = url.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (driveMatch) return driveMatch[1];
+    if (driveMatch && isValidDocId(driveMatch[1])) return driveMatch[1];
 
     // drive.google.com/open?id=ID
     const idParam = url.searchParams.get('id');
-    if (idParam) return idParam;
+    if (idParam && isValidDocId(idParam)) return idParam;
 
     // docs.google.com/spreadsheets/d/ID/... (bonus: also works for sheets)
     const sheetsMatch = url.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-    if (sheetsMatch) return sheetsMatch[1];
+    if (sheetsMatch && isValidDocId(sheetsMatch[1])) return sheetsMatch[1];
 
     return null;
   } catch {
@@ -336,7 +351,8 @@ export function createGoogleDocsToolHandlers(): Record<string, (input: Record<st
         return 'Error: URL parameter is required and must be a non-empty string';
       }
 
-      logger.info({ url }, 'Addie: Reading Google Doc');
+      const docId = extractDocId(url);
+      logger.info({ docId }, 'Addie: Reading Google Doc');
 
       const result = await readGoogleDoc(url, config);
 
