@@ -481,12 +481,14 @@ export function setupAccountRoutes(
           ),
 
           // Domain health: Similar organization names (potential duplicates)
+          // Skip for personal workspaces - they shouldn't have duplicates
           pool.query(
             `
             WITH this_org AS (
               SELECT
                 workos_organization_id,
                 name,
+                is_personal,
                 LOWER(REGEXP_REPLACE(
                   REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
                   '[^a-z0-9\\s]', '', 'g'
@@ -499,7 +501,6 @@ export function setupAccountRoutes(
                 workos_organization_id,
                 name,
                 subscription_status,
-                is_personal,
                 LOWER(REGEXP_REPLACE(
                   REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
                   '[^a-z0-9\\s]', '', 'g'
@@ -520,6 +521,7 @@ export function setupAccountRoutes(
               OR t.normalized_name LIKE '%' || oo.normalized_name || '%'
             )
             WHERE LENGTH(t.normalized_name) >= 3
+              AND t.is_personal = false
             ORDER BY oo.name ASC
           `,
             [orgId]
