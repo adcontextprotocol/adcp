@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/property-feature-value.json",
+  "title": "Property Feature Value",
+  "description": "A single feature value for a property. Structure varies by feature type (binary, quantitative, categorical).",
+  "type": "object",
+  "properties": {
+    "value": {
+      "description": "The feature value. Type depends on feature definition: boolean for binary, number for quantitative, string for categorical.",
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" }
+      ]
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of measurement for quantitative values (e.g., 'gCO2e/1000_impressions', 'percentage')"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence score for this value (0-1)"
+    },
+    "measured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this specific value was measured"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this certification/value expires (for time-limited certifications)"
+    },
+    "methodology_version": {
+      "type": "string",
+      "description": "Version of the methodology used to calculate this value"
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional vendor-specific details about this measurement",
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["value"],
+  "additionalProperties": false
+}
