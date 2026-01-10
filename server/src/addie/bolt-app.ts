@@ -743,6 +743,17 @@ async function handleUserMessage({
     return;
   }
 
+  // Skip DMs without thread_ts - these are handled by handleDirectMessage via middleware.
+  // The Assistant framework receives message.im events through a separate pipeline from
+  // the global middleware chain, so both handlers can fire for the same event.
+  // First DMs (without thread_ts) are handled by handleDirectMessage; skip them here.
+  const channelType = 'channel_type' in event ? event.channel_type : undefined;
+  const hasRealThreadTs = 'thread_ts' in event && event.thread_ts !== undefined;
+  if (channelType === 'im' && !hasRealThreadTs) {
+    logger.debug({ channelType, hasThreadTs: hasRealThreadTs }, 'Addie Bolt: Skipping DM without thread_ts in Assistant handler (handled by middleware)');
+    return;
+  }
+
   const startTime = Date.now();
   const channelId = event.channel;
   const threadService = getThreadService();
@@ -1767,12 +1778,15 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the DM channel (no threading for DMs - just back-and-forth messages)
+  // Send response in the DM channel
+  // For AI Assistant apps, Slack treats every DM as a thread. We must use thread_ts
+  // to respond in the same thread as the user's message, otherwise our response
+  // appears as a separate notification in a different thread.
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
       text: outputValidation.sanitized,
-      // Don't use thread_ts for DMs - threading feels awkward in direct messages
+      thread_ts: event.ts,
     });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
