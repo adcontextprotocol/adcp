@@ -1472,7 +1472,7 @@ export function setupDomainRoutes(
         `, [...allExcludedDomains, limit]);
 
         // 7. Similar organization names - find orgs with similar names that might be duplicates
-        // Uses trigram similarity (requires pg_trgm extension) or simple word matching
+        // Uses pg_trgm trigram similarity for fuzzy matching
         const similarNamesResult = await pool.query(`
           WITH org_names AS (
             SELECT
@@ -1502,11 +1502,16 @@ export function setupDomainRoutes(
               AND (
                 -- Exact match on normalized name
                 o1.normalized_name = o2.normalized_name
-                -- Or one is substring of the other (e.g., "Yahoo" vs "Yahoo Inc")
-                OR o1.normalized_name LIKE '%' || o2.normalized_name || '%'
-                OR o2.normalized_name LIKE '%' || o1.normalized_name || '%'
+                -- Or one is a prefix/suffix of the other (e.g., "Yahoo" vs "Yahoo Inc")
+                OR o1.normalized_name LIKE o2.normalized_name || '%'
+                OR o1.normalized_name LIKE '%' || o2.normalized_name
+                OR o2.normalized_name LIKE o1.normalized_name || '%'
+                OR o2.normalized_name LIKE '%' || o1.normalized_name
+                -- Or high trigram similarity (0.4+ catches typos and variations)
+                OR similarity(o1.normalized_name, o2.normalized_name) >= 0.4
               )
-            WHERE LENGTH(o1.normalized_name) >= 3  -- Avoid matching very short names
+            WHERE LENGTH(o1.normalized_name) >= 3
+              AND LENGTH(o2.normalized_name) >= 3
             GROUP BY o1.normalized_name
             HAVING COUNT(DISTINCT o1.workos_organization_id) > 1
           )
