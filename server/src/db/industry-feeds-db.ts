@@ -243,10 +243,7 @@ function generateSlug(title: string, guid: string): string {
     .replace(/^-|-$/g, '')
     .substring(0, 80);
 
-  // Ensure guid is a string (defensive against RSS parser quirks)
-  if (typeof guid !== 'string') {
-    logger.warn({ guid, title }, 'generateSlug received non-string guid');
-  }
+  // Defensive: ensure guid is a string even if caller passes unexpected type
   const guidStr = String(guid || '');
 
   // Add a hash of the guid to ensure uniqueness
