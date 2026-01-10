@@ -825,6 +825,19 @@
               </div>
             </div>
           </div>
+
+          <!-- Domain Health (only shown if there are issues) -->
+          <div class="card" id="domainHealthCard" style="display: none;">
+            <h2 class="collapsible" onclick="toggleSection(this)" style="margin-bottom: 0;">
+              Domain Health
+              <span id="domainHealthBadge" class="status-badge" style="margin-left: var(--space-2); font-size: var(--text-xs);"></span>
+            </h2>
+            <div class="collapsible-content" id="domainHealthContent" style="margin-top: var(--space-4);">
+              <div id="domainHealthList" class="empty-state">
+                No issues found
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Right Column - Activity Timeline -->
@@ -1376,6 +1389,9 @@
         document.getElementById('domainsList').innerHTML = domainsHtml;
       }
 
+      // Domain Health
+      renderDomainHealth();
+
       // Activity timeline
       renderActivities();
 
@@ -1407,6 +1423,221 @@
       const isWatching = accountData.stakeholders?.some(s => s.user_id === currentUserId && s.role === 'interested');
       watchBtn.textContent = isWatching ? '⭐' : '☆';
       watchBtn.className = `watch-btn ${isWatching ? 'watching' : ''}`;
+    }
+
+    function renderDomainHealth() {
+      const health = accountData.domain_health;
+      const card = document.getElementById('domainHealthCard');
+      const badge = document.getElementById('domainHealthBadge');
+      const list = document.getElementById('domainHealthList');
+
+      if (!health) {
+        card.style.display = 'none';
+        return;
+      }
+
+      const { misaligned_users, similar_orgs, has_unverified_domains } = health;
+      const issueCount = (misaligned_users?.length || 0) + (similar_orgs?.length || 0) + (has_unverified_domains ? 1 : 0);
+
+      if (issueCount === 0) {
+        card.style.display = 'none';
+        return;
+      }
+
+      card.style.display = 'block';
+      badge.textContent = `${issueCount} issue${issueCount !== 1 ? 's' : ''}`;
+      badge.style.background = 'var(--color-warning-light)';
+      badge.style.color = 'var(--color-warning-dark)';
+
+      let html = '';
+
+      // Unverified domains warning
+      if (has_unverified_domains) {
+        html += `
+          <div style="padding: var(--space-3); background: var(--color-warning-light); border-radius: var(--radius-sm); margin-bottom: var(--space-3);">
+            <strong style="color: var(--color-warning-dark);">Unverified Domains</strong>
+            <p style="margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+              One or more domains are not verified. Verify domain ownership to enable automatic user matching.
+            </p>
+          </div>
+        `;
+      }
+
+      // Misaligned users (people with this org's domain who aren't in this org)
+      if (misaligned_users?.length > 0) {
+        const inPersonal = misaligned_users.filter(u => u.in_personal_workspace);
+        const inOtherOrgs = misaligned_users.filter(u => !u.in_personal_workspace);
+
+        html += `
+          <div style="margin-bottom: var(--space-4);">
+            <h3 style="font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); color: var(--color-text-heading);">
+              Users With This Domain Not In This Org
+              <span style="color: var(--color-text-muted); font-weight: normal;">(${misaligned_users.length})</span>
+            </h3>
+        `;
+
+        if (inPersonal.length > 0) {
+          html += `
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2);">
+              <strong>${inPersonal.length}</strong> in personal workspaces (can be added):
+            </p>
+            <ul style="list-style: none; padding: 0; margin: 0 0 var(--space-3) 0;">
+              ${inPersonal.slice(0, 5).map(u => `
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                  <span>
+                    <span style="font-weight: 500;">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</span>
+                    <span style="color: var(--color-text-muted); font-size: var(--text-sm);"> (${escapeHtml(u.email)})</span>
+                  </span>
+                  <button class="btn btn-sm btn-primary add-user-btn" data-user-id="${escapeHtml(u.user_id)}" data-user-email="${escapeHtml(u.email)}">Add</button>
+                </li>
+              `).join('')}
+              ${inPersonal.length > 5 ? `<li style="padding: var(--space-2) 0; color: var(--color-text-muted); font-size: var(--text-sm);">...and ${inPersonal.length - 5} more</li>` : ''}
+            </ul>
+            ${inPersonal.length > 1 ? `
+              <button class="btn btn-sm btn-secondary add-all-users-btn" data-user-ids="${escapeHtml(JSON.stringify(inPersonal.map(u => u.user_id)))}">
+                Add All ${inPersonal.length} Users
+              </button>
+            ` : ''}
+          `;
+        }
+
+        if (inOtherOrgs.length > 0) {
+          html += `
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: var(--space-3) 0 var(--space-2);">
+              <strong>${inOtherOrgs.length}</strong> in other corporate orgs:
+            </p>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+              ${inOtherOrgs.slice(0, 5).map(u => `
+                <li style="padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                  <span style="font-weight: 500;">${escapeHtml(u.first_name || '')} ${escapeHtml(u.last_name || '')}</span>
+                  <span style="color: var(--color-text-muted); font-size: var(--text-sm);"> (${escapeHtml(u.email)})</span>
+                  <br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">Currently in: <a href="/admin/accounts/${encodeURIComponent(u.current_org_id)}">${escapeHtml(u.current_org_name)}</a></span>
+                </li>
+              `).join('')}
+              ${inOtherOrgs.length > 5 ? `<li style="padding: var(--space-2) 0; color: var(--color-text-muted); font-size: var(--text-sm);">...and ${inOtherOrgs.length - 5} more</li>` : ''}
+            </ul>
+          `;
+        }
+
+        html += '</div>';
+      }
+
+      // Similar organizations
+      if (similar_orgs?.length > 0) {
+        html += `
+          <div>
+            <h3 style="font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-2); color: var(--color-text-heading);">
+              Similar Organizations
+              <span style="color: var(--color-text-muted); font-weight: normal;">(${similar_orgs.length} potential duplicates)</span>
+            </h3>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+              ${similar_orgs.map(o => `
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: var(--border-1) solid var(--color-gray-100);">
+                  <span>
+                    <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" style="font-weight: 500;">${escapeHtml(o.name)}</a>
+                    <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}" style="margin-left: var(--space-2); font-size: var(--text-xs);">
+                      ${escapeHtml(o.subscription_status || 'prospect')}
+                    </span>
+                  </span>
+                </li>
+              `).join('')}
+            </ul>
+            <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
+              <a href="/admin/domain-health">View full domain health dashboard</a> to merge organizations.
+            </p>
+          </div>
+        `;
+      }
+
+      list.innerHTML = html;
+
+      // Set up event delegation for domain health buttons
+      list.querySelectorAll('.add-user-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.dataset.userId;
+          const userEmail = btn.dataset.userEmail;
+          addUserToOrg(userId, userEmail);
+        });
+      });
+
+      list.querySelectorAll('.add-all-users-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userIds = JSON.parse(btn.dataset.userIds);
+          addAllUsersToOrg(userIds);
+        });
+      });
+    }
+
+    // Validate ID format (WorkOS IDs are alphanumeric with underscores)
+    function isValidId(id) {
+      return typeof id === 'string' && id.length > 0 && /^[a-zA-Z0-9_-]+$/.test(id);
+    }
+
+    async function addUserToOrg(userId, userEmail) {
+      if (!isValidId(userId)) {
+        alert('Invalid user ID format');
+        return;
+      }
+      if (!confirm(`Add ${userEmail} to ${accountData.name}?`)) return;
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(accountId)}/add-users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_ids: [userId] })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed');
+        }
+
+        // Reload to show updated data
+        loadAccount();
+      } catch (error) {
+        alert(`Failed to add user: ${error.message}`);
+      }
+    }
+
+    async function addAllUsersToOrg(userIds) {
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        alert('No users to add');
+        return;
+      }
+      if (!userIds.every(isValidId)) {
+        alert('Invalid user ID format detected');
+        return;
+      }
+      if (!confirm(`Add ${userIds.length} users to ${accountData.name}?`)) return;
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${encodeURIComponent(accountId)}/add-users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_ids: userIds })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminSidebar?.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || 'Failed');
+        }
+
+        const result = await response.json();
+        alert(`Added ${result.added_count || userIds.length} users to ${accountData.name}`);
+
+        // Reload to show updated data
+        loadAccount();
+      } catch (error) {
+        alert(`Failed to add users: ${error.message}`);
+      }
     }
 
     function renderNextSteps() {
