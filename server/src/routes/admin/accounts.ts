@@ -315,6 +315,8 @@ export function setupAccountRoutes(
           stakeholdersResult,
           domainsResult,
           membersResult,
+          misalignedUsersResult,
+          similarOrgsResult,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -435,6 +437,90 @@ export function setupAccountRoutes(
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
+          `,
+            [orgId]
+          ),
+
+          // Domain health: Users with this org's domains who are in personal workspaces
+          // (They should be in this org but aren't)
+          pool.query(
+            `
+            WITH org_domains AS (
+              -- Get all domains claimed by this org
+              SELECT domain FROM organization_domains WHERE workos_organization_id = $1
+            ),
+            users_with_domain AS (
+              -- Find users whose email domain matches one of this org's domains
+              SELECT DISTINCT
+                om.workos_user_id,
+                om.email,
+                om.first_name,
+                om.last_name,
+                om.workos_organization_id,
+                o.name as org_name,
+                o.is_personal,
+                LOWER(SUBSTRING(om.email FROM POSITION('@' IN om.email) + 1)) as user_domain
+              FROM organization_memberships om
+              JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
+              JOIN org_domains od ON LOWER(SUBSTRING(om.email FROM POSITION('@' IN om.email) + 1)) = od.domain
+            )
+            SELECT
+              workos_user_id as user_id,
+              email,
+              first_name,
+              last_name,
+              user_domain,
+              workos_organization_id as current_org_id,
+              org_name as current_org_name,
+              is_personal as in_personal_workspace
+            FROM users_with_domain
+            WHERE workos_organization_id != $1  -- Not already in this org
+            ORDER BY is_personal DESC, email ASC
+          `,
+            [orgId]
+          ),
+
+          // Domain health: Similar organization names (potential duplicates)
+          pool.query(
+            `
+            WITH this_org AS (
+              SELECT
+                workos_organization_id,
+                name,
+                LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
+                  '[^a-z0-9\\s]', '', 'g'
+                )) as normalized_name
+              FROM organizations
+              WHERE workos_organization_id = $1
+            ),
+            other_orgs AS (
+              SELECT
+                workos_organization_id,
+                name,
+                subscription_status,
+                is_personal,
+                LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
+                  '[^a-z0-9\\s]', '', 'g'
+                )) as normalized_name
+              FROM organizations
+              WHERE workos_organization_id != $1
+                AND is_personal = false
+            )
+            SELECT
+              oo.workos_organization_id as org_id,
+              oo.name,
+              oo.subscription_status,
+              oo.normalized_name
+            FROM this_org t
+            JOIN other_orgs oo ON (
+              oo.normalized_name = t.normalized_name
+              OR oo.normalized_name LIKE '%' || t.normalized_name || '%'
+              OR t.normalized_name LIKE '%' || oo.normalized_name || '%'
+            )
+            WHERE LENGTH(t.normalized_name) >= 3
+            ORDER BY oo.name ASC
           `,
             [orgId]
           ),
@@ -574,6 +660,19 @@ export function setupAccountRoutes(
           working_groups: workingGroupResult.rows,
           stakeholders: stakeholdersResult.rows,
           domains: domainsResult.rows,
+
+          // Domain health insights for this org
+          domain_health: {
+            // Users who have this org's domain but aren't in this org
+            misaligned_users: misalignedUsersResult.rows,
+            // Potential duplicate orgs with similar names
+            similar_orgs: similarOrgsResult.rows,
+            // Whether all domains are verified
+            has_unverified_domains: domainsResult.rows.some(
+              (d: { verified?: boolean }) => !d.verified
+            ),
+          },
+
           owner: owner
             ? {
                 user_id: owner.user_id,

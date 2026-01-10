@@ -1331,22 +1331,40 @@ export function setupDomainRoutes(
           WHERE o.is_personal = true
             AND om.email IS NOT NULL
             AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
+            -- Exclude users who are already members of the target company org
+            AND NOT EXISTS (
+              SELECT 1 FROM organization_memberships om2
+              WHERE om2.workos_user_id = om.workos_user_id
+                AND om2.workos_organization_id = cd.target_org_id
+            )
           ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
           LIMIT $${allExcludedDomains.length + 1}
         `, [...allExcludedDomains, limit]);
 
         // 3. Orgs without verified domains
+        // Also identify which user domains are already claimed by other orgs
         const unverifiedResult = await pool.query(`
+          WITH claimed_domains AS (
+            SELECT LOWER(domain) as domain, workos_organization_id
+            FROM organization_domains
+          )
           SELECT
             o.workos_organization_id,
             o.name,
             o.email_domain,
             o.subscription_status,
             COUNT(DISTINCT om.workos_user_id) as user_count,
-            array_agg(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2))) FILTER (WHERE om.email IS NOT NULL) as user_domains
+            array_agg(DISTINCT LOWER(SPLIT_PART(om.email, '@', 2))) FILTER (WHERE om.email IS NOT NULL) as user_domains,
+            -- Domains that are claimed by OTHER orgs (not this one)
+            array_agg(DISTINCT cd.domain) FILTER (
+              WHERE cd.domain IS NOT NULL
+              AND cd.workos_organization_id != o.workos_organization_id
+              AND cd.domain = LOWER(SPLIT_PART(om.email, '@', 2))
+            ) as claimed_by_others
           FROM organizations o
           JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
           LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id AND od.verified = true
+          LEFT JOIN claimed_domains cd ON cd.domain = LOWER(SPLIT_PART(om.email, '@', 2))
           WHERE o.is_personal = false
             AND od.id IS NULL
           GROUP BY o.workos_organization_id, o.name, o.email_domain, o.subscription_status
@@ -1446,6 +1464,51 @@ export function setupDomainRoutes(
           LIMIT $1
         `, [limit]);
 
+        // 7. Similar organization names - find orgs with similar names that might be duplicates
+        // Uses trigram similarity (requires pg_trgm extension) or simple word matching
+        const similarNamesResult = await pool.query(`
+          WITH org_names AS (
+            SELECT
+              workos_organization_id,
+              name,
+              subscription_status,
+              is_personal,
+              -- Normalize name: lowercase, remove common suffixes, remove punctuation
+              LOWER(REGEXP_REPLACE(
+                REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
+                '[^a-z0-9\\s]', '', 'g'
+              )) as normalized_name
+            FROM organizations
+            WHERE is_personal = false
+          ),
+          name_groups AS (
+            SELECT
+              o1.normalized_name as base_name,
+              array_agg(DISTINCT jsonb_build_object(
+                'org_id', o1.workos_organization_id,
+                'name', o1.name,
+                'subscription_status', o1.subscription_status
+              )) as organizations,
+              COUNT(DISTINCT o1.workos_organization_id) as org_count
+            FROM org_names o1
+            JOIN org_names o2 ON o1.workos_organization_id != o2.workos_organization_id
+              AND (
+                -- Exact match on normalized name
+                o1.normalized_name = o2.normalized_name
+                -- Or one is substring of the other (e.g., "Yahoo" vs "Yahoo Inc")
+                OR o1.normalized_name LIKE '%' || o2.normalized_name || '%'
+                OR o2.normalized_name LIKE '%' || o1.normalized_name || '%'
+              )
+            WHERE LENGTH(o1.normalized_name) >= 3  -- Avoid matching very short names
+            GROUP BY o1.normalized_name
+            HAVING COUNT(DISTINCT o1.workos_organization_id) > 1
+          )
+          SELECT base_name, org_count, organizations
+          FROM name_groups
+          ORDER BY org_count DESC, base_name
+          LIMIT $1
+        `, [limit]);
+
         res.json({
           summary: {
             total_organizations: parseInt(statsResult.rows[0].total_orgs, 10),
@@ -1458,6 +1521,7 @@ export function setupDomainRoutes(
               unverified_orgs: unverifiedResult.rows.length,
               domain_conflicts: conflictResult.rows.length,
               related_domains: relatedDomainsResult.rows.length,
+              similar_names: similarNamesResult.rows.length,
             },
           },
           orphan_domains: orphanResult.rows.map(row => ({
@@ -1488,6 +1552,7 @@ export function setupDomainRoutes(
             subscription_status: row.subscription_status,
             user_count: parseInt(row.user_count, 10),
             user_domains: row.user_domains?.filter(Boolean) || [],
+            claimed_by_others: row.claimed_by_others?.filter(Boolean) || [],
           })),
           domain_conflicts: conflictResult.rows.map(row => ({
             domain: row.email_domain,
@@ -1496,6 +1561,11 @@ export function setupDomainRoutes(
           })),
           related_domains: relatedDomainsResult.rows.map(row => ({
             root_domain: row.root_domain,
+            org_count: parseInt(row.org_count, 10),
+            organizations: row.organizations,
+          })),
+          similar_names: similarNamesResult.rows.map(row => ({
+            base_name: row.base_name,
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
           })),
