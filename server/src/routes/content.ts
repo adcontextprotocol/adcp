@@ -100,13 +100,14 @@ async function notifyWorkingGroupOfPendingContent(
 }
 
 /**
- * Check if user is a committee lead
+ * Check if user is a committee lead (handles both WorkOS and Slack user IDs)
  */
 async function isCommitteeLead(committeeId: string, userId: string): Promise<boolean> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT 1 FROM working_group_leaders
-     WHERE working_group_id = $1 AND user_id = $2`,
+    `SELECT 1 FROM working_group_leaders wgl
+     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+     WHERE wgl.working_group_id = $1 AND (wgl.user_id = $2 OR sm.workos_user_id = $2)`,
     [committeeId, userId]
   );
   return result.rows.length > 0;
@@ -118,7 +119,7 @@ async function isCommitteeLead(committeeId: string, userId: string): Promise<boo
 async function getUserInfo(userId: string): Promise<{ name: string; title?: string } | null> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT first_name, last_name, title, email FROM users WHERE id = $1`,
+    `SELECT first_name, last_name, title, email FROM users WHERE workos_user_id = $1`,
     [userId]
   );
   if (result.rows.length === 0) return null;
@@ -349,7 +350,7 @@ export function createContentRouter(): Router {
       if (status === 'pending_review') {
         // Fire and forget - don't block the response
         notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
-          logger.error({ err, perspectiveId: perspective.id }, 'Failed to send content notification');
+          logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
         });
       }
 
