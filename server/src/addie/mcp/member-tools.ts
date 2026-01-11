@@ -1852,6 +1852,7 @@ export function createMemberToolHandlers(
     let response = `## Documents for "${slug}"\n\n`;
     for (const doc of documents) {
       response += `### ${doc.title}${doc.is_featured ? ' ⭐' : ''}\n`;
+      response += `**ID:** \`${doc.id}\`\n`;
       response += `**URL:** ${doc.document_url}\n`;
       response += `**Status:** ${doc.index_status}\n`;
       if (doc.document_summary) {
@@ -1878,6 +1879,12 @@ export function createMemberToolHandlers(
     const description = input.description as string | undefined;
     const documentUrl = input.document_url as string | undefined;
     const isFeatured = input.is_featured as boolean | undefined;
+
+    // Validate UUID format before API call
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(documentId)) {
+      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+    }
 
     // Validate URL if provided
     if (documentUrl) {
@@ -1940,6 +1947,12 @@ export function createMemberToolHandlers(
 
     const slug = input.committee_slug as string;
     const documentId = input.document_id as string;
+
+    // Validate UUID format before API call
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(documentId)) {
+      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+    }
 
     const result = await callApi(
       'DELETE',
