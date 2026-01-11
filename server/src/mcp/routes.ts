@@ -2,23 +2,22 @@
  * MCP Route Handlers
  *
  * Configures Express routes for the unified MCP server:
- * - POST /mcp - MCP JSON-RPC endpoint (optional auth, rate limited)
+ * - POST /mcp - MCP JSON-RPC endpoint (auth required, rate limited)
  * - GET /.well-known/oauth-protected-resource - OAuth resource metadata
  * - OPTIONS /mcp - CORS preflight
  *
- * Access modes:
- * - Authenticated: Full tools based on membership
- * - Anonymous: Knowledge tools only, rate limited by IP
+ * Authentication required via OAuth 2.1 (WorkOS AuthKit).
+ * Unauthenticated requests receive 401 with OAuth discovery metadata,
+ * allowing MCP clients to initiate the OAuth flow.
  */
 
 import type { Router, Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import rateLimit from 'express-rate-limit';
-import { ipKeyGenerator } from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { createUnifiedMCPServer } from './server.js';
 import {
-  optionalMcpAuthMiddleware,
+  mcpAuthMiddleware,
   getOAuthProtectedResourceMetadata,
   MCP_AUTH_ENABLED,
   type MCPAuthenticatedRequest,
@@ -28,27 +27,15 @@ const logger = createLogger('mcp-routes');
 
 /**
  * Rate limiter for MCP endpoint
- * Anonymous: 5 requests per minute per IP
- * Authenticated: 10 requests per minute per user
+ * 10 requests per minute per authenticated user
  */
 const mcpRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: (req: MCPAuthenticatedRequest) => {
-    // Authenticated users get slightly higher limits
-    if (req.mcpAuth?.sub && req.mcpAuth.sub !== 'anonymous') {
-      return 10; // 10 requests per minute for authenticated users
-    }
-    return 5; // 5 requests per minute for anonymous
-  },
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: MCPAuthenticatedRequest) => {
-    // Use user ID for authenticated, IP for anonymous
-    if (req.mcpAuth?.sub && req.mcpAuth.sub !== 'anonymous') {
-      return `user:${req.mcpAuth.sub}`;
-    }
-    // Use ipKeyGenerator helper to handle IPv6 properly
-    return ipKeyGenerator(req.ip || 'unknown');
+    return `user:${req.mcpAuth?.sub || 'anonymous'}`;
   },
   handler: (req, res) => {
     res.status(429).json({
@@ -80,11 +67,11 @@ export function configureMCPRoutes(router: Router): void {
   });
 
   // MCP POST handler - main endpoint
-  // Auth is optional: authenticated users get full tools, anonymous get knowledge tools only
-  // Rate limited: 20/min anonymous, 100/min authenticated
+  // Auth required: returns 401 with OAuth discovery metadata for unauthenticated requests
+  // Rate limited: 10/min per user
   router.post(
     '/mcp',
-    optionalMcpAuthMiddleware,
+    mcpAuthMiddleware,
     mcpRateLimiter,
     async (req: MCPAuthenticatedRequest, res: Response) => {
       setCORSHeaders(res);

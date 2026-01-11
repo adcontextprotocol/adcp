@@ -1,23 +1,22 @@
 /**
  * MCP Authentication Middleware
  *
- * Supports two access modes:
+ * Authentication required via OAuth 2.1 (WorkOS AuthKit).
+ * Unauthenticated requests receive 401 with OAuth discovery metadata.
  *
- * 1. Authenticated (OAuth 2.1)
- *    - User adds Addie to Claude Desktop or ChatGPT
- *    - Redirected to WorkOS login, gets access token
- *    - Full tools available based on membership status
- *
- * 2. Anonymous
- *    - No authentication required
- *    - Knowledge tools only (search_docs, search_repos, etc.)
- *    - Rate limited by IP address
+ * Flow:
+ * - User adds Addie to Claude Desktop or ChatGPT
+ * - Client discovers auth server via /.well-known/oauth-protected-resource
+ * - User redirected to WorkOS login, gets access token
+ * - Client retries with bearer token
  *
  * JWT validation via WorkOS JWKS:
  * - Token signature verification
  * - Issuer matches AuthKit
  * - Expiry (exp) and not-before (nbf) claims
  * - Audience matches resource identifier
+ *
+ * Can be disabled via MCP_AUTH_DISABLED=true for local development.
  */
 
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
@@ -203,41 +202,6 @@ export async function mcpAuthMiddleware(
         message: 'Invalid or expired token.',
       },
     });
-  }
-}
-
-/**
- * Optional MCP auth middleware
- *
- * Like mcpAuthMiddleware but allows unauthenticated requests.
- * Use for endpoints that have both public and authenticated features.
- */
-export async function optionalMcpAuthMiddleware(
-  req: MCPAuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  if (!MCP_AUTH_ENABLED) {
-    next();
-    return;
-  }
-
-  const token = extractBearerToken(req);
-
-  if (!token) {
-    // No token, continue without auth context
-    next();
-    return;
-  }
-
-  try {
-    const authContext = await validateToken(token);
-    req.mcpAuth = authContext;
-    next();
-  } catch (error) {
-    // Invalid token - still continue but without auth
-    logger.debug({ error }, 'MCP Auth: Optional token validation failed');
-    next();
   }
 }
 

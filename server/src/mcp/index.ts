@@ -6,15 +6,14 @@
  * - Directory lookup (members, agents, publishers)
  * - Billing operations (membership products, payment links)
  *
- * Access modes:
- * - Authenticated (OAuth 2.1): Full tools based on membership (10/min)
- * - Anonymous: Knowledge tools only, rate limited by IP (5/min)
+ * Authentication required via OAuth 2.1 (WorkOS AuthKit).
+ * Unauthenticated requests receive 401 with OAuth discovery metadata.
  */
 
 export { createUnifiedMCPServer, initializeMCPServer, isMCPServerReady, getAllTools } from './server.js';
 export { configureMCPRoutes } from './routes.js';
 export {
-  optionalMcpAuthMiddleware,
+  mcpAuthMiddleware,
   getOAuthProtectedResourceMetadata,
   getAuthorizationServerMetadataUrl,
   MCP_AUTH_ENABLED,
