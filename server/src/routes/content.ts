@@ -13,6 +13,7 @@ import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
+import { sendChannelMessage } from '../slack/client.js';
 
 const logger = createLogger('content-routes');
 
@@ -38,6 +39,64 @@ interface ProposeContentRequest {
     slug?: string;  // New format - collection slug directly
   };
   authors?: ContentAuthor[];
+}
+
+/**
+ * Notify a working group's Slack channel about pending content
+ */
+async function notifyWorkingGroupOfPendingContent(
+  workingGroupId: string,
+  perspective: { id: string; title: string; slug: string },
+  authorName: string
+): Promise<void> {
+  const pool = getPool();
+
+  // Get the working group's Slack channel
+  const wgResult = await pool.query(
+    `SELECT name, slack_channel_id FROM working_groups WHERE id = $1`,
+    [workingGroupId]
+  );
+
+  if (wgResult.rows.length === 0 || !wgResult.rows[0].slack_channel_id) {
+    logger.debug({ workingGroupId }, 'Working group has no Slack channel, skipping notification');
+    return;
+  }
+
+  const { name: wgName, slack_channel_id: slackChannelId } = wgResult.rows[0];
+
+  try {
+    await sendChannelMessage(slackChannelId, {
+      text: `New content pending review: "${perspective.title}" by ${authorName}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📝 *New content submitted for review*\n\n*Title:* ${perspective.title}\n*Author:* ${authorName}\n*Collection:* ${wgName}`,
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Review Content',
+                emoji: true,
+              },
+              url: `https://agenticadvertising.org/my-content.html`,
+              action_id: 'review_content',
+            },
+          ],
+        },
+      ],
+    });
+
+    logger.info({ workingGroupId, perspectiveId: perspective.id, slackChannelId }, 'Sent pending content notification to working group');
+  } catch (error) {
+    logger.error({ error, workingGroupId, perspectiveId: perspective.id }, 'Failed to send pending content notification');
+  }
 }
 
 /**
@@ -285,6 +344,14 @@ export function createContentRouter(): Router {
         collection: collection.type,
         committeeSlug: collection.committee_slug,
       }, 'Content proposed');
+
+      // Notify working group if content needs review
+      if (status === 'pending_review') {
+        // Fire and forget - don't block the response
+        notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
+          logger.error({ err, perspectiveId: perspective.id }, 'Failed to send content notification');
+        });
+      }
 
       const message = canPublishDirectly
         ? 'Content published successfully'
