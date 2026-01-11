@@ -1341,8 +1341,13 @@ export function createMemberToolHandlers(
     const externalUrl = input.external_url as string | undefined;
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
-    const collection = input.collection as { type: string; committee_slug?: string };
+    const inputCollection = input.collection as { type: string; committee_slug?: string } | undefined;
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
+
+    // Default to editorial collection for personal/perspectives content
+    const collection = inputCollection?.type === 'personal' || !inputCollection
+      ? { type: 'committee', committee_slug: 'editorial' }
+      : inputCollection;
 
     // Validate requirements
     if (contentType === 'article' && !contentBody) {
@@ -1387,20 +1392,20 @@ export function createMemberToolHandlers(
     response += `**Title:** ${title}\n`;
     response += `**Status:** ${data.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
 
-    if (collection.type === 'committee') {
-      response += `**Collection:** ${collection.committee_slug}\n`;
+    if (collection.committee_slug === 'editorial') {
+      response += `**Collection:** Perspectives\n`;
     } else {
-      response += `**Collection:** Personal (perspectives)\n`;
+      response += `**Collection:** ${collection.committee_slug}\n`;
     }
 
     if (data.status === 'published') {
-      if (collection.type === 'committee') {
-        response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
-      } else {
+      if (collection.committee_slug === 'editorial') {
         response += `\n**View:** https://agenticadvertising.org/perspectives/${data.slug}\n`;
+      } else {
+        response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
       }
     } else {
-      response += `\n_A committee lead or admin will review your submission. You'll be notified when it's approved._\n`;
+      response += `\n_An admin will review your submission. You'll be notified when it's approved._\n`;
     }
 
     if (coAuthorEmails && coAuthorEmails.length > 0) {

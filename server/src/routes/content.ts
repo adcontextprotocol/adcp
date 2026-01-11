@@ -12,6 +12,8 @@ import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
+import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
+import { sendChannelMessage } from '../slack/client.js';
 
 const logger = createLogger('content-routes');
 
@@ -40,27 +42,73 @@ interface ProposeContentRequest {
 }
 
 /**
- * Check if user is a committee lead
+ * Notify a working group's Slack channel about pending content
+ */
+async function notifyWorkingGroupOfPendingContent(
+  workingGroupId: string,
+  perspective: { id: string; title: string; slug: string },
+  authorName: string
+): Promise<void> {
+  const pool = getPool();
+
+  // Get the working group's Slack channel
+  const wgResult = await pool.query(
+    `SELECT name, slack_channel_id FROM working_groups WHERE id = $1`,
+    [workingGroupId]
+  );
+
+  if (wgResult.rows.length === 0 || !wgResult.rows[0].slack_channel_id) {
+    logger.debug({ workingGroupId }, 'Working group has no Slack channel, skipping notification');
+    return;
+  }
+
+  const { name: wgName, slack_channel_id: slackChannelId } = wgResult.rows[0];
+
+  try {
+    await sendChannelMessage(slackChannelId, {
+      text: `New content pending review: "${perspective.title}" by ${authorName}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📝 *New content submitted for review*\n\n*Title:* ${perspective.title}\n*Author:* ${authorName}\n*Collection:* ${wgName}`,
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Review Content',
+                emoji: true,
+              },
+              url: `https://agenticadvertising.org/my-content.html`,
+              action_id: 'review_content',
+            },
+          ],
+        },
+      ],
+    });
+
+    logger.info({ workingGroupId, perspectiveId: perspective.id, slackChannelId }, 'Sent pending content notification to working group');
+  } catch (error) {
+    logger.error({ error, workingGroupId, perspectiveId: perspective.id }, 'Failed to send pending content notification');
+  }
+}
+
+/**
+ * Check if user is a committee lead (handles both WorkOS and Slack user IDs)
  */
 async function isCommitteeLead(committeeId: string, userId: string): Promise<boolean> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT 1 FROM working_group_leaders
-     WHERE working_group_id = $1 AND user_id = $2`,
+    `SELECT 1 FROM working_group_leaders wgl
+     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+     WHERE wgl.working_group_id = $1 AND (wgl.user_id = $2 OR sm.workos_user_id = $2)`,
     [committeeId, userId]
-  );
-  return result.rows.length > 0;
-}
-
-/**
- * Check if user is a site admin
- */
-async function isAdmin(userId: string): Promise<boolean> {
-  const pool = getPool();
-  const result = await pool.query(
-    `SELECT 1 FROM users
-     WHERE id = $1 AND is_aao_admin = true`,
-    [userId]
   );
   return result.rows.length > 0;
 }
@@ -71,7 +119,7 @@ async function isAdmin(userId: string): Promise<boolean> {
 async function getUserInfo(userId: string): Promise<{ name: string; title?: string } | null> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT first_name, last_name, title, email FROM users WHERE id = $1`,
+    `SELECT first_name, last_name, title, email FROM users WHERE workos_user_id = $1`,
     [userId]
   );
   if (result.rows.length === 0) return null;
@@ -216,7 +264,7 @@ export function createContentRouter(): Router {
 
       // Check if user can submit to this collection
       const userIsLead = await isCommitteeLead(committeeId, user.id);
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       // For non-public collections, user must be a member
       if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
@@ -298,6 +346,14 @@ export function createContentRouter(): Router {
         committeeSlug: collection.committee_slug,
       }, 'Content proposed');
 
+      // Notify working group if content needs review
+      if (status === 'pending_review') {
+        // Fire and forget - don't block the response
+        notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
+          logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
+        });
+      }
+
       const message = canPublishDirectly
         ? 'Content published successfully'
         : 'Content submitted for review. A committee lead or admin will review it soon.';
@@ -338,7 +394,7 @@ export function createContentRouter(): Router {
       const ledCommitteeIds = ledCommittees.map(c => c.id);
 
       // Check if admin
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!userIsAdmin && ledCommitteeIds.length === 0) {
         return res.json({
@@ -361,7 +417,7 @@ export function createContentRouter(): Router {
           FROM content_authors ca WHERE ca.perspective_id = p.id) as authors
         FROM perspectives p
         LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-        LEFT JOIN users u ON u.id = p.proposer_user_id
+        LEFT JOIN users u ON u.workos_user_id = p.proposer_user_id
         WHERE p.status = 'pending_review'
       `;
       const params: (string | string[])[] = [];
@@ -460,7 +516,7 @@ export function createContentRouter(): Router {
       }
 
       // Check permission
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
       const userIsLead = content.working_group_id
         ? await isCommitteeLead(content.working_group_id, user.id)
         : false;
@@ -635,7 +691,7 @@ export function createContentRouter(): Router {
       }
 
       // Check permission
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
       const userIsLead = content.working_group_id
         ? await isCommitteeLead(content.working_group_id, user.id)
         : false;
@@ -848,7 +904,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -960,7 +1016,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -1030,7 +1086,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
