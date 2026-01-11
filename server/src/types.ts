@@ -471,6 +471,83 @@ export interface AddWorkingGroupMemberInput {
   added_by_user_id?: string;
 }
 
+// Committee Documents Types
+
+export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'other';
+export type DocumentIndexStatus = 'pending' | 'success' | 'access_denied' | 'error' | 'disabled';
+
+export interface CommitteeDocument {
+  id: string;
+  working_group_id: string;
+  title: string;
+  description?: string;
+  document_url: string;
+  document_type: CommitteeDocumentType;
+  display_order: number;
+  is_featured: boolean;
+  content_hash?: string;
+  last_content?: string;
+  last_indexed_at?: Date;
+  last_modified_at?: Date;
+  document_summary?: string;
+  summary_generated_at?: Date;
+  index_status: DocumentIndexStatus;
+  index_error?: string;
+  added_by_user_id?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateCommitteeDocumentInput {
+  working_group_id: string;
+  title: string;
+  description?: string;
+  document_url: string;
+  document_type?: CommitteeDocumentType;
+  display_order?: number;
+  is_featured?: boolean;
+  added_by_user_id?: string;
+}
+
+export interface UpdateCommitteeDocumentInput {
+  title?: string;
+  description?: string;
+  document_url?: string;
+  document_type?: CommitteeDocumentType;
+  display_order?: number;
+  is_featured?: boolean;
+}
+
+export type CommitteeSummaryType = 'activity' | 'overview' | 'changes';
+
+export interface CommitteeSummary {
+  id: string;
+  working_group_id: string;
+  summary_type: CommitteeSummaryType;
+  summary_text: string;
+  time_period_start?: Date;
+  time_period_end?: Date;
+  input_sources: Array<{ type: string; id: string; title: string }>;
+  generated_at: Date;
+  generated_by: string;
+  is_current: boolean;
+  superseded_by?: string;
+  superseded_at?: Date;
+}
+
+export type DocumentActivityType = 'indexed' | 'content_changed' | 'access_lost' | 'access_restored' | 'error';
+
+export interface CommitteeDocumentActivity {
+  id: string;
+  document_id: string;
+  working_group_id: string;
+  activity_type: DocumentActivityType;
+  content_hash_before?: string;
+  content_hash_after?: string;
+  change_summary?: string;
+  detected_at: Date;
+}
+
 // Federated Discovery Types
 
 /**

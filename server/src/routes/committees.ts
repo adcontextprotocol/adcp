@@ -16,12 +16,53 @@ import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyWorkingGroupPost } from "../notifications/slack.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
+import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose } from "../slack/client.js";
 
 const logger = createLogger("committee-routes");
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Rate limiting for reindex endpoint (prevent API cost abuse)
+const reindexRateLimit = new Map<string, number[]>();
+const REINDEX_RATE_LIMIT = 5; // Max requests
+const REINDEX_RATE_WINDOW = 60 * 1000; // Per minute
+
+function checkReindexRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const requests = reindexRateLimit.get(userId) || [];
+  const recentRequests = requests.filter(time => now - time < REINDEX_RATE_WINDOW);
+
+  if (recentRequests.length >= REINDEX_RATE_LIMIT) {
+    return false;
+  }
+
+  recentRequests.push(now);
+  reindexRateLimit.set(userId, recentRequests);
+  return true;
+}
+
+// Allowed document URL patterns (whitelist approach to prevent SSRF)
+const ALLOWED_DOCUMENT_DOMAINS = [
+  'docs.google.com',
+  'drive.google.com',
+  'sheets.google.com',
+];
+
+function isAllowedDocumentUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    // Must be HTTPS
+    if (parsed.protocol !== 'https:') {
+      return false;
+    }
+    // Must be an allowed domain
+    return ALLOWED_DOCUMENT_DOMAINS.includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
 
 // Valid committee types
 const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'industry_gathering'] as const;
@@ -1367,6 +1408,334 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Fetch URL metadata error (member)');
       res.status(500).json({
         error: 'Failed to fetch URL',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // =========================================================================
+  // COMMITTEE DOCUMENT ROUTES (/api/working-groups/:slug/documents)
+  // =========================================================================
+
+  // GET /api/working-groups/:slug/documents - Get documents for a committee (public)
+  publicApiRouter.get('/:slug/documents', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const documents = await workingGroupDb.getDocumentsByWorkingGroup(group.id);
+
+      // Don't expose internal content to non-leaders
+      const user = req.user;
+      const isLeader = user && await workingGroupDb.isLeader(group.id, user.id);
+
+      const publicDocuments = documents.map(doc => ({
+        id: doc.id,
+        title: doc.title,
+        description: doc.description,
+        document_url: doc.document_url,
+        document_type: doc.document_type,
+        display_order: doc.display_order,
+        is_featured: doc.is_featured,
+        last_modified_at: doc.last_modified_at,
+        document_summary: doc.document_summary,
+        summary_generated_at: doc.summary_generated_at,
+        index_status: doc.index_status,
+        created_at: doc.created_at,
+        // Only include these for leaders
+        ...(isLeader && {
+          index_error: doc.index_error,
+          last_indexed_at: doc.last_indexed_at,
+        }),
+      }));
+
+      res.json({ documents: publicDocuments });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee documents error');
+      res.status(500).json({
+        error: 'Failed to get documents',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/activity - Get recent activity for a committee
+  publicApiRouter.get('/:slug/activity', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const activity = await workingGroupDb.getRecentActivity(group.id);
+      res.json({ activity });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee activity error');
+      res.status(500).json({
+        error: 'Failed to get activity',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/summary - Get current committee summary
+  publicApiRouter.get('/:slug/summary', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const summaryType = (req.query.type as string) || 'activity';
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      if (!['activity', 'overview', 'changes'].includes(summaryType)) {
+        return res.status(400).json({
+          error: 'Invalid summary type',
+          message: 'Summary type must be: activity, overview, or changes',
+        });
+      }
+
+      const summary = await workingGroupDb.getCurrentSummary(
+        group.id,
+        summaryType as 'activity' | 'overview' | 'changes'
+      );
+
+      res.json({ summary });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee summary error');
+      res.status(500).json({
+        error: 'Failed to get summary',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/working-groups/:slug/documents - Add a document (leaders only)
+  publicApiRouter.post('/:slug/documents', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const { title, description, document_url, document_type, display_order, is_featured } = req.body;
+      const user = req.user!;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      if (!title || !document_url) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Title and document_url are required',
+        });
+      }
+
+      // Strict URL validation to prevent SSRF - only allow trusted domains
+      if (!isAllowedDocumentUrl(document_url)) {
+        return res.status(400).json({
+          error: 'Invalid document URL',
+          message: 'Only Google Docs, Sheets, and Drive URLs are supported',
+        });
+      }
+
+      const document = await workingGroupDb.createDocument({
+        working_group_id: group.id,
+        title,
+        description,
+        document_url,
+        document_type,
+        display_order: display_order ?? 0,
+        is_featured: is_featured ?? false,
+        added_by_user_id: user.id,
+      });
+
+      logger.info({ documentId: document.id, groupSlug: slug, userId: user.id }, 'Committee document created');
+
+      res.status(201).json({ document });
+    } catch (error) {
+      logger.error({ err: error }, 'Create committee document error');
+      res.status(500).json({
+        error: 'Failed to create document',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // PUT /api/working-groups/:slug/documents/:documentId - Update a document (leaders only)
+  publicApiRouter.put('/:slug/documents/:documentId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+      const { title, description, document_url, document_type, display_order, is_featured } = req.body;
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({
+          error: 'Invalid document ID',
+          message: 'Document ID must be a valid UUID',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const existingDoc = await workingGroupDb.getDocumentById(documentId);
+      if (!existingDoc || existingDoc.working_group_id !== group.id) {
+        return res.status(404).json({
+          error: 'Document not found',
+          message: 'Document not found in this committee',
+        });
+      }
+
+      // Validate URL if provided - strict validation to prevent SSRF
+      if (document_url && !isAllowedDocumentUrl(document_url)) {
+        return res.status(400).json({
+          error: 'Invalid document URL',
+          message: 'Only Google Docs, Sheets, and Drive URLs are supported',
+        });
+      }
+
+      const document = await workingGroupDb.updateDocument(documentId, {
+        title,
+        description,
+        document_url,
+        document_type,
+        display_order,
+        is_featured,
+      });
+
+      res.json({ document });
+    } catch (error) {
+      logger.error({ err: error }, 'Update committee document error');
+      res.status(500).json({
+        error: 'Failed to update document',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/working-groups/:slug/documents/:documentId/reindex - Trigger reindex (leaders only)
+  publicApiRouter.post('/:slug/documents/:documentId/reindex', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+      const user = req.user!;
+
+      // Rate limit check to prevent API cost abuse
+      if (!checkReindexRateLimit(user.id)) {
+        return res.status(429).json({
+          error: 'Rate limit exceeded',
+          message: 'Too many reindex requests. Please wait a minute before trying again.',
+        });
+      }
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({
+          error: 'Invalid document ID',
+          message: 'Document ID must be a valid UUID',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const existingDoc = await workingGroupDb.getDocumentById(documentId);
+      if (!existingDoc || existingDoc.working_group_id !== group.id) {
+        return res.status(404).json({
+          error: 'Document not found',
+          message: 'Document not found in this committee',
+        });
+      }
+
+      const result = await reindexDocument(documentId);
+
+      if (!result.success) {
+        return res.status(500).json({
+          error: 'Reindex failed',
+          message: result.error,
+        });
+      }
+
+      // Fetch the updated document
+      const updatedDoc = await workingGroupDb.getDocumentById(documentId);
+
+      logger.info({ documentId, groupSlug: slug }, 'Committee document reindexed');
+
+      res.json({
+        success: true,
+        document: updatedDoc,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Reindex committee document error');
+      res.status(500).json({
+        error: 'Failed to reindex document',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // DELETE /api/working-groups/:slug/documents/:documentId - Delete a document (leaders only)
+  publicApiRouter.delete('/:slug/documents/:documentId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({
+          error: 'Invalid document ID',
+          message: 'Document ID must be a valid UUID',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const existingDoc = await workingGroupDb.getDocumentById(documentId);
+      if (!existingDoc || existingDoc.working_group_id !== group.id) {
+        return res.status(404).json({
+          error: 'Document not found',
+          message: 'Document not found in this committee',
+        });
+      }
+
+      await workingGroupDb.deleteDocument(documentId);
+
+      logger.info({ documentId, groupSlug: slug }, 'Committee document deleted');
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Delete committee document error');
+      res.status(500).json({
+        error: 'Failed to delete document',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

@@ -68,6 +68,7 @@ import { sendChannelMessage } from "./slack/client.js";
 import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
 import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
 import { runGoalFollowUpJob } from "./addie/jobs/goal-follow-up.js";
+import { jobScheduler } from "./addie/jobs/scheduler.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -6817,6 +6818,10 @@ Disallow: /api/admin/
     // Sends follow-up messages and reconciles goal outcomes
     this.startGoalFollowUp();
 
+    // Start committee document jobs via scheduler
+    jobScheduler.startDocumentIndexer();
+    jobScheduler.startSummaryGenerator();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -7153,6 +7158,9 @@ Disallow: /api/admin/
       this.goalFollowUpIntervalId = null;
       logger.info('Goal follow-up job stopped');
     }
+
+    // Stop committee document jobs via scheduler
+    jobScheduler.stopAll();
 
     // Close HTTP server
     if (this.server) {

@@ -11,6 +11,14 @@ import type {
   CommitteeType,
   EventInterestLevel,
   EventInterestSource,
+  CommitteeDocument,
+  CreateCommitteeDocumentInput,
+  UpdateCommitteeDocumentInput,
+  CommitteeSummary,
+  CommitteeSummaryType,
+  CommitteeDocumentActivity,
+  DocumentActivityType,
+  DocumentIndexStatus,
 } from '../types.js';
 
 /**
@@ -1365,5 +1373,349 @@ export class WorkingGroupDatabase {
     };
 
     return { members, stats };
+  }
+
+  // ============== Committee Documents ==============
+
+  /**
+   * Create a new committee document
+   */
+  async createDocument(input: CreateCommitteeDocumentInput): Promise<CommitteeDocument> {
+    // Detect document type from URL if not provided
+    const documentType = input.document_type || this.detectDocumentType(input.document_url);
+
+    const result = await query<CommitteeDocument>(
+      `INSERT INTO committee_documents (
+        working_group_id, title, description, document_url, document_type,
+        display_order, is_featured, added_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *`,
+      [
+        input.working_group_id,
+        input.title,
+        input.description || null,
+        input.document_url,
+        documentType,
+        input.display_order ?? 0,
+        input.is_featured ?? false,
+        input.added_by_user_id || null,
+      ]
+    );
+
+    return result.rows[0];
+  }
+
+  /**
+   * Detect document type from URL
+   */
+  private detectDocumentType(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'docs.google.com') {
+        if (parsed.pathname.includes('/document/')) return 'google_doc';
+        if (parsed.pathname.includes('/spreadsheets/')) return 'google_sheet';
+      }
+      if (parsed.hostname === 'drive.google.com') return 'google_doc';
+      if (url.toLowerCase().endsWith('.pdf')) return 'pdf';
+      return 'external_link';
+    } catch {
+      return 'external_link';
+    }
+  }
+
+  /**
+   * Get document by ID
+   */
+  async getDocumentById(id: string): Promise<CommitteeDocument | null> {
+    const result = await query<CommitteeDocument>(
+      'SELECT * FROM committee_documents WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get all documents for a working group
+   */
+  async getDocumentsByWorkingGroup(workingGroupId: string): Promise<CommitteeDocument[]> {
+    const result = await query<CommitteeDocument>(
+      `SELECT * FROM committee_documents
+       WHERE working_group_id = $1
+       ORDER BY is_featured DESC, display_order ASC, created_at DESC`,
+      [workingGroupId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get documents that need indexing (pending or due for refresh)
+   */
+  async getDocumentsPendingIndex(limit = 50): Promise<CommitteeDocument[]> {
+    const result = await query<CommitteeDocument>(
+      `SELECT cd.* FROM committee_documents cd
+       JOIN working_groups wg ON wg.id = cd.working_group_id
+       WHERE wg.status = 'active'
+         AND cd.index_status IN ('pending', 'success')
+         AND cd.document_type IN ('google_doc', 'google_sheet')
+         AND (
+           cd.last_indexed_at IS NULL
+           OR cd.last_indexed_at < NOW() - INTERVAL '1 hour'
+         )
+       ORDER BY cd.last_indexed_at ASC NULLS FIRST
+       LIMIT $1`,
+      [limit]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Update document with new indexed content
+   */
+  async updateDocumentIndex(
+    id: string,
+    contentHash: string,
+    content: string,
+    status: DocumentIndexStatus,
+    error?: string
+  ): Promise<CommitteeDocument | null> {
+    const result = await query<CommitteeDocument>(
+      `UPDATE committee_documents
+       SET content_hash = $2::varchar(64),
+           last_content = $3,
+           index_status = $4,
+           index_error = $5,
+           last_indexed_at = NOW(),
+           last_modified_at = CASE
+             WHEN content_hash IS DISTINCT FROM $2::varchar(64) THEN NOW()
+             ELSE last_modified_at
+           END
+       WHERE id = $1
+       RETURNING *`,
+      [id, contentHash, content, status, error || null]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update document summary
+   */
+  async updateDocumentSummary(id: string, summary: string): Promise<CommitteeDocument | null> {
+    const result = await query<CommitteeDocument>(
+      `UPDATE committee_documents
+       SET document_summary = $2, summary_generated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, summary]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update a document
+   */
+  async updateDocument(id: string, updates: UpdateCommitteeDocumentInput): Promise<CommitteeDocument | null> {
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    const fieldMap: Record<string, string> = {
+      title: 'title',
+      description: 'description',
+      document_url: 'document_url',
+      document_type: 'document_type',
+      display_order: 'display_order',
+      is_featured: 'is_featured',
+    };
+
+    for (const [key, value] of Object.entries(updates)) {
+      const columnName = fieldMap[key];
+      if (!columnName) continue;
+
+      setClauses.push(`${columnName} = $${paramIndex}`);
+      params.push(value ?? null);
+      paramIndex++;
+    }
+
+    if (setClauses.length === 0) {
+      return this.getDocumentById(id);
+    }
+
+    params.push(id);
+    const result = await query<CommitteeDocument>(
+      `UPDATE committee_documents SET ${setClauses.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING *`,
+      params
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Delete a document
+   */
+  async deleteDocument(id: string): Promise<boolean> {
+    const result = await query(
+      'DELETE FROM committee_documents WHERE id = $1',
+      [id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ============== Committee Summaries ==============
+
+  /**
+   * Create a new summary (marks previous of same type as superseded)
+   */
+  async createSummary(
+    workingGroupId: string,
+    summaryType: CommitteeSummaryType,
+    summaryText: string,
+    inputSources: Array<{ type: string; id: string; title: string }>,
+    timePeriodStart?: Date,
+    timePeriodEnd?: Date,
+    generatedBy = 'addie'
+  ): Promise<CommitteeSummary> {
+    // Mark previous current summaries of this type as superseded
+    await query(
+      `UPDATE committee_summaries
+       SET is_current = FALSE, superseded_at = NOW()
+       WHERE working_group_id = $1
+         AND summary_type = $2
+         AND is_current = TRUE`,
+      [workingGroupId, summaryType]
+    );
+
+    const result = await query<CommitteeSummary>(
+      `INSERT INTO committee_summaries (
+        working_group_id, summary_type, summary_text, input_sources,
+        time_period_start, time_period_end, generated_by, is_current
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+      RETURNING *`,
+      [
+        workingGroupId,
+        summaryType,
+        summaryText,
+        JSON.stringify(inputSources),
+        timePeriodStart || null,
+        timePeriodEnd || null,
+        generatedBy,
+      ]
+    );
+
+    // Update superseded_by on old summaries
+    if (result.rows[0]) {
+      await query(
+        `UPDATE committee_summaries
+         SET superseded_by = $1
+         WHERE working_group_id = $2
+           AND summary_type = $3
+           AND is_current = FALSE
+           AND superseded_by IS NULL`,
+        [result.rows[0].id, workingGroupId, summaryType]
+      );
+    }
+
+    return result.rows[0];
+  }
+
+  /**
+   * Get current summary of a specific type
+   */
+  async getCurrentSummary(
+    workingGroupId: string,
+    summaryType: CommitteeSummaryType
+  ): Promise<CommitteeSummary | null> {
+    const result = await query<CommitteeSummary>(
+      `SELECT * FROM committee_summaries
+       WHERE working_group_id = $1
+         AND summary_type = $2
+         AND is_current = TRUE`,
+      [workingGroupId, summaryType]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get all current summaries for a working group
+   */
+  async getCurrentSummaries(workingGroupId: string): Promise<CommitteeSummary[]> {
+    const result = await query<CommitteeSummary>(
+      `SELECT * FROM committee_summaries
+       WHERE working_group_id = $1 AND is_current = TRUE
+       ORDER BY summary_type`,
+      [workingGroupId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get working groups that need summary refresh
+   */
+  async getWorkingGroupsNeedingSummaryRefresh(limit = 20): Promise<string[]> {
+    const result = await query<{ id: string }>(
+      `SELECT DISTINCT wg.id
+       FROM working_groups wg
+       LEFT JOIN committee_summaries cs ON cs.working_group_id = wg.id
+         AND cs.summary_type = 'activity'
+         AND cs.is_current = TRUE
+       WHERE wg.status = 'active'
+         AND wg.committee_type != 'industry_gathering'
+         AND (
+           cs.id IS NULL
+           OR cs.generated_at < NOW() - INTERVAL '24 hours'
+         )
+       ORDER BY cs.generated_at ASC NULLS FIRST
+       LIMIT $1`,
+      [limit]
+    );
+    return result.rows.map(r => r.id);
+  }
+
+  // ============== Document Activity ==============
+
+  /**
+   * Log document activity
+   */
+  async logDocumentActivity(
+    documentId: string,
+    workingGroupId: string,
+    activityType: DocumentActivityType,
+    contentHashBefore?: string,
+    contentHashAfter?: string,
+    changeSummary?: string
+  ): Promise<CommitteeDocumentActivity> {
+    const result = await query<CommitteeDocumentActivity>(
+      `INSERT INTO committee_document_activity (
+        document_id, working_group_id, activity_type,
+        content_hash_before, content_hash_after, change_summary
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+      [
+        documentId,
+        workingGroupId,
+        activityType,
+        contentHashBefore || null,
+        contentHashAfter || null,
+        changeSummary || null,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Get recent activity for a working group
+   */
+  async getRecentActivity(workingGroupId: string, limit = 20): Promise<CommitteeDocumentActivity[]> {
+    const result = await query<CommitteeDocumentActivity>(
+      `SELECT cda.*, cd.title as document_title
+       FROM committee_document_activity cda
+       JOIN committee_documents cd ON cd.id = cda.document_id
+       WHERE cda.working_group_id = $1
+       ORDER BY cda.detected_at DESC
+       LIMIT $2`,
+      [workingGroupId, limit]
+    );
+    return result.rows;
   }
 }
