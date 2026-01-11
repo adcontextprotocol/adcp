@@ -12,6 +12,7 @@ import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
+import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
 
 const logger = createLogger('content-routes');
 
@@ -48,19 +49,6 @@ async function isCommitteeLead(committeeId: string, userId: string): Promise<boo
     `SELECT 1 FROM working_group_leaders
      WHERE working_group_id = $1 AND user_id = $2`,
     [committeeId, userId]
-  );
-  return result.rows.length > 0;
-}
-
-/**
- * Check if user is a site admin
- */
-async function isAdmin(userId: string): Promise<boolean> {
-  const pool = getPool();
-  const result = await pool.query(
-    `SELECT 1 FROM users
-     WHERE id = $1 AND is_aao_admin = true`,
-    [userId]
   );
   return result.rows.length > 0;
 }
@@ -216,7 +204,7 @@ export function createContentRouter(): Router {
 
       // Check if user can submit to this collection
       const userIsLead = await isCommitteeLead(committeeId, user.id);
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       // For non-public collections, user must be a member
       if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
@@ -338,7 +326,7 @@ export function createContentRouter(): Router {
       const ledCommitteeIds = ledCommittees.map(c => c.id);
 
       // Check if admin
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!userIsAdmin && ledCommitteeIds.length === 0) {
         return res.json({
@@ -361,7 +349,7 @@ export function createContentRouter(): Router {
           FROM content_authors ca WHERE ca.perspective_id = p.id) as authors
         FROM perspectives p
         LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-        LEFT JOIN users u ON u.id = p.proposer_user_id
+        LEFT JOIN users u ON u.workos_user_id = p.proposer_user_id
         WHERE p.status = 'pending_review'
       `;
       const params: (string | string[])[] = [];
@@ -460,7 +448,7 @@ export function createContentRouter(): Router {
       }
 
       // Check permission
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
       const userIsLead = content.working_group_id
         ? await isCommitteeLead(content.working_group_id, user.id)
         : false;
@@ -635,7 +623,7 @@ export function createContentRouter(): Router {
       }
 
       // Check permission
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
       const userIsLead = content.working_group_id
         ? await isCommitteeLead(content.working_group_id, user.id)
         : false;
@@ -848,7 +836,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -960,7 +948,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -1030,7 +1018,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isAdmin(user.id);
+      const userIsAdmin = await isWebUserAdmin(user.id);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
