@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.3/enums/frequency-cap-scope.json",
+  "title": "Frequency Cap Scope",
+  "description": "Scope for frequency cap application",
+  "type": "string",
+  "enum": [
+    "package"
+  ],
+  "enumDescriptions": {
+    "package": "Apply frequency cap at the package level"
+  }
+}
