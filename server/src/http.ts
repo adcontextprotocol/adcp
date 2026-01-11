@@ -68,8 +68,7 @@ import { sendChannelMessage } from "./slack/client.js";
 import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
 import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
 import { runGoalFollowUpJob } from "./addie/jobs/goal-follow-up.js";
-import { runDocumentIndexerJob } from "./addie/jobs/committee-document-indexer.js";
-import { runSummaryGeneratorJob } from "./addie/jobs/committee-summary-generator.js";
+import { jobScheduler } from "./addie/jobs/scheduler.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -389,8 +388,6 @@ export class HTTPServer {
   private taskReminderIntervalId: NodeJS.Timeout | null = null;
   private engagementScoringIntervalId: NodeJS.Timeout | null = null;
   private goalFollowUpIntervalId: NodeJS.Timeout | null = null;
-  private documentIndexerIntervalId: NodeJS.Timeout | null = null;
-  private summaryGeneratorIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -6821,13 +6818,9 @@ Disallow: /api/admin/
     // Sends follow-up messages and reconciles goal outcomes
     this.startGoalFollowUp();
 
-    // Start committee document indexer
-    // Indexes Google Docs tracked by committees, detects changes
-    this.startDocumentIndexer();
-
-    // Start committee summary generator
-    // Generates AI-powered activity summaries for committees
-    this.startSummaryGenerator();
+    // Start committee document jobs via scheduler
+    jobScheduler.startDocumentIndexer();
+    jobScheduler.startSummaryGenerator();
 
     this.server = this.app.listen(port, () => {
       logger.info({
@@ -7100,74 +7093,6 @@ Disallow: /api/admin/
   }
 
   /**
-   * Start periodic committee document indexer
-   * Indexes Google Docs tracked by committees, detects changes, generates summaries
-   */
-  private startDocumentIndexer(): void {
-    const INDEXER_INTERVAL_MINUTES = 60; // Check every hour
-
-    // Run after a delay on startup
-    setTimeout(async () => {
-      try {
-        const result = await runDocumentIndexerJob({ batchSize: 20 });
-        if (result.documentsChecked > 0) {
-          logger.info(result, 'Document indexer: initial run completed');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Document indexer: initial run failed');
-      }
-    }, 60000); // 1 minute delay
-
-    // Then run periodically
-    this.documentIndexerIntervalId = setInterval(async () => {
-      try {
-        const result = await runDocumentIndexerJob({ batchSize: 20 });
-        if (result.documentsChecked > 0) {
-          logger.info(result, 'Document indexer: job completed');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Document indexer: job failed');
-      }
-    }, INDEXER_INTERVAL_MINUTES * 60 * 1000);
-
-    logger.debug({ intervalMinutes: INDEXER_INTERVAL_MINUTES }, 'Document indexer job started');
-  }
-
-  /**
-   * Start periodic committee summary generator
-   * Generates AI-powered activity summaries for committees
-   */
-  private startSummaryGenerator(): void {
-    const SUMMARY_INTERVAL_HOURS = 24; // Once per day
-
-    // Run after a longer delay on startup
-    setTimeout(async () => {
-      try {
-        const result = await runSummaryGeneratorJob({ batchSize: 10 });
-        if (result.summariesGenerated > 0) {
-          logger.info(result, 'Summary generator: initial run completed');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Summary generator: initial run failed');
-      }
-    }, 300000); // 5 minute delay
-
-    // Then run periodically
-    this.summaryGeneratorIntervalId = setInterval(async () => {
-      try {
-        const result = await runSummaryGeneratorJob({ batchSize: 10 });
-        if (result.summariesGenerated > 0) {
-          logger.info(result, 'Summary generator: job completed');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Summary generator: job failed');
-      }
-    }, SUMMARY_INTERVAL_HOURS * 60 * 60 * 1000);
-
-    logger.debug({ intervalHours: SUMMARY_INTERVAL_HOURS }, 'Summary generator job started');
-  }
-
-  /**
    * Setup graceful shutdown handlers for SIGTERM and SIGINT
    */
   private setupShutdownHandlers(): void {
@@ -7234,19 +7159,8 @@ Disallow: /api/admin/
       logger.info('Goal follow-up job stopped');
     }
 
-    // Stop document indexer job
-    if (this.documentIndexerIntervalId) {
-      clearInterval(this.documentIndexerIntervalId);
-      this.documentIndexerIntervalId = null;
-      logger.info('Document indexer job stopped');
-    }
-
-    // Stop summary generator job
-    if (this.summaryGeneratorIntervalId) {
-      clearInterval(this.summaryGeneratorIntervalId);
-      this.summaryGeneratorIntervalId = null;
-      logger.info('Summary generator job stopped');
-    }
+    // Stop committee document jobs via scheduler
+    jobScheduler.stopAll();
 
     // Close HTTP server
     if (this.server) {
