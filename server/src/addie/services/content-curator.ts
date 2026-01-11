@@ -201,7 +201,8 @@ Provide your analysis as JSON with this structure:
 - Ends with a question or "What's your take?" to invite discussion
 - Is 1-2 sentences max, punchy and clickbaity
 - Examples:
-  - "🤖 Big Tech is building AI agents that lock you into their walled gardens. Is open-source AdCP the antidote, or already too late? What's your take?"
+  - "🏰 Walled gardens avoid RTB because it commoditizes their differentiation. AdCP lets them capture new allocation budgets without sacrificing control. Win-win?"
+  - "📊 Advertisers work with 3-5 platforms today because execution costs are brutal. Agents could unlock 20+ partners. Who captures that spend?"
   - "💰 Another day, another ad tech acquisition. Consolidation keeps winners winning. How do independents compete?"
   - "⚖️ This antitrust ruling could reshape how measurement monopolies operate. Good news for open standards?"
 
