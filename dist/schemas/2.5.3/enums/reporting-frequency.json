@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.3/enums/reporting-frequency.json",
+  "title": "Reporting Frequency",
+  "description": "Available frequencies for delivery reports and metrics updates",
+  "type": "string",
+  "enum": [
+    "hourly",
+    "daily",
+    "monthly"
+  ]
+}
