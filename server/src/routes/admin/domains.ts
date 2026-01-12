@@ -434,6 +434,17 @@ export function setupDomainRoutes(
               logger.warn({ err, domain: normalizedDomain, orgId: workosOrg.id }, "Background enrichment failed");
             });
 
+            // Link unmapped Slack users to this new prospect (same as single-create)
+            if (source === 'slack') {
+              const linkResult = await slackDb.linkSlackUsersByDomain(normalizedDomain, workosOrg.id);
+              if (linkResult.usersLinked > 0) {
+                logger.info(
+                  { orgId: workosOrg.id, domain: normalizedDomain, usersLinked: linkResult.usersLinked },
+                  "Linked Slack users to new prospect from bulk creation"
+                );
+              }
+            }
+
             logger.info(
               { orgId: workosOrg.id, name: orgName, domain: normalizedDomain, source },
               "Created prospect from bulk domain creation"
