@@ -253,6 +253,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         recentActivityCounts,
         stakeholdersResult,
         slackUserCounts,
+        pendingSlackCounts,
         domainsResult,
         lastActivitiesResult,
         pendingStepsResult,
@@ -284,7 +285,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             CASE role WHEN 'owner' THEN 1 WHEN 'interested' THEN 2 WHEN 'connected' THEN 3 END
         `, [orgIds]),
 
-        // Slack user counts
+        // Slack user counts (mapped users who are org members)
         pool.query(`
           SELECT om.workos_organization_id, COUNT(DISTINCT sm.slack_user_id) as slack_user_count
           FROM slack_user_mappings sm
@@ -292,6 +293,17 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           WHERE om.workos_organization_id = ANY($1)
             AND sm.mapping_status = 'mapped'
           GROUP BY om.workos_organization_id
+        `, [orgIds]),
+
+        // Pending Slack user counts (unmapped users linked to org via domain discovery)
+        pool.query(`
+          SELECT pending_organization_id, COUNT(*) as pending_slack_count
+          FROM slack_user_mappings
+          WHERE pending_organization_id = ANY($1)
+            AND mapping_status = 'unmapped'
+            AND slack_is_bot = false
+            AND slack_is_deleted = false
+          GROUP BY pending_organization_id
         `, [orgIds]),
 
         // Domains
@@ -382,6 +394,10 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         slackUserCounts.rows.map((r) => [r.workos_organization_id, parseInt(r.slack_user_count)])
       );
 
+      const pendingSlackCountMap = new Map(
+        pendingSlackCounts.rows.map((r) => [r.pending_organization_id, parseInt(r.pending_slack_count)])
+      );
+
       const domainsMap = new Map<string, Array<{ domain: string; is_primary: boolean; verified: boolean }>>();
       for (const row of domainsResult.rows) {
         if (!domainsMap.has(row.workos_organization_id)) {
@@ -449,6 +465,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         const recentActivityCount = activityCountMap.get(row.workos_organization_id) || 0;
         const pendingInvoices = pendingInvoicesMap.get(row.workos_organization_id) || [];
         const slackUserCount = slackUserCountMap.get(row.workos_organization_id) || 0;
+        const pendingSlackCount = pendingSlackCountMap.get(row.workos_organization_id) || 0;
 
         // Use stored engagement_level directly (matches detail page calculation)
         const engagementScore = row.engagement_score || 0;
@@ -463,6 +480,9 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         }
         if (slackUserCount > 0) {
           engagementReasons.push(`${slackUserCount} Slack user(s)`);
+        }
+        if (pendingSlackCount > 0) {
+          engagementReasons.push(`${pendingSlackCount} pending Slack user(s)`);
         }
         if (memberCount > 0) {
           engagementReasons.push(`${memberCount} team member(s)`);
@@ -498,6 +518,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           engagement_reasons: engagementReasons,
           stakeholders: stakeholdersMap.get(row.workos_organization_id) || [],
           slack_user_count: slackUserCount,
+          pending_slack_count: pendingSlackCount,
           domains: domainsMap.get(row.workos_organization_id) || [],
           last_activity: lastActivityMap.get(row.workos_organization_id) || null,
           pending_steps: pendingStepsMap.get(row.workos_organization_id) || { pending: 0, overdue: 0 },

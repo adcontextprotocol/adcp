@@ -823,6 +823,22 @@
             </div>
           </div>
 
+          <!-- Pending Slack Users (only shown if there are any) -->
+          <div class="card" id="pendingSlackCard" style="display: none;">
+            <h2 class="collapsible" onclick="toggleSection(this)" style="margin-bottom: 0;">
+              Pending Slack Users
+              <span id="pendingSlackCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
+            </h2>
+            <div class="collapsible-content" id="pendingSlackContent" style="margin-top: var(--space-4);">
+              <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-3);">
+                These users have email addresses matching this account's domain but haven't signed up yet.
+              </p>
+              <ul id="pendingSlackList" class="members-list">
+                <li class="empty-state">No pending users</li>
+              </ul>
+            </div>
+          </div>
+
           <!-- Working Groups -->
           <div class="card">
             <h2 class="collapsible collapsed" onclick="toggleSection(this)">Working Groups</h2>
@@ -1531,6 +1547,27 @@
           </li>`;
         }
         document.getElementById('membersList').innerHTML = membersHtml;
+      }
+
+      // Pending Slack users (discovered via domain but not yet members)
+      if (a.pending_slack_users && a.pending_slack_users.length > 0) {
+        document.getElementById('pendingSlackCard').style.display = 'block';
+        document.getElementById('pendingSlackCount').textContent = `(${a.pending_slack_users.length})`;
+        let pendingHtml = '';
+        for (const u of a.pending_slack_users) {
+          const name = u.slack_real_name || u.slack_display_name || u.slack_email || 'Unknown';
+          const lastActive = u.last_slack_activity_at
+            ? new Date(u.last_slack_activity_at).toLocaleDateString()
+            : 'Never';
+          pendingHtml += `<li>
+            <span style="font-weight: 500;">${escapeHtml(name)}</span>
+            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(u.slack_email || 'No email')}</div>
+            <div style="color: var(--color-text-muted); font-size: var(--text-xs);">Last active: ${lastActive}</div>
+          </li>`;
+        }
+        document.getElementById('pendingSlackList').innerHTML = pendingHtml;
+      } else {
+        document.getElementById('pendingSlackCard').style.display = 'none';
       }
 
       // Working groups
