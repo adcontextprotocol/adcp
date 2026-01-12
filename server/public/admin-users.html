@@ -6,8 +6,10 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Admin - Users & Actions - AgenticAdvertising.org</title>
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/css/thread-widget.css">
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
+  <script src="/js/thread-widget.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -2139,20 +2141,30 @@
       if (context.recent_conversations && context.recent_conversations.length > 0) {
         html += '<div class="context-section">';
         html += '<h3>Recent Conversations</h3>';
-        html += '<div style="max-height: 200px; overflow-y: auto;">';
-        context.recent_conversations.forEach(conv => {
+        html += '<div style="max-height: 350px; overflow-y: auto;">';
+        context.recent_conversations.forEach((conv, idx) => {
           const date = new Date(conv.last_message_at).toLocaleDateString();
           const channel = conv.channel === 'slack' ? '💬 Slack' : conv.channel === 'web' ? '🌐 Web' : conv.channel;
           const title = conv.title || `${conv.message_count} messages`;
-          html += `<a href="/admin/addie?thread=${conv.thread_id}" target="_blank" style="display: block; background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); text-decoration: none; color: inherit;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+          const threadContainerId = `conv-thread-${conv.thread_id.substring(0, 8)}-${idx}`;
+          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
               <span style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(title)}</span>
               <span style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${channel}</span>
             </div>
-            <div style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${date} · ${conv.message_count} messages</div>
-          </a>`;
+            <div style="font-size: var(--text-xs); color: var(--color-text-tertiary); margin-bottom: var(--space-1);">${date} · ${conv.message_count} messages</div>
+            <div id="${threadContainerId}" data-thread-id="${conv.thread_id}"></div>
+          </div>`;
         });
         html += '</div></div>';
+
+        // Initialize thread widgets after DOM is updated
+        setTimeout(() => {
+          context.recent_conversations.forEach((conv, idx) => {
+            const containerId = `conv-thread-${conv.thread_id.substring(0, 8)}-${idx}`;
+            ThreadWidget.renderExpandable(containerId, conv.thread_id, `View conversation`);
+          });
+        }, 0);
       } else if (context.addie_history) {
         // Fallback to old format if available
         html += '<div class="context-section">';
@@ -2200,13 +2212,12 @@
 
         // Detailed outreach history with conversation threads
         if (context.outreach_history && context.outreach_history.length > 0) {
-          html += '<div style="margin-top: var(--space-3); max-height: 250px; overflow-y: auto;">';
-          context.outreach_history.forEach(outreach => {
+          html += '<div style="margin-top: var(--space-3); max-height: 400px; overflow-y: auto;">';
+          context.outreach_history.forEach((outreach, idx) => {
             const date = new Date(outreach.sent_at).toLocaleDateString();
             const goalName = outreach.goal_name || 'General';
             const hasResponse = outreach.user_responded;
             const sentiment = outreach.response_sentiment;
-            const intent = outreach.response_intent;
 
             // Sentiment badge colors
             let sentimentBadge = '';
@@ -2220,10 +2231,8 @@
               sentimentBadge = `<span style="font-size: var(--text-xs); padding: 2px 6px; border-radius: var(--radius-sm); ${colors[sentiment] || ''}">${sentiment}</span>`;
             }
 
-            // Thread link if available
-            const threadLink = outreach.thread_id
-              ? `<a href="/admin/addie?thread=${encodeURIComponent(outreach.thread_id)}" target="_blank" style="color: var(--color-brand); font-size: var(--text-xs);">View Thread (${outreach.thread_message_count || 0} msgs)</a>`
-              : '';
+            // Expandable thread widget container
+            const threadContainerId = outreach.thread_id ? `outreach-thread-${outreach.id || idx}` : null;
 
             html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
@@ -2234,10 +2243,21 @@
                 ${hasResponse ? '✓ Responded' : '○ No response'} ${sentimentBadge}
               </div>
               ${outreach.response_text ? `<div style="font-size: var(--text-xs); color: var(--color-text-secondary); font-style: italic; margin-bottom: var(--space-1);">"${escapeHtml(outreach.response_text.substring(0, 100))}${outreach.response_text.length > 100 ? '...' : ''}"</div>` : ''}
-              ${threadLink}
+              ${threadContainerId ? `<div id="${threadContainerId}" data-thread-id="${outreach.thread_id}" data-msg-count="${outreach.thread_message_count || 0}"></div>` : ''}
             </div>`;
           });
           html += '</div>';
+
+          // Initialize thread widgets after DOM is updated
+          setTimeout(() => {
+            context.outreach_history.forEach((outreach, idx) => {
+              if (outreach.thread_id) {
+                const containerId = `outreach-thread-${outreach.id || idx}`;
+                const msgCount = outreach.thread_message_count || 0;
+                ThreadWidget.renderExpandable(containerId, outreach.thread_id, `View conversation (${msgCount} messages)`);
+              }
+            });
+          }, 0);
         }
 
         html += '</div>';
