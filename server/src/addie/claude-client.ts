@@ -13,6 +13,7 @@ import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
+import { withRetry, isRetryableError, type RetryConfig } from '../utils/anthropic-retry.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -350,22 +351,26 @@ export class AddieClaudeClient {
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      const response = await this.client.beta.messages.create({
-        model: effectiveModel,
-        max_tokens: 4096,
-        system: systemPrompt,
-        tools: [
-          ...customTools,
-          // Add web search tool via beta API
-          ...(this.webSearchEnabled ? [{
-            type: 'web_search_20250305' as const,
-            name: 'web_search' as const,
-          }] : []),
-        ],
-        messages,
-        // Required for beta API
-        betas: ['web-search-2025-03-05'],
-      });
+      const response = await withRetry(
+        () => this.client.beta.messages.create({
+          model: effectiveModel,
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools: [
+            ...customTools,
+            // Add web search tool via beta API
+            ...(this.webSearchEnabled ? [{
+              type: 'web_search_20250305' as const,
+              name: 'web_search' as const,
+            }] : []),
+          ],
+          messages,
+          // Required for beta API
+          betas: ['web-search-2025-03-05'],
+        }),
+        { maxRetries: 3, initialDelayMs: 1000 },
+        'processMessage'
+      );
 
       const llmDuration = Date.now() - llmStart;
       totalLlmMs += llmDuration;
@@ -797,31 +802,83 @@ export class AddieClaudeClient {
 
         const llmStart = Date.now();
 
-        // Use streaming API
-        const stream = this.client.messages.stream({
-          model: this.model,
-          max_tokens: 4096,
-          system: systemPrompt,
-          tools: customTools,
-          messages,
-        });
-
         // Collect full response for tool handling
         let currentResponse: Anthropic.Message | null = null;
         const textChunks: string[] = [];
 
-        // Process stream events
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta') {
-            const delta = event.delta;
-            if ('text' in delta && delta.text) {
-              textChunks.push(delta.text);
-              fullText += delta.text;
-              yield { type: 'text', text: delta.text };
+        // Retry loop for streaming API calls (handles overloaded_error)
+        // Only retries if no content has been yielded yet (safe retry)
+        const maxStreamRetries = 3;
+        let streamRetryCount = 0;
+        let streamSucceeded = false;
+        let hasYieldedContent = false;
+
+        while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
+          try {
+            // Use streaming API
+            const stream = this.client.messages.stream({
+              model: this.model,
+              max_tokens: 4096,
+              system: systemPrompt,
+              tools: customTools,
+              messages,
+            });
+
+            // Process stream events
+            for await (const event of stream) {
+              if (event.type === 'content_block_delta') {
+                const delta = event.delta;
+                if ('text' in delta && delta.text) {
+                  hasYieldedContent = true;
+                  textChunks.push(delta.text);
+                  fullText += delta.text;
+                  yield { type: 'text', text: delta.text };
+                }
+              } else if (event.type === 'message_stop') {
+                // Get the final message
+                currentResponse = await stream.finalMessage();
+              }
             }
-          } else if (event.type === 'message_stop') {
-            // Get the final message
-            currentResponse = await stream.finalMessage();
+
+            if (!currentResponse) {
+              currentResponse = await stream.finalMessage();
+            }
+
+            streamSucceeded = true;
+          } catch (streamError) {
+            streamRetryCount++;
+
+            // Only retry if we haven't started streaming content to the user
+            // Once content is yielded, retry could cause duplicate/inconsistent output
+            const canRetry = !hasYieldedContent &&
+                             isRetryableError(streamError) &&
+                             streamRetryCount <= maxStreamRetries;
+
+            if (!canRetry) {
+              // Not retryable, already yielded content, or exhausted retries - rethrow
+              throw streamError;
+            }
+
+            // Calculate delay with exponential backoff
+            const delayMs = Math.min(1000 * Math.pow(2, streamRetryCount - 1), 30000);
+            const jitter = delayMs * 0.25 * (Math.random() * 2 - 1);
+            const totalDelay = delayMs + jitter;
+
+            logger.warn(
+              {
+                attempt: streamRetryCount,
+                maxRetries: maxStreamRetries,
+                delayMs: Math.round(totalDelay),
+                error: streamError instanceof Error ? streamError.message : String(streamError),
+              },
+              'Addie Stream: Retryable error, waiting before retry'
+            );
+
+            await new Promise(resolve => setTimeout(resolve, totalDelay));
+
+            // Reset for retry (safe since no content yielded yet)
+            textChunks.length = 0;
+            currentResponse = null;
           }
         }
 
@@ -829,7 +886,7 @@ export class AddieClaudeClient {
         totalLlmMs += llmDuration;
 
         if (!currentResponse) {
-          currentResponse = await stream.finalMessage();
+          throw new Error('Stream completed without response');
         }
 
         // Track token usage
