@@ -287,6 +287,7 @@ export interface OutreachStats {
   sent_today: number;
   sent_this_week: number;
   total_responded: number;
+  total_sent: number;
   response_rate: number;
   insights_gathered: number;
 }
@@ -1238,6 +1239,7 @@ export class InsightsDatabase {
       sent_today: parseInt(row.sent_today, 10),
       sent_this_week: parseInt(row.sent_this_week, 10),
       total_responded: totalResponded,
+      total_sent: totalSent,
       response_rate: totalSent > 0 ? Math.round((100 * totalResponded) / totalSent) : 0,
       insights_gathered: parseInt(row.insights_gathered, 10),
     };

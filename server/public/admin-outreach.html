@@ -613,7 +613,7 @@
         if (response.ok) {
           const stats = await response.json();
           document.getElementById('stat-today').textContent = stats.sent_today || 0;
-          document.getElementById('stat-week').textContent = stats.sent_week || 0;
+          document.getElementById('stat-week').textContent = stats.sent_this_week || 0;
           const responseRate = stats.total_sent > 0
             ? Math.round(100 * stats.total_responded / stats.total_sent)
             : 0;
