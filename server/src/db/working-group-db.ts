@@ -1654,7 +1654,7 @@ export class WorkingGroupDatabase {
    */
   async getWorkingGroupsNeedingSummaryRefresh(limit = 20): Promise<string[]> {
     const result = await query<{ id: string }>(
-      `SELECT DISTINCT wg.id
+      `SELECT wg.id
        FROM working_groups wg
        LEFT JOIN committee_summaries cs ON cs.working_group_id = wg.id
          AND cs.summary_type = 'activity'

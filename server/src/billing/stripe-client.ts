@@ -102,7 +102,7 @@ export async function getBillingProducts(): Promise<BillingProduct[]> {
       limit: 100,
     });
 
-    logger.info({ totalPrices: prices.data.length }, 'getBillingProducts: Fetched prices from Stripe');
+    logger.debug({ totalPrices: prices.data.length }, 'getBillingProducts: Fetched prices from Stripe');
 
     const products: BillingProduct[] = [];
 
@@ -182,18 +182,7 @@ export async function getBillingProducts(): Promise<BillingProduct[]> {
     productsCache = products;
     productsCacheTime = Date.now();
 
-    // Log the products found for debugging
-    const productSummary = products.map(p => ({
-      lookup_key: p.lookup_key,
-      display_name: p.display_name,
-      amount_cents: p.amount_cents,
-      category: p.category,
-      billing_type: p.billing_type,
-    }));
-    logger.info({
-      count: products.length,
-      products: productSummary,
-    }, 'getBillingProducts: Fetched billing products from Stripe');
+    logger.debug({ count: products.length }, 'getBillingProducts: Cache refreshed from Stripe');
     return products;
   } catch (error) {
     logger.error({ err: error }, 'getBillingProducts: Error fetching billing products');
