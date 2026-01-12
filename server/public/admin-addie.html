@@ -2670,6 +2670,25 @@
       setTimeout(() => el.textContent = original, 1500);
     }
 
+    function copyThreadLink(threadId, buttonEl) {
+      const url = `${window.location.origin}/admin/addie/?thread=${threadId}`;
+      navigator.clipboard.writeText(url);
+      const original = buttonEl.textContent;
+      buttonEl.textContent = 'Copied!';
+      setTimeout(() => buttonEl.textContent = original, 1500);
+    }
+
+    function getSlackPermalink(externalId) {
+      // external_id format for Slack: "channel_id:thread_ts"
+      if (!externalId || !externalId.includes(':')) return null;
+      const [channelId, threadTs] = externalId.split(':');
+      if (!channelId || !threadTs) return null;
+      // Convert thread_ts to Slack's permalink format (remove the dot)
+      const tsForLink = threadTs.replace('.', '');
+      // Using the hardcoded workspace - this is the AAO Slack workspace
+      return `https://agenticads.slack.com/archives/${channelId}/p${tsForLink}`;
+    }
+
     // Event listeners
     document.getElementById('source-type-filter').addEventListener('change', loadKnowledge);
     document.getElementById('category-filter').addEventListener('change', loadKnowledge);
@@ -3147,8 +3166,10 @@
                 ${data.message_count} messages • Started ${new Date(data.started_at).toLocaleString()}
               </span>
             </div>
-            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center;">
+            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
               <code style="font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-bg-muted); padding: 2px 6px; border-radius: var(--radius-sm); cursor: pointer;" data-thread-id="${escapeHtml(data.thread_id)}" onclick="copyThreadId(this)" title="Click to copy thread ID">${escapeHtml(data.thread_id)}</code>
+              <button class="btn btn-small btn-secondary" onclick="copyThreadLink('${escapeHtml(data.thread_id)}', this)" title="Copy shareable link to this thread">Copy Link</button>
+              ${data.channel === 'slack' && data.external_id ? `<a href="${getSlackPermalink(data.external_id)}" target="_blank" rel="noopener" class="btn btn-small btn-secondary" title="Open in Slack">Open in Slack</a>` : ''}
               ${!data.reviewed ? `<button class="btn btn-small btn-primary" onclick="markThreadReviewed('${data.thread_id}')">Mark Reviewed</button>` : ''}
               ${!data.flagged ? `<button class="btn btn-small btn-secondary" onclick="flagThread('${data.thread_id}')">Flag</button>` : `<button class="btn btn-small btn-secondary" onclick="unflagThread('${data.thread_id}')">Unflag</button>`}
             </div>
@@ -3994,6 +4015,15 @@
     loadKnowledge();
     loadThreads();
     loadQueue();
+
+    // Check for thread parameter in URL and open that thread
+    const urlParams = new URLSearchParams(window.location.search);
+    const threadParam = urlParams.get('thread');
+    if (threadParam) {
+      // Switch to threads tab and open the thread
+      switchTab('threads');
+      viewThread(threadParam);
+    }
 
     // Event listeners for thread filters
     document.getElementById('stats-timeframe').addEventListener('change', loadThreads);
