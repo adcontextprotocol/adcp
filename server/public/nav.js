@@ -214,11 +214,12 @@
 
     // Build committees dropdown
     const committeesBaseUrl = isLocal ? '/committees' : 'https://agenticadvertising.org/committees';
+    const meetingsUrl = isLocal ? '/meetings' : 'https://agenticadvertising.org/meetings';
     const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
     const councilsUrl = `${committeesBaseUrl}?type=council`;
     const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
     const gatheringsUrl = `${committeesBaseUrl}?type=industry_gathering`;
-    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings');
+    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings') || currentPath.startsWith('/meetings');
     const committeesDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isCommitteesActive ? 'active' : ''}">
@@ -229,6 +230,8 @@
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
             <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>
+            <a href="${meetingsUrl}" class="navbar__dropdown-item ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>
+            <div class="navbar__dropdown-divider"></div>
             <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
             <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
             <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
@@ -293,6 +296,7 @@
           ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Committees</span>` : ''}
           ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>` : ''}
+          ${membershipEnabled ? `<a href="${meetingsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>` : ''}
           ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
           ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
           ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
