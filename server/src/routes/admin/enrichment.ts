@@ -16,6 +16,8 @@ import {
 import {
   enrichDomainsInBatch,
   autoEnrichOrganization,
+  getEnrichmentStats,
+  enrichMissingOrganizations,
 } from "../../services/enrichment.js";
 import { createProspect } from "../../services/prospect.js";
 
@@ -32,6 +34,72 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
         configured: isLushaConfigured(),
         provider: isLushaConfigured() ? "lusha" : null,
       });
+    }
+  );
+
+  // GET /api/admin/enrichment/stats - Get enrichment statistics
+  apiRouter.get(
+    "/enrichment/stats",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const stats = await getEnrichmentStats();
+        res.json(stats);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching enrichment stats");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch enrichment statistics",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/enrichment/run - Run bulk enrichment
+  apiRouter.post(
+    "/enrichment/run",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        // Validate and sanitize inputs
+        const limit = typeof req.body.limit === 'number'
+          ? Math.min(Math.max(1, Math.floor(req.body.limit)), 100)
+          : 50;
+        const includeEmptyProspects = req.body.includeEmptyProspects !== false;
+
+        // Cap limit to prevent abuse
+        const cappedLimit = limit;
+
+        logger.info(
+          { limit: cappedLimit, includeEmptyProspects },
+          "Starting bulk enrichment run"
+        );
+
+        const result = await enrichMissingOrganizations({
+          limit: cappedLimit,
+          includeEmptyProspects,
+        });
+
+        logger.info(
+          {
+            total: result.total,
+            enriched: result.enriched,
+            failed: result.failed,
+            skipped: result.skipped,
+          },
+          "Bulk enrichment run complete"
+        );
+
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error }, "Error running bulk enrichment");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to run bulk enrichment",
+        });
+      }
     }
   );
 
