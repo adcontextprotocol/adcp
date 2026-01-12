@@ -101,14 +101,16 @@ export function setupDomainRoutes(
 
         // Check which domains already have organizations
         const pool = getPool();
-        const domainList = domains.map((d) => d.domain);
+        // Normalize domains to lowercase for consistent matching
+        const domainList = domains.map((d) => d.domain.toLowerCase());
 
-        // Query all matching domains at once
+        // Query all matching domains at once (check both organization_domains and organizations.email_domain)
         const localDomainsResult = await pool.query(
-          `SELECT od.domain, o.workos_organization_id, o.name
-           FROM organization_domains od
-           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
-           WHERE od.domain = ANY($1)`,
+          `SELECT COALESCE(LOWER(od.domain), LOWER(o.email_domain)) as domain, o.workos_organization_id, o.name
+           FROM organizations o
+           LEFT JOIN organization_domains od ON o.workos_organization_id = od.workos_organization_id
+             AND LOWER(od.domain) = ANY($1)
+           WHERE od.domain IS NOT NULL OR LOWER(o.email_domain) = ANY($1)`,
           [domainList]
         );
 
@@ -547,44 +549,70 @@ export function setupDomainRoutes(
 
         params.push(minUsers, resultLimit);
         const domainsResult = await pool.query(domainQuery, params);
+        // Normalize domains to lowercase for consistent matching
+        const domainList = domainsResult.rows.map((d) => d.domain.toLowerCase());
 
-        // Check which domains already have organizations
-        const enrichedDomains = await Promise.all(
-          domainsResult.rows.map(async (domain) => {
-            let existingOrg = null;
-            try {
-              if (workos) {
+        // Check which domains already have organizations (check both organization_domains and organizations.email_domain)
+        const localDomainsResult = await pool.query(
+          `SELECT COALESCE(LOWER(od.domain), LOWER(o.email_domain)) as domain, o.workos_organization_id, o.name
+           FROM organizations o
+           LEFT JOIN organization_domains od ON o.workos_organization_id = od.workos_organization_id
+             AND LOWER(od.domain) = ANY($1)
+           WHERE od.domain IS NOT NULL OR LOWER(o.email_domain) = ANY($1)`,
+          [domainList]
+        );
+
+        // Build a map of domain -> org for fast lookup
+        const domainToOrgMap = new Map<string, { id: string; name: string }>();
+        for (const row of localDomainsResult.rows) {
+          domainToOrgMap.set(row.domain, {
+            id: row.workos_organization_id,
+            name: row.name,
+          });
+        }
+
+        // For domains not found locally, check WorkOS
+        const missingDomains = domainList.filter((d) => !domainToOrgMap.has(d));
+
+        if (missingDomains.length > 0 && workos) {
+          await Promise.all(
+            missingDomains.slice(0, 20).map(async (domainName) => {
+              try {
                 const orgs = await workos.organizations.listOrganizations({
                   limit: 1,
-                  domains: [domain.domain],
+                  domains: [domainName],
                 });
                 if (orgs.data.length > 0) {
                   const orgResult = await pool.query(
-                    `SELECT name, workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
+                    `SELECT name FROM organizations WHERE workos_organization_id = $1`,
                     [orgs.data[0].id]
                   );
                   if (orgResult.rows.length > 0) {
-                    existingOrg = {
+                    domainToOrgMap.set(domainName, {
                       id: orgs.data[0].id,
                       name: orgResult.rows[0].name,
-                    };
+                    });
                   }
                 }
+              } catch {
+                // Ignore WorkOS lookup errors
               }
-            } catch {
-              // Ignore lookup errors
-            }
+            })
+          );
+        }
 
-            return {
-              domain: domain.domain,
-              user_count: parseInt(domain.user_count, 10),
-              users: domain.users,
-              existing_org: existingOrg,
-              is_new_prospect: !existingOrg,
-              source: 'email' as const,
-            };
-          })
-        );
+        // Enrich domains with org info
+        const enrichedDomains = domainsResult.rows.map((domain) => {
+          const existingOrg = domainToOrgMap.get(domain.domain) || null;
+          return {
+            domain: domain.domain,
+            user_count: parseInt(domain.user_count, 10),
+            users: domain.users,
+            existing_org: existingOrg,
+            is_new_prospect: !existingOrg,
+            source: 'email' as const,
+          };
+        });
 
         res.json(enrichedDomains);
       } catch (error) {
@@ -1603,13 +1631,35 @@ export function setupDomainRoutes(
           LIMIT $1
         `, [limit]);
 
-        // 5. Summary stats
+        // 5. Domain sync issues - email_domain set but not in organization_domains
+        // This catches the case where an org has email_domain but it's not in organization_domains table
+        const domainSyncResult = await pool.query(`
+          SELECT
+            o.workos_organization_id,
+            o.name,
+            o.email_domain,
+            o.subscription_status,
+            o.prospect_status,
+            od.domain as org_domains_entry
+          FROM organizations o
+          LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+            AND LOWER(od.domain) = LOWER(o.email_domain)
+          WHERE o.email_domain IS NOT NULL
+            AND o.is_personal = false
+            AND od.domain IS NULL
+          ORDER BY o.name
+          LIMIT $1
+        `, [limit]);
+
+        // 6. Summary stats
         const statsResult = await pool.query(`
           SELECT
             (SELECT COUNT(*) FROM organizations WHERE is_personal = false) as total_orgs,
             (SELECT COUNT(DISTINCT domain) FROM organization_domains WHERE verified = true) as verified_domains,
             (SELECT COUNT(DISTINCT domain) FROM organization_domains WHERE verified = false OR verified IS NULL) as unverified_domains,
-            (SELECT COUNT(DISTINCT LOWER(SPLIT_PART(email, '@', 2))) FROM organization_memberships WHERE email IS NOT NULL) as total_email_domains
+            (SELECT COUNT(DISTINCT LOWER(SPLIT_PART(email, '@', 2))) FROM organization_memberships WHERE email IS NOT NULL) as total_email_domains,
+            (SELECT COUNT(*) FROM organizations o WHERE o.email_domain IS NOT NULL AND o.is_personal = false
+              AND NOT EXISTS (SELECT 1 FROM organization_domains od WHERE od.workos_organization_id = o.workos_organization_id AND LOWER(od.domain) = LOWER(o.email_domain))) as domain_sync_issues
         `);
 
         // Group misaligned users by domain
@@ -1734,11 +1784,13 @@ export function setupDomainRoutes(
             verified_domains: parseInt(statsResult.rows[0].verified_domains, 10),
             unverified_domains: parseInt(statsResult.rows[0].unverified_domains, 10),
             total_email_domains: parseInt(statsResult.rows[0].total_email_domains, 10),
+            domain_sync_issues: parseInt(statsResult.rows[0].domain_sync_issues, 10),
             issues: {
               orphan_domains: orphanResult.rows.length,
               misaligned_users: misalignedResult.rows.length,
               unverified_orgs: unverifiedResult.rows.length,
               domain_conflicts: conflictResult.rows.length,
+              domain_sync_issues: domainSyncResult.rows.length,
               related_domains: relatedDomainsResult.rows.length,
               similar_names: similarNamesResult.rows.length,
             },
@@ -1778,6 +1830,13 @@ export function setupDomainRoutes(
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
           })),
+          domain_sync_issues: domainSyncResult.rows.map(row => ({
+            org_id: row.workos_organization_id,
+            name: row.name,
+            email_domain: row.email_domain,
+            subscription_status: row.subscription_status,
+            prospect_status: row.prospect_status,
+          })),
           related_domains: relatedDomainsResult.rows.map(row => ({
             root_domain: row.root_domain,
             org_count: parseInt(row.org_count, 10),
@@ -1794,6 +1853,89 @@ export function setupDomainRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch domain health data",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/domain-health/sync - Sync email_domain to organization_domains for orgs with sync issues
+  apiRouter.post(
+    "/domain-health/sync",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { org_id } = req.body;
+
+        // Validate org_id if provided
+        if (org_id !== undefined) {
+          if (typeof org_id !== 'string' || !org_id.trim()) {
+            return res.status(400).json({
+              error: "Bad request",
+              message: "org_id must be a non-empty string",
+            });
+          }
+        }
+
+        // If org_id provided, sync just that org; otherwise sync all with issues
+        let query: string;
+        let params: string[];
+
+        if (org_id) {
+          query = `
+            INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+            SELECT o.workos_organization_id, LOWER(o.email_domain), true, false, 'import'
+            FROM organizations o
+            LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+              AND LOWER(od.domain) = LOWER(o.email_domain)
+            WHERE o.workos_organization_id = $1
+              AND o.email_domain IS NOT NULL
+              AND o.is_personal = false
+              AND od.domain IS NULL
+            ON CONFLICT (domain) DO UPDATE SET
+              workos_organization_id = EXCLUDED.workos_organization_id,
+              is_primary = true,
+              updated_at = NOW()
+            RETURNING workos_organization_id, domain
+          `;
+          params = [org_id];
+        } else {
+          query = `
+            INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+            SELECT o.workos_organization_id, LOWER(o.email_domain), true, false, 'import'
+            FROM organizations o
+            LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+              AND LOWER(od.domain) = LOWER(o.email_domain)
+            WHERE o.email_domain IS NOT NULL
+              AND o.is_personal = false
+              AND od.domain IS NULL
+            ON CONFLICT (domain) DO UPDATE SET
+              workos_organization_id = EXCLUDED.workos_organization_id,
+              is_primary = true,
+              updated_at = NOW()
+            RETURNING workos_organization_id, domain
+          `;
+          params = [];
+        }
+
+        const result = await pool.query(query, params);
+
+        logger.info(
+          { count: result.rowCount, org_id },
+          "Synced email_domain to organization_domains"
+        );
+
+        res.json({
+          success: true,
+          synced_count: result.rowCount,
+          synced: result.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error syncing domain data");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to sync domain data",
         });
       }
     }
