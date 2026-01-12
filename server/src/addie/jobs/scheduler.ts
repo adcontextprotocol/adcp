@@ -8,6 +8,7 @@
 import { logger as baseLogger } from '../../logger.js';
 import { runDocumentIndexerJob } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
+import { runOutreachScheduler } from '../services/proactive-outreach.js';
 
 const logger = baseLogger.child({ module: 'job-scheduler' });
 
@@ -67,6 +68,49 @@ class JobScheduler {
   }
 
   /**
+   * Start the proactive outreach job
+   * Sends DMs to eligible users during business hours
+   */
+  startOutreach(): void {
+    const JOB_NAME = 'proactive-outreach';
+    const INTERVAL_MINUTES = 30; // Check every 30 minutes
+    const INITIAL_DELAY_MS = 120000; // 2 minute delay on startup
+
+    const job: ScheduledJob = {
+      name: JOB_NAME,
+      intervalId: null,
+      initialTimeoutId: null,
+    };
+
+    // Run after a delay on startup
+    job.initialTimeoutId = setTimeout(async () => {
+      try {
+        const result = await runOutreachScheduler({ limit: 5 });
+        if (result.sent > 0) {
+          logger.info(result, 'Proactive outreach: initial run completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Proactive outreach: initial run failed');
+      }
+    }, INITIAL_DELAY_MS);
+
+    // Then run periodically
+    job.intervalId = setInterval(async () => {
+      try {
+        const result = await runOutreachScheduler({ limit: 5 });
+        if (result.sent > 0) {
+          logger.info(result, 'Proactive outreach: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Proactive outreach: job failed');
+      }
+    }, INTERVAL_MINUTES * 60 * 1000);
+
+    this.jobs.set(JOB_NAME, job);
+    logger.debug({ intervalMinutes: INTERVAL_MINUTES }, 'Proactive outreach job started');
+  }
+
+  /**
    * Start the committee summary generator job
    * Generates AI-powered activity summaries for committees
    */
@@ -114,6 +158,13 @@ class JobScheduler {
    */
   stopDocumentIndexer(): void {
     this.stopJob('document-indexer');
+  }
+
+  /**
+   * Stop the proactive outreach job
+   */
+  stopOutreach(): void {
+    this.stopJob('proactive-outreach');
   }
 
   /**

@@ -6822,6 +6822,9 @@ Disallow: /api/admin/
     jobScheduler.startDocumentIndexer();
     jobScheduler.startSummaryGenerator();
 
+    // Start proactive outreach job
+    jobScheduler.startOutreach();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
