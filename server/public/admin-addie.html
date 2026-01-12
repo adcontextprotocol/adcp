@@ -2596,8 +2596,8 @@
         loadThreads();
         loadStats();
         // Refresh the thread detail view if it's currently open
-        if (currentThreadData && currentThreadData.thread_id === threadId) {
-          viewThread(threadId);
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
         }
       } catch (error) {
         console.error('Error marking reviewed:', error);
@@ -2622,8 +2622,8 @@
         loadThreads();
         loadStats();
         // Refresh the thread detail view if it's currently open
-        if (currentThreadData && currentThreadData.thread_id === threadId) {
-          viewThread(threadId);
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
         }
       } catch (error) {
         console.error('Error flagging thread:', error);
@@ -2641,8 +2641,8 @@
         loadThreads();
         loadStats();
         // Refresh the thread detail view if it's currently open
-        if (currentThreadData && currentThreadData.thread_id === threadId) {
-          viewThread(threadId);
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
         }
       } catch (error) {
         console.error('Error unflagging thread:', error);
@@ -2653,28 +2653,36 @@
     // Approve/reject queue items
     async function approveItem(id) {
       try {
-        await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        const response = await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadQueue();
         loadStats();
       } catch (error) {
         console.error('Error approving item:', error);
-        alert('Error approving item');
+        alert('Error approving item: ' + error.message);
       }
     }
 
     async function rejectItem(id) {
       const reason = prompt('Reason for rejection (optional):');
       try {
-        await fetch(`/api/admin/addie/queue/${id}/reject`, {
+        const response = await fetch(`/api/admin/addie/queue/${id}/reject`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadQueue();
         loadStats();
       } catch (error) {
         console.error('Error rejecting item:', error);
-        alert('Error rejecting item');
+        alert('Error rejecting item: ' + error.message);
       }
     }
 
