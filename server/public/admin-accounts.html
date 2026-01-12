@@ -577,6 +577,9 @@
       <button class="view-tab" data-view="members">
         Members <span class="badge" id="count-members">-</span>
       </button>
+      <button class="view-tab" data-view="most_users">
+        Most Users
+      </button>
       <button class="view-tab" data-view="all">
         All
       </button>
@@ -599,6 +602,7 @@
           <tr>
             <th>Account</th>
             <th>Status</th>
+            <th>Users</th>
             <th style="width: 60px;">🔥</th>
             <th>Interest</th>
             <th>Last Activity</th>
@@ -607,7 +611,7 @@
           </tr>
         </thead>
         <tbody id="accountsTable">
-          <tr><td colspan="7" class="loading">Loading accounts...</td></tr>
+          <tr><td colspan="8" class="loading">Loading accounts...</td></tr>
         </tbody>
       </table>
     </div>
@@ -753,13 +757,13 @@
         renderAccounts();
       } catch (e) {
         console.error('Error loading accounts:', e);
-        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="7" class="empty-state">Error loading accounts</td></tr>';
+        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="empty-state">Error loading accounts</td></tr>';
       }
     }
 
     function renderAccounts() {
       if (accounts.length === 0) {
-        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="7" class="empty-state">No accounts found</td></tr>';
+        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="empty-state">No accounts found</td></tr>';
         return;
       }
 
@@ -808,12 +812,17 @@
           extraColumnHtml = '<td>-</td>';
         }
 
+        // User count (members + slack-only users)
+        const userCount = account.user_count || account.member_count || 0;
+        const userCountHtml = userCount > 0 ? userCount : '<span style="color: var(--color-text-muted);">0</span>';
+
         html += `<tr>
           <td>
             <a href="/admin/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>
             ${account.domain ? `<div class="account-domain">${escapeHtml(account.domain)}</div>` : ''}
           </td>
           <td><span class="status-badge status-${statusClass}">${statusLabel}</span></td>
+          <td>${userCountHtml}</td>
           <td class="engagement-fires">${firesDisplay}</td>
           <td>${interestHtml || '-'}</td>
           <td>${activityHtml}</td>

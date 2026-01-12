@@ -1705,6 +1705,74 @@ Returns: Search counts, impressions, clicks, introduction requests/sent, top sea
       },
     },
   },
+
+  // ============================================
+  // ORGANIZATION ANALYTICS TOOLS
+  // ============================================
+  {
+    name: 'list_organizations_by_users',
+    description: `List organizations ranked by total user count (website members + Slack-only users).
+
+USE THIS when admin asks:
+- "Which companies have the most users?"
+- "What companies have the most people active in AAO?"
+- "Show me organizations by user count"
+- "Who are our biggest accounts by headcount?"
+
+Returns a ranked list of organizations with:
+- Total user count (members + Slack-only)
+- Website member count
+- Slack-only user count (discovered via domain but not signed up)
+- 30-day Slack activity (messages, active users)
+- Member status (member, prospect, etc.)
+
+Can filter by member_status to see only members, prospects, etc.`,
+    usage_hints: 'Use this for ranking organizations by engagement/presence. Slack-only users are people discovered via email domain who are in the AAO Slack but haven\'t created a website account.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default: 20)',
+        },
+        member_status: {
+          type: 'string',
+          enum: ['member', 'prospect', 'churned', 'all'],
+          description: 'Filter by member status (default: all)',
+        },
+        min_users: {
+          type: 'number',
+          description: 'Minimum total user count to include (default: 1)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_slack_users_by_org',
+    description: `List all Slack users associated with a specific organization.
+
+USE THIS when admin asks:
+- "Who from [company] is in our Slack?"
+- "Show me Scope3's Slack users"
+- "List people from [company] in the community"
+- "Who are the [company] team members?"
+
+Returns:
+- Website members with Slack accounts (mapped)
+- Slack-only users discovered via domain (not signed up yet)
+- Last activity date and engagement info for each user`,
+    usage_hints: 'Use this to see the specific people from a company in Slack, not just counts.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Company name or domain to look up',
+        },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 /**
@@ -1984,19 +2052,31 @@ export function createAdminToolHandlers(
       // Gather all the data in parallel
       const [
         slackUsersResult,
+        slackOnlyUsersResult,
         slackActivityResult,
         workingGroupsResult,
         activitiesResult,
         engagementSignals,
         pendingInvoicesResult,
       ] = await Promise.all([
-        // Slack users count for this org
+        // Slack users count for this org (mapped members)
         pool.query(
           `SELECT COUNT(DISTINCT sm.slack_user_id) as slack_user_count
            FROM slack_user_mappings sm
            JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
            WHERE om.workos_organization_id = $1
              AND sm.mapping_status = 'mapped'`,
+          [orgId]
+        ),
+        // Slack-only users (discovered via domain but not signed up)
+        pool.query(
+          `SELECT COUNT(*) as count
+           FROM slack_user_mappings
+           WHERE pending_organization_id = $1
+             AND mapping_status = 'unmapped'
+             AND workos_user_id IS NULL
+             AND slack_is_bot = false
+             AND slack_is_deleted = false`,
           [orgId]
         ),
         // Slack activity (last 30 days)
@@ -2035,6 +2115,8 @@ export function createAdminToolHandlers(
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
+      const slackOnlyCount = parseInt(slackOnlyUsersResult.rows[0]?.count || '0');
+      const totalSlackUsers = slackUserCount + slackOnlyCount;
       const slackActivity = slackActivityResult.rows[0] || { active_users: 0, messages: 0, reactions: 0, thread_replies: 0 };
       const workingGroups = workingGroupsResult.rows;
       const recentActivities = activitiesResult.rows;
@@ -2104,12 +2186,20 @@ export function createAdminToolHandlers(
 
       // Slack presence
       response += `### Slack Presence\n`;
-      response += `**Users in Slack:** ${slackUserCount}\n`;
+      response += `**Total in Slack:** ${totalSlackUsers}`;
+      if (totalSlackUsers > 0 && (slackUserCount > 0 || slackOnlyCount > 0)) {
+        response += ` (${slackUserCount} members`;
+        if (slackOnlyCount > 0) {
+          response += `, ${slackOnlyCount} Slack-only`;
+        }
+        response += `)`;
+      }
+      response += `\n`;
       if (slackActivity.active_users > 0) {
         response += `**Active (30d):** ${slackActivity.active_users} users\n`;
         response += `**Messages (30d):** ${slackActivity.messages || 0}\n`;
         response += `**Reactions (30d):** ${slackActivity.reactions || 0}\n`;
-      } else {
+      } else if (totalSlackUsers > 0) {
         response += `_No Slack activity in the last 30 days_\n`;
       }
       response += '\n';
@@ -6383,6 +6473,269 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error getting member search analytics');
       return '❌ Failed to get member search analytics. Please try again.';
+    }
+  });
+
+  // ============================================
+  // ORGANIZATION ANALYTICS HANDLERS
+  // ============================================
+  handlers.set('list_organizations_by_users', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const pool = getPool();
+      const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
+      const validMemberStatuses = ['all', 'member', 'churned', 'prospect'];
+      const rawMemberStatus = (input.member_status as string) || 'all';
+      const memberStatus = validMemberStatuses.includes(rawMemberStatus) ? rawMemberStatus : 'all';
+      const minUsers = Math.max((input.min_users as number) || 1, 0);
+
+      // Query organizations with user counts (members + Slack-only users)
+      const result = await pool.query<{
+        workos_organization_id: string;
+        name: string;
+        member_count: number;
+        slack_only_count: number;
+        total_user_count: number;
+        active_users_30d: number;
+        messages_30d: number;
+        subscription_status: string | null;
+        member_status: string;
+      }>(`
+        WITH member_counts AS (
+          SELECT workos_organization_id, COUNT(*) as count
+          FROM organization_memberships
+          GROUP BY workos_organization_id
+        ),
+        slack_only_counts AS (
+          SELECT pending_organization_id as workos_organization_id, COUNT(*) as count
+          FROM slack_user_mappings
+          WHERE pending_organization_id IS NOT NULL
+            AND mapping_status = 'unmapped'
+            AND workos_user_id IS NULL
+            AND slack_is_bot = false
+            AND slack_is_deleted = false
+          GROUP BY pending_organization_id
+        ),
+        slack_activity AS (
+          SELECT
+            organization_id,
+            COUNT(DISTINCT slack_user_id) as active_users,
+            SUM(message_count) as messages
+          FROM slack_activity_daily
+          WHERE activity_date >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY organization_id
+        )
+        SELECT
+          o.workos_organization_id,
+          o.name,
+          COALESCE(mc.count, 0)::int as member_count,
+          COALESCE(soc.count, 0)::int as slack_only_count,
+          (COALESCE(mc.count, 0) + COALESCE(soc.count, 0))::int as total_user_count,
+          COALESCE(sa.active_users, 0)::int as active_users_30d,
+          COALESCE(sa.messages, 0)::int as messages_30d,
+          o.subscription_status,
+          CASE
+            WHEN o.subscription_status = 'active' THEN 'member'
+            WHEN o.subscription_status IN ('canceled', 'past_due') THEN 'churned'
+            ELSE 'prospect'
+          END as member_status
+        FROM organizations o
+        LEFT JOIN member_counts mc ON mc.workos_organization_id = o.workos_organization_id
+        LEFT JOIN slack_only_counts soc ON soc.workos_organization_id = o.workos_organization_id
+        LEFT JOIN slack_activity sa ON sa.organization_id = o.workos_organization_id
+        WHERE (COALESCE(mc.count, 0) + COALESCE(soc.count, 0)) >= $1
+          AND ($2 = 'all' OR
+               ($2 = 'member' AND o.subscription_status = 'active') OR
+               ($2 = 'churned' AND o.subscription_status IN ('canceled', 'past_due')) OR
+               ($2 = 'prospect' AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'canceled', 'past_due'))))
+        ORDER BY total_user_count DESC, active_users_30d DESC, name ASC
+        LIMIT $3
+      `, [minUsers, memberStatus, limit]);
+
+      if (result.rows.length === 0) {
+        return `No organizations found with ${minUsers}+ users${memberStatus !== 'all' ? ` (filtered by status: ${memberStatus})` : ''}.`;
+      }
+
+      // Build response
+      let response = `## Organizations by User Count\n\n`;
+
+      if (memberStatus !== 'all') {
+        response += `_Filtered to ${memberStatus}s only_\n\n`;
+      }
+
+      response += `| Rank | Organization | Total Users | Members | Slack Only | Active (30d) | Status |\n`;
+      response += `|------|--------------|-------------|---------|------------|--------------|--------|\n`;
+
+      for (let i = 0; i < result.rows.length; i++) {
+        const org = result.rows[i];
+        const rank = i + 1;
+        const statusEmoji = org.member_status === 'member' ? '✅' :
+                           org.member_status === 'churned' ? '❌' : '🔄';
+
+        response += `| ${rank} | **${org.name}** | ${org.total_user_count} | ${org.member_count} | ${org.slack_only_count} | ${org.active_users_30d} | ${statusEmoji} ${org.member_status} |\n`;
+      }
+
+      response += `\n_Showing top ${result.rows.length} organizations._\n`;
+      response += `\n**Legend:**\n`;
+      response += `- **Members**: Users with website accounts\n`;
+      response += `- **Slack Only**: Users in Slack (discovered via domain) who haven't signed up\n`;
+      response += `- **Active (30d)**: Users with Slack activity in last 30 days\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing organizations by users');
+      return '❌ Failed to list organizations by user count. Please try again.';
+    }
+  });
+
+  // List Slack users for a specific organization
+  handlers.set('list_slack_users_by_org', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const pool = getPool();
+      const query = (input.query as string || '').trim();
+
+      if (!query) {
+        return '❌ Please provide a company name or domain to look up.';
+      }
+
+      // Find the organization
+      // Escape LIKE metacharacters to prevent pattern injection
+      const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+      const searchPattern = `%${escapedQuery}%`;
+      const orgResult = await pool.query(
+        `SELECT workos_organization_id, name, email_domain
+         FROM organizations
+         WHERE is_personal = false
+           AND (LOWER(name) LIKE LOWER($1) OR LOWER(email_domain) LIKE LOWER($1))
+         ORDER BY
+           CASE WHEN LOWER(name) = LOWER($2) THEN 0
+                WHEN LOWER(name) LIKE LOWER($3) THEN 1
+                ELSE 2 END
+         LIMIT 1`,
+        [searchPattern, escapedQuery, `${escapedQuery}%`]
+      );
+
+      if (orgResult.rows.length === 0) {
+        return `No organization found matching "${query}". Try searching by company name or domain.`;
+      }
+
+      const org = orgResult.rows[0];
+      const orgId = org.workos_organization_id;
+
+      // Get all Slack users for this org in parallel
+      const [mappedUsersResult, slackOnlyUsersResult] = await Promise.all([
+        // Mapped members (have website account + Slack)
+        pool.query<{
+          slack_user_id: string;
+          slack_email: string | null;
+          slack_display_name: string | null;
+          slack_real_name: string | null;
+          last_slack_activity_at: Date | null;
+          email: string;
+          first_name: string | null;
+          last_name: string | null;
+        }>(`
+          SELECT
+            sm.slack_user_id,
+            sm.slack_email,
+            sm.slack_display_name,
+            sm.slack_real_name,
+            sm.last_slack_activity_at,
+            om.email,
+            om.first_name,
+            om.last_name
+          FROM slack_user_mappings sm
+          JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+          WHERE om.workos_organization_id = $1
+            AND sm.mapping_status = 'mapped'
+          ORDER BY sm.last_slack_activity_at DESC NULLS LAST, sm.slack_real_name ASC
+        `, [orgId]),
+
+        // Slack-only users (discovered via domain)
+        pool.query<{
+          slack_user_id: string;
+          slack_email: string | null;
+          slack_display_name: string | null;
+          slack_real_name: string | null;
+          last_slack_activity_at: Date | null;
+        }>(`
+          SELECT
+            slack_user_id,
+            slack_email,
+            slack_display_name,
+            slack_real_name,
+            last_slack_activity_at
+          FROM slack_user_mappings
+          WHERE pending_organization_id = $1
+            AND mapping_status = 'unmapped'
+            AND workos_user_id IS NULL
+            AND slack_is_bot = false
+            AND slack_is_deleted = false
+          ORDER BY last_slack_activity_at DESC NULLS LAST, slack_real_name ASC
+        `, [orgId]),
+      ]);
+
+      const mappedUsers = mappedUsersResult.rows;
+      const slackOnlyUsers = slackOnlyUsersResult.rows;
+      const totalUsers = mappedUsers.length + slackOnlyUsers.length;
+
+      if (totalUsers === 0) {
+        return `## ${org.name}\n\nNo Slack users found for this organization.`;
+      }
+
+      let response = `## ${org.name} - Slack Users (${totalUsers} total)\n\n`;
+
+      // Helper to format last activity
+      const formatLastActive = (date: Date | null) => {
+        if (!date) return 'Never';
+        const d = new Date(date);
+        const now = new Date();
+        const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays === 0) return 'Today';
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) return `${diffDays} days ago`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+        return d.toLocaleDateString();
+      };
+
+      // Website members with Slack
+      if (mappedUsers.length > 0) {
+        response += `### Website Members (${mappedUsers.length})\n`;
+        response += `_These users have both a website account and Slack_\n\n`;
+
+        for (const user of mappedUsers) {
+          const name = [user.first_name, user.last_name].filter(Boolean).join(' ') ||
+                       user.slack_real_name || user.slack_display_name || 'Unknown';
+          const lastActive = formatLastActive(user.last_slack_activity_at);
+          response += `- **${name}** - ${user.email}`;
+          response += ` _(Last active: ${lastActive})_\n`;
+        }
+        response += '\n';
+      }
+
+      // Slack-only users
+      if (slackOnlyUsers.length > 0) {
+        response += `### Slack Only (${slackOnlyUsers.length})\n`;
+        response += `_These users are in Slack but haven't signed up for a website account_\n\n`;
+
+        for (const user of slackOnlyUsers) {
+          const name = user.slack_real_name || user.slack_display_name || 'Unknown';
+          const lastActive = formatLastActive(user.last_slack_activity_at);
+          response += `- **${name}**`;
+          if (user.slack_email) response += ` - ${user.slack_email}`;
+          response += ` _(Last active: ${lastActive})_\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing Slack users by org');
+      return '❌ Failed to list Slack users. Please try again.';
     }
   });
 
