@@ -817,7 +817,7 @@ export function createCommitteeRouters(): {
       }
 
       const result = await pool.query(
-        `SELECT id, slug, content_type, title, subtitle, category, excerpt,
+        `SELECT id, slug, content_type, title, subtitle, category, excerpt, content,
           external_url, external_site_name, author_name, author_title,
           featured_image_url, published_at, tags, is_members_only
         FROM perspectives
