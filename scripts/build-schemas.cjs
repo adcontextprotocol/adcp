@@ -21,6 +21,11 @@
  * - /schemas/v{major}/   - Points to latest release of that major version
  * - /schemas/v{major}.{minor}/ - Points to latest release of that minor version
  * - /schemas/v1/         - Backward compatibility (always points to latest/)
+ *
+ * Extension handling:
+ * - Extensions are auto-discovered from static/schemas/source/extensions/
+ * - Each extension has valid_from/valid_until to specify compatible AdCP versions
+ * - The build generates extensions/index.json with extensions valid for the target version
  */
 
 const fs = require('fs');
@@ -41,16 +46,16 @@ function getVersion() {
 }
 
 /**
- * Find the latest released version directory in dist/schemas/
- * Returns null if no released versions exist
+ * Get all released version directories in dist/schemas/
+ * Returns array sorted by semver (descending)
  */
-function findLatestReleasedVersion() {
+function getAllReleasedVersions() {
   if (!fs.existsSync(DIST_DIR)) {
-    return null;
+    return [];
   }
 
   const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
-  const versionDirs = entries
+  return entries
     .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
     .map(e => e.name)
     .sort((a, b) => {
@@ -61,8 +66,34 @@ function findLatestReleasedVersion() {
       if (aMinor !== bMinor) return bMinor - aMinor;
       return bPatch - aPatch;
     });
+}
 
-  return versionDirs[0] || null;
+/**
+ * Find the latest released version directory in dist/schemas/
+ * Returns null if no released versions exist
+ */
+function findLatestReleasedVersion() {
+  const versions = getAllReleasedVersions();
+  return versions[0] || null;
+}
+
+/**
+ * Get the latest patch version for each minor version series
+ * e.g., for [2.6.0, 2.5.1, 2.5.0], returns { '2.6': '2.6.0', '2.5': '2.5.1' }
+ */
+function getLatestPatchPerMinor() {
+  const versions = getAllReleasedVersions();
+  const latestPerMinor = {};
+
+  for (const version of versions) {
+    const minor = getMinorVersion(version);
+    // Since versions are sorted descending, first one wins
+    if (!latestPerMinor[minor]) {
+      latestPerMinor[minor] = version;
+    }
+  }
+
+  return latestPerMinor;
 }
 
 function getMajorVersion(version) {
@@ -83,6 +114,228 @@ function ensureDir(dir) {
   }
 }
 
+/**
+ * Compare two minor versions (e.g., "2.5" vs "2.6")
+ * Returns: negative if a < b, 0 if equal, positive if a > b
+ */
+function compareMinorVersions(a, b) {
+  const [aMajor, aMinor] = a.split('.').map(Number);
+  const [bMajor, bMinor] = b.split('.').map(Number);
+  if (aMajor !== bMajor) return aMajor - bMajor;
+  return aMinor - bMinor;
+}
+
+/**
+ * Reserved namespaces that cannot be used for typed extensions
+ * These could cause confusion with core AdCP concepts
+ */
+const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
+
+/**
+ * Validate that an extension namespace is not reserved
+ * @param {string} namespace - Extension namespace to validate
+ * @throws {Error} If namespace is reserved
+ */
+function validateExtensionNamespace(namespace) {
+  if (RESERVED_NAMESPACES.includes(namespace.toLowerCase())) {
+    throw new Error(`Namespace "${namespace}" is reserved and cannot be used for extensions`);
+  }
+}
+
+/**
+ * Discover extension files from the extensions directory
+ * Returns array of { namespace, schema, path } objects
+ */
+function discoverExtensions(extensionsDir) {
+  if (!fs.existsSync(extensionsDir)) {
+    return [];
+  }
+
+  const extensions = [];
+  const files = fs.readdirSync(extensionsDir);
+
+  for (const file of files) {
+    // Skip non-JSON files and special files
+    if (!file.endsWith('.json')) continue;
+    if (file === 'index.json' || file === 'extension-meta.json') continue;
+
+    const filePath = path.join(extensionsDir, file);
+    try {
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+      // Extract namespace from $id (e.g., /schemas/extensions/sustainability.json -> sustainability)
+      const namespace = file.replace('.json', '');
+
+      // Validate namespace is not reserved
+      validateExtensionNamespace(namespace);
+
+      extensions.push({
+        namespace,
+        schema: content,
+        path: filePath
+      });
+    } catch (error) {
+      console.warn(`   ⚠️  Failed to parse extension ${file}: ${error.message}`);
+    }
+  }
+
+  return extensions;
+}
+
+/**
+ * Filter extensions to those valid for a given AdCP version
+ * @param {Array} extensions - Array of extension objects from discoverExtensions
+ * @param {string} targetVersion - Target AdCP version (e.g., "2.5.0" or "2.5")
+ * @returns {Array} Extensions valid for the target version
+ */
+function filterExtensionsForVersion(extensions, targetVersion) {
+  // Normalize to minor version for comparison
+  const targetMinor = getMinorVersion(targetVersion);
+
+  return extensions.filter(ext => {
+    const { valid_from, valid_until } = ext.schema;
+
+    // Must have valid_from
+    if (!valid_from) {
+      console.warn(`   ⚠️  Extension ${ext.namespace} missing valid_from, skipping`);
+      return false;
+    }
+
+    // Check valid_from <= targetVersion
+    if (compareMinorVersions(valid_from, targetMinor) > 0) {
+      return false; // Extension requires newer version
+    }
+
+    // Check valid_until >= targetVersion (if specified)
+    if (valid_until && compareMinorVersions(valid_until, targetMinor) < 0) {
+      return false; // Extension no longer valid for this version
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Generate the extensions/index.json registry for a target version
+ * @param {Array} extensions - Array of valid extension objects
+ * @param {string} targetVersion - Target version string for $id paths
+ * @returns {Object} The generated registry object
+ */
+function generateExtensionRegistry(extensions, targetVersion) {
+  const registry = {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: `/schemas/${targetVersion}/extensions/index.json`,
+    title: 'AdCP Extension Registry',
+    description: 'Auto-generated registry of formal AdCP extensions. Extensions provide typed schemas for vendor-specific or domain-specific data within the ext field. Agents declare which extensions they support in their agent card.',
+    _generated: true,
+    _generatedAt: new Date().toISOString(),
+    extensions: {}
+  };
+
+  for (const ext of extensions) {
+    registry.extensions[ext.namespace] = {
+      $ref: `/schemas/${targetVersion}/extensions/${ext.namespace}.json`,
+      title: ext.schema.title,
+      description: ext.schema.description,
+      valid_from: ext.schema.valid_from
+    };
+
+    // Include valid_until if specified
+    if (ext.schema.valid_until) {
+      registry.extensions[ext.namespace].valid_until = ext.schema.valid_until;
+    }
+
+    // Include docs_url if specified
+    if (ext.schema.docs_url) {
+      registry.extensions[ext.namespace].docs_url = ext.schema.docs_url;
+    }
+  }
+
+  return registry;
+}
+
+/**
+ * Build extensions for a target directory
+ * - Discovers all extensions from source
+ * - Filters to those valid for target version
+ * - Copies valid extension schemas
+ * - Generates the index.json registry
+ */
+function buildExtensions(sourceDir, targetDir, version) {
+  const sourceExtensionsDir = path.join(sourceDir, 'extensions');
+  const targetExtensionsDir = path.join(targetDir, 'extensions');
+
+  // Always ensure extensions directory exists
+  ensureDir(targetExtensionsDir);
+
+  // Discover all extensions
+  const allExtensions = discoverExtensions(sourceExtensionsDir);
+
+  if (allExtensions.length === 0) {
+    // No extensions yet - just copy the meta schema and generate empty registry
+    const metaSchemaPath = path.join(sourceExtensionsDir, 'extension-meta.json');
+    if (fs.existsSync(metaSchemaPath)) {
+      let content = fs.readFileSync(metaSchemaPath, 'utf8');
+      // Update $id to include version
+      content = content.replace(
+        /"\$id":\s*"\/schemas\//g,
+        `"$id": "/schemas/${version}/`
+      );
+      fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
+    }
+
+    // Generate empty registry
+    const registry = generateExtensionRegistry([], version);
+    fs.writeFileSync(
+      path.join(targetExtensionsDir, 'index.json'),
+      JSON.stringify(registry, null, 2)
+    );
+
+    return { total: 0, included: 0 };
+  }
+
+  // Filter extensions valid for this version
+  const validExtensions = filterExtensionsForVersion(allExtensions, version);
+
+  // Copy extension-meta.json (with version transform)
+  const metaSchemaPath = path.join(sourceExtensionsDir, 'extension-meta.json');
+  if (fs.existsSync(metaSchemaPath)) {
+    let content = fs.readFileSync(metaSchemaPath, 'utf8');
+    content = content.replace(
+      /"\$id":\s*"\/schemas\//g,
+      `"$id": "/schemas/${version}/`
+    );
+    fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
+  }
+
+  // Copy each valid extension schema (with version transform)
+  for (const ext of validExtensions) {
+    let content = JSON.stringify(ext.schema, null, 2);
+    // Update $id to include version
+    content = content.replace(
+      /"\$id":\s*"\/schemas\//g,
+      `"$id": "/schemas/${version}/`
+    );
+    fs.writeFileSync(
+      path.join(targetExtensionsDir, `${ext.namespace}.json`),
+      content
+    );
+  }
+
+  // Generate the registry index
+  const registry = generateExtensionRegistry(validExtensions, version);
+  fs.writeFileSync(
+    path.join(targetExtensionsDir, 'index.json'),
+    JSON.stringify(registry, null, 2)
+  );
+
+  return {
+    total: allExtensions.length,
+    included: validExtensions.length,
+    extensions: validExtensions.map(e => e.namespace)
+  };
+}
+
 function copyAndTransformSchemas(sourceDir, targetDir, version) {
   const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
 
@@ -91,6 +344,10 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
     const targetPath = path.join(targetDir, entry.name);
 
     if (entry.isDirectory()) {
+      // Skip extensions directory - handled separately by buildExtensions()
+      if (entry.name === 'extensions') {
+        continue;
+      }
       ensureDir(targetPath);
       copyAndTransformSchemas(sourcePath, targetPath, version);
     } else if (entry.name.endsWith('.json')) {
@@ -126,17 +383,6 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       fs.writeFileSync(targetPath, content);
     }
   }
-}
-
-function createSymlink(target, linkPath) {
-  // Remove existing symlink if it exists
-  if (fs.existsSync(linkPath)) {
-    fs.unlinkSync(linkPath);
-  }
-
-  // Create relative symlink
-  const relativePath = path.relative(path.dirname(linkPath), target);
-  fs.symlinkSync(relativePath, linkPath, 'dir');
 }
 
 function updateSourceRegistry(version) {
@@ -317,21 +563,23 @@ async function main() {
     ensureDir(versionDir);
     copyAndTransformSchemas(SOURCE_DIR, versionDir, version);
 
+    // Build extensions (auto-discovered, filtered by version)
+    console.log(`🔌 Building extensions for ${version}`);
+    const extResult = buildExtensions(SOURCE_DIR, versionDir, version);
+    if (extResult.total === 0) {
+      console.log(`   ✓ No extensions defined yet (empty registry created)`);
+    } else {
+      console.log(`   ✓ Included ${extResult.included}/${extResult.total} extensions: ${extResult.extensions.join(', ') || 'none'}`);
+    }
+
     // Generate bundled schemas for release
     const bundledDir = path.join(versionDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/${version}/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
 
-    // Update major version symlink (v2 -> 2.5.0)
-    const majorLink = path.join(DIST_DIR, `v${majorVersion}`);
-    console.log(`🔗 Updating symlink: v${majorVersion} → ${version}`);
-    createSymlink(versionDir, majorLink);
-
-    // Update minor version symlink (v2.5 -> 2.5.0)
-    const minorLink = path.join(DIST_DIR, `v${minorVersion}`);
-    console.log(`🔗 Updating symlink: v${minorVersion} → ${version}`);
-    createSymlink(versionDir, minorLink);
+    // Note: Version aliases (v2, v2.5, v1, latest) are handled by HTTP middleware
+    // No symlinks needed - the server rewrites /schemas/v2.5/* to /schemas/2.5.1/*
 
     // Also update latest/ to match the release
     const latestDir = path.join(DIST_DIR, 'latest');
@@ -342,14 +590,12 @@ async function main() {
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
 
+    // Build extensions for latest (using full version for filtering)
+    buildExtensions(SOURCE_DIR, latestDir, version);
+
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
     await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
-
-    // Create v1 symlink pointing to latest/ for backward compatibility
-    const v1Link = path.join(DIST_DIR, 'v1');
-    console.log(`🔗 Creating symlink: v1 → latest (backward compatibility)`);
-    createSymlink(latestDir, v1Link);
 
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
@@ -361,15 +607,21 @@ async function main() {
       console.log(`   (git add skipped - not in git context or git not available)`);
     }
 
+    // Show available paths (aliases are handled by HTTP middleware)
+    const latestPerMinor = getLatestPatchPerMinor();
     console.log('');
     console.log('✅ Release build complete!');
     console.log('');
     console.log('Released paths:');
     console.log(`   /schemas/${version}/          - Exact version (pin for production)`);
     console.log(`   /schemas/${version}/bundled/  - Bundled schemas (no $ref)`);
-    console.log(`   /schemas/v${minorVersion}/            - Minor alias → ${version}`);
-    console.log(`   /schemas/v${majorVersion}/              - Major alias → ${version}`);
     console.log(`   /schemas/latest/           - Development (matches release)`);
+    console.log('');
+    console.log('Version aliases (handled by HTTP middleware):');
+    console.log(`   /schemas/v${majorVersion}/              - Major alias → latest ${majorVersion}.x.x`);
+    for (const [minor, patchVersion] of Object.entries(latestPerMinor)) {
+      console.log(`   /schemas/v${minor}/            - Minor alias → ${patchVersion}`);
+    }
     console.log(`   /schemas/v1/              - Backward compatibility → latest`);
 
   } else {
@@ -386,52 +638,41 @@ async function main() {
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
 
+    // Build extensions (auto-discovered, filtered by current version)
+    console.log(`🔌 Building extensions for ${version}`);
+    const extResult = buildExtensions(SOURCE_DIR, latestDir, version);
+    if (extResult.total === 0) {
+      console.log(`   ✓ No extensions defined yet (empty registry created)`);
+    } else {
+      console.log(`   ✓ Included ${extResult.included}/${extResult.total} extensions: ${extResult.extensions.join(', ') || 'none'}`);
+    }
+
     // Generate bundled schemas for latest
     const bundledDir = path.join(latestDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
 
-    // Symlinks for v2, v2.5, v1 should point to the latest RELEASED version
-    // Only create/update these symlinks if we have a released version
-    if (latestReleasedVersion) {
-      const releasedVersionDir = path.join(DIST_DIR, latestReleasedVersion);
-      const releasedMajor = getMajorVersion(latestReleasedVersion);
-      const releasedMinor = getMinorVersion(latestReleasedVersion);
+    // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
+    // No symlinks needed - the server rewrites URLs dynamically
 
-      const majorLink = path.join(DIST_DIR, `v${releasedMajor}`);
-      if (!fs.existsSync(majorLink)) {
-        console.log(`🔗 Creating symlink: v${releasedMajor} → ${latestReleasedVersion}`);
-        createSymlink(releasedVersionDir, majorLink);
-      }
-
-      const minorLink = path.join(DIST_DIR, `v${releasedMinor}`);
-      if (!fs.existsSync(minorLink)) {
-        console.log(`🔗 Creating symlink: v${releasedMinor} → ${latestReleasedVersion}`);
-        createSymlink(releasedVersionDir, minorLink);
-      }
-
-    }
-
-    // v1 always points to latest/ (not a released version)
-    const v1Link = path.join(DIST_DIR, 'v1');
-    if (!fs.existsSync(v1Link)) {
-      console.log(`🔗 Creating symlink: v1 → latest`);
-      createSymlink(latestDir, v1Link);
-    }
-
+    // Show available paths
+    const latestPerMinor = getLatestPatchPerMinor();
     console.log('');
     console.log('✅ Development build complete!');
     console.log('');
     console.log('Available paths:');
     console.log(`   /schemas/latest/           - Development schemas (just rebuilt)`);
-    console.log(`   /schemas/v1/              - Backward compatibility → latest`);
     if (latestReleasedVersion) {
       const releasedMajor = getMajorVersion(latestReleasedVersion);
-      const releasedMinor = getMinorVersion(latestReleasedVersion);
       console.log(`   /schemas/${latestReleasedVersion}/          - Latest release (unchanged)`);
-      console.log(`   /schemas/v${releasedMinor}/            - Minor alias → ${latestReleasedVersion}`);
-      console.log(`   /schemas/v${releasedMajor}/              - Major alias → ${latestReleasedVersion}`);
+      console.log('');
+      console.log('Version aliases (handled by HTTP middleware):');
+      console.log(`   /schemas/v${releasedMajor}/              - Major alias → latest ${releasedMajor}.x.x`);
+      for (const [minor, patchVersion] of Object.entries(latestPerMinor)) {
+        console.log(`   /schemas/v${minor}/            - Minor alias → ${patchVersion}`);
+      }
+      console.log(`   /schemas/v1/              - Backward compatibility → latest`);
     } else {
       console.log('');
       console.log('⚠️  No released versions found. Run with --release to create one:');

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/enums/validation-mode.json",
+  "title": "Validation Mode",
+  "description": "Creative validation strictness levels",
+  "type": "string",
+  "enum": [
+    "strict",
+    "lenient"
+  ]
+}

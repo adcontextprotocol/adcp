@@ -20,6 +20,8 @@ import { OrganizationDatabase } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
+import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
+import { MemberDatabase } from '../../db/member-db.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -38,6 +40,7 @@ import {
   isLushaConfigured,
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
+import { COMPANY_TYPE_VALUES } from '../../config/company-types.js';
 import { createProspect } from '../../services/prospect.js';
 import {
   getAllFeedsWithStats,
@@ -204,6 +207,95 @@ export function isAdmin(memberContext: MemberContext | null): boolean {
 }
 
 /**
+ * Compute the unified lifecycle stage for an organization.
+ * This combines prospect_status and subscription_status into a single view.
+ *
+ * Lifecycle stages:
+ * - prospect: Not contacted yet
+ * - contacted: Outreach sent
+ * - responded: They replied
+ * - interested: Expressed interest
+ * - negotiating: In discussions / invoice sent
+ * - member: Active subscription
+ * - churned: Was a member, subscription ended
+ * - declined: Not interested
+ */
+export type LifecycleStage =
+  | 'prospect'
+  | 'contacted'
+  | 'responded'
+  | 'interested'
+  | 'negotiating'
+  | 'member'
+  | 'churned'
+  | 'declined';
+
+// Emoji mapping for lifecycle stages - used in multiple places
+export const LIFECYCLE_STAGE_EMOJI: Record<LifecycleStage, string> = {
+  prospect: '🔍',
+  contacted: '📧',
+  responded: '💬',
+  interested: '⭐',
+  negotiating: '🤝',
+  member: '✅',
+  churned: '⚠️',
+  declined: '❌',
+};
+
+export function computeLifecycleStage(org: {
+  subscription_status?: string | null;
+  prospect_status?: string | null;
+  invoice_requested_at?: Date | null;
+}): LifecycleStage {
+  // Active subscription (including trial) = member
+  if (org.subscription_status === 'active' || org.subscription_status === 'trialing') {
+    return 'member';
+  }
+
+  // Subscription ended or payment failed = churned
+  if (
+    org.subscription_status === 'canceled' ||
+    org.subscription_status === 'past_due' ||
+    org.subscription_status === 'unpaid' ||
+    org.subscription_status === 'incomplete_expired'
+  ) {
+    return 'churned';
+  }
+
+  // Incomplete subscription = started payment but didn't finish
+  if (org.subscription_status === 'incomplete') {
+    return 'negotiating';
+  }
+
+  // If they have an invoice requested, they're at least negotiating
+  // (only promote if they're still in early pipeline stages)
+  if (org.invoice_requested_at && (!org.prospect_status || org.prospect_status === 'prospect' || org.prospect_status === 'contacted')) {
+    return 'negotiating';
+  }
+
+  // Map prospect_status to lifecycle stage
+  const prospectStatusMap: Record<string, LifecycleStage> = {
+    prospect: 'prospect',
+    contacted: 'contacted',
+    responded: 'responded',
+    interested: 'interested',
+    negotiating: 'negotiating',
+    converted: 'member', // legacy value
+    joined: 'member', // legacy value
+    declined: 'declined',
+    inactive: 'declined',
+    disqualified: 'declined',
+  };
+
+  if (org.prospect_status && prospectStatusMap[org.prospect_status]) {
+    return prospectStatusMap[org.prospect_status];
+  }
+
+  // Default: unknown org is a prospect
+  return 'prospect';
+}
+
+/**
  * Admin tool definitions - includes both billing/invoice tools and prospect management tools
  */
 export const ADMIN_TOOLS: AddieTool[] = [
@@ -212,9 +304,9 @@ export const ADMIN_TOOLS: AddieTool[] = [
   // ============================================
   {
     name: 'lookup_organization',
-    description: `Look up an organization by name to get their membership status, pending invoices, and other details.
-Use this when an admin asks about a specific company's membership status.
-Returns organization details including subscription status, pending invoices, and contact information.`,
+    description: `DEPRECATED: Use get_account instead for complete account view with lifecycle stage.
+This tool only searches Stripe data - it will fail for organizations that were created through the prospect flow.
+Use get_account for a unified view of all organizations.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -242,19 +334,41 @@ Returns a list of organizations with open or draft invoices.`,
     },
   },
   {
-    name: 'get_organization_details',
-    description: `Get comprehensive details about an organization including Slack activity, working group participation, engagement signals, enrichment data, and membership status.
+    name: 'get_account',
+    description: `Get the complete account view for any organization - whether they're a prospect, member, or churned.
 
-USE THIS for questions like:
-- "How many Slack users does [company] have?"
-- "Which working groups is [company] in?"
-- "What do we know about [company]?"
-- "Has [company] signed up yet?"
-- "How engaged is [company]?"
+This is the PRIMARY tool for looking up any company. It shows:
+- **Lifecycle stage**: prospect → contacted → responded → interested → negotiating → member (or declined/churned)
+- **Membership**: Subscription status, tier, renewal date
+- **Engagement**: Slack users, activity, working groups, dashboard logins
+- **Pipeline**: Contact info, notes, interest level, activities
+- **Enrichment**: Industry, revenue, employee count
+
+USE THIS for ANY question about a company:
 - "What's the status of [company]?"
+- "Is [company] a member?"
+- "Tell me about [company]"
+- "How engaged is [company]?"
+- "Who is our contact at [company]?"
 
-Returns: Slack user count and activity, working groups, engagement level and signals, enrichment data (industry, revenue, employees), prospect status, and membership/subscription status.`,
-    usage_hints: 'Use this for ANY question about a specific organization beyond just "is it a prospect". This gives you the full picture.',
+This replaces find_prospect and lookup_organization with a unified view.`,
+    usage_hints: 'Use this for ANY question about a specific organization. This gives you the complete account picture including lifecycle stage.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Company name or domain to look up (e.g., "Mediaocean" or "mediaocean.com")',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  // Alias for backwards compatibility
+  {
+    name: 'get_organization_details',
+    description: `Alias for get_account. Use get_account instead for the complete account lifecycle view.`,
+    usage_hints: 'Prefer get_account - this is kept for backwards compatibility.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -284,8 +398,8 @@ Returns: Slack user count and activity, working groups, engagement level and sig
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
-          description: 'Type of company (adtech, agency, brand, publisher, or other)',
+          enum: COMPANY_TYPE_VALUES,
+          description: 'Type of company',
         },
         domain: {
           type: 'string',
@@ -318,8 +432,8 @@ Returns: Slack user count and activity, working groups, engagement level and sig
   {
     name: 'find_prospect',
     description:
-      'Search for existing prospects by name or domain. USE THIS FIRST whenever an admin mentions any company - check if they already exist before offering to add them. Searches both company names and email domains.',
-    usage_hints: 'Always use this before add_prospect. When an admin says "check on [company]" or mentions any company name, use this tool first.',
+      'DEPRECATED: Use get_account instead for complete account view with lifecycle stage. This tool only checks if a company exists before adding - use get_account to see full status including whether they are already a member.',
+    usage_hints: 'DEPRECATED: Prefer get_account for lookups. Only use this before add_prospect to check existence.',
     input_schema: {
       type: 'object',
       properties: {
@@ -344,7 +458,7 @@ Returns: Slack user count and activity, working groups, engagement level and sig
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
+          enum: COMPANY_TYPE_VALUES,
           description: 'Type of company',
         },
         status: {
@@ -414,7 +528,7 @@ Returns: Slack user count and activity, working groups, engagement level and sig
         },
         company_type: {
           type: 'string',
-          enum: ['adtech', 'agency', 'brand', 'publisher', 'other'],
+          enum: COMPANY_TYPE_VALUES,
           description: 'Filter by company type',
         },
         limit: {
@@ -1560,6 +1674,33 @@ Returns counts and examples of collected insights by type.`,
       },
     },
   },
+
+  // ============================================
+  // MEMBER SEARCH & INTRODUCTION ANALYTICS TOOLS
+  // ============================================
+  {
+    name: 'get_member_search_analytics',
+    description: `Get analytics about member profile searches and introductions made through Addie.
+
+USE THIS when admin asks:
+- "How are member searches performing?"
+- "Show me introduction stats"
+- "What are people searching for?"
+- "Which members are getting the most visibility?"
+- "How many introductions have we made?"
+
+Returns: Search counts, impressions, clicks, introduction requests/sent, top search queries, top members by visibility, and recent introductions with full context.`,
+    usage_hints: 'Use this to monitor the member directory and introduction feature performance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: {
+          type: 'number',
+          description: 'Number of days to look back (default: 30, max: 365)',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -1780,8 +1921,8 @@ export function createAdminToolHandlers(
     }
   });
 
-  // Get comprehensive organization details
-  handlers.set('get_organization_details', async (input) => {
+  // Shared handler for get_account and get_organization_details
+  const getAccountHandler = async (input: Record<string, unknown>) => {
     const adminCheck = requireAdminFromContext();
     if (adminCheck) return adminCheck;
 
@@ -1811,21 +1952,18 @@ export function createAdminToolHandlers(
         return `No organization found matching "${query}". Try searching by company name or domain.`;
       }
 
-      // If multiple matches, present options to the user
+      // If multiple matches, present options to the user with lifecycle stage
       if (result.rows.length > 1) {
         let response = `## Found ${result.rows.length} organizations matching "${query}"\n\n`;
         response += `Which one would you like to know more about?\n\n`;
 
         for (let i = 0; i < result.rows.length; i++) {
           const org = result.rows[i];
+          const lifecycleStage = computeLifecycleStage(org);
           response += `**${i + 1}. ${org.name}**\n`;
           if (org.email_domain) response += `   Domain: ${org.email_domain}\n`;
           if (org.company_type) response += `   Type: ${org.company_type}\n`;
-          if (org.subscription_status === 'active') {
-            response += `   Status: ✅ Member\n`;
-          } else if (org.prospect_status) {
-            response += `   Status: 📋 Prospect (${org.prospect_status})\n`;
-          }
+          response += `   Lifecycle: ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
           response += `\n`;
         }
 
@@ -1836,6 +1974,9 @@ export function createAdminToolHandlers(
       const org = result.rows[0];
       const orgId = org.workos_organization_id;
 
+      // Compute the unified lifecycle stage
+      const lifecycleStage = computeLifecycleStage(org);
+
       // Gather all the data in parallel
       const [
         slackUsersResult,
@@ -1843,6 +1984,7 @@ export function createAdminToolHandlers(
         workingGroupsResult,
         activitiesResult,
         engagementSignals,
+        pendingInvoicesResult,
       ] = await Promise.all([
         // Slack users count for this org
         pool.query(
@@ -1884,49 +2026,77 @@ export function createAdminToolHandlers(
         ),
         // Engagement signals
         orgDb.getEngagementSignals(orgId),
+        // Get pending invoices if they have a Stripe customer
+        org.stripe_customer_id ? getPendingInvoices(org.stripe_customer_id) : Promise.resolve([]),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
       const slackActivity = slackActivityResult.rows[0] || { active_users: 0, messages: 0, reactions: 0, thread_replies: 0 };
       const workingGroups = workingGroupsResult.rows;
       const recentActivities = activitiesResult.rows;
+      const pendingInvoices = pendingInvoicesResult;
 
       // Build comprehensive response
       let response = `## ${org.name}\n\n`;
+
+      // Lifecycle stage - the unified view (prominently displayed at top)
+      response += `**Lifecycle Stage:** ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} **${lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)}**\n`;
 
       // Basic info
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
+      response += `**ID:** ${orgId}\n`;
       response += '\n';
 
-      // Membership status
-      response += `### Membership Status\n`;
-      if (org.subscription_status === 'active') {
-        response += `✅ **Active Member** - ${org.subscription_product_name || 'Subscription'}\n`;
-        if (org.subscription_current_period_end) {
-          response += `   Renews: ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+      // Membership details (if member or has subscription history)
+      if (lifecycleStage === 'member' || lifecycleStage === 'churned' || org.subscription_status) {
+        response += `### Membership\n`;
+        if (org.subscription_status === 'active') {
+          response += `**Status:** Active - ${org.subscription_product_name || 'Subscription'}\n`;
+          if (org.subscription_current_period_end) {
+            response += `**Renews:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+          }
+        } else if (org.subscription_status === 'canceled') {
+          response += `**Status:** Canceled\n`;
+        } else if (org.subscription_status === 'past_due') {
+          response += `**Status:** Past due - payment needed\n`;
         }
-      } else if (org.prospect_status) {
-        const statusEmojiMap: Record<string, string> = {
-          prospect: '🔍',
-          contacted: '📧',
-          responded: '💬',
-          interested: '⭐',
-          negotiating: '🤝',
-          declined: '❌',
-        };
-        const statusEmoji = statusEmojiMap[org.prospect_status as string] || '📋';
-        response += `${statusEmoji} **Prospect** - Status: ${org.prospect_status}\n`;
+        if (pendingInvoices.length > 0) {
+          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
+          for (const inv of pendingInvoices.slice(0, 3)) {
+            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
+          }
+        }
+        response += '\n';
+      }
+
+      // Pipeline info (for prospects/negotiating)
+      if (lifecycleStage !== 'member' && lifecycleStage !== 'churned') {
+        response += `### Pipeline\n`;
         if (org.prospect_contact_name) {
-          response += `   Contact: ${org.prospect_contact_name}`;
+          response += `**Contact:** ${org.prospect_contact_name}`;
           if (org.prospect_contact_title) response += ` (${org.prospect_contact_title})`;
           response += '\n';
         }
-      } else {
-        response += `⚪ Not a member yet\n`;
+        if (org.prospect_contact_email) response += `**Email:** ${org.prospect_contact_email}\n`;
+        if (org.invoice_requested_at) {
+          response += `**Invoice requested:** ${formatDate(new Date(org.invoice_requested_at))}\n`;
+        }
+        if (engagementSignals.interest_level) {
+          response += `**Interest:** ${engagementSignals.interest_level}`;
+          if (engagementSignals.interest_level_set_by) response += ` (set by ${engagementSignals.interest_level_set_by})`;
+          response += '\n';
+        }
+        // Show pending invoices for prospects in negotiating stage too
+        if (pendingInvoices.length > 0) {
+          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
+          for (const inv of pendingInvoices.slice(0, 3)) {
+            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
+          }
+        }
+        response += '\n';
       }
-      response += '\n';
 
       // Slack presence
       response += `### Slack Presence\n`;
@@ -1964,12 +2134,6 @@ export function createAdminToolHandlers(
       else if (engagementSignals.login_count_30d > 0) engagementLevel = 2;
 
       response += `**Level:** ${engagementLabels[engagementLevel]} (${engagementLevel}/5)\n`;
-      if (engagementSignals.interest_level) {
-        response += `**Interest:** ${engagementSignals.interest_level}`;
-        if (engagementSignals.interest_level_set_by) response += ` (set by ${engagementSignals.interest_level_set_by})`;
-        if (engagementSignals.interest_level_note) response += `\n   Note: "${engagementSignals.interest_level_note}"`;
-        response += '\n';
-      }
       if (engagementSignals.login_count_30d > 0) {
         response += `**Dashboard logins (30d):** ${engagementSignals.login_count_30d}\n`;
       }
@@ -2007,10 +2171,16 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, query }, 'Addie: Error getting organization details');
-      return `❌ Failed to get organization details. Please try again or contact support.`;
+      logger.error({ error, query }, 'Addie: Error getting account details');
+      return `❌ Failed to get account details. Please try again or contact support.`;
     }
-  });
+  };
+
+  // Register get_account as the primary tool
+  handlers.set('get_account', getAccountHandler);
+
+  // Register get_organization_details as an alias for backwards compatibility
+  handlers.set('get_organization_details', getAccountHandler);
 
   // ============================================
   // PROSPECT MANAGEMENT HANDLERS
@@ -2089,7 +2259,7 @@ export function createAdminToolHandlers(
     return response;
   });
 
-  // Find prospect
+  // Find prospect (DEPRECATED - use get_account instead)
   handlers.set('find_prospect', async (input) => {
     const adminCheck = requireAdminFromContext();
     if (adminCheck) return adminCheck;
@@ -2098,9 +2268,11 @@ export function createAdminToolHandlers(
     const query = input.query as string;
     const searchPattern = `%${query}%`;
 
+    // Include subscription_status and invoice_requested_at for lifecycle stage computation
     const result = await pool.query(
       `SELECT workos_organization_id, name, company_type, email_domain,
               prospect_status, prospect_source, prospect_contact_name,
+              subscription_status, invoice_requested_at,
               enrichment_at, enrichment_industry, enrichment_revenue, enrichment_employee_count,
               created_at, updated_at
        FROM organizations
@@ -2116,17 +2288,19 @@ export function createAdminToolHandlers(
     );
 
     if (result.rows.length === 0) {
-      return `No prospects found matching "${query}". Would you like me to add them as a new prospect?`;
+      return `No organizations found matching "${query}". Would you like me to add them as a new prospect?`;
     }
 
     let response = `## Found ${result.rows.length} match${result.rows.length === 1 ? '' : 'es'} for "${query}"\n\n`;
+    response += `_Note: Use get_account for full details_\n\n`;
 
     for (const org of result.rows) {
+      const lifecycleStage = computeLifecycleStage(org);
       response += `### ${org.name}\n`;
       response += `**ID:** ${org.workos_organization_id}\n`;
+      response += `**Lifecycle:** ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
       response += `**Type:** ${org.company_type || 'Not set'}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
-      response += `**Status:** ${org.prospect_status || 'unknown'}\n`;
       if (org.prospect_contact_name) response += `**Contact:** ${org.prospect_contact_name}\n`;
       if (org.enrichment_industry) response += `**Industry:** ${org.enrichment_industry}\n`;
       if (org.enrichment_employee_count) response += `**Employees:** ${org.enrichment_employee_count.toLocaleString()}\n`;
@@ -3926,7 +4100,7 @@ export function createAdminToolHandlers(
     if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
-    const userId = (input.user_id as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
     const userEmail = input.user_email as string | undefined;
 
     if (!committeeSlug) {
@@ -3938,6 +4112,19 @@ export function createAdminToolHandlers(
     }
 
     try {
+      // If a Slack user ID was passed (U followed by 8+ alphanumeric chars), resolve to WorkOS user ID
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        } else {
+          // Keep the Slack ID - the display query will look up the name from slack_user_mappings
+          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+        }
+      }
+
       // Find the committee
       const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
       if (!committee) {
@@ -3986,7 +4173,7 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
     if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
-    const userId = (input.user_id as string)?.trim();
+    let userId = (input.user_id as string)?.trim();
 
     if (!committeeSlug) {
       return '❌ Please provide a committee_slug.';
@@ -3997,6 +4184,16 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
     }
 
     try {
+      // If a Slack user ID was passed (U followed by 8+ alphanumeric chars), resolve to WorkOS user ID
+      const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
+      if (slackUserIdPattern.test(userId)) {
+        const slackMapping = await slackDb.getBySlackUserId(userId);
+        if (slackMapping?.workos_user_id) {
+          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          userId = slackMapping.workos_user_id;
+        }
+      }
+
       const committee = await wgDb.getWorkingGroupBySlug(committeeSlug);
       if (!committee) {
         return `❌ Committee "${committeeSlug}" not found.`;
@@ -4877,14 +5074,13 @@ Use add_committee_leader to assign a leader.`;
           o.prospect_status,
           o.interest_level,
           o.company_type,
-          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons,
           (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
         FROM organizations o
         JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
         WHERE os.user_id = $1
           AND os.role = 'owner'
           AND o.is_personal IS NOT TRUE
-          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
       `;
 
       if (hotOnly) {
@@ -4916,9 +5112,6 @@ Use add_committee_leader to assign a leader.`;
         if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
         if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
         response += `\n`;
-        if (row.engagement_reasons?.length > 0) {
-          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
-        }
         if (row.last_activity) {
           response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
         }
@@ -4975,7 +5168,7 @@ Use add_committee_leader to assign a leader.`;
           WHERE os.user_id = $1
             AND os.role = 'owner'
             AND o.is_personal IS NOT TRUE
-            AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
         )
         SELECT *,
           CASE
@@ -5047,11 +5240,10 @@ Use add_committee_leader to assign a leader.`;
           o.email_domain,
           o.engagement_score,
           o.prospect_status,
-          o.company_type,
-          (SELECT array_agg(r) FROM (SELECT unnest(engagement_reasons) ORDER BY 1) AS dt(r)) as engagement_reasons
+          o.company_type
         FROM organizations o
         WHERE o.is_personal IS NOT TRUE
-          AND (o.stripe_subscription_status IS NULL OR o.stripe_subscription_status != 'active')
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
           AND o.engagement_score >= $1
           AND NOT EXISTS (
             SELECT 1 FROM org_stakeholders os
@@ -5079,9 +5271,6 @@ Use add_committee_leader to assign a leader.`;
         response += `   Score: ${row.engagement_score || 0}`;
         if (row.company_type) response += ` | Type: ${row.company_type}`;
         response += `\n`;
-        if (row.engagement_reasons?.length > 0) {
-          response += `   Signals: ${row.engagement_reasons.join(', ')}\n`;
-        }
         response += `   ID: ${row.org_id}\n`;
         response += `\n`;
       }
@@ -5890,6 +6079,118 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error getting insight summary');
       return '❌ Failed to get insight summary. Please try again.';
+    }
+  });
+
+  // ============================================
+  // MEMBER SEARCH ANALYTICS HANDLERS
+  // ============================================
+  handlers.set('get_member_search_analytics', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const days = Math.min(Math.max((input.days as number) || 30, 1), 365);
+
+      const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
+      const memberDb = new MemberDatabase();
+
+      // Get global analytics and recent introductions
+      const [globalAnalytics, recentIntroductions] = await Promise.all([
+        memberSearchAnalyticsDb.getGlobalAnalytics(days),
+        memberSearchAnalyticsDb.getRecentIntroductionsGlobal(10),
+      ]);
+
+      // Enrich top members with profile info
+      const enrichedTopMembers = await Promise.all(
+        globalAnalytics.top_members.slice(0, 5).map(async (member) => {
+          const profile = await memberDb.getProfileById(member.member_profile_id);
+          return {
+            display_name: profile?.display_name || 'Unknown',
+            slug: profile?.slug || null,
+            impressions: member.impressions,
+          };
+        })
+      );
+
+      // Enrich recent introductions with profile info
+      const enrichedIntroductions = await Promise.all(
+        recentIntroductions.map(async (intro) => {
+          const profile = await memberDb.getProfileById(intro.member_profile_id);
+          return {
+            event_type: intro.event_type,
+            member_name: profile?.display_name || 'Unknown',
+            member_slug: profile?.slug || null,
+            searcher_name: intro.searcher_name,
+            searcher_email: intro.searcher_email,
+            searcher_company: intro.searcher_company,
+            search_query: intro.search_query,
+            reasoning: intro.reasoning,
+            message: intro.message,
+            created_at: intro.created_at,
+          };
+        })
+      );
+
+      // Build response
+      let response = `## Member Search Analytics (Last ${days} Days)\n\n`;
+
+      response += `### Summary\n`;
+      response += `- **Unique searches:** ${globalAnalytics.total_searches}\n`;
+      response += `- **Total impressions:** ${globalAnalytics.total_impressions}\n`;
+      response += `- **Profile clicks:** ${globalAnalytics.total_clicks}\n`;
+      response += `- **Introduction requests:** ${globalAnalytics.total_intro_requests}\n`;
+      response += `- **Introductions sent:** ${globalAnalytics.total_intros_sent}\n`;
+      response += `- **Unique searchers:** ${globalAnalytics.unique_searchers}\n\n`;
+
+      // Calculate rates
+      if (globalAnalytics.total_impressions > 0) {
+        const clickRate = ((globalAnalytics.total_clicks / globalAnalytics.total_impressions) * 100).toFixed(1);
+        response += `**Click-through rate:** ${clickRate}%\n`;
+      }
+      if (globalAnalytics.total_clicks > 0) {
+        const introRate = ((globalAnalytics.total_intro_requests / globalAnalytics.total_clicks) * 100).toFixed(1);
+        response += `**Introduction rate (from clicks):** ${introRate}%\n`;
+      }
+      response += '\n';
+
+      // Top queries
+      if (globalAnalytics.top_queries.length > 0) {
+        response += `### Top Search Queries\n`;
+        for (const q of globalAnalytics.top_queries.slice(0, 5)) {
+          response += `- "${q.query}" (${q.count} searches)\n`;
+        }
+        response += '\n';
+      }
+
+      // Top members
+      if (enrichedTopMembers.length > 0) {
+        response += `### Top Members by Visibility\n`;
+        for (const m of enrichedTopMembers) {
+          response += `- **${m.display_name}** - ${m.impressions} impressions`;
+          if (m.slug) response += ` ([profile](/members/${m.slug}))`;
+          response += '\n';
+        }
+        response += '\n';
+      }
+
+      // Recent introductions
+      if (enrichedIntroductions.length > 0) {
+        response += `### Recent Introductions\n`;
+        for (const intro of enrichedIntroductions) {
+          const date = new Date(intro.created_at).toLocaleDateString();
+          const status = intro.event_type === 'introduction_sent' ? '✅ Sent' : '📝 Requested';
+          response += `- ${status} **${intro.searcher_name}**`;
+          if (intro.searcher_company) response += ` (${intro.searcher_company})`;
+          response += ` → **${intro.member_name}** on ${date}\n`;
+          if (intro.search_query) response += `  - Searched: "${intro.search_query}"\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error getting member search analytics');
+      return '❌ Failed to get member search analytics. Please try again.';
     }
   });
 

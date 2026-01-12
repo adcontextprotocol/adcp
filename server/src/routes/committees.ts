@@ -15,6 +15,7 @@ import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyWorkingGroupPost } from "../notifications/slack.js";
+import { decodeHtmlEntities } from "../utils/html-entities.js";
 
 const logger = createLogger("committee-routes");
 
@@ -38,20 +39,6 @@ const workos = AUTH_ENABLED
       clientId: process.env.WORKOS_CLIENT_ID!,
     })
   : null;
-
-/**
- * Helper to decode HTML entities from fetched pages
- */
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
 
 /**
  * Fetch and extract metadata from a URL (for link posts)
@@ -311,6 +298,25 @@ export function createCommitteeRouters(): {
 
       if (updates.committee_type && updates.committee_type !== 'chapter') {
         updates.region = null;
+      }
+
+      // Validate slug format and uniqueness if changing
+      if (updates.slug) {
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(updates.slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
+          });
+        }
+
+        const slugAvailable = await workingGroupDb.isSlugAvailable(updates.slug, id);
+        if (!slugAvailable) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: `A working group with slug '${updates.slug}' already exists`
+          });
+        }
       }
 
       // Check if we're adding/changing a Slack channel

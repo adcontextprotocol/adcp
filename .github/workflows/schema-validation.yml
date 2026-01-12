@@ -2,9 +2,9 @@ name: JSON Schema Validation
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, '2.6.x' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, '2.6.x' ]
 
 jobs:
   schema-validation:

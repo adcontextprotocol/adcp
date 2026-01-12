@@ -1,5 +1,53 @@
 # Changelog
 
+## 2.6.0
+
+### Minor Changes
+
+- Add unified `assets` field to format schema for better asset discovery
+
+  **Schema Changes:**
+
+  - **format.json**: Add new `assets` array field that includes both required and optional assets
+  - **format.json**: Deprecate `assets_required` (still supported for backward compatibility)
+
+  **Rationale:**
+
+  Previously, buyers and AI agents could only see required assets via `assets_required`. There was no way to discover optional assets that enhance creatives (companion banners, third-party tracking pixels, etc.).
+
+  Since each asset already has a `required` boolean field, we introduced a unified `assets` array where:
+  - `required: true` - Asset MUST be provided for a valid creative
+  - `required: false` - Asset is optional, enhances the creative when provided
+
+  This enables:
+  - **Full asset discovery**: Buyers and AI agents can see ALL assets a format supports
+  - **Richer creatives**: Optional assets like impression trackers can now be discovered and used
+  - **Cleaner schema**: Single array instead of two separate arrays
+
+  **Example:**
+
+  ```json
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "assets": [
+      { "item_type": "individual", "asset_id": "video_file", "asset_type": "video", "required": true },
+      { "item_type": "individual", "asset_id": "end_card", "asset_type": "image", "required": false },
+      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "url", "required": false }
+    ]
+  }
+  ```
+
+  **Migration:** Non-breaking change. `assets_required` is deprecated but still supported. New implementations should use `assets`.
+
+## 2.5.2
+
+### Patch Changes
+
+- Add documentation versioning support with Mintlify
+  - Version switcher dropdown with 2.5 (default) and 2.6-rc (preview)
+  - GitHub Actions workflow to sync 2.6.x branch docs to v2.6-rc
+  - Local sync script for testing (`npm run sync:docs`)
+
 ## 2.5.1
 
 ### Patch Changes

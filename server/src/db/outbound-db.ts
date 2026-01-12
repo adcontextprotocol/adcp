@@ -732,18 +732,24 @@ export async function getMemberCapabilities(
       [workosUserId]
     ),
 
-    // Working groups & councils
+    // Working groups & councils (include leaders as implicit members)
     query<{
       wg_count: number;
       council_count: number;
     }>(
       `SELECT
-        (SELECT COUNT(*) FROM working_group_memberships wgm
-         JOIN working_groups wg ON wg.id = wgm.working_group_id
-         WHERE wgm.workos_user_id = $1 AND wg.committee_type = 'working_group') as wg_count,
-        (SELECT COUNT(*) FROM working_group_memberships wgm
-         JOIN working_groups wg ON wg.id = wgm.working_group_id
-         WHERE wgm.workos_user_id = $1 AND wg.committee_type = 'council') as council_count`,
+        (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
+         WHERE wg.committee_type = 'working_group'
+         AND (
+           EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
+           OR EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1)
+         )) as wg_count,
+        (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
+         WHERE wg.committee_type = 'council'
+         AND (
+           EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
+           OR EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1)
+         )) as council_count`,
       [workosUserId]
     ),
 
@@ -809,5 +815,128 @@ export async function getMemberCapabilities(
     last_active_days_ago: activity.last_active_days != null ? Number(activity.last_active_days) : null,
     slack_message_count_30d: Number(activity.slack_messages_30d),
     is_committee_leader: leader.is_leader,
+  };
+}
+
+/**
+ * Check if there are any upcoming events relevant to this user.
+ *
+ * Relevant events include:
+ * - Events the user is already registered for
+ * - Events in regional chapters the user is a member of
+ * - Industry gatherings the user has indicated interest in (attending/interested)
+ * - Major global events (summits) that are open to all
+ *
+ * This is used by the planner to skip the "Discover Events" goal when
+ * there are no relevant events to suggest.
+ */
+export async function hasRelevantUpcomingEvents(
+  workosUserId?: string,
+  slackUserId?: string
+): Promise<{
+  hasRelevantEvents: boolean;
+  userLocation: { city: string | null; country: string | null };
+  details: {
+    registered: number;
+    industryGatherings: number;
+    chapterEvents: number;
+    globalSummits: number;
+  };
+}> {
+  // If no user identifier, no relevant events
+  if (!workosUserId && !slackUserId) {
+    return {
+      hasRelevantEvents: false,
+      userLocation: { city: null, country: null },
+      details: { registered: 0, industryGatherings: 0, chapterEvents: 0, globalSummits: 0 },
+    };
+  }
+
+  // Query all relevant event counts in parallel
+  const [
+    registeredResult,
+    industryGatheringsResult,
+    chapterEventsResult,
+    globalSummitsResult,
+    locationResult,
+  ] = await Promise.all([
+    // Events user is registered for (excluding virtual events)
+    workosUserId ? query<{ count: number }>(
+      `SELECT COUNT(*) as count
+       FROM event_registrations er
+       JOIN events e ON e.id = er.event_id
+       WHERE er.workos_user_id = $1
+         AND e.status = 'published'
+         AND e.start_time > NOW()
+         AND e.event_format != 'virtual'`,
+      [workosUserId]
+    ) : Promise.resolve({ rows: [{ count: 0 }] }),
+
+    // Industry gatherings user is interested in or attending
+    workosUserId ? query<{ count: number }>(
+      `SELECT COUNT(*) as count
+       FROM working_group_memberships wgm
+       JOIN working_groups wg ON wg.id = wgm.working_group_id
+       WHERE wgm.workos_user_id = $1
+         AND wg.committee_type = 'industry_gathering'
+         AND wg.status = 'active'
+         AND wgm.status = 'active'
+         AND wgm.interest_level IN ('attending', 'interested')
+         AND (wg.event_end_date IS NULL OR wg.event_end_date >= CURRENT_DATE)`,
+      [workosUserId]
+    ) : Promise.resolve({ rows: [{ count: 0 }] }),
+
+    // Events in chapters user is a member of
+    workosUserId ? query<{ count: number }>(
+      `SELECT COUNT(DISTINCT e.id) as count
+       FROM events e
+       JOIN working_groups wg ON wg.committee_type = 'chapter' AND wg.status = 'active'
+       JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+       WHERE wgm.workos_user_id = $1
+         AND wgm.status = 'active'
+         AND e.status = 'published'
+         AND e.start_time > NOW()
+         AND e.event_format != 'virtual'
+         AND (
+           -- Match chapter region to event city (case-insensitive)
+           LOWER(e.venue_city) LIKE '%' || LOWER(COALESCE(wg.region, '')) || '%'
+           OR LOWER(COALESCE(wg.region, '')) LIKE '%' || LOWER(COALESCE(e.venue_city, '')) || '%'
+         )`,
+      [workosUserId]
+    ) : Promise.resolve({ rows: [{ count: 0 }] }),
+
+    // Global summits (open to all members)
+    query<{ count: number }>(
+      `SELECT COUNT(*) as count
+       FROM events
+       WHERE status = 'published'
+         AND start_time > NOW()
+         AND event_type = 'summit'
+         AND event_format != 'virtual'`
+    ),
+
+    // User's location from users table
+    slackUserId ? query<{ city: string | null; country: string | null }>(
+      `SELECT u.city, u.country
+       FROM slack_user_mappings sm
+       JOIN users u ON u.workos_user_id = sm.workos_user_id
+       WHERE sm.slack_user_id = $1
+       LIMIT 1`,
+      [slackUserId]
+    ) : Promise.resolve({ rows: [{ city: null, country: null }] }),
+  ]);
+
+  const registered = Number(registeredResult.rows[0]?.count ?? 0);
+  const industryGatherings = Number(industryGatheringsResult.rows[0]?.count ?? 0);
+  const chapterEvents = Number(chapterEventsResult.rows[0]?.count ?? 0);
+  const globalSummits = Number(globalSummitsResult.rows[0]?.count ?? 0);
+  const location = locationResult.rows[0] ?? { city: null, country: null };
+
+  const hasRelevantEvents = registered > 0 || industryGatherings > 0 || chapterEvents > 0 || globalSummits > 0;
+
+  return {
+    hasRelevantEvents,
+    userLocation: location,
+    details: { registered, industryGatherings, chapterEvents, globalSummits },
   };
 }

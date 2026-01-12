@@ -233,17 +233,44 @@ export class MemberDatabase {
       params.push(options.markets);
     }
 
-    // Full-text search
+    // Full-text search - tokenize query and match ANY word (OR logic)
+    // This allows "DSP demand-side platform" to match on "DSP" alone
     if (options.search) {
-      conditions.push(`(
-        display_name ILIKE $${paramIndex} OR
-        tagline ILIKE $${paramIndex} OR
-        description ILIKE $${paramIndex} OR
-        headquarters ILIKE $${paramIndex} OR
-        tags::text ILIKE $${paramIndex}
-      )`);
-      params.push(`%${escapeLikePattern(options.search)}%`);
-      paramIndex++;
+      // Split search into words, filter short/common words
+      const searchWords = options.search
+        .split(/\s+/)
+        .map(w => w.trim())
+        .filter(w => w.length >= 2); // Keep words with 2+ chars
+
+      if (searchWords.length === 0) {
+        // Fall back to original search if no valid words
+        conditions.push(`(
+          display_name ILIKE $${paramIndex} OR
+          tagline ILIKE $${paramIndex} OR
+          description ILIKE $${paramIndex} OR
+          headquarters ILIKE $${paramIndex} OR
+          tags::text ILIKE $${paramIndex} OR
+          offerings::text ILIKE $${paramIndex}
+        )`);
+        params.push(`%${escapeLikePattern(options.search)}%`);
+        paramIndex++;
+      } else {
+        // Build OR conditions for each word
+        const wordConditions: string[] = [];
+        for (const word of searchWords) {
+          wordConditions.push(`(
+            display_name ILIKE $${paramIndex} OR
+            tagline ILIKE $${paramIndex} OR
+            description ILIKE $${paramIndex} OR
+            headquarters ILIKE $${paramIndex} OR
+            tags::text ILIKE $${paramIndex} OR
+            offerings::text ILIKE $${paramIndex}
+          )`);
+          params.push(`%${escapeLikePattern(word)}%`);
+          paramIndex++;
+        }
+        conditions.push(`(${wordConditions.join(' OR ')})`);
+      }
     }
 
     const whereClause = conditions.length > 0

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/signals/activate-signal-request.json",
+  "title": "Activate Signal Request",
+  "description": "Request parameters for activating a signal on a specific deployment target",
+  "type": "object",
+  "properties": {
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "The universal identifier for the signal to activate"
+    },
+    "deployments": {
+      "type": "array",
+      "description": "Target deployment(s) for activation. If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/2.6.0/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/2.6.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.6.0/core/ext.json"
+    }
+  },
+  "required": [
+    "signal_agent_segment_id",
+    "deployments"
+  ],
+  "additionalProperties": true
+}

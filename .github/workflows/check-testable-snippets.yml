@@ -2,6 +2,7 @@ name: Check Testable Snippets
 
 on:
   pull_request:
+    branches: [main, '2.6.x']
     paths:
       - 'docs/**/*.md'
       - 'docs/**/*.mdx'

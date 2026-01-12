@@ -226,6 +226,142 @@
       padding: 16px;
     }
 
+    /* Member cards from search results */
+    .member-cards-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .member-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      padding: 16px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .member-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .member-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .member-card-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      object-fit: contain;
+      background: var(--color-bg-subtle);
+      flex-shrink: 0;
+    }
+
+    .member-card-logo-placeholder {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .member-card-title {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .member-card-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--color-text-heading);
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-card-tagline {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-card-description {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin: 0;
+    }
+
+    .member-card-offerings {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .member-card-offering {
+      font-size: 11px;
+      padding: 2px 8px;
+      background: var(--color-primary-50, #eef2ff);
+      color: var(--color-brand);
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    .member-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .member-card-location {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .member-card-cta {
+      font-size: 12px;
+      color: var(--color-brand);
+      font-weight: 500;
+    }
+
+    @media (max-width: 600px) {
+      .member-cards-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .message-content ul, .message-content ol {
       margin: 8px 0;
       padding-left: 20px;
@@ -659,11 +795,79 @@
       flex-direction: column;
       flex-shrink: 0;
       height: 100%;
+      transition: width 0.2s ease;
+      position: relative;
     }
 
     /* Hide sidebar for unauthenticated users */
     .chat-sidebar:not(.visible) {
       display: none;
+    }
+
+    /* Collapsed sidebar state */
+    .chat-sidebar.collapsed {
+      width: 56px;
+    }
+
+    .chat-sidebar.collapsed .sidebar-nav {
+      padding: 8px;
+    }
+
+    .chat-sidebar.collapsed .sidebar-tab {
+      justify-content: center;
+      padding: 10px;
+    }
+
+    .chat-sidebar.collapsed .sidebar-tab-text {
+      display: none;
+    }
+
+    .chat-sidebar.collapsed .sidebar-section,
+    .chat-sidebar.collapsed .sidebar-history {
+      display: none;
+    }
+
+    .chat-sidebar.collapsed .sidebar-collapse-btn svg {
+      transform: rotate(180deg);
+    }
+
+    /* Sidebar collapse button */
+    .sidebar-collapse-btn {
+      position: absolute;
+      top: var(--space-2);
+      right: calc(-1 * var(--space-4));
+      width: var(--space-8);
+      height: var(--space-8);
+      border-radius: 50%;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      box-shadow: var(--shadow-sm);
+      transition: background var(--duration-fast, 0.15s);
+    }
+
+    .sidebar-collapse-btn:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .sidebar-collapse-btn:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+    }
+
+    .sidebar-collapse-btn:focus:not(:focus-visible) {
+      outline: none;
+    }
+
+    .sidebar-collapse-btn svg {
+      width: 16px;
+      height: 16px;
+      color: var(--color-text-muted);
+      transition: transform var(--duration-normal, 0.2s);
     }
 
     /* Sidebar navigation tabs */
@@ -1009,8 +1213,8 @@
       font-weight: 600;
     }
 
-    /* Show toggle button on mobile for authenticated users */
-    @media (max-width: 768px) {
+    /* Mobile: use drawer overlay pattern on very small screens */
+    @media (max-width: 500px) {
       .chat-sidebar.visible {
         position: fixed;
         left: 0;
@@ -1018,6 +1222,7 @@
         bottom: 0;
         z-index: 1000;
         box-shadow: var(--shadow-lg);
+        width: 280px;
       }
 
       .chat-sidebar.visible:not(.mobile-open) {
@@ -1026,6 +1231,10 @@
 
       .chat-sidebar.visible.mobile-open {
         display: flex;
+      }
+
+      .chat-sidebar.visible .sidebar-collapse-btn {
+        display: none;
       }
 
       .sidebar-toggle-btn.visible {
@@ -1045,8 +1254,8 @@
       }
     }
 
-    /* Desktop: always show sidebar for authenticated users */
-    @media (min-width: 769px) {
+    /* Tablet and up: always show sidebar (expanded or collapsed) */
+    @media (min-width: 501px) {
       .chat-sidebar.visible {
         display: flex;
       }
@@ -1081,19 +1290,13 @@
       padding-top: calc(12px + env(safe-area-inset-top, 0px));
     }
 
-    /* Native app mobile - ensure sidebar works with safe areas */
-    @media (max-width: 768px) {
-      body.native-app .chat-sidebar.visible {
-        padding-left: env(safe-area-inset-left, 0px);
-      }
+    /* Native app uses same collapsible pattern as web */
+    body.native-app .chat-sidebar.visible {
+      display: flex;
+    }
 
-      body.native-app .sidebar-overlay {
-        /* Extend overlay behind safe areas */
-        top: calc(-1 * env(safe-area-inset-top, 0px));
-        left: calc(-1 * env(safe-area-inset-left, 0px));
-        right: calc(-1 * env(safe-area-inset-right, 0px));
-        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
-      }
+    body.native-app .sidebar-toggle-btn {
+      display: none !important;
     }
 
     /* Native app mode - adjust input area for safe areas */
@@ -1123,19 +1326,29 @@
     <div class="chat-sidebar" id="chatSidebar">
       <!-- Navigation tabs -->
       <div class="sidebar-nav">
+        <!-- Collapse toggle button -->
+        <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+                aria-expanded="true"
+                aria-controls="chatSidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
         <button class="sidebar-tab active" id="homeTab">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
-          Home
+          <span class="sidebar-tab-text">Home</span>
         </button>
         <button class="sidebar-tab sidebar-tab--new" id="newChatBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          New Chat
+          <span class="sidebar-tab-text">New Chat</span>
         </button>
       </div>
 
@@ -1243,6 +1456,7 @@
       const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
       const sidebarOverlay = document.getElementById('sidebarOverlay');
       const sidebarBadge = document.getElementById('sidebarBadge');
+      const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
 
       // State
       let conversationId = null;
@@ -1252,10 +1466,28 @@
       let isAuthenticated = false;
       let threads = [];
       let mobileMenuOpen = false;
+      let sidebarCollapsed = false;
+      try {
+        sidebarCollapsed = localStorage.getItem('addie-sidebar-collapsed') === 'true';
+      } catch (e) {
+        // localStorage may be unavailable in private browsing
+      }
 
       // Tab state - persisted to localStorage
       let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
       let currentTabId = 'home'; // 'home' or conversation_id
+
+      // Event delegation for member card clicks (more secure than inline onclick)
+      messagesContainer.addEventListener('click', function(e) {
+        const card = e.target.closest('.member-card');
+        if (card) {
+          const slug = card.dataset.slug;
+          const sessionId = card.dataset.sessionId || null;
+          if (slug) {
+            trackMemberClick(slug, sessionId);
+          }
+        }
+      });
       const originalTitle = document.title;
 
       // Native app auth token (from URL hash, e.g., #token=xxx)
@@ -1362,6 +1594,12 @@
       }
 
       // === Tab Management Functions ===
+
+      // Clear only chat messages from the container (preserves static elements like home/welcome)
+      function clearChatMessages() {
+        const messages = messagesContainer.querySelectorAll('.message');
+        messages.forEach(msg => msg.remove());
+      }
 
       // Debounced thread refresh (avoids excessive API calls when sending multiple messages)
       let loadThreadsTimer = null;
@@ -1533,11 +1771,13 @@
         renderActiveTabs();
 
         // Show home content
-        messagesContainer.innerHTML = '';
+        clearChatMessages();
         if (isAuthenticated) {
           addieHomeContainer.classList.add('visible');
+          welcomeMessage.style.display = 'none';
           loadAddieHome();
         } else {
+          addieHomeContainer.classList.remove('visible');
           welcomeMessage.style.display = 'block';
         }
 
@@ -1569,6 +1809,31 @@
           closeMobileSidebar();
         } else {
           openMobileSidebar();
+        }
+      }
+
+      // Sidebar collapse/expand functions
+      function toggleSidebarCollapse() {
+        sidebarCollapsed = !sidebarCollapsed;
+        chatSidebar.classList.toggle('collapsed', sidebarCollapsed);
+        const label = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+        sidebarCollapseBtn.title = label;
+        sidebarCollapseBtn.setAttribute('aria-label', label);
+        sidebarCollapseBtn.setAttribute('aria-expanded', !sidebarCollapsed);
+        try {
+          localStorage.setItem('addie-sidebar-collapsed', sidebarCollapsed);
+        } catch (e) {
+          // localStorage may be unavailable in private browsing
+        }
+      }
+
+      // Apply initial sidebar collapsed state
+      function applySidebarCollapsedState() {
+        if (sidebarCollapsed) {
+          chatSidebar.classList.add('collapsed');
+          sidebarCollapseBtn.title = 'Expand sidebar';
+          sidebarCollapseBtn.setAttribute('aria-label', 'Expand sidebar');
+          sidebarCollapseBtn.setAttribute('aria-expanded', 'false');
         }
       }
 
@@ -1619,8 +1884,8 @@
         // Update active tabs UI
         renderActiveTabs();
 
-        // Clear current messages
-        messagesContainer.innerHTML = '';
+        // Clear current messages and hide static content
+        clearChatMessages();
         welcomeMessage.style.display = 'none';
         addieHomeContainer.classList.remove('visible');
 
@@ -1674,13 +1939,15 @@
         currentTabId = 'home'; // New chat starts from home
 
         // Clear messages and show home
-        messagesContainer.innerHTML = '';
+        clearChatMessages();
 
         // Show welcome or Addie Home based on auth
         if (isAuthenticated) {
           addieHomeContainer.classList.add('visible');
+          welcomeMessage.style.display = 'none';
           loadAddieHome();
         } else {
+          addieHomeContainer.classList.remove('visible');
           welcomeMessage.style.display = 'block';
         }
 
@@ -1840,6 +2107,91 @@
         sendButton.disabled = !hasText || isLoading || !isReady;
       }
 
+      // Track member card clicks for analytics
+      function trackMemberClick(slug, searchSessionId) {
+        // Fire-and-forget analytics tracking
+        fetch(`/api/members/${encodeURIComponent(slug)}/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ search_session_id: searchSessionId }),
+          credentials: 'include',
+        }).catch(() => {
+          // Ignore errors - analytics shouldn't block navigation
+        });
+      }
+
+      // Render member search results as cards
+      function renderMemberCards(data) {
+        const searchSessionId = data.search_session_id || null;
+        const offeringLabels = {
+          buyer_agent: 'Buyer Agent',
+          sales_agent: 'Sales Agent',
+          creative_agent: 'Creative Agent',
+          signals_agent: 'Signals Agent',
+          publisher: 'Publisher',
+          consulting: 'Consulting',
+          managed_services: 'Managed Services',
+          implementation: 'Implementation',
+          other: 'Other',
+        };
+
+        const escapeHtml = (str) => {
+          if (!str) return '';
+          return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        };
+
+        const cards = data.results.map(member => {
+          const logoHtml = member.logo_url
+            ? `<img class="member-card-logo" src="${escapeHtml(member.logo_url)}" alt="${escapeHtml(member.display_name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="member-card-logo-placeholder" style="display:none">${escapeHtml(member.display_name.charAt(0))}</div>`
+            : `<div class="member-card-logo-placeholder">${escapeHtml(member.display_name.charAt(0))}</div>`;
+
+          const taglineHtml = member.tagline
+            ? `<p class="member-card-tagline">${escapeHtml(member.tagline)}</p>`
+            : '';
+
+          const descriptionHtml = member.description
+            ? `<p class="member-card-description">${escapeHtml(member.description)}</p>`
+            : '';
+
+          const offeringsHtml = member.offerings && member.offerings.length > 0
+            ? `<div class="member-card-offerings">${member.offerings.slice(0, 3).map(o =>
+                `<span class="member-card-offering">${escapeHtml(offeringLabels[o] || o)}</span>`
+              ).join('')}</div>`
+            : '';
+
+          const locationHtml = member.headquarters
+            ? `<span class="member-card-location">📍 ${escapeHtml(member.headquarters)}</span>`
+            : '<span></span>';
+
+          // Add onclick handler to track clicks
+          const sessionIdAttr = searchSessionId ? `data-session-id="${escapeHtml(searchSessionId)}"` : '';
+
+          return `
+            <a href="/members/${escapeHtml(member.slug)}" class="member-card" target="_blank" data-slug="${escapeHtml(member.slug)}" ${sessionIdAttr}>
+              <div class="member-card-header">
+                ${logoHtml}
+                <div class="member-card-title">
+                  <p class="member-card-name">${escapeHtml(member.display_name)}</p>
+                  ${taglineHtml}
+                </div>
+              </div>
+              ${descriptionHtml}
+              ${offeringsHtml}
+              <div class="member-card-footer">
+                ${locationHtml}
+                <span class="member-card-cta">View Profile →</span>
+              </div>
+            </a>
+          `;
+        }).join('');
+
+        return `<div class="member-cards-container">${cards}</div>`;
+      }
+
       // Render markdown using marked library
       function renderMessage(text) {
         // Configure marked for security and compatibility
@@ -1855,6 +2207,21 @@
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
 
+        // Check for embedded ADDIE_DATA blocks and extract them
+        const dataBlockRegex = /<!--ADDIE_DATA:([\s\S]*?):ADDIE_DATA-->/g;
+        const dataBlocks = [];
+        let processedText = text.replace(dataBlockRegex, (match, jsonStr) => {
+          try {
+            const data = JSON.parse(jsonStr);
+            const placeholder = `__ADDIE_DATA_PLACEHOLDER_${dataBlocks.length}__`;
+            dataBlocks.push(data);
+            return placeholder;
+          } catch (e) {
+            console.warn('Failed to parse ADDIE_DATA block:', e);
+            return ''; // Remove invalid blocks
+          }
+        });
+
         // Use marked's built-in renderer with custom link and image handling
         const renderer = new marked.Renderer();
         renderer.link = function(href, title, text) {
@@ -1866,9 +2233,12 @@
             text = link.text;
           }
           // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|mailto:|#)/i.test(href) ? href : '#';
+          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
           const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          return `<a href="${escapeAttr(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+          // Use target="_blank" only for external links
+          const isExternal = /^https?:\/\//i.test(href);
+          const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
         };
 
         // Custom image renderer
@@ -1889,7 +2259,22 @@
           return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
-        return marked.parse(text, { renderer });
+        let html = marked.parse(processedText, { renderer });
+
+        // Replace placeholders with rendered components
+        dataBlocks.forEach((data, index) => {
+          const placeholder = `__ADDIE_DATA_PLACEHOLDER_${index}__`;
+          let replacement = '';
+
+          if (data.type === 'member_search_results') {
+            replacement = renderMemberCards(data);
+          }
+          // Add more types here as needed
+
+          html = html.replace(placeholder, replacement);
+        });
+
+        return html;
       }
 
       // Render creative preview (iframe or HTML)
@@ -1921,10 +2306,11 @@
 
       // Add message to chat
       function addMessage(content, role, messageId = null) {
-        // Hide welcome message
+        // Hide welcome/home content when showing messages
         if (welcomeMessage) {
           welcomeMessage.style.display = 'none';
         }
+        addieHomeContainer.classList.remove('visible');
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message--${role}`;
@@ -2097,10 +2483,11 @@
 
       // Create a streaming message element that can be updated
       function createStreamingMessage() {
-        // Hide welcome message
+        // Hide welcome/home content when showing messages
         if (welcomeMessage) {
           welcomeMessage.style.display = 'none';
         }
+        addieHomeContainer.classList.remove('visible');
 
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message message--assistant';
@@ -2461,6 +2848,7 @@
       // Sidebar event listeners
       sidebarToggleBtn.addEventListener('click', toggleMobileSidebar);
       sidebarOverlay.addEventListener('click', closeMobileSidebar);
+      sidebarCollapseBtn.addEventListener('click', toggleSidebarCollapse);
       newChatBtn.addEventListener('click', startNewConversation);
       homeTab.addEventListener('click', switchToHome);
       historyToggle.addEventListener('click', toggleHistorySection);
@@ -2517,6 +2905,7 @@
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash
+      applySidebarCollapsedState(); // Restore sidebar collapsed state from localStorage
       checkStatus();
       checkImpersonation();
       // Check for prompt in URL after status check

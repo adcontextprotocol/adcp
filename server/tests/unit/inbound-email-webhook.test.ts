@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type AddieContext =
   | { type: 'prospect' }
   | { type: 'working-group'; groupId: string }
+  | { type: 'feed'; slug: string }
   | { type: 'unrouted' };
 
 function parseEmailAddress(emailStr: string): { email: string; displayName: string | null; domain: string } {
@@ -55,6 +56,14 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
 
   for (const addr of allAddresses) {
     const { email } = parseEmailAddress(addr);
+
+    // Check for feed subscription emails (feed-*@updates.agenticadvertising.org)
+    if (email.endsWith('@updates.agenticadvertising.org')) {
+      const localPart = email.split('@')[0];
+      if (localPart.startsWith('feed-')) {
+        return { type: 'feed', slug: localPart };
+      }
+    }
 
     if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
     const localPart = email.split('@')[0];
@@ -234,6 +243,45 @@ describe('Inbound Email Webhook', () => {
     it('should handle updates.agenticadvertising.org subdomain for working-group', () => {
       const result = parseAddieContext(['addie+wg-governance@updates.agenticadvertising.org']);
       expect(result).toEqual({ type: 'working-group', groupId: 'governance' });
+    });
+
+    it('should return feed context for feed-*@updates.agenticadvertising.org', () => {
+      const result = parseAddieContext(['feed-campaign-uk@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'feed', slug: 'feed-campaign-uk' });
+    });
+
+    it('should preserve full feed slug including feed- prefix', () => {
+      // This is critical: the slug must include the "feed-" prefix
+      // because that's what gets stored in the database email_slug column
+      const result = parseAddieContext(['feed-adexchanger@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'feed', slug: 'feed-adexchanger' });
+      // The slug should NOT be 'adexchanger' (without prefix)
+      expect((result as { type: 'feed'; slug: string }).slug).toMatch(/^feed-/);
+    });
+
+    it('should handle feed addresses with hyphens in name', () => {
+      const result = parseAddieContext(['feed-marketing-brew@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'feed', slug: 'feed-marketing-brew' });
+    });
+
+    it('should handle feed addresses with numbers', () => {
+      const result = parseAddieContext(['feed-adage-2025@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'feed', slug: 'feed-adage-2025' });
+    });
+
+    it('should not match feed addresses on main domain', () => {
+      // Feed addresses only work on updates.agenticadvertising.org
+      const result = parseAddieContext(['feed-campaign-uk@agenticadvertising.org']);
+      expect(result).toEqual({ type: 'unrouted' });
+    });
+
+    it('should prioritize feed context over addie context', () => {
+      // Feed addresses are checked first
+      const result = parseAddieContext([
+        'feed-campaign-uk@updates.agenticadvertising.org',
+        'addie+prospect@agenticadvertising.org',
+      ]);
+      expect(result).toEqual({ type: 'feed', slug: 'feed-campaign-uk' });
     });
   });
 

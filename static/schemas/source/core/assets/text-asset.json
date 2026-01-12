@@ -14,6 +14,8 @@
       "description": "Language code (e.g., 'en', 'es', 'fr')"
     }
   },
-  "required": ["content"],
-  "additionalProperties": false
+  "required": [
+    "content"
+  ],
+  "additionalProperties": true
 }

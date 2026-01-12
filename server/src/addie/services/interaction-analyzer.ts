@@ -147,16 +147,16 @@ async function getOrgIdFromEmail(email: string): Promise<{ orgId: string; orgNam
   if (!domain) return null;
 
   // Check organization_domains table first
-  const domainResult = await pool.query<{ organization_id: string; name: string }>(`
-    SELECT od.organization_id, o.name
+  const domainResult = await pool.query<{ workos_organization_id: string; name: string }>(`
+    SELECT od.workos_organization_id, o.name
     FROM organization_domains od
-    JOIN organizations o ON o.workos_organization_id = od.organization_id
+    JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
     WHERE od.domain = $1
     LIMIT 1
   `, [domain]);
 
   if (domainResult.rows.length > 0) {
-    return { orgId: domainResult.rows[0].organization_id, orgName: domainResult.rows[0].name };
+    return { orgId: domainResult.rows[0].workos_organization_id, orgName: domainResult.rows[0].name };
   }
 
   // Fall back to email_domain on organizations

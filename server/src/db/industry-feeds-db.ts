@@ -67,11 +67,13 @@ export interface RssPerspective {
 
 /**
  * Get all active feeds that need fetching
+ * Only returns feeds with a valid feed_url (excludes email-only feeds)
  */
 export async function getFeedsToFetch(): Promise<IndustryFeed[]> {
   const result = await query<IndustryFeed>(
     `SELECT * FROM industry_feeds
      WHERE is_active = true
+       AND feed_url IS NOT NULL
        AND (last_fetched_at IS NULL
             OR last_fetched_at < NOW() - (fetch_interval_minutes || ' minutes')::interval)
      ORDER BY last_fetched_at ASC NULLS FIRST
@@ -381,17 +383,6 @@ export async function getRecentRssPerspectives(
 // ============== Alert Operations ==============
 
 /**
- * Check if we've already alerted for this perspective
- */
-export async function hasAlertedPerspective(perspectiveId: string): Promise<boolean> {
-  const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM industry_alerts WHERE perspective_id = $1)`,
-    [perspectiveId]
-  );
-  return result.rows[0].exists;
-}
-
-/**
  * Record that we sent an alert for a perspective
  */
 export async function recordPerspectiveAlert(
@@ -407,56 +398,6 @@ export async function recordPerspectiveAlert(
     [perspectiveId, alertLevel, channelId, messageTs]
   );
   return result.rows[0];
-}
-
-/**
- * Get RSS perspectives that should be alerted
- * (high quality, relevant mentions, not yet alerted)
- */
-export async function getPerspectivesToAlert(): Promise<{
-  id: string;
-  title: string;
-  link: string;
-  summary: string;
-  addie_notes: string;
-  quality_score: number;
-  mentions_agentic: boolean;
-  mentions_adcp: boolean;
-  relevance_tags: string[];
-  feed_name: string;
-}[]> {
-  const result = await query<{
-    id: string;
-    title: string;
-    link: string;
-    summary: string;
-    addie_notes: string;
-    quality_score: number;
-    mentions_agentic: boolean;
-    mentions_adcp: boolean;
-    relevance_tags: string[];
-    feed_name: string;
-  }>(
-    `SELECT p.id, p.title, p.external_url as link,
-            k.summary, k.addie_notes, k.quality_score,
-            k.mentions_agentic, k.mentions_adcp, k.relevance_tags,
-            f.name as feed_name
-     FROM perspectives p
-     JOIN industry_feeds f ON p.feed_id = f.id
-     JOIN addie_knowledge k ON k.source_url = p.external_url
-     WHERE p.source_type = 'rss'
-       AND p.status = 'published'
-       AND k.fetch_status = 'success'
-       AND NOT EXISTS (SELECT 1 FROM industry_alerts ia WHERE ia.perspective_id = p.id)
-       AND (k.quality_score >= 4 OR k.mentions_agentic = true OR k.mentions_adcp = true)
-     ORDER BY
-       CASE WHEN k.mentions_adcp THEN 0
-            WHEN k.mentions_agentic THEN 1
-            ELSE 2 END,
-       k.quality_score DESC NULLS LAST
-     LIMIT 20`
-  );
-  return result.rows;
 }
 
 // ============== Stats ==============

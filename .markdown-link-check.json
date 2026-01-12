@@ -16,8 +16,9 @@
       "pattern": "https://adcontextprotocol.org/docs/"
     }
   ],
-  "timeout": "10s",
+  "timeout": "30s",
   "retryOn429": true,
-  "retryCount": 3,
+  "retryCount": 5,
+  "fallbackRetryDelay": "10s",
   "aliveStatusCodes": [200, 206]
 }

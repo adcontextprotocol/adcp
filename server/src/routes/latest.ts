@@ -8,6 +8,7 @@
 import { Router, type Request, type Response } from "express";
 import { createLogger } from "../logger.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
+import { decodeHtmlEntities } from "../utils/html-entities.js";
 import {
   getWebsiteChannels,
   getChannelByWebsiteSlug,
@@ -37,6 +38,19 @@ interface LatestSection {
   name: string;
   description: string;
   article_count: number;
+}
+
+/**
+ * Decode HTML entities in article text fields.
+ * This handles cases where RSS feed data contains encoded entities.
+ */
+function decodeArticle<T extends LatestArticle>(article: T): T {
+  return {
+    ...article,
+    title: decodeHtmlEntities(article.title),
+    summary: article.summary ? decodeHtmlEntities(article.summary) : null,
+    addie_notes: article.addie_notes ? decodeHtmlEntities(article.addie_notes) : null,
+  };
 }
 
 /**
@@ -214,7 +228,7 @@ export function createLatestRouter(): {
       const total = parseInt(countResult.rows[0]?.count || "0", 10);
 
       res.json({
-        articles: result.rows,
+        articles: result.rows.map(decodeArticle),
         pagination: {
           total,
           limit,
@@ -272,7 +286,7 @@ export function createLatestRouter(): {
         [limit]
       );
 
-      res.json({ articles: result.rows });
+      res.json({ articles: result.rows.map(decodeArticle) });
     } catch (error) {
       logger.error({ error }, "Error fetching featured articles");
       res.status(500).json({ error: "Failed to fetch featured articles" });

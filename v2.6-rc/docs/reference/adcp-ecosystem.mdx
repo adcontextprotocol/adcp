@@ -1,0 +1,112 @@
+---
+sidebar_position: 12
+title: AdCP Ecosystem
+description: AdCP organizations, repositories, and how components fit together
+---
+
+# AdCP Ecosystem Reference
+
+Token-efficient reference for understanding AdCP's organizations, repositories, and component relationships. Designed for both human readers and AI agents.
+
+## Organizations
+
+| Organization | Purpose | URL |
+|--------------|---------|-----|
+| **AgenticAdvertising.org** | Membership community, working groups, member profiles | [agenticadvertising.org](https://agenticadvertising.org) |
+| **AdCP (Ad Context Protocol)** | Protocol specification, schemas, documentation | [adcontextprotocol.org](https://adcontextprotocol.org) |
+
+**Key distinction**: AgenticAdvertising.org is the *community*. AdCP is the *protocol*. Members join AgenticAdvertising.org to develop and adopt AdCP.
+
+## Repositories
+
+All repos are under the `adcontextprotocol` GitHub organization.
+
+| Repo | Purpose | Key Contents |
+|------|---------|--------------|
+| **adcp** | Core protocol specification | JSON schemas, TypeScript SDK (`@adcp/client`), Python SDK (`adcp`), protocol docs |
+| **salesagent** | Reference sales agent implementation | Sales agent code, salesagent docs, deployment configs |
+| **creative-agent** | Reference creative agent | Creative workflows, standard formats, format validation |
+| **aao-server** | AgenticAdvertising.org website | Community features, membership, Addie AI assistant, member profiles |
+
+## Channel-to-Repo Mapping
+
+For Slack channels → GitHub issues:
+
+| Channel Pattern | Target Repo | Reason |
+|-----------------|-------------|--------|
+| `#salesagent-*` | salesagent | Sales agent implementation and docs |
+| `#creative-*` | creative-agent | Creative agent and formats |
+| `#adcp-dev`, `#protocol-*` | adcp | Core protocol and schemas |
+| `#general`, `#community`, `#membership` | aao-server | Community and website |
+
+## SDK Packages
+
+| Language | Package | Install |
+|----------|---------|---------|
+| JavaScript/TypeScript | `@adcp/client` | `npm install @adcp/client` |
+| Python | `adcp` | `pip install adcp` |
+
+## Protocol Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     PRINCIPALS                              │
+│            (Advertisers, Agencies, Brands)                  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ Authenticate via
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  ORCHESTRATING AGENTS                       │
+│         (AI Agents executing media buying tasks)            │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ AdCP Tasks (MCP/A2A/REST)
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    SALES AGENTS                             │
+│       (Publisher-side agents handling inventory)            │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ Platform APIs
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 AD PLATFORMS/SERVERS                        │
+│    (Google Ad Manager, TTD, Meta, etc.)                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Core AdCP Tasks
+
+| Task | Purpose | Category |
+|------|---------|----------|
+| `get_products` | Discover inventory via natural language | Discovery |
+| `list_creative_formats` | Get supported creative formats | Discovery |
+| `create_media_buy` | Purchase advertising inventory | Execution |
+| `get_media_buy` | Check campaign status | Execution |
+| `modify_media_buy` | Update running campaigns | Execution |
+| `sync_creatives` | Upload/register creative assets | Creative |
+| `discover_signals` | Find targeting signals | Signals |
+| `activate_signal` | Enable signal for targeting | Signals |
+
+## Reference Agents
+
+| Agent | URL | Purpose |
+|-------|-----|---------|
+| Test Sales Agent | `https://salesagent.adcontextprotocol.org` | Testing and examples |
+| Reference Creative Agent | `https://creative.adcontextprotocol.org` | Standard creative formats |
+
+## Schema Locations
+
+- **Base URL**: `https://adcontextprotocol.org/schemas/v2/`
+- **Core schemas**: `/schemas/v2/core/` (product, media-buy, creative, error)
+- **Task schemas**: `/schemas/v2/media-buy/` and `/schemas/v2/signals/`
+- **Enum schemas**: `/schemas/v2/enums/`
+
+## Quick Links
+
+- [AdCP Documentation](https://adcontextprotocol.org/docs)
+- [AgenticAdvertising.org](https://agenticadvertising.org)
+- [GitHub: adcontextprotocol](https://github.com/adcontextprotocol)
+- [JSON Schema Registry](https://adcontextprotocol.org/schemas/v2/index.json)
+
+---
+
+*This is a placeholder document. Content will be enhanced in future updates.*

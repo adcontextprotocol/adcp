@@ -57,6 +57,11 @@ function renderMemberCard(member, options = {}) {
     ? `<span class="publisher-badge">${publisherCount} Publisher${publisherCount > 1 ? 's' : ''}</span>`
     : '';
 
+  // Founding member badge - show if member joined before cutoff
+  const foundingBadge = member.is_founding_member
+    ? '<span class="founding-member-badge">Founding Member</span>'
+    : '';
+
   // Markets display - show regions served if available
   const markets = member.markets || [];
   const marketsHtml = markets.length > 0
@@ -73,6 +78,7 @@ function renderMemberCard(member, options = {}) {
         <div class="member-info">
           <div class="member-name-row">
             <div class="member-name">${member.display_name}</div>
+            ${foundingBadge}
             ${agentBadge}
             ${publisherBadge}
             ${visibilityBadge}
@@ -273,6 +279,18 @@ function getMemberCardStyles() {
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
+    }
+    .founding-member-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      color: #92400e;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid #fcd34d;
     }
   `;
 }

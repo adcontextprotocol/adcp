@@ -54,13 +54,24 @@ export class OutboundPlanner {
 
     // STAGE 1: Get enabled goals and filter by eligibility (rule-based, fast)
     const allGoals = await outboundDb.listGoals({ enabledOnly: true });
-    const eligible = allGoals.filter(g => this.isEligible(g, ctx));
+    let eligible = allGoals.filter(g => this.isEligible(g, ctx));
 
     if (eligible.length === 0) {
       logger.debug({
         slack_user_id: ctx.user.slack_user_id,
         total_goals: allGoals.length,
       }, 'Planner: No eligible goals');
+      return null;
+    }
+
+    // STAGE 1.5: Async eligibility checks (for goals that need database queries)
+    eligible = await this.filterAsyncEligibility(eligible, ctx);
+
+    if (eligible.length === 0) {
+      logger.debug({
+        slack_user_id: ctx.user.slack_user_id,
+        total_goals: allGoals.length,
+      }, 'Planner: No eligible goals after async checks');
       return null;
     }
 
@@ -142,7 +153,53 @@ export class OutboundPlanner {
       if (hasInsight) return false;  // Already has this insight, skip goal
     }
 
+    // Skip intro/welcome goals for highly engaged users
+    // These users are clearly already part of the community - no need to ask "what brings you here?"
+    // Any of these indicators suggests the user is already engaged:
+    if (goal.category === 'information' && goal.success_insight_type === 'initial_interest') {
+      const caps = ctx.capabilities;
+      if (caps?.is_committee_leader) return false;
+      if (caps && caps.working_group_count > 0) return false;
+      if (caps && caps.council_count > 0) return false;
+      if (caps && caps.slack_message_count_30d >= 10) return false;
+    }
+
     return true;
+  }
+
+  /**
+   * Async eligibility filter for goals that require database queries.
+   * Called after the fast synchronous isEligible check.
+   */
+  private async filterAsyncEligibility(
+    goals: OutreachGoal[],
+    ctx: PlannerContext
+  ): Promise<OutreachGoal[]> {
+    // Check if any goal needs async filtering
+    const hasDiscoverEventsGoal = goals.some(g => g.name === 'Discover Events');
+
+    if (!hasDiscoverEventsGoal) {
+      return goals; // No async checks needed
+    }
+
+    // Check if there are relevant upcoming events for this user
+    const eventCheck = await outboundDb.hasRelevantUpcomingEvents(
+      ctx.user.workos_user_id,
+      ctx.user.slack_user_id
+    );
+
+    // Filter out "Discover Events" if no relevant events exist
+    if (!eventCheck.hasRelevantEvents) {
+      logger.debug({
+        slack_user_id: ctx.user.slack_user_id,
+        eventCheck: eventCheck.details,
+        userLocation: eventCheck.userLocation,
+      }, 'Planner: Skipping "Discover Events" - no relevant events for user');
+
+      return goals.filter(g => g.name !== 'Discover Events');
+    }
+
+    return goals;
   }
 
   /**
@@ -246,7 +303,10 @@ export class OutboundPlanner {
     }
 
     // PRIORITY 4: Working group discovery (for engaged users with none)
-    if (caps && caps.account_linked && caps.working_group_count === 0 && caps.slack_message_count_30d > 5) {
+    // Skip for committee leaders - they lead working groups even if not counted as members
+    // Note: Leaders are now included in working_group_count via the query, but this explicit
+    // check is kept for clarity and defense against query changes
+    if (caps && caps.account_linked && !caps.is_committee_leader && caps.working_group_count === 0 && caps.slack_message_count_30d > 5) {
       const wgGoal = goals.find(g =>
         g.name.toLowerCase().includes('working group') && g.category === 'education'
       );
@@ -362,7 +422,7 @@ export class OutboundPlanner {
       if (caps.has_team_members) capabilityLines.push('✓ Has team members');
       else capabilityLines.push('✗ No team members added');
 
-      if (caps.is_committee_leader) capabilityLines.push('✓ Committee leader');
+      // Committee leader is now shown in Role section, not here
 
       if (caps.slack_message_count_30d > 0) {
         capabilityLines.push(`Activity: ${caps.slack_message_count_30d} Slack messages in last 30 days`);
@@ -371,19 +431,35 @@ export class OutboundPlanner {
       }
     }
 
+    // Build role/position line
+    const roleLines: string[] = [];
+    if (caps?.is_committee_leader) roleLines.push('Committee Leader');
+    if (caps && caps.council_count > 0) roleLines.push(`Council Member (${caps.council_count})`);
+    if (caps && caps.working_group_count > 0) roleLines.push(`WG Member (${caps.working_group_count})`);
+    const roleStr = roleLines.length > 0 ? roleLines.join(', ') : 'Community member';
+
+    // Filter notes from insights for separate display
+    const notes = ctx.user.insights.filter(i => i.type === 'note');
+    const otherInsights = ctx.user.insights.filter(i => i.type !== 'note');
+    const insightStr = otherInsights.length > 0
+      ? otherInsights.map(i => `${i.type}: ${i.value} (${i.confidence})`).join('\n  - ')
+      : 'Nothing yet';
+
     return `You are helping decide what capability or feature to introduce to a member of AgenticAdvertising.org.
 
 ## User Context
 - Name: ${ctx.user.display_name ?? 'Unknown'}
-- Company: ${ctx.company?.name ?? 'Unknown'} (${ctx.company?.type ?? 'unknown type'})
-- Account Status: ${ctx.user.is_mapped ? 'Linked' : 'Not linked'}
+- Company: ${ctx.company?.name ?? 'Unknown'}
+- Role in Community: ${roleStr}
+- Account Status: ${ctx.user.is_mapped ? 'Linked' : 'Not linked'}, ${ctx.user.is_member ? 'Paying member' : 'Not yet a member'}
 - Engagement Score: ${ctx.user.engagement_score}/100
 
 ## What They've Done (Capabilities)
 ${capabilityLines.length > 0 ? capabilityLines.map(l => `  ${l}`).join('\n') : '  No capability data available'}
 
 ## What We Know (Insights)
-  - ${userInsights}
+  - ${insightStr}
+${notes.length > 0 ? `\n## Notes from Channel Conversations\n${notes.map(n => `  - ${n.value}`).join('\n')}` : ''}
 
 ## Available Goals (pick ONE)
 ${goals.map((g, i) => `${i + 1}. **${g.name}** (${g.category})
