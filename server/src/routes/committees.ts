@@ -563,6 +563,39 @@ export function createCommitteeRouters(): {
     }
   });
 
+  // GET /api/admin/working-groups/:id/interest - Get users who expressed interest in a committee
+  adminApiRouter.get('/:id/interest', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const workingGroup = await workingGroupDb.getWorkingGroupById(id);
+      if (!workingGroup) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: 'The specified working group does not exist'
+        });
+      }
+
+      const pool = getPool();
+      const result = await pool.query(
+        `SELECT ci.id, ci.workos_user_id, ci.user_email, ci.user_name, ci.user_org_name,
+                ci.interest_level, ci.created_at
+         FROM committee_interest ci
+         WHERE ci.working_group_id = $1
+         ORDER BY ci.created_at DESC`,
+        [id]
+      );
+
+      res.json({ interest: result.rows });
+    } catch (error) {
+      logger.error({ err: error }, 'List committee interest error:');
+      res.status(500).json({
+        error: 'Failed to list interest records',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // POST /api/admin/working-groups/:id/sync-from-slack - Sync members from Slack channel
   adminApiRouter.post('/:id/sync-from-slack', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
