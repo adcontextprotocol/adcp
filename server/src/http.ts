@@ -6843,6 +6843,9 @@ Disallow: /api/admin/
     // Start proactive outreach job
     jobScheduler.startOutreach();
 
+    // Start account enrichment job
+    jobScheduler.startEnrichment();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,

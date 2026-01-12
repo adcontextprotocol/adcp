@@ -9,6 +9,7 @@ import { logger as baseLogger } from '../../logger.js';
 import { runDocumentIndexerJob } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
 import { runOutreachScheduler } from '../services/proactive-outreach.js';
+import { enrichMissingOrganizations } from '../../services/enrichment.js';
 
 const logger = baseLogger.child({ module: 'job-scheduler' });
 
@@ -154,6 +155,56 @@ class JobScheduler {
   }
 
   /**
+   * Start the account enrichment job
+   * Enriches accounts missing company data via Lusha API
+   * Prioritizes accounts with users over empty prospects
+   */
+  startEnrichment(): void {
+    const JOB_NAME = 'account-enrichment';
+    const INTERVAL_HOURS = 6; // Run every 6 hours
+    const INITIAL_DELAY_MS = 180000; // 3 minute delay on startup
+
+    const job: ScheduledJob = {
+      name: JOB_NAME,
+      intervalId: null,
+      initialTimeoutId: null,
+    };
+
+    // Run after a delay on startup
+    job.initialTimeoutId = setTimeout(async () => {
+      try {
+        const result = await enrichMissingOrganizations({
+          limit: 50,
+          includeEmptyProspects: true,
+        });
+        if (result.enriched > 0 || result.failed > 0) {
+          logger.info(result, 'Account enrichment: initial run completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Account enrichment: initial run failed');
+      }
+    }, INITIAL_DELAY_MS);
+
+    // Then run periodically
+    job.intervalId = setInterval(async () => {
+      try {
+        const result = await enrichMissingOrganizations({
+          limit: 50,
+          includeEmptyProspects: true,
+        });
+        if (result.enriched > 0 || result.failed > 0) {
+          logger.info(result, 'Account enrichment: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Account enrichment: job failed');
+      }
+    }, INTERVAL_HOURS * 60 * 60 * 1000);
+
+    this.jobs.set(JOB_NAME, job);
+    logger.debug({ intervalHours: INTERVAL_HOURS }, 'Account enrichment job started');
+  }
+
+  /**
    * Stop the document indexer job
    */
   stopDocumentIndexer(): void {
@@ -172,6 +223,13 @@ class JobScheduler {
    */
   stopSummaryGenerator(): void {
     this.stopJob('summary-generator');
+  }
+
+  /**
+   * Stop the account enrichment job
+   */
+  stopEnrichment(): void {
+    this.stopJob('account-enrichment');
   }
 
   /**
