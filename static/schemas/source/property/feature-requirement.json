@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/feature-requirement.json",
+  "title": "Feature Requirement",
+  "description": "A feature-based requirement for property filtering. Use min_value/max_value for quantitative features, allowed_values for binary/categorical features.",
+  "type": "object",
+  "properties": {
+    "feature_id": {
+      "type": "string",
+      "description": "Feature to evaluate (discovered via list_property_features)"
+    },
+    "min_value": {
+      "type": "number",
+      "description": "Minimum numeric value required (for quantitative features)"
+    },
+    "max_value": {
+      "type": "number",
+      "description": "Maximum numeric value allowed (for quantitative features)"
+    },
+    "allowed_values": {
+      "type": "array",
+      "description": "Values that pass the requirement (for binary/categorical features)",
+      "items": {}
+    },
+    "if_not_covered": {
+      "type": "string",
+      "enum": ["exclude", "include"],
+      "default": "exclude",
+      "description": "How to handle properties where this feature is not covered. 'exclude' (default): property is removed from the list. 'include': property passes this requirement (fail-open)."
+    }
+  },
+  "required": ["feature_id"],
+  "additionalProperties": false
+}

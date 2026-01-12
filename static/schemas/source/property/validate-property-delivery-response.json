@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/property/validate-property-delivery-response.json",
+  "title": "Validate Property Delivery Response",
+  "description": "Response payload for validate_property_delivery task. Returns aggregate compliance statistics and per-record validation results.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list validated against"
+    },
+    "summary": {
+      "type": "object",
+      "description": "Aggregate validation statistics",
+      "properties": {
+        "total_records": {
+          "type": "integer",
+          "description": "Total number of records validated"
+        },
+        "total_impressions": {
+          "type": "integer",
+          "description": "Total impressions across all records"
+        },
+        "compliant_records": {
+          "type": "integer",
+          "description": "Number of records with compliant status"
+        },
+        "compliant_impressions": {
+          "type": "integer",
+          "description": "Impressions from compliant records"
+        },
+        "non_compliant_records": {
+          "type": "integer",
+          "description": "Number of records with non_compliant status"
+        },
+        "non_compliant_impressions": {
+          "type": "integer",
+          "description": "Impressions from non_compliant records"
+        },
+        "not_covered_records": {
+          "type": "integer",
+          "description": "Number of records where identifier was recognized but no data available"
+        },
+        "not_covered_impressions": {
+          "type": "integer",
+          "description": "Impressions from not_covered records"
+        },
+        "unidentified_records": {
+          "type": "integer",
+          "description": "Number of records where identifier type was not resolvable"
+        },
+        "unidentified_impressions": {
+          "type": "integer",
+          "description": "Impressions from unidentified records"
+        }
+      },
+      "required": [
+        "total_records",
+        "total_impressions",
+        "compliant_records",
+        "compliant_impressions",
+        "non_compliant_records",
+        "non_compliant_impressions",
+        "not_covered_records",
+        "not_covered_impressions",
+        "unidentified_records",
+        "unidentified_impressions"
+      ],
+      "additionalProperties": false
+    },
+    "aggregate": {
+      "type": "object",
+      "description": "Optional aggregate measurements computed by the governance agent. Format and meaning are agent-specific.",
+      "properties": {
+        "score": {
+          "type": "number",
+          "description": "Numeric score (0-100 scale typical, but agent-defined)"
+        },
+        "grade": {
+          "type": "string",
+          "description": "Letter grade or category (e.g., 'A+', 'B-', 'Gold', 'Compliant')"
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable summary (e.g., '85% compliant', 'High quality')"
+        },
+        "methodology_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL explaining how this aggregate was calculated"
+        }
+      },
+      "additionalProperties": true
+    },
+    "authorization_summary": {
+      "type": "object",
+      "description": "Aggregate authorization statistics. Only present if any records included sales_agent_url.",
+      "properties": {
+        "records_checked": {
+          "type": "integer",
+          "description": "Number of records with sales_agent_url provided"
+        },
+        "impressions_checked": {
+          "type": "integer",
+          "description": "Total impressions from records with sales_agent_url"
+        },
+        "authorized_records": {
+          "type": "integer",
+          "description": "Number of records where sales agent was authorized"
+        },
+        "authorized_impressions": {
+          "type": "integer",
+          "description": "Impressions from authorized records"
+        },
+        "unauthorized_records": {
+          "type": "integer",
+          "description": "Number of records where sales agent was NOT authorized"
+        },
+        "unauthorized_impressions": {
+          "type": "integer",
+          "description": "Impressions from unauthorized records"
+        },
+        "unknown_records": {
+          "type": "integer",
+          "description": "Number of records where authorization could not be determined (adagents.json unavailable)"
+        },
+        "unknown_impressions": {
+          "type": "integer",
+          "description": "Impressions from records where authorization could not be determined"
+        }
+      },
+      "required": [
+        "records_checked",
+        "impressions_checked",
+        "authorized_records",
+        "authorized_impressions",
+        "unauthorized_records",
+        "unauthorized_impressions",
+        "unknown_records",
+        "unknown_impressions"
+      ],
+      "additionalProperties": false
+    },
+    "results": {
+      "type": "array",
+      "description": "Per-record validation results. By default only includes non_compliant and unknown records. Set include_compliant=true to include all records.",
+      "items": {
+        "$ref": "/schemas/property/validation-result.json"
+      }
+    },
+    "validated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when validation was performed"
+    },
+    "list_resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the property list resolution used for validation"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["list_id", "summary", "results", "validated_at"],
+  "additionalProperties": false
+}
