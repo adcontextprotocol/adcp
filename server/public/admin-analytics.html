@@ -196,6 +196,36 @@
       border-radius: 8px;
       margin-bottom: 20px;
     }
+
+    .section-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 16px;
+    }
+
+    .btn-secondary {
+      background-color: var(--color-gray-100);
+      color: var(--color-text-heading);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--color-gray-200);
+    }
+
+    .table-container {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .totals-row {
+      font-weight: 600;
+      background-color: var(--color-bg-subtle);
+    }
+
+    .text-right {
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -272,6 +302,63 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+
+      <!-- Membership Metrics by Company Type -->
+      <div class="section">
+        <h2>Membership by Company Type</h2>
+        <div class="section-actions">
+          <button class="btn btn-secondary" onclick="downloadMembershipCSV()">Export CSV</button>
+        </div>
+        <table id="company-type-table">
+          <thead>
+            <tr>
+              <th>Company Type</th>
+              <th>Total Orgs</th>
+              <th>Paying</th>
+              <th>Subscribed</th>
+              <th>ARR</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Membership Metrics by Revenue Tier -->
+      <div class="section">
+        <h2>Membership by Revenue Tier</h2>
+        <table id="revenue-tier-table">
+          <thead>
+            <tr>
+              <th>Revenue Tier</th>
+              <th>Total Orgs</th>
+              <th>Paying</th>
+              <th>Subscribed</th>
+              <th>ARR</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Full Matrix -->
+      <div class="section">
+        <h2>Full Breakdown (Company Type × Revenue Tier)</h2>
+        <div class="table-container">
+          <table id="matrix-table">
+            <thead>
+              <tr>
+                <th>Company Type</th>
+                <th>Revenue Tier</th>
+                <th>Total Orgs</th>
+                <th>Paying</th>
+                <th>Subscribed</th>
+                <th>ARR</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -399,8 +486,120 @@
       }
     }
 
+    // Escape HTML to prevent XSS
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    async function loadMembershipMetrics() {
+      try {
+        const response = await fetch('/api/admin/membership-metrics');
+        if (!response.ok) {
+          throw new Error('Failed to load membership metrics');
+        }
+
+        const data = await response.json();
+
+        // Populate company type table
+        const companyTypeTable = document.getElementById('company-type-table').querySelector('tbody');
+        if (data.by_company_type && data.by_company_type.length > 0) {
+          const rows = data.by_company_type.map(row => `
+            <tr>
+              <td>${escapeHtml(row.label)}</td>
+              <td class="text-right">${row.total_orgs}</td>
+              <td class="text-right">${row.paying_members}</td>
+              <td class="text-right">${row.subscribed}</td>
+              <td class="text-right">${formatCurrency(row.arr_dollars)}</td>
+            </tr>
+          `).join('');
+
+          // Add totals row (excluding individuals which are separate)
+          const totals = data.by_company_type.reduce((acc, row) => ({
+            total_orgs: acc.total_orgs + row.total_orgs,
+            paying_members: acc.paying_members + row.paying_members,
+            subscribed: acc.subscribed + row.subscribed,
+            arr_dollars: acc.arr_dollars + row.arr_dollars,
+          }), { total_orgs: 0, paying_members: 0, subscribed: 0, arr_dollars: 0 });
+
+          companyTypeTable.innerHTML = rows + `
+            <tr class="totals-row">
+              <td>Subtotal (Companies)</td>
+              <td class="text-right">${totals.total_orgs}</td>
+              <td class="text-right">${totals.paying_members}</td>
+              <td class="text-right">${totals.subscribed}</td>
+              <td class="text-right">${formatCurrency(totals.arr_dollars)}</td>
+            </tr>
+            <tr>
+              <td>Individuals</td>
+              <td class="text-right">${data.individuals.total_orgs}</td>
+              <td class="text-right">${data.individuals.paying_members}</td>
+              <td class="text-right">${data.individuals.subscribed}</td>
+              <td class="text-right">${formatCurrency(data.individuals.arr_dollars)}</td>
+            </tr>
+            <tr class="totals-row">
+              <td><strong>Total</strong></td>
+              <td class="text-right"><strong>${data.totals.total_orgs}</strong></td>
+              <td class="text-right"><strong>${data.totals.paying_members}</strong></td>
+              <td class="text-right"><strong>${data.totals.subscribed}</strong></td>
+              <td class="text-right"><strong>${formatCurrency(data.totals.arr_dollars)}</strong></td>
+            </tr>
+          `;
+        } else {
+          companyTypeTable.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--color-text-secondary);">No data available</td></tr>';
+        }
+
+        // Populate revenue tier table
+        const revenueTierTable = document.getElementById('revenue-tier-table').querySelector('tbody');
+        if (data.by_revenue_tier && data.by_revenue_tier.length > 0) {
+          revenueTierTable.innerHTML = data.by_revenue_tier.map(row => `
+            <tr>
+              <td>${escapeHtml(row.label)}</td>
+              <td class="text-right">${row.total_orgs}</td>
+              <td class="text-right">${row.paying_members}</td>
+              <td class="text-right">${row.subscribed}</td>
+              <td class="text-right">${formatCurrency(row.arr_dollars)}</td>
+            </tr>
+          `).join('');
+        } else {
+          revenueTierTable.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--color-text-secondary);">No data available</td></tr>';
+        }
+
+        // Populate matrix table
+        const matrixTable = document.getElementById('matrix-table').querySelector('tbody');
+        if (data.matrix && data.matrix.length > 0) {
+          matrixTable.innerHTML = data.matrix.map(row => `
+            <tr>
+              <td>${escapeHtml(row.company_type_label)}</td>
+              <td>${escapeHtml(row.revenue_tier_label)}</td>
+              <td class="text-right">${row.total_orgs}</td>
+              <td class="text-right">${row.paying_members}</td>
+              <td class="text-right">${row.subscribed}</td>
+              <td class="text-right">${formatCurrency(row.arr_dollars)}</td>
+            </tr>
+          `).join('');
+        } else {
+          matrixTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary);">No data available</td></tr>';
+        }
+      } catch (error) {
+        console.error('Error loading membership metrics:', error);
+        // Show error state in all membership tables
+        const errorHtml = '<tr><td colspan="5" style="text-align: center; color: var(--color-error-500);">Error loading data</td></tr>';
+        const matrixErrorHtml = '<tr><td colspan="6" style="text-align: center; color: var(--color-error-500);">Error loading data</td></tr>';
+        document.getElementById('company-type-table').querySelector('tbody').innerHTML = errorHtml;
+        document.getElementById('revenue-tier-table').querySelector('tbody').innerHTML = errorHtml;
+        document.getElementById('matrix-table').querySelector('tbody').innerHTML = matrixErrorHtml;
+      }
+    }
+
+    function downloadMembershipCSV() {
+      window.location.href = '/api/admin/membership-metrics/csv';
+    }
+
     // Load analytics on page load
     loadAnalytics();
+    loadMembershipMetrics();
   </script>
 </body>
 </html>
