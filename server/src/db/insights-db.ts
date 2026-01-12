@@ -739,7 +739,11 @@ export class InsightsDatabase {
     const result = await query<OutreachVariant>(
       `SELECT * FROM outreach_variants ${whereClause} ORDER BY name`
     );
-    return result.rows;
+    return result.rows.map(row => ({
+      ...row,
+      id: Number(row.id),
+      weight: Number(row.weight),
+    }));
   }
 
   /**
@@ -804,6 +808,7 @@ export class InsightsDatabase {
     );
     return result.rows.map(row => ({
       ...row,
+      variant_id: Number(row.variant_id),
       total_sent: Number(row.total_sent),
       total_responded: Number(row.total_responded),
       total_insights: Number(row.total_insights),
