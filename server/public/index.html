@@ -349,6 +349,66 @@
       justify-content: center;
     }
   }
+
+  /* Three Pillars Section */
+  .pillarsSection_AdCP {
+    padding: 4rem 0;
+    background: white;
+  }
+  .pillarsGrid_AdCP {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+  .pillarCard_AdCP {
+    background: var(--ifm-color-emphasis-50, #f9fafb);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+  }
+  .pillarCard_AdCP:hover {
+    border-color: var(--color-brand, #1a36b4);
+    box-shadow: 0 4px 20px rgba(26, 54, 180, 0.1);
+  }
+  .pillarIcon_AdCP {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+  }
+  .pillarCard_AdCP h3 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+    color: var(--ifm-heading-color);
+  }
+  .pillarTagline_AdCP {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-brand, #1a36b4);
+    margin-bottom: 0.75rem;
+    line-height: 1.4;
+  }
+  .pillarCard_AdCP p {
+    font-size: 0.95rem;
+    color: var(--ifm-color-emphasis-700);
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+  .pillarLink_AdCP {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-brand, #1a36b4);
+    text-decoration: none;
+  }
+  .pillarLink_AdCP:hover {
+    text-decoration: underline;
+  }
+  @media (max-width: 900px) {
+    .pillarsGrid_AdCP {
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+  }
 </style>
 
 </head>
@@ -368,12 +428,12 @@
       <div class="container">
         <div class="row">
           <div class="col col--8 col--offset-2">
-            <h1 class="heroTitle_qg2I">AdCP: The Open Standard for Agentic Advertising</h1>
-            <p class="heroSubtitle_jFu1">From brief to buy, helping agents advertise anywhere: from CTV to chat, from tiny blog to the World Cup.</p>
+            <h1 class="heroTitle_qg2I">The open standard for agentic advertising</h1>
+            <p class="heroSubtitle_jFu1">One protocol for AI agents to buy media, build creatives, and activate audiences across any platform.</p>
             <div class="buttons_AeoN">
-              <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">Start Building</a>
-              <a href="/chat.html?prompt=Try%20AdCP%20with%20a%20test%20agent" class="button button--secondary button--lg margin-right--md">Test with Addie</a>
-              <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">View on GitHub</a>
+              <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">Read the Docs</a>
+              <a href="/chat.html" class="button button--secondary button--lg margin-right--md">Talk to Addie</a>
+              <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">GitHub</a>
             </div>
           </div>
         </div>
@@ -381,62 +441,32 @@
     </header>
 
     <main>
-      <!-- Release Banner -->
-      <div class="releaseBanner_qgG2">
-        <div class="container">
-          <div class="releaseBannerContent_dZLA">
-            <span class="releaseTag_YUts">v2.5.0 Released</span>
-            <span class="releaseText_vBj7">Developer experience and API refinement: type safety, batch previews (5-10x faster), schema versioning, and more!</span>
-            <a href="https://docs.adcontextprotocol.org/docs/reference/release-notes#version-250" target="_blank" rel="noopener noreferrer" class="releaseLink_cLn6">Read the release notes →</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Go Agentic Section -->
-      <section class="goAgenticSection_AdCP">
+      <!-- Three Pillars Section -->
+      <section class="pillarsSection_AdCP">
         <div class="container">
           <div class="row">
             <div class="col col--10 col--offset-1">
-              <div class="goAgenticCard_AdCP">
-                <h3>Go Agentic</h3>
-                <p class="subtitle">Tell Addie what you're looking for. She'll help you find the right partners and resources.</p>
-                <div class="promptHints_AdCP">
-                  <a href="/chat?prompt=Help%20me%20build%20a%20buyer%20agent%20for%20my%20campaigns" class="promptHint_AdCP">Build a buyer agent for my campaigns</a>
-                  <a href="/chat?prompt=Find%20someone%20to%20run%20a%20sales%20agent%20for%20my%20publisher%20inventory" class="promptHint_AdCP">Find a sales agent for my inventory</a>
-                  <a href="/chat?prompt=Help%20me%20set%20up%20adagents.json%20for%20my%20site" class="promptHint_AdCP">Set up adagents.json for my site</a>
-                  <a href="/chat?prompt=What%20can%20I%20do%20with%20AdCP%3F" class="promptHint_AdCP">What can I do with AdCP?</a>
+              <div class="pillarsGrid_AdCP">
+                <div class="pillarCard_AdCP">
+                  <div class="pillarIcon_AdCP">📺</div>
+                  <h3>For Platforms</h3>
+                  <p class="pillarTagline_AdCP">AI is buying ads. Make sure it can buy yours.</p>
+                  <p>Agents are allocating billions in media spend. AdCP makes your inventory accessible without commoditizing it.</p>
+                  <a href="https://docs.adcontextprotocol.org/docs/media-buy/overview" class="pillarLink_AdCP">Implement AdCP →</a>
                 </div>
-                <p class="goAgenticFooter_AdCP">Or <a href="/members">browse all members</a> to see what's possible</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Problem Section -->
-      <section class="problemSection_YnFw">
-        <div class="container">
-          <div class="row">
-            <div class="col col--10 col--offset-1">
-              <div class="problemContent_hJvu">
-                <h2 class="sectionTitle_Ut5p">Why we built AdCP</h2>
-                <p class="problemIntro_r3cU">The advertising ecosystem is fragmented. Every platform has its own API, its own workflow, its own reporting format. Media buyers and agencies waste countless hours navigating this complexity.</p>
-                <div class="problemGrid_Hidr">
-                  <div class="problemCard_DbFu">
-                    <h3>The Integration Problem</h3>
-                    <p>Each new platform requires custom integration work. APIs change, documentation varies, and maintenance never ends. Teams spend more time on plumbing than on strategy.</p>
-                  </div>
-                  <div class="problemCard_DbFu">
-                    <h3>The Discovery Problem</h3>
-                    <p>Inventory is scattered across platforms with different taxonomies and targeting options. Finding the right audiences means learning multiple systems and manually comparing options.</p>
-                  </div>
-                  <div class="problemCard_DbFu">
-                    <h3>The Automation Problem</h3>
-                    <p>AI agents and automation tools can&#x27;t easily interact with advertising platforms. Each integration is bespoke, limiting the potential of AI-powered workflows.</p>
-                  </div>
+                <div class="pillarCard_AdCP">
+                  <div class="pillarIcon_AdCP">📈</div>
+                  <h3>For Brands</h3>
+                  <p class="pillarTagline_AdCP">AI that sells products and builds brands.</p>
+                  <p>Not just impressions. AdCP enables automation that reasons about outcomes, audiences, and long-term value.</p>
+                  <a href="/chat.html" class="pillarLink_AdCP">Talk to Addie →</a>
                 </div>
-                <div class="visionStatement_hIxH">
-                  <p><strong>We believe there&#x27;s a better way.</strong> A single protocol that any platform can implement and any tool can use. An open standard that makes advertising technology work together, not against each other.</p>
+                <div class="pillarCard_AdCP">
+                  <div class="pillarIcon_AdCP">🔧</div>
+                  <h3>For Builders</h3>
+                  <p class="pillarTagline_AdCP">RTB unlocked programmatic. AdCP unlocks the rest.</p>
+                  <p>90% of ad spend never touches RTB. Build agents that access inventory walled gardens actually want to sell.</p>
+                  <a href="https://docs.adcontextprotocol.org" class="pillarLink_AdCP">Start building →</a>
                 </div>
               </div>
             </div>
@@ -470,13 +500,24 @@
         </div>
       </section>
 
+      <!-- Release Banner -->
+      <div class="releaseBanner_qgG2">
+        <div class="container">
+          <div class="releaseBannerContent_dZLA">
+            <span class="releaseTag_YUts">v2.5.0</span>
+            <span class="releaseText_vBj7">Type safety, batch previews, schema versioning</span>
+            <a href="https://docs.adcontextprotocol.org/docs/reference/release-notes" target="_blank" rel="noopener noreferrer" class="releaseLink_cLn6">Release notes →</a>
+          </div>
+        </div>
+      </div>
+
       <!-- Solution Section -->
       <section class="solutionSection_rMlo">
         <div class="container">
           <div class="row">
             <div class="col col--10 col--offset-1">
-              <h2 class="sectionTitle_Ut5p">One protocol. Every platform. Total control.</h2>
-              <p class="sectionSubtitle_AZuW">AdCP is the open standard that unifies advertising workflows across all platforms.<br>Think of it as the USB-C of advertising technology.</p>
+              <h2 class="sectionTitle_Ut5p">One protocol. Every platform.</h2>
+              <p class="sectionSubtitle_AZuW">Stop building custom integrations. Start building agents.</p>
               <div class="comparisonTable_c0Gw">
                 <div class="comparisonColumn_kYrh">
                   <h3>Before AdCP</h3>
@@ -522,8 +563,8 @@
         <div class="container">
           <div class="row">
             <div class="col col--10 col--offset-1">
-              <h2 class="sectionTitle_Ut5p">Everything you need, production-ready</h2>
-              <p class="sectionSubtitle_AZuW">AdCP v2.5.0 includes a complete suite of capabilities for modern advertising workflows.</p>
+              <h2 class="sectionTitle_Ut5p">Three protocols. Complete coverage.</h2>
+              <p class="sectionSubtitle_AZuW">Media buying, creative generation, and audience activation.</p>
               <div class="featureGrid_hfN5">
                 <div class="featureCard_Jbd_">
                   <h3>🛒 <a href="https://docs.adcontextprotocol.org/docs/media-buy/overview" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">Media Buy Protocol</a></h3>
@@ -576,8 +617,8 @@
         <div class="container">
           <div class="row">
             <div class="col col--10 col--offset-1">
-              <h2 class="sectionTitle_Ut5p">How AdCP works</h2>
-              <p class="sectionSubtitle_AZuW">AdCP works over MCP and A2A protocols, providing a unified interface for advertising operations across any platform.</p>
+              <h2 class="sectionTitle_Ut5p">How it works</h2>
+              <p class="sectionSubtitle_AZuW">Natural language in. Campaigns out.</p>
               <div class="workflowSteps_gwt9">
                 <div class="step_BHwS">
                   <div class="stepNumber_rxuX">1</div>
@@ -622,33 +663,31 @@
         <div class="container">
           <div class="row">
             <div class="col col--10 col--offset-1">
-              <h2 class="sectionTitle_Ut5p">Ready to join the revolution?</h2>
-              <p class="sectionSubtitle_AZuW">Whether you&#x27;re a platform provider or an advertiser, AdCP is your path to the future of advertising.</p>
+              <h2 class="sectionTitle_Ut5p">Get started</h2>
+              <p class="sectionSubtitle_AZuW">Open source. MIT licensed. Ready for production.</p>
               <div class="audienceCards_Jy9D">
                 <div class="audienceCard_fWZI">
-                  <h3>Platform Providers</h3>
-                  <p class="audienceDescription_DkBw">Make your inventory accessible to every AI assistant and automation platform.</p>
+                  <h3>Implement AdCP</h3>
+                  <p class="audienceDescription_DkBw">Add AdCP to your platform or build an agent.</p>
                   <ul class="audienceList_msXI">
-                    <li>Enable AI-powered workflows for your inventory</li>
-                    <li>Simplify integration with a standard protocol</li>
-                    <li>Reach new customers through automation platforms</li>
+                    <li>Full protocol specification</li>
+                    <li>Reference implementations</li>
+                    <li>JSON Schema validation</li>
                   </ul>
                   <div class="audienceAction_gTR6">
-                    <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">Explore the Spec</a>
-                    <p class="actionSubtext_sz5i">Open source • MIT licensed</p>
+                    <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">Read the Docs</a>
                   </div>
                 </div>
                 <div class="audienceCard_fWZI">
-                  <h3>Advertisers &amp; Agencies</h3>
-                  <p class="audienceDescription_DkBw">Start using natural language to manage campaigns across all platforms.</p>
+                  <h3>Join the community</h3>
+                  <p class="audienceDescription_DkBw">Shape the future of agentic advertising.</p>
                   <ul class="audienceList_msXI">
-                    <li>Manage campaigns with natural language</li>
-                    <li>Access unified analytics across platforms</li>
-                    <li>Build on open standards, avoid vendor lock-in</li>
+                    <li>Working groups and governance</li>
+                    <li>Slack community</li>
+                    <li>GitHub discussions</li>
                   </ul>
                   <div class="audienceAction_gTR6">
-                    <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg">Start Building Today</a>
-                    <p class="actionSubtext_sz5i">Documentation &amp; guides</p>
+                    <a href="/membership" class="button button--primary button--lg">Become a Member</a>
                   </div>
                 </div>
               </div>
@@ -662,25 +701,11 @@
         <div class="container">
           <div class="row">
             <div class="col col--8 col--offset-2 text--center">
-              <h2 class="sectionTitle_Ut5p">Join the conversation</h2>
-              <p class="communityDescription_YESH">AdCP is an open standard developed in collaboration with the advertising community. We&#x27;re building this together, and your input matters.</p>
-              <div class="communityFeatures_N643">
-                <div class="communityFeature_n6x3">
-                  <h3>Open Development</h3>
-                  <p>All development happens in the open on GitHub. Watch progress, submit issues, and contribute code.</p>
-                </div>
-                <div class="communityFeature_n6x3">
-                  <h3>Working Group</h3>
-                  <p>Join monthly meetings to discuss protocol evolution, implementation challenges, and future directions.</p>
-                </div>
-                <div class="communityFeature_n6x3">
-                  <h3>Implementation Support</h3>
-                  <p>Get help implementing AdCP for your platform or building tools that use the protocol.</p>
-                </div>
-              </div>
+              <h2 class="sectionTitle_Ut5p">Built in the open</h2>
+              <p class="communityDescription_YESH">AdCP is developed collaboratively on GitHub. Star the repo, join the Slack, shape the standard.</p>
               <div class="communityActions_BVMn">
-                <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">Star on GitHub</a>
-                <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">Join Slack Community</a>
+                <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">GitHub</a>
+                <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">Slack</a>
               </div>
             </div>
           </div>
