@@ -12,8 +12,26 @@
  */
 
 const ThreadWidget = (function() {
-  // Cache for loaded threads
+  // Cache for loaded threads with LRU eviction
   const threadCache = new Map();
+  const MAX_CACHE_SIZE = 50;
+
+  // Valid channel types for sanitization
+  const VALID_CHANNELS = ['slack', 'web', 'a2a', 'email'];
+
+  /**
+   * Validate UUID format
+   */
+  function isValidUUID(str) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  }
+
+  /**
+   * Validate container ID format (alphanumeric, hyphens, underscores)
+   */
+  function isValidContainerId(str) {
+    return /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(str);
+  }
 
   /**
    * Escape HTML to prevent XSS
@@ -97,10 +115,16 @@ const ThreadWidget = (function() {
   function renderHeader(thread, options = {}) {
     if (options.hideHeader) return '';
 
-    const channelBadge = thread.channel ?
-      `<span class="tw-badge tw-badge-${thread.channel}">${thread.channel}</span>` : '';
+    // Sanitize channel - only allow known values
+    const safeChannel = VALID_CHANNELS.includes(thread.channel) ? thread.channel : null;
+    const channelBadge = safeChannel ?
+      `<span class="tw-badge tw-badge-${safeChannel}">${safeChannel}</span>` : '';
 
     const messageCount = thread.message_count || (thread.messages ? thread.messages.length : 0);
+
+    // Validate and encode thread_id for URL
+    const threadLink = (options.showFullLink && thread.thread_id && isValidUUID(thread.thread_id)) ?
+      `<a href="/admin/addie?thread=${encodeURIComponent(thread.thread_id)}" class="tw-full-link" target="_blank">View full →</a>` : '';
 
     return `
       <div class="tw-header">
@@ -110,7 +134,7 @@ const ThreadWidget = (function() {
         </div>
         <div class="tw-header-right">
           <span class="tw-date">${formatRelativeTime(thread.last_message_at || thread.started_at)}</span>
-          ${options.showFullLink ? `<a href="/admin/addie?thread=${thread.thread_id}" class="tw-full-link" target="_blank">View full →</a>` : ''}
+          ${threadLink}
         </div>
       </div>
     `;
@@ -155,17 +179,29 @@ const ThreadWidget = (function() {
    * Fetch thread data from API
    */
   async function fetchThread(threadId) {
+    // Validate threadId format
+    if (!isValidUUID(threadId)) {
+      throw new Error('Invalid thread ID format');
+    }
+
     // Check cache first
     if (threadCache.has(threadId)) {
       return threadCache.get(threadId);
     }
 
-    const response = await fetch(`/api/admin/addie/threads/${threadId}`);
+    const response = await fetch(`/api/admin/addie/threads/${encodeURIComponent(threadId)}`);
     if (!response.ok) {
       throw new Error(`Failed to load thread: ${response.status}`);
     }
 
     const data = await response.json();
+
+    // LRU eviction if at capacity
+    if (threadCache.size >= MAX_CACHE_SIZE) {
+      const firstKey = threadCache.keys().next().value;
+      threadCache.delete(firstKey);
+    }
+
     threadCache.set(threadId, data);
     return data;
   }
@@ -258,6 +294,12 @@ const ThreadWidget = (function() {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // Validate inputs to prevent XSS
+    if (!isValidContainerId(containerId) || !isValidUUID(threadId)) {
+      console.error('ThreadWidget: Invalid containerId or threadId');
+      return;
+    }
+
     container.classList.add('tw-expandable-container');
     container.innerHTML = `
       <button class="tw-expand-btn" onclick="ThreadWidget.toggleExpand('${containerId}', '${threadId}')">
@@ -272,20 +314,32 @@ const ThreadWidget = (function() {
    * Toggle expandable thread view
    */
   function toggleExpand(containerId, threadId) {
+    // Validate inputs
+    if (!isValidContainerId(containerId) || !isValidUUID(threadId)) {
+      console.error('ThreadWidget: Invalid containerId or threadId');
+      return;
+    }
+
     const content = document.getElementById(`${containerId}-content`);
     const btn = document.querySelector(`#${containerId} .tw-expand-btn`);
+
+    if (!content || !btn) {
+      console.error('ThreadWidget: Required elements not found for', containerId);
+      return;
+    }
+
     const icon = btn.querySelector('.tw-expand-icon');
 
     if (content.style.display === 'none') {
       content.style.display = 'block';
-      icon.textContent = '▼';
+      if (icon) icon.textContent = '▼';
       // Load thread if not already loaded
       if (!content.hasChildNodes() || content.innerHTML.includes('tw-loading')) {
         render(`${containerId}-content`, threadId, { compact: true, showFullLink: true });
       }
     } else {
       content.style.display = 'none';
-      icon.textContent = '▶';
+      if (icon) icon.textContent = '▶';
     }
   }
 

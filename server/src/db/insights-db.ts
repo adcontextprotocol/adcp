@@ -711,6 +711,17 @@ export class InsightsDatabase {
   // ============== Outreach Variants ==============
 
   /**
+   * Convert PostgreSQL BigInt fields to JavaScript Number
+   */
+  private normalizeVariant(row: OutreachVariant): OutreachVariant {
+    return {
+      ...row,
+      id: Number(row.id),
+      weight: Number(row.weight),
+    };
+  }
+
+  /**
    * Create a new outreach variant
    */
   async createVariant(input: CreateVariantInput): Promise<OutreachVariant> {
@@ -728,7 +739,7 @@ export class InsightsDatabase {
         input.weight ?? 100,
       ]
     );
-    return result.rows[0];
+    return this.normalizeVariant(result.rows[0]);
   }
 
   /**
@@ -739,11 +750,7 @@ export class InsightsDatabase {
     const result = await query<OutreachVariant>(
       `SELECT * FROM outreach_variants ${whereClause} ORDER BY name`
     );
-    return result.rows.map(row => ({
-      ...row,
-      id: Number(row.id),
-      weight: Number(row.weight),
-    }));
+    return result.rows.map(row => this.normalizeVariant(row));
   }
 
   /**
@@ -754,7 +761,7 @@ export class InsightsDatabase {
       'SELECT * FROM outreach_variants WHERE id = $1',
       [id]
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? this.normalizeVariant(result.rows[0]) : null;
   }
 
   /**
@@ -788,7 +795,7 @@ export class InsightsDatabase {
       `UPDATE outreach_variants SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? this.normalizeVariant(result.rows[0]) : null;
   }
 
   /**
@@ -1028,6 +1035,11 @@ export class InsightsDatabase {
    * Called when a user responds to outreach and a thread is created
    */
   async linkOutreachToThread(outreachId: number, threadId: string): Promise<void> {
+    // Validate UUID format for data integrity
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(threadId)) {
+      throw new Error('Invalid thread ID format');
+    }
     await query(
       `UPDATE member_outreach SET thread_id = $2 WHERE id = $1`,
       [outreachId, threadId]

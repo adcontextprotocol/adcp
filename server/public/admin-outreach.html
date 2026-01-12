@@ -687,7 +687,7 @@
           </td>
           <td>
             ${threadContainerId ?
-              `<div id="${threadContainerId}" data-thread-id="${item.thread_id}"></div>` :
+              `<div id="${threadContainerId}" data-thread-id="${escapeHtml(item.thread_id)}"></div>` :
               '<span style="color: var(--color-text-muted);">—</span>'
             }
           </td>
