@@ -45,6 +45,10 @@ import {
   DIRECTORY_TOOLS,
   createDirectoryToolHandlers,
 } from './mcp/directory-tools.js';
+import {
+  MEETING_TOOLS,
+  createMeetingToolHandlers,
+} from './mcp/meeting-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -265,6 +269,14 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Event tools enabled for this user');
+
+    // Add meeting tools (same permission as event tools)
+    const meetingHandlers = createMeetingToolHandlers(memberContext, slackUserId);
+    allTools.push(...MEETING_TOOLS);
+    for (const [name, handler] of meetingHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Meeting tools enabled for this user');
   }
 
   // Override bookmark_resource handler with user-scoped version (for attribution)

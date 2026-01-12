@@ -59,6 +59,7 @@ import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
+import { createMeetingRouters } from "./routes/meetings.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
@@ -3204,6 +3205,19 @@ export class HTTPServer {
     this.app.use('/api/me/content', createMyContentRouter());
 
     // ========================================
+    // Meeting Routes
+    // ========================================
+
+    const {
+      adminApiRouter: meetingsAdminRouter,
+      publicApiRouter: meetingsPublicRouter,
+      userApiRouter: meetingsUserRouter
+    } = createMeetingRouters();
+    this.app.use('/api/admin/meetings', meetingsAdminRouter);
+    this.app.use('/api/meetings', meetingsPublicRouter);
+    this.app.use('/api/me/meetings', meetingsUserRouter);
+
+    // ========================================
     // SEO Routes (sitemap.xml, robots.txt)
     // ========================================
 
@@ -3476,6 +3490,10 @@ Disallow: /api/admin/
 
     this.app.get('/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-working-groups.html');
+    });
+
+    this.app.get('/admin/meetings', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-meetings.html');
     });
 
     this.app.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {

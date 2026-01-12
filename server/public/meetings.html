@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meetings | AgenticAdvertising.org</title>
+  <meta name="description" content="Upcoming working group meetings and calls from AgenticAdvertising.org. Join our committees to shape the future of AI-powered advertising.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://agenticadvertising.org/meetings">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/meetings">
+  <meta property="og:title" content="Meetings | AgenticAdvertising.org">
+  <meta property="og:description" content="Upcoming working group meetings and calls from AgenticAdvertising.org.">
+  <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://agenticadvertising.org/meetings">
+  <meta name="twitter:title" content="Meetings | AgenticAdvertising.org">
+  <meta name="twitter:description" content="Upcoming working group meetings and calls from AgenticAdvertising.org.">
+  <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <style>
+    body { padding-top: 60px; background: var(--color-bg-page); }
+
+    .meetings-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .page-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      margin-bottom: 0.75rem;
+    }
+
+    .page-header p {
+      font-size: 1.1rem;
+      color: var(--color-text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .filter-bar select {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      cursor: pointer;
+    }
+
+    .filter-bar select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    .meetings-section {
+      margin-bottom: 3rem;
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid var(--color-brand);
+      display: inline-block;
+    }
+
+    .meetings-grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .meeting-card {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.15s, box-shadow 0.15s;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .meeting-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .meeting-date-box {
+      background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
+      color: white;
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      text-align: center;
+      min-width: 70px;
+    }
+
+    .meeting-date-box .month {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.9;
+    }
+
+    .meeting-date-box .day {
+      font-size: 1.75rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .meeting-date-box .time {
+      font-size: 0.75rem;
+      opacity: 0.9;
+      margin-top: 0.25rem;
+    }
+
+    .meeting-content {
+      min-width: 0;
+    }
+
+    .meeting-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--color-brand);
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .meeting-group a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .meeting-group a:hover {
+      text-decoration: underline;
+    }
+
+    .meeting-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .meeting-description {
+      font-size: 0.9rem;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: 0.75rem;
+    }
+
+    .meeting-meta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .meeting-meta-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--color-text-muted);
+    }
+
+    .meeting-meta-item svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .meeting-topics {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .topic-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.6rem;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+
+    .meeting-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+
+    .rsvp-count {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      text-align: right;
+    }
+
+    .rsvp-count strong {
+      color: var(--color-text-secondary);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-secondary);
+      color: var(--color-text-heading);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    .btn-success {
+      background: var(--color-success-600);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: var(--color-success-700);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    .empty-state h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 0.5rem;
+    }
+
+    .my-meetings-section {
+      background: var(--color-primary-50);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .my-meetings-section .section-title {
+      color: var(--color-brand);
+    }
+
+    .login-prompt {
+      text-align: center;
+      padding: 2rem;
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      margin-bottom: 2rem;
+    }
+
+    .login-prompt p {
+      color: var(--color-text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .meetings-container {
+        padding: 1rem;
+      }
+
+      .page-header h1 {
+        font-size: 1.75rem;
+      }
+
+      .meeting-card {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+
+      .meeting-date-box {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        text-align: left;
+        padding: 0.75rem 1rem;
+      }
+
+      .meeting-date-box .day {
+        font-size: 1.5rem;
+      }
+
+      .meeting-actions {
+        flex-direction: row;
+        justify-content: flex-start;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="meetings-container">
+    <div class="page-header">
+      <h1>Meetings</h1>
+      <p>Join our working group meetings to collaborate on the future of AI-powered advertising.</p>
+    </div>
+
+    <div class="filter-bar">
+      <select id="group-filter">
+        <option value="">All Groups</option>
+      </select>
+    </div>
+
+    <div id="my-meetings-section" class="my-meetings-section" style="display: none;">
+      <h2 class="section-title">My Upcoming Meetings</h2>
+      <div id="my-meetings-grid" class="meetings-grid"></div>
+    </div>
+
+    <div id="login-prompt" class="login-prompt" style="display: none;">
+      <p>Sign in to see your upcoming meetings and RSVP to meetings.</p>
+      <a href="/login" class="btn btn-primary">Sign In</a>
+    </div>
+
+    <div class="meetings-section">
+      <h2 class="section-title">Upcoming Meetings</h2>
+      <div id="meetings-grid" class="meetings-grid">
+        <div class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <h3>Loading meetings...</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Check if user is logged in
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/me');
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        // Not logged in
+      }
+      return null;
+    }
+
+    // Format date for display
+    function formatMeetingDate(dateStr, timezone) {
+      const date = new Date(dateStr);
+      const options = { timeZone: timezone || 'America/New_York' };
+
+      const month = date.toLocaleDateString('en-US', { ...options, month: 'short' });
+      const day = date.toLocaleDateString('en-US', { ...options, day: 'numeric' });
+      const time = date.toLocaleTimeString('en-US', { ...options, hour: 'numeric', minute: '2-digit' });
+      const tz = date.toLocaleTimeString('en-US', { ...options, timeZoneName: 'short' }).split(' ').pop();
+
+      return { month, day, time: `${time} ${tz}` };
+    }
+
+    // Escape HTML
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+    }
+
+    // Render a meeting card
+    function renderMeetingCard(meeting, userRsvp = null) {
+      const { month, day, time } = formatMeetingDate(meeting.start_time, meeting.timezone);
+
+      const topicsHtml = (meeting.topic_slugs || []).map(slug =>
+        `<span class="topic-tag">${escapeHtml(slug)}</span>`
+      ).join('');
+
+      let actionHtml = '';
+      if (userRsvp) {
+        if (userRsvp.rsvp_status === 'accepted') {
+          actionHtml = `<span class="btn btn-success">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Going
+          </span>`;
+        } else if (userRsvp.rsvp_status === 'tentative') {
+          actionHtml = `<span class="btn btn-secondary">Maybe</span>`;
+        }
+      } else if (meeting.zoom_join_url) {
+        actionHtml = `<a href="${escapeHtml(meeting.zoom_join_url)}" target="_blank" class="btn btn-primary">Join</a>`;
+      }
+
+      const rsvpCount = meeting.accepted_count || 0;
+      const invitedCount = meeting.invited_count || 0;
+
+      return `
+        <div class="meeting-card" data-group-id="${escapeHtml(meeting.working_group_id)}">
+          <div class="meeting-date-box">
+            <div class="month">${escapeHtml(month)}</div>
+            <div class="day">${escapeHtml(day)}</div>
+            <div class="time">${escapeHtml(time)}</div>
+          </div>
+          <div class="meeting-content">
+            <div class="meeting-group">
+              <a href="/committees/${escapeHtml(meeting.working_group_slug)}">${escapeHtml(meeting.working_group_name)}</a>
+            </div>
+            <h3 class="meeting-title">${escapeHtml(meeting.title)}</h3>
+            ${meeting.description ? `<p class="meeting-description">${escapeHtml(meeting.description)}</p>` : ''}
+            <div class="meeting-meta">
+              ${topicsHtml ? `<div class="meeting-topics">${topicsHtml}</div>` : ''}
+              ${rsvpCount > 0 ? `
+                <span class="meeting-meta-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  ${rsvpCount} attending
+                </span>
+              ` : ''}
+            </div>
+          </div>
+          <div class="meeting-actions">
+            ${actionHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    // Load meetings
+    async function loadMeetings() {
+      try {
+        const res = await fetch('/api/meetings?limit=50');
+        const data = await res.json();
+        return data.meetings || [];
+      } catch (e) {
+        console.error('Failed to load meetings:', e);
+        return [];
+      }
+    }
+
+    // Load user's meetings
+    async function loadMyMeetings() {
+      try {
+        const res = await fetch('/api/me/meetings?upcoming_only=true');
+        const data = await res.json();
+        return data.meetings || [];
+      } catch (e) {
+        console.error('Failed to load my meetings:', e);
+        return [];
+      }
+    }
+
+    // Load working groups for filter
+    async function loadWorkingGroups() {
+      try {
+        const res = await fetch('/api/working-groups');
+        const data = await res.json();
+        return data.working_groups || [];
+      } catch (e) {
+        console.error('Failed to load working groups:', e);
+        return [];
+      }
+    }
+
+    // Render meetings
+    function renderMeetings(meetings, containerId, userMeetings = {}) {
+      const container = document.getElementById(containerId);
+      if (!meetings || meetings.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <h3>No upcoming meetings</h3>
+            <p>Check back soon or join a working group to get involved.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = meetings.map(m =>
+        renderMeetingCard(m, userMeetings[m.id] || userMeetings[m.meeting_id])
+      ).join('');
+    }
+
+    // Filter meetings by group
+    function filterMeetings(meetings, groupId) {
+      if (!groupId) return meetings;
+      return meetings.filter(m => m.working_group_id === groupId);
+    }
+
+    // Initialize page
+    async function init() {
+      // Load data in parallel
+      const [user, meetings, groups] = await Promise.all([
+        checkAuth(),
+        loadMeetings(),
+        loadWorkingGroups()
+      ]);
+
+      // Populate group filter
+      const groupFilter = document.getElementById('group-filter');
+      groups.forEach(g => {
+        const option = document.createElement('option');
+        option.value = g.id;
+        option.textContent = g.name;
+        groupFilter.appendChild(option);
+      });
+
+      // Handle user state
+      let myMeetings = [];
+      let myMeetingsMap = {};
+
+      if (user) {
+        myMeetings = await loadMyMeetings();
+        myMeetingsMap = Object.fromEntries(myMeetings.map(m => [m.meeting_id, m]));
+
+        if (myMeetings.length > 0) {
+          document.getElementById('my-meetings-section').style.display = 'block';
+          renderMeetings(myMeetings.map(m => ({
+            ...m,
+            id: m.meeting_id,
+            working_group_name: m.working_group_name,
+            working_group_slug: m.working_group_slug,
+          })), 'my-meetings-grid', myMeetingsMap);
+        }
+      } else {
+        document.getElementById('login-prompt').style.display = 'block';
+      }
+
+      // Render all meetings
+      renderMeetings(meetings, 'meetings-grid', myMeetingsMap);
+
+      // Filter handler
+      groupFilter.addEventListener('change', () => {
+        const filtered = filterMeetings(meetings, groupFilter.value);
+        renderMeetings(filtered, 'meetings-grid', myMeetingsMap);
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>

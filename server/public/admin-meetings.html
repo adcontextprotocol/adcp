@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Meetings - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-lg);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    h2 { margin-bottom: var(--space-4); color: var(--color-text-heading); font-size: var(--text-xl); }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+    }
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .filter-bar {
+      display: flex;
+      gap: var(--space-2.5);
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+    }
+    .filter-bar select {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .meetings-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .meeting-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: var(--space-4);
+      align-items: center;
+    }
+    .meeting-item:hover {
+      border-color: var(--color-brand);
+    }
+    .meeting-date {
+      background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
+      color: white;
+      border-radius: var(--radius-md);
+      padding: var(--space-2) var(--space-3);
+      text-align: center;
+      min-width: 60px;
+    }
+    .meeting-date .month {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+    }
+    .meeting-date .day {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      line-height: 1.1;
+    }
+    .meeting-date .time {
+      font-size: var(--text-xs);
+      opacity: 0.9;
+    }
+    .meeting-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .meeting-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .meeting-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-scheduled { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-completed { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-cancelled { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-draft { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
+    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: var(--space-5);
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-8);
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .form-group {
+      margin-bottom: var(--space-5);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-family: inherit;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .form-group textarea {
+      min-height: 80px;
+    }
+    .form-group small {
+      display: block;
+      margin-top: var(--space-1);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    .modal-buttons {
+      display: flex;
+      gap: var(--space-2.5);
+      justify-content: flex-end;
+      margin-top: var(--space-6);
+      padding-top: var(--space-5);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-secondary);
+    }
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: 2px solid var(--color-gray-200);
+      margin-bottom: var(--space-5);
+    }
+    .tab {
+      padding: var(--space-2.5) var(--space-4);
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-bottom: none;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      margin-bottom: -2px;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-subtle);
+      font-weight: var(--font-medium);
+      transition: var(--transition-all);
+    }
+    .tab:hover {
+      color: var(--color-text-heading);
+      background: var(--color-gray-100);
+    }
+    .tab.active {
+      border-color: var(--color-gray-200);
+      background: var(--color-bg-card);
+      color: var(--color-brand);
+    }
+    .attendees-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+      margin-top: var(--space-2);
+    }
+    .attendee-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+    .attendee-chip .status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .attendee-chip .status-accepted { background: var(--color-success-500); }
+    .attendee-chip .status-declined { background: var(--color-error-500); }
+    .attendee-chip .status-tentative { background: var(--color-warning-500); }
+    .attendee-chip .status-pending { background: var(--color-gray-400); }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h1>Meetings</h1>
+            <p class="subtitle">Schedule and manage working group meetings</p>
+          </div>
+          <button class="btn btn-primary" onclick="showCreateModal()">+ Schedule Meeting</button>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" id="tabUpcoming" onclick="showTab('upcoming')">Upcoming</div>
+          <div class="tab" id="tabPast" onclick="showTab('past')">Past</div>
+          <div class="tab" id="tabSeries" onclick="showTab('series')">Series</div>
+        </div>
+
+        <div class="filter-bar">
+          <select id="groupFilter" onchange="loadMeetings()">
+            <option value="">All Committees</option>
+          </select>
+          <select id="statusFilter" onchange="renderMeetings()">
+            <option value="">All Statuses</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+
+        <div id="meetingsList" class="meetings-list">
+          Loading meetings...
+        </div>
+
+        <div id="seriesList" class="meetings-list" style="display: none;">
+          Loading series...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Meeting Modal -->
+  <div id="meetingModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">Schedule Meeting</h2>
+
+      <form id="meetingForm" onsubmit="saveMeeting(event)">
+        <input type="hidden" id="meetingId">
+
+        <div class="form-group">
+          <label>Working Group *</label>
+          <select id="workingGroupId" required>
+            <option value="">Select a committee...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Title *</label>
+          <input type="text" id="title" required placeholder="e.g., Weekly Technical Call">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" id="meetingDate" required>
+          </div>
+          <div class="form-group">
+            <label>Time *</label>
+            <input type="time" id="meetingTime" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Duration (minutes)</label>
+            <input type="number" id="duration" value="60" min="15" max="480" step="15">
+          </div>
+          <div class="form-group">
+            <label>Timezone</label>
+            <select id="timezone">
+              <option value="America/New_York">Eastern Time (ET)</option>
+              <option value="America/Chicago">Central Time (CT)</option>
+              <option value="America/Denver">Mountain Time (MT)</option>
+              <option value="America/Los_Angeles">Pacific Time (PT)</option>
+              <option value="UTC">UTC</option>
+              <option value="Europe/London">London (GMT/BST)</option>
+              <option value="Europe/Paris">Paris (CET)</option>
+              <option value="Asia/Tokyo">Tokyo (JST)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description / Agenda</label>
+          <textarea id="description" placeholder="Meeting agenda and notes..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Who to Invite</label>
+          <select id="inviteMode">
+            <option value="all_members">All group members</option>
+            <option value="topic_subscribers">Only topic subscribers</option>
+            <option value="manual">Manual selection</option>
+          </select>
+          <small>Members will receive a calendar invite via email</small>
+        </div>
+
+        <div id="topicsSection" style="display: none;">
+          <div class="form-group">
+            <label>Topics</label>
+            <div id="topicsList"></div>
+            <small>Select which topic subscribers to invite</small>
+          </div>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Schedule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Meeting Details Modal -->
+  <div id="detailsModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="detailsTitle">Meeting Details</h2>
+      <div id="detailsContent"></div>
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
+        <button type="button" class="btn btn-danger" id="cancelMeetingBtn" onclick="cancelMeeting()">Cancel Meeting</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let meetings = [];
+    let series = [];
+    let workingGroups = [];
+    let currentTab = 'upcoming';
+    let viewingMeeting = null;
+
+    // Load working groups for filters and form
+    async function loadWorkingGroups() {
+      try {
+        const response = await fetch('/api/admin/working-groups');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav?.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load working groups');
+        }
+        workingGroups = await response.json();
+        populateGroupSelects();
+      } catch (error) {
+        console.error('Error loading working groups:', error);
+      }
+    }
+
+    function populateGroupSelects() {
+      const filterSelect = document.getElementById('groupFilter');
+      const formSelect = document.getElementById('workingGroupId');
+
+      // Filter dropdown
+      filterSelect.innerHTML = '<option value="">All Committees</option>';
+      workingGroups.forEach(g => {
+        filterSelect.innerHTML += `<option value="${g.id}">${escapeHtml(g.name)}</option>`;
+      });
+
+      // Form dropdown
+      formSelect.innerHTML = '<option value="">Select a committee...</option>';
+      workingGroups.forEach(g => {
+        formSelect.innerHTML += `<option value="${g.id}">${escapeHtml(g.name)}</option>`;
+      });
+
+      // Check URL params for pre-selected group
+      const params = new URLSearchParams(window.location.search);
+      const groupId = params.get('group');
+      if (groupId) {
+        filterSelect.value = groupId;
+      }
+    }
+
+    // Load meetings
+    async function loadMeetings() {
+      try {
+        const groupId = document.getElementById('groupFilter').value;
+        let url = '/api/admin/meetings';
+        if (groupId) {
+          url += `?working_group_id=${groupId}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load meetings');
+
+        meetings = await response.json();
+        renderMeetings();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading meetings:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load meetings. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    // Load meeting series
+    async function loadSeries() {
+      try {
+        const groupId = document.getElementById('groupFilter').value;
+        let url = '/api/admin/meetings/series';
+        if (groupId) {
+          url += `?working_group_id=${groupId}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load series');
+
+        series = await response.json();
+        renderSeries();
+      } catch (error) {
+        console.error('Error loading series:', error);
+      }
+    }
+
+    // Tab switching
+    function showTab(tab) {
+      currentTab = tab;
+
+      // Update tab buttons
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+
+      // Show/hide content
+      document.getElementById('meetingsList').style.display = tab !== 'series' ? 'block' : 'none';
+      document.getElementById('seriesList').style.display = tab === 'series' ? 'block' : 'none';
+
+      if (tab === 'series') {
+        loadSeries();
+      } else {
+        renderMeetings();
+      }
+    }
+
+    // Render meetings list
+    function renderMeetings() {
+      const listDiv = document.getElementById('meetingsList');
+      const statusFilter = document.getElementById('statusFilter').value;
+      const now = new Date();
+
+      let filtered = meetings;
+
+      // Filter by upcoming/past based on tab
+      if (currentTab === 'upcoming') {
+        filtered = filtered.filter(m => new Date(m.start_time) > now && m.status !== 'cancelled');
+      } else if (currentTab === 'past') {
+        filtered = filtered.filter(m => new Date(m.start_time) <= now || m.status === 'completed');
+      }
+
+      // Filter by status
+      if (statusFilter) {
+        filtered = filtered.filter(m => m.status === statusFilter);
+      }
+
+      // Sort by date
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.start_time);
+        const dateB = new Date(b.start_time);
+        return currentTab === 'upcoming' ? dateA - dateB : dateB - dateA;
+      });
+
+      if (filtered.length === 0) {
+        listDiv.innerHTML = '<div class="empty-state">No meetings found.</div>';
+        return;
+      }
+
+      listDiv.innerHTML = filtered.map(m => {
+        const date = new Date(m.start_time);
+        const month = date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+        const day = date.getDate();
+        const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const group = workingGroups.find(g => g.id === m.working_group_id);
+        const attendeeCount = m.attendee_count || 0;
+
+        return `
+          <div class="meeting-item">
+            <div class="meeting-date">
+              <div class="month">${month}</div>
+              <div class="day">${day}</div>
+              <div class="time">${time}</div>
+            </div>
+            <div class="meeting-info">
+              <h3>${escapeHtml(m.title)}</h3>
+              <div class="meeting-meta">
+                <span class="badge badge-${m.status}">${m.status}</span>
+                ${group ? `<span>${escapeHtml(group.name)}</span>` : ''}
+                <span>${attendeeCount} attendees</span>
+                ${m.zoom_join_url ? '<span>Zoom</span>' : ''}
+              </div>
+            </div>
+            <div class="meeting-actions">
+              <button class="btn btn-secondary btn-small" onclick="viewMeeting('${m.id}')">Details</button>
+              ${m.status === 'scheduled' ? `<button class="btn btn-danger btn-small" onclick="confirmCancel('${m.id}', '${escapeJs(m.title)}')">Cancel</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render series list
+    function renderSeries() {
+      const listDiv = document.getElementById('seriesList');
+
+      if (series.length === 0) {
+        listDiv.innerHTML = '<div class="empty-state">No meeting series found.</div>';
+        return;
+      }
+
+      listDiv.innerHTML = series.map(s => {
+        const group = workingGroups.find(g => g.id === s.working_group_id);
+        const nextMeeting = s.next_meeting ? new Date(s.next_meeting).toLocaleDateString() : 'None scheduled';
+
+        return `
+          <div class="meeting-item">
+            <div class="meeting-date" style="background: var(--color-gray-500);">
+              <div class="month" style="font-size: var(--text-xs);">SERIES</div>
+              <div class="day" style="font-size: var(--text-sm);">${escapeHtml(s.recurrence_rule?.freq || 'Custom')}</div>
+            </div>
+            <div class="meeting-info">
+              <h3>${escapeHtml(s.title)}</h3>
+              <div class="meeting-meta">
+                <span class="badge badge-${s.status}">${s.status}</span>
+                ${group ? `<span>${escapeHtml(group.name)}</span>` : ''}
+                <span>Next: ${nextMeeting}</span>
+              </div>
+            </div>
+            <div class="meeting-actions">
+              <button class="btn btn-secondary btn-small" onclick="editSeries('${s.id}')">Edit</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Show create modal
+    function showCreateModal() {
+      document.getElementById('modalTitle').textContent = 'Schedule Meeting';
+      document.getElementById('meetingForm').reset();
+      document.getElementById('meetingId').value = '';
+
+      // Set default date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      document.getElementById('meetingDate').value = tomorrow.toISOString().split('T')[0];
+      document.getElementById('meetingTime').value = '14:00';
+
+      // Pre-select group if filtered
+      const groupId = document.getElementById('groupFilter').value;
+      if (groupId) {
+        document.getElementById('workingGroupId').value = groupId;
+      }
+
+      document.getElementById('meetingModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('meetingModal').style.display = 'none';
+    }
+
+    // Save meeting
+    async function saveMeeting(event) {
+      event.preventDefault();
+
+      const date = document.getElementById('meetingDate').value;
+      const time = document.getElementById('meetingTime').value;
+      const timezone = document.getElementById('timezone').value;
+
+      // Construct ISO datetime
+      const startTime = new Date(`${date}T${time}`);
+
+      const data = {
+        working_group_id: document.getElementById('workingGroupId').value,
+        title: document.getElementById('title').value.trim(),
+        description: document.getElementById('description').value.trim() || null,
+        start_time: startTime.toISOString(),
+        duration_minutes: parseInt(document.getElementById('duration').value) || 60,
+        timezone: timezone,
+        invite_mode: document.getElementById('inviteMode').value,
+      };
+
+      const saveBtn = document.getElementById('saveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Scheduling...';
+
+      try {
+        const response = await fetch('/api/admin/meetings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to schedule meeting');
+        }
+
+        closeModal();
+        loadMeetings();
+      } catch (error) {
+        console.error('Error scheduling meeting:', error);
+        alert('Failed to schedule meeting: ' + error.message);
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Schedule';
+    }
+
+    // View meeting details
+    async function viewMeeting(id) {
+      try {
+        const response = await fetch(`/api/admin/meetings/${id}`);
+        if (!response.ok) throw new Error('Failed to load meeting');
+
+        viewingMeeting = await response.json();
+        const m = viewingMeeting;
+        const group = workingGroups.find(g => g.id === m.working_group_id);
+        const date = new Date(m.start_time);
+
+        document.getElementById('detailsTitle').textContent = m.title;
+        document.getElementById('detailsContent').innerHTML = `
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Date & Time:</strong> ${date.toLocaleDateString()} at ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          </div>
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Committee:</strong> ${group ? escapeHtml(group.name) : 'Unknown'}
+          </div>
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Status:</strong> <span class="badge badge-${m.status}">${m.status}</span>
+          </div>
+          ${m.zoom_join_url ? `
+            <div style="margin-bottom: var(--space-4);">
+              <strong>Zoom:</strong> <a href="${m.zoom_join_url}" target="_blank">${m.zoom_join_url}</a>
+            </div>
+          ` : ''}
+          ${m.description ? `
+            <div style="margin-bottom: var(--space-4);">
+              <strong>Description:</strong><br>
+              <div style="white-space: pre-wrap; color: var(--color-text-secondary);">${escapeHtml(m.description)}</div>
+            </div>
+          ` : ''}
+          <div>
+            <strong>Attendees (${m.attendees?.length || 0}):</strong>
+            <div class="attendees-list">
+              ${(m.attendees || []).map(a => `
+                <span class="attendee-chip">
+                  <span class="status status-${a.rsvp_status || 'pending'}"></span>
+                  ${escapeHtml(a.name || a.email)}
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `;
+
+        document.getElementById('cancelMeetingBtn').style.display = m.status === 'scheduled' ? 'block' : 'none';
+        document.getElementById('detailsModal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error loading meeting:', error);
+        alert('Failed to load meeting details');
+      }
+    }
+
+    function closeDetailsModal() {
+      document.getElementById('detailsModal').style.display = 'none';
+      viewingMeeting = null;
+    }
+
+    // Cancel meeting
+    async function confirmCancel(id, title) {
+      if (!confirm(`Cancel the meeting "${title}"? Attendees will be notified.`)) return;
+
+      try {
+        const response = await fetch(`/api/admin/meetings/${id}/cancel`, {
+          method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Failed to cancel meeting');
+
+        loadMeetings();
+      } catch (error) {
+        console.error('Error cancelling meeting:', error);
+        alert('Failed to cancel meeting: ' + error.message);
+      }
+    }
+
+    async function cancelMeeting() {
+      if (!viewingMeeting) return;
+      await confirmCancel(viewingMeeting.id, viewingMeeting.title);
+      closeDetailsModal();
+    }
+
+    // Escape helpers
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function escapeJs(text) {
+      if (!text) return '';
+      return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    // Initialize
+    async function init() {
+      await loadWorkingGroups();
+      await loadMeetings();
+    }
+
+    init();
+  </script>
+</body>
+</html>
