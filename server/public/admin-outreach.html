@@ -8,6 +8,8 @@
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
   <link rel="stylesheet" href="/design-system.css">
+  <link rel="stylesheet" href="/css/thread-widget.css">
+  <script src="/js/thread-widget.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -430,6 +432,7 @@
               <th>Variant</th>
               <th>Responded</th>
               <th>Insight</th>
+              <th>Thread</th>
             </tr>
           </thead>
           <tbody id="history-body"></tbody>
@@ -663,8 +666,9 @@
 
     function renderHistory() {
       const tbody = document.getElementById('history-body');
-      tbody.innerHTML = history.map(item => {
+      tbody.innerHTML = history.map((item, idx) => {
         const userName = item.slack_display_name || item.slack_real_name || item.slack_user_id;
+        const threadContainerId = item.thread_id ? `history-thread-${item.id || idx}` : null;
         return `
         <tr>
           <td>${formatDate(item.sent_at)}</td>
@@ -681,8 +685,24 @@
               ${item.insight_extracted ? 'Yes' : 'No'}
             </span>
           </td>
+          <td>
+            ${threadContainerId ?
+              `<div id="${threadContainerId}" data-thread-id="${item.thread_id}"></div>` :
+              '<span style="color: var(--color-text-muted);">—</span>'
+            }
+          </td>
         </tr>
       `}).join('');
+
+      // Initialize thread widgets
+      setTimeout(() => {
+        history.forEach((item, idx) => {
+          if (item.thread_id) {
+            const containerId = `history-thread-${item.id || idx}`;
+            ThreadWidget.renderExpandable(containerId, item.thread_id, 'View');
+          }
+        });
+      }, 0);
     }
 
     async function loadVariants() {

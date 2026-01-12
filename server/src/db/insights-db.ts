@@ -1024,6 +1024,17 @@ export class InsightsDatabase {
   }
 
   /**
+   * Link an outreach record to a conversation thread
+   * Called when a user responds to outreach and a thread is created
+   */
+  async linkOutreachToThread(outreachId: number, threadId: string): Promise<void> {
+    await query(
+      `UPDATE member_outreach SET thread_id = $2 WHERE id = $1`,
+      [outreachId, threadId]
+    );
+  }
+
+  /**
    * Check if a user should be contacted (respects refusals, rate limits, grace period)
    */
   async canContactUser(slackUserId: string): Promise<{

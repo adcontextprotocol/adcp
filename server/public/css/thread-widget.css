@@ -1,0 +1,271 @@
+/**
+ * Thread Widget Styles
+ *
+ * Uses CSS variables from design-system.css where available,
+ * with sensible fallbacks for standalone use.
+ */
+
+/* Container */
+.tw-container {
+  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: var(--text-sm, 14px);
+  border: 1px solid var(--color-gray-200, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-white, #ffffff);
+  overflow: hidden;
+}
+
+/* Header */
+.tw-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--color-gray-50, #f9fafb);
+  border-bottom: 1px solid var(--color-gray-200, #e5e7eb);
+}
+
+.tw-header-left,
+.tw-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+/* Badges */
+.tw-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--font-medium, 500);
+  border-radius: var(--radius-sm, 4px);
+  text-transform: capitalize;
+}
+
+.tw-badge-slack {
+  background: #4A154B;
+  color: white;
+}
+
+.tw-badge-web {
+  background: var(--color-brand, #0D9373);
+  color: white;
+}
+
+.tw-badge-a2a {
+  background: #6366f1;
+  color: white;
+}
+
+.tw-badge-email {
+  background: #ea580c;
+  color: white;
+}
+
+.tw-message-count {
+  color: var(--color-text-muted, #6b7280);
+  font-size: var(--text-xs, 12px);
+}
+
+.tw-date {
+  color: var(--color-text-muted, #6b7280);
+  font-size: var(--text-xs, 12px);
+}
+
+.tw-full-link {
+  color: var(--color-brand, #0D9373);
+  text-decoration: none;
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--font-medium, 500);
+}
+
+.tw-full-link:hover {
+  text-decoration: underline;
+}
+
+/* Messages container */
+.tw-messages {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: var(--space-3, 12px);
+}
+
+.tw-messages.tw-compact {
+  max-height: 250px;
+}
+
+/* Individual message */
+.tw-message {
+  margin-bottom: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-md, 8px);
+}
+
+.tw-message:last-child {
+  margin-bottom: 0;
+}
+
+.tw-message-user {
+  background: var(--color-gray-100, #f3f4f6);
+  margin-right: 24px;
+}
+
+.tw-message-assistant {
+  background: var(--color-brand-50, #ecfdf5);
+  margin-left: 24px;
+}
+
+.tw-message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-1, 4px);
+}
+
+.tw-message-role {
+  font-weight: var(--font-semibold, 600);
+  font-size: var(--text-xs, 12px);
+  color: var(--color-text-secondary, #4b5563);
+}
+
+.tw-message-user .tw-message-role {
+  color: var(--color-text-heading, #111827);
+}
+
+.tw-message-assistant .tw-message-role {
+  color: var(--color-brand-700, #047857);
+}
+
+.tw-message-time {
+  font-size: var(--text-xs, 12px);
+  color: var(--color-text-muted, #9ca3af);
+}
+
+.tw-message-content {
+  color: var(--color-text-primary, #374151);
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.tw-message-content code {
+  background: var(--color-gray-200, #e5e7eb);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+}
+
+/* Loading state */
+.tw-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-6, 24px);
+  color: var(--color-text-muted, #6b7280);
+}
+
+.tw-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-gray-200, #e5e7eb);
+  border-top-color: var(--color-brand, #0D9373);
+  border-radius: 50%;
+  animation: tw-spin 0.8s linear infinite;
+}
+
+@keyframes tw-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error state */
+.tw-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  color: var(--color-error-700, #b91c1c);
+  background: var(--color-error-50, #fef2f2);
+}
+
+.tw-error-icon {
+  font-size: 1.2em;
+}
+
+/* Empty state */
+.tw-empty {
+  padding: var(--space-6, 24px);
+  text-align: center;
+  color: var(--color-text-muted, #6b7280);
+  font-style: italic;
+}
+
+/* Expandable variant */
+.tw-expandable-container {
+  border: none;
+  background: transparent;
+}
+
+.tw-expand-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--color-gray-50, #f9fafb);
+  border: 1px solid var(--color-gray-200, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  color: var(--color-text-secondary, #4b5563);
+  font-size: var(--text-sm, 14px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+  text-align: left;
+}
+
+.tw-expand-btn:hover {
+  background: var(--color-gray-100, #f3f4f6);
+  border-color: var(--color-gray-300, #d1d5db);
+}
+
+.tw-expand-icon {
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.tw-expandable-content {
+  margin-top: var(--space-2, 8px);
+}
+
+.tw-expandable-content .tw-container {
+  border-color: var(--color-gray-300, #d1d5db);
+}
+
+/* Inline variant - for embedding in tables/lists */
+.tw-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+}
+
+.tw-inline .tw-badge {
+  font-size: 10px;
+  padding: 1px 4px;
+}
+
+/* Compact adjustments */
+.tw-compact .tw-message {
+  margin-bottom: var(--space-2, 8px);
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+}
+
+.tw-compact .tw-message-user {
+  margin-right: 16px;
+}
+
+.tw-compact .tw-message-assistant {
+  margin-left: 16px;
+}
+
+.tw-compact .tw-message-content {
+  font-size: var(--text-sm, 14px);
+}
