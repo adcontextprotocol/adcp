@@ -2584,16 +2584,24 @@
     // Mark thread as reviewed
     async function markThreadReviewed(threadId) {
       try {
-        await fetch(`/api/admin/addie/threads/${threadId}/review`, {
+        const response = await fetch(`/api/admin/addie/threads/${threadId}/review`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ notes: '' })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadThreads();
         loadStats();
+        // Refresh the thread detail view if it's currently open
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
+        }
       } catch (error) {
         console.error('Error marking reviewed:', error);
-        alert('Error marking thread as reviewed');
+        alert('Error marking thread as reviewed: ' + error.message);
       }
     }
 
@@ -2602,55 +2610,79 @@
       const reason = prompt('Reason for flagging (optional):');
       if (reason === null) return; // User cancelled
       try {
-        await fetch(`/api/admin/addie/threads/${threadId}/flag`, {
+        const response = await fetch(`/api/admin/addie/threads/${threadId}/flag`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadThreads();
         loadStats();
+        // Refresh the thread detail view if it's currently open
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
+        }
       } catch (error) {
         console.error('Error flagging thread:', error);
-        alert('Error flagging thread');
+        alert('Error flagging thread: ' + error.message);
       }
     }
 
     async function unflagThread(threadId) {
       try {
-        await fetch(`/api/admin/addie/threads/${threadId}/unflag`, { method: 'PUT' });
+        const response = await fetch(`/api/admin/addie/threads/${threadId}/unflag`, { method: 'PUT' });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadThreads();
         loadStats();
+        // Refresh the thread detail view if it's currently open
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
+        }
       } catch (error) {
         console.error('Error unflagging thread:', error);
-        alert('Error unflagging thread');
+        alert('Error unflagging thread: ' + error.message);
       }
     }
 
     // Approve/reject queue items
     async function approveItem(id) {
       try {
-        await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        const response = await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadQueue();
         loadStats();
       } catch (error) {
         console.error('Error approving item:', error);
-        alert('Error approving item');
+        alert('Error approving item: ' + error.message);
       }
     }
 
     async function rejectItem(id) {
       const reason = prompt('Reason for rejection (optional):');
       try {
-        await fetch(`/api/admin/addie/queue/${id}/reject`, {
+        const response = await fetch(`/api/admin/addie/queue/${id}/reject`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadQueue();
         loadStats();
       } catch (error) {
         console.error('Error rejecting item:', error);
-        alert('Error rejecting item');
+        alert('Error rejecting item: ' + error.message);
       }
     }
 
