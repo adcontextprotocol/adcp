@@ -857,12 +857,23 @@ export function getOutreachMode(): 'live' {
 }
 
 /**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications that should always be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
+
+/**
  * Check if a specific user can be contacted
  */
 export async function canContactUser(slackUserId: string): Promise<{
   canContact: boolean;
   reason?: string;
 }> {
+  // Always reject Slackbot - it's a system bot, not a real user
+  if (slackUserId === SLACKBOT_USER_ID) {
+    return { canContact: false, reason: 'Slackbot is a system bot' };
+  }
+
   const result = await query<SlackUserMapping>(
     `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
     [slackUserId]
