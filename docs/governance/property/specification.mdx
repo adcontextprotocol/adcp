@@ -208,8 +208,6 @@ See the [base-property-source schema](https://adcontextprotocol.org/schemas/v2/p
 - `channels_any`: Property must support **ANY** of the listed channels
 - `feature_requirements`: Property must pass **ALL** requirements (AND)
 
-See [Filter Semantics](#filter-semantics) for how geographic and channel filters are interpreted.
-
 **Use Cases**:
 - Define compliant property sets with filters (country, channel, feature thresholds)
 - Provide brand manifest for automatic rule application
@@ -271,78 +269,6 @@ Performs two independent validations:
 **Unverifiable Records**: Both `unmodeled` and `unidentified` records should be excluded when calculating compliance rates - you cannot penalize for detection gaps or coverage limitations. The distinction helps identify whether the gap is in the agent's data coverage vs the identifier resolution.
 
 **Response Format**: The response returns raw counts (compliant, non_compliant, unmodeled, unidentified impressions). Consumers calculate rates as needed. Governance agents may optionally include an `aggregate` field with computed metrics (score, grade, label) - the format and meaning are agent-specific.
-
-## Filter Semantics
-
-Property list filters use declarative terms (`countries_all`, `channels_any`) that governance agents must interpret consistently. This section defines the semantic meaning of these filters.
-
-### Geographic Filters (`countries_all`)
-
-When a property list specifies `countries_all: ["UK", "DE"]`, the governance agent must evaluate whether ads can be **legally delivered to users** in those countries on that property.
-
-**Definition**: A property is "compliant in country X" if:
-1. **Regulatory compliance**: The property meets applicable advertising regulations for that jurisdiction (e.g., GDPR in EU, HFSS restrictions in UK, CCPA in California)
-2. **Ad delivery capability**: Ads can be technically served to users located in that country
-3. **Consent validity**: Required consent mechanisms are in place for that jurisdiction
-
-**What "country" means**:
-- The **user's location** (where ad impressions are delivered), NOT:
-  - Publisher headquarters location
-  - Server hosting location
-  - Company incorporation country
-  - Primary audience demographics
-
-**Example**: A US-headquartered publisher with servers in Ireland can be "compliant in UK" if:
-- Their consent mechanism meets UK GDPR requirements
-- Their ad content complies with UK advertising standards
-- They can serve ads to UK users
-
-**Multi-country semantics**: `countries_all: ["UK", "DE"]` means the property must pass compliance checks for BOTH jurisdictions independently. This matters because regulations differ:
-- A sugary drink ad legal in France may violate UK HFSS rules
-- A gambling ad legal in UK may violate German interstate gambling treaty
-
-### Channel Filters (`channels_any`)
-
-When a property list specifies `channels_any: ["display", "video"]`, the governance agent evaluates whether the property supports those ad formats.
-
-**Definition**: A property "supports channel X" if:
-1. **Technical capability**: The property can render that ad format
-2. **Inventory availability**: That format is offered for sale
-3. **Quality standards**: The format meets minimum quality thresholds (e.g., viewability)
-
-**Supported channels**: `display`, `video`, `audio`, `native`, `ctv`, `dooh`
-
-**ANY semantics**: A property passes if it supports **at least one** of the specified channels. Use multiple channels when the campaign is flexible about format.
-
-### Property Type Filters (`property_types`)
-
-When a property list specifies `property_types: ["website", "mobile_app"]`, the governance agent filters to those property categories.
-
-**Property types**: `website`, `mobile_app`, `ctv_app`, `dooh`, `podcast`, `radio`, `streaming_audio`
-
-**Definition**: Property type is determined by the property's primary platform/medium, as declared in its `property_type` field.
-
-### Feature Requirements (`feature_requirements`)
-
-Feature-based filters reference capabilities discovered via `list_property_features`. Each governance agent defines its own features with documented semantics.
-
-**Agent-specific**: Feature meanings are defined by each agent's methodology. The specification does not mandate universal feature definitions - agents compete on the quality and coverage of their features.
-
-**Buyer responsibility**: Before using a feature filter, buyers should:
-1. Call `list_property_features` to understand available features
-2. Review the agent's methodology documentation
-3. Set appropriate thresholds based on their requirements
-
-### Implementation Notes for Governance Agents
-
-Governance agents implementing property list filters MUST:
-
-1. **Document their interpretation**: Publish clear definitions of how they evaluate geographic compliance
-2. **Be consistent**: Apply the same interpretation across all properties
-3. **Handle edge cases**: Define behavior for properties with mixed signals (e.g., serves multiple countries)
-4. **Expose methodology**: Allow buyers to understand the basis for compliance decisions
-
-Agents MAY provide additional granularity beyond this specification (e.g., distinguishing between "can deliver to UK users" vs "optimized for UK market") via custom features.
 
 ## Typical Flows
 
