@@ -193,6 +193,39 @@ For **categorical** features (enum values):
 { "feature_id": "content_category", "allowed_values": ["news", "sports", "technology"] }
 ```
 
+### Handling Missing Coverage
+
+When a property doesn't have data for a required feature, you can control the behavior with `if_not_covered`:
+
+```json
+{
+  "feature_id": "viewability_score",
+  "min_value": 70,
+  "if_not_covered": "include"
+}
+```
+
+| Value | Behavior | Use Case |
+|-------|----------|----------|
+| `exclude` (default) | Property is removed from the list | Strict enforcement - only include properties with verified data |
+| `include` | Property passes this requirement | Lenient enforcement - don't penalize for coverage gaps |
+
+When `if_not_covered: "include"` is used, the response includes a `coverage_gaps` field showing which properties were included despite missing data:
+
+```json
+{
+  "identifiers": [...],
+  "coverage_gaps": {
+    "viewability_score": [
+      { "type": "domain", "value": "app.example.com" },
+      { "type": "domain", "value": "ctv.example.com" }
+    ]
+  }
+}
+```
+
+This transparency helps agencies distinguish between properties that passed a requirement vs. those that couldn't be evaluated.
+
 ### Required Filters
 
 Every property list must include at least:

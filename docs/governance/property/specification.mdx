@@ -258,7 +258,7 @@ Performs two independent validations:
 **Property Validation Statuses**:
 - `compliant`: Identifier is in the resolved property list
 - `non_compliant`: Identifier is NOT in the resolved property list
-- `unmodeled`: Identifier recognized but governance agent has no data for it (e.g., property too new)
+- `not_covered`: Identifier recognized but governance agent has no data for it (e.g., property too new)
 - `unidentified`: Identifier type not resolvable by this agent (e.g., detection failed, unsupported type)
 
 **Authorization Validation Statuses** (when `sales_agent_url` provided):
@@ -266,9 +266,9 @@ Performs two independent validations:
 - `unauthorized`: Sales agent is NOT in publisher's authorized_agents list
 - `unknown`: Could not fetch or parse adagents.json
 
-**Unverifiable Records**: Both `unmodeled` and `unidentified` records should be excluded when calculating compliance rates - you cannot penalize for detection gaps or coverage limitations. The distinction helps identify whether the gap is in the agent's data coverage vs the identifier resolution.
+**Unverifiable Records**: Both `not_covered` and `unidentified` records should be excluded when calculating compliance rates - you cannot penalize for detection gaps or coverage limitations. The distinction helps identify whether the gap is in the agent's data coverage vs the identifier resolution.
 
-**Response Format**: The response returns raw counts (compliant, non_compliant, unmodeled, unidentified impressions). Consumers calculate rates as needed. Governance agents may optionally include an `aggregate` field with computed metrics (score, grade, label) - the format and meaning are agent-specific.
+**Response Format**: The response returns raw counts (compliant, non_compliant, not_covered, unidentified impressions). Consumers calculate rates as needed. Governance agents may optionally include an `aggregate` field with computed metrics (score, grade, label) - the format and meaning are agent-specific.
 
 ## Typical Flows
 

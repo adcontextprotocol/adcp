@@ -21,6 +21,12 @@
       "type": "array",
       "description": "Values that pass the requirement (for binary/categorical features)",
       "items": {}
+    },
+    "if_not_covered": {
+      "type": "string",
+      "enum": ["exclude", "include"],
+      "default": "exclude",
+      "description": "How to handle properties where this feature is not covered. 'exclude' (default): property is removed from the list. 'include': property passes this requirement (fail-open)."
     }
   },
   "required": ["feature_id"],

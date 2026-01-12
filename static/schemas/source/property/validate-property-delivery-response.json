@@ -37,13 +37,13 @@
           "type": "integer",
           "description": "Impressions from non_compliant records"
         },
-        "unmodeled_records": {
+        "not_covered_records": {
           "type": "integer",
           "description": "Number of records where identifier was recognized but no data available"
         },
-        "unmodeled_impressions": {
+        "not_covered_impressions": {
           "type": "integer",
-          "description": "Impressions from unmodeled records"
+          "description": "Impressions from not_covered records"
         },
         "unidentified_records": {
           "type": "integer",
@@ -61,8 +61,8 @@
         "compliant_impressions",
         "non_compliant_records",
         "non_compliant_impressions",
-        "unmodeled_records",
-        "unmodeled_impressions",
+        "not_covered_records",
+        "not_covered_impressions",
         "unidentified_records",
         "unidentified_impressions"
       ],

@@ -49,6 +49,16 @@
       "format": "date-time",
       "description": "Cache expiration timestamp. Re-fetch the list after this time to get updated identifiers."
     },
+    "coverage_gaps": {
+      "type": "object",
+      "description": "Properties included in the list despite missing feature data. Only present when a feature_requirement has if_not_covered='include'. Maps feature_id to list of identifiers not covered for that feature.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "/schemas/core/identifier.json"
+        }
+      }
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

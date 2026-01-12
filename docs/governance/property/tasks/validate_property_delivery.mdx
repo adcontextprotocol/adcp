@@ -69,8 +69,8 @@ Validates delivery records against a property list to determine compliance. Answ
     "compliant_impressions": 103,
     "non_compliant_records": 1,
     "non_compliant_impressions": 47,
-    "unmodeled_records": 1,
-    "unmodeled_impressions": 25,
+    "not_covered_records": 1,
+    "not_covered_impressions": 25,
     "unidentified_records": 1,
     "unidentified_impressions": 25
   },
@@ -94,7 +94,7 @@ Validates delivery records against a property list to determine compliance. Answ
     },
     {
       "identifier": { "type": "domain", "value": "new-site.example" },
-      "status": "unmodeled",
+      "status": "not_covered",
       "impressions": 25
     },
     {
@@ -129,7 +129,7 @@ The summary provides raw counts - consumers calculate rates as needed:
 | `total_impressions` | Total impressions across all records |
 | `compliant_records` / `compliant_impressions` | Records/impressions in the property list |
 | `non_compliant_records` / `non_compliant_impressions` | Records/impressions NOT in the property list |
-| `unmodeled_records` / `unmodeled_impressions` | Identifier recognized but no data available |
+| `not_covered_records` / `not_covered_impressions` | Identifier recognized but no data available |
 | `unidentified_records` / `unidentified_impressions` | Identifier type not resolvable |
 
 ### Validation Statuses
@@ -138,16 +138,16 @@ The summary provides raw counts - consumers calculate rates as needed:
 |--------|---------|
 | `compliant` | Identifier is in the resolved property list |
 | `non_compliant` | Identifier is NOT in the resolved property list |
-| `unmodeled` | Identifier recognized but governance agent has no data for it |
+| `not_covered` | Identifier recognized but governance agent has no data for it |
 | `unidentified` | Identifier type not resolvable by this agent |
 
-## Understanding Unmodeled vs Unidentified
+## Understanding not_covered vs unidentified
 
 These two statuses distinguish different types of "unknown" scenarios:
 
-**`unmodeled`** - The governance agent recognized the identifier (e.g., it's a valid domain) but doesn't have data for that specific property. This happens when:
+**`not_covered`** - The governance agent recognized the identifier (e.g., it's a valid domain) but doesn't have data for that specific property. This happens when:
 - A property is too new to be in the agent's database
-- The property exists but hasn't been scored/evaluated yet
+- The property exists but hasn't been evaluated yet
 - The agent's coverage doesn't include that property category
 
 **`unidentified`** - The governance agent couldn't recognize the identifier at all. This happens when:
@@ -185,7 +185,7 @@ The response always includes raw counts. Calculate rates as needed:
 
 ```python
 # Compliance rate (exclude unverifiable from denominator)
-unverifiable = summary.unmodeled_impressions + summary.unidentified_impressions
+unverifiable = summary.not_covered_impressions + summary.unidentified_impressions
 verifiable = summary.total_impressions - unverifiable
 compliance_rate = summary.compliant_impressions / verifiable if verifiable > 0 else None
 ```
@@ -193,7 +193,7 @@ compliance_rate = summary.compliant_impressions / verifiable if verifiable > 0 e
 In the example above:
 - Compliant impressions: 103
 - Non-compliant impressions: 47
-- Unmodeled + Unidentified impressions: 50 (excluded)
+- not_covered + unidentified impressions: 50 (excluded)
 - Compliance rate: 103 / (200 - 50) = 103 / 150 = 68.7%
 
 ## Violation Codes
