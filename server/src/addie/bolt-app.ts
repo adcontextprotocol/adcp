@@ -82,6 +82,7 @@ import {
   queueCommunityArticle,
 } from './services/community-articles.js';
 import { InsightsDatabase } from '../db/insights-db.js';
+import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -982,6 +983,13 @@ async function handleUserMessage({
             parameters: {},
             result: event.result,
           });
+        } else if (event.type === 'retry') {
+          // Show retry status to user
+          try {
+            await setStatus(`${event.reason}, retrying (${event.attempt}/${event.maxRetries})...`);
+          } catch {
+            // Ignore status update errors
+          }
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {
@@ -1025,8 +1033,17 @@ async function handleUserMessage({
     }
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing message');
+
+    // Provide user-friendly error message based on error type
+    let errorMessage: string;
+    if (isRetriesExhaustedError(error)) {
+      errorMessage = `${error.reason}. Please try again in a moment.`;
+    } else {
+      errorMessage = "I'm sorry, I encountered an error. Please try again.";
+    }
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: errorMessage,
       tools_used: [],
       tool_executions: [],
       flagged: true,

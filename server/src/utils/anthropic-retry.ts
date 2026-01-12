@@ -8,6 +8,39 @@
 import { APIError, APIConnectionError } from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 
+/**
+ * Error thrown when all retry attempts have been exhausted
+ */
+export class RetriesExhaustedError extends Error {
+  /** The underlying error that caused the retries */
+  readonly cause: unknown;
+  /** Number of attempts made */
+  readonly attempts: number;
+  /** User-friendly reason for the failure */
+  readonly reason: string;
+
+  constructor(cause: unknown, attempts: number) {
+    const errorMsg = cause instanceof Error ? cause.message : String(cause);
+    const reason = errorMsg.includes('overloaded') ? 'The AI service is currently experiencing high demand' :
+                   errorMsg.includes('rate') ? 'Rate limit exceeded' :
+                   errorMsg.includes('timeout') ? 'Request timed out' :
+                   'The AI service is temporarily unavailable';
+
+    super(`Retries exhausted after ${attempts} attempts: ${reason}`);
+    this.name = 'RetriesExhaustedError';
+    this.cause = cause;
+    this.attempts = attempts;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Check if an error is a RetriesExhaustedError
+ */
+export function isRetriesExhaustedError(error: unknown): error is RetriesExhaustedError {
+  return error instanceof RetriesExhaustedError;
+}
+
 /** Configuration for retry behavior */
 export interface RetryConfig {
   /** Maximum number of retry attempts (default: 3) */
@@ -146,16 +179,17 @@ export async function withRetry<T>(
   }
 
   // All retries exhausted
+  const totalAttempts = finalConfig.maxRetries + 1;
   logger.error(
     {
-      totalAttempts: finalConfig.maxRetries + 1,
+      totalAttempts,
       error: lastError instanceof Error ? lastError.message : String(lastError),
       operation: operationName,
     },
     'Anthropic API: All retry attempts exhausted'
   );
 
-  throw lastError;
+  throw new RetriesExhaustedError(lastError, totalAttempts);
 }
 
 /**
@@ -217,14 +251,15 @@ export async function* withStreamRetry<T>(
   }
 
   // All retries exhausted
+  const totalAttempts = finalConfig.maxRetries + 1;
   logger.error(
     {
-      totalAttempts: finalConfig.maxRetries + 1,
+      totalAttempts,
       error: lastError instanceof Error ? lastError.message : String(lastError),
       operation: operationName,
     },
     'Anthropic API Stream: All retry attempts exhausted'
   );
 
-  throw lastError;
+  throw new RetriesExhaustedError(lastError, totalAttempts);
 }
