@@ -374,6 +374,7 @@ export class SlackDatabase {
     }
 
     // First, get the domains with counts
+    // Exclude users already linked to a pending organization (already have a prospect)
     const domainQuery = `
       SELECT
         LOWER(SPLIT_PART(slack_email, '@', 2)) as domain,
@@ -384,6 +385,7 @@ export class SlackDatabase {
         AND slack_is_deleted = false
         AND slack_email IS NOT NULL
         AND slack_email LIKE '%@%'
+        AND pending_organization_id IS NULL
         ${domainExcludeClause}
       GROUP BY LOWER(SPLIT_PART(slack_email, '@', 2))
       HAVING COUNT(*) >= $${excludeFree ? freeEmailDomains.length + 1 : 1}
@@ -425,6 +427,7 @@ export class SlackDatabase {
          WHERE mapping_status = 'unmapped'
            AND slack_is_bot = false
            AND slack_is_deleted = false
+           AND pending_organization_id IS NULL
            AND LOWER(SPLIT_PART(slack_email, '@', 2)) = $1
          ORDER BY slack_real_name NULLS LAST, slack_display_name NULLS LAST`,
         [row.domain]
