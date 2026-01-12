@@ -282,6 +282,192 @@ export function setupDomainRoutes(
     }
   );
 
+  // POST /api/admin/domains/bulk-create-prospects - Create multiple prospects at once
+  apiRouter.post(
+    "/domains/bulk-create-prospects",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domains } = req.body;
+
+        if (!Array.isArray(domains) || domains.length === 0) {
+          return res.status(400).json({ error: "domains array is required" });
+        }
+
+        if (domains.length > 50) {
+          return res.status(400).json({ error: "Maximum 50 domains per request" });
+        }
+
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
+
+        const pool = getPool();
+        const results: Array<{
+          domain: string;
+          success: boolean;
+          org_id?: string;
+          name?: string;
+          error?: string;
+        }> = [];
+
+        for (const item of domains) {
+          const { domain, source } = item;
+
+          if (!domain || typeof domain !== 'string') {
+            results.push({ domain: domain || 'unknown', success: false, error: 'Invalid domain' });
+            continue;
+          }
+
+          // Validate source
+          if (!source || (source !== 'email' && source !== 'slack')) {
+            results.push({ domain, success: false, error: 'Invalid source: must be "email" or "slack"' });
+            continue;
+          }
+
+          // Normalize and validate domain format
+          const normalizedDomain = domain.toLowerCase().trim().replace(/^www\./, '');
+          const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
+          if (!domainRegex.test(normalizedDomain)) {
+            results.push({ domain, success: false, error: 'Invalid domain format' });
+            continue;
+          }
+
+          try {
+            // Check if domain already has an organization
+            const existingResult = await pool.query(
+              `SELECT od.workos_organization_id, o.name
+               FROM organization_domains od
+               JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+               WHERE od.domain = $1`,
+              [normalizedDomain]
+            );
+
+            if (existingResult.rows.length > 0) {
+              results.push({
+                domain: normalizedDomain,
+                success: false,
+                error: `Domain already belongs to ${existingResult.rows[0].name}`,
+              });
+              continue;
+            }
+
+            // Get context based on source
+            let contextUsers: string[] = [];
+            let contextCount = 0;
+
+            if (source === 'email') {
+              const contactsResult = await pool.query(
+                `SELECT email, display_name, email_count
+                 FROM email_contacts
+                 WHERE mapping_status = 'unmapped'
+                   AND LOWER(domain) = LOWER($1)
+                 ORDER BY email_count DESC
+                 LIMIT 10`,
+                [normalizedDomain]
+              );
+              contextCount = contactsResult.rows.length;
+              contextUsers = contactsResult.rows
+                .map((c) => c.display_name || c.email.split("@")[0])
+                .filter(Boolean)
+                .slice(0, 5);
+            } else {
+              // Slack source
+              const domainData = await slackDb.getUnmappedDomains({
+                excludeFreeEmailProviders: false,
+                minUsers: 1,
+              });
+              const domainInfo = domainData.find(
+                (d) => d.domain.toLowerCase() === normalizedDomain
+              );
+              if (domainInfo) {
+                contextCount = domainInfo.user_count;
+                contextUsers = domainInfo.users
+                  .map((u) => u.slack_real_name || u.slack_display_name)
+                  .filter((name): name is string => Boolean(name))
+                  .slice(0, 5);
+              }
+            }
+
+            // Generate org name from domain
+            const orgName = normalizedDomain
+              .split(".")
+              .slice(0, -1)
+              .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+              .join(" ");
+
+            // Create organization in WorkOS with the domain
+            const workosOrg = await workos.organizations.createOrganization({
+              name: orgName,
+              domainData: [{ domain: normalizedDomain, state: DomainDataState.Verified }],
+            });
+
+            // Create local record
+            const sourceType = source === 'email' ? 'email_discovery' : 'slack_discovery';
+            const sourceLabel = source === 'email' ? 'email contacts' : 'Slack';
+            const notes = `Discovered via ${sourceLabel}. ${contextCount} contact(s): ${contextUsers.join(", ")}`;
+
+            await pool.query(
+              `INSERT INTO organizations (
+                workos_organization_id,
+                name,
+                prospect_status,
+                prospect_source,
+                prospect_notes
+              ) VALUES ($1, $2, $3, $4, $5)`,
+              [workosOrg.id, orgName, "prospect", sourceType, notes]
+            );
+
+            // Auto-enrich in background
+            enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
+              logger.warn({ err, domain: normalizedDomain, orgId: workosOrg.id }, "Background enrichment failed");
+            });
+
+            logger.info(
+              { orgId: workosOrg.id, name: orgName, domain: normalizedDomain, source },
+              "Created prospect from bulk domain creation"
+            );
+
+            results.push({
+              domain: normalizedDomain,
+              success: true,
+              org_id: workosOrg.id,
+              name: orgName,
+            });
+          } catch (err) {
+            logger.error({ err, domain: normalizedDomain }, "Error creating prospect in bulk operation");
+            // Sanitize error message to avoid exposing internal details
+            const userMessage = err instanceof Error && err.message.toLowerCase().includes('domain')
+              ? 'Domain is already claimed or invalid'
+              : 'Failed to create organization';
+            results.push({
+              domain: normalizedDomain,
+              success: false,
+              error: userMessage,
+            });
+          }
+        }
+
+        const successful = results.filter((r) => r.success).length;
+        const failed = results.filter((r) => !r.success).length;
+
+        res.status(201).json({
+          total: domains.length,
+          successful,
+          failed,
+          results,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error in bulk prospect creation");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to create prospects",
+        });
+      }
+    }
+  );
+
   // =========================================================================
   // EMAIL CONTACT DOMAIN DISCOVERY
   // =========================================================================
