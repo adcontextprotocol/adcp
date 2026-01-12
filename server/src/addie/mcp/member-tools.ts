@@ -249,6 +249,58 @@ export const MEMBER_TOOLS: AddieTool[] = [
   },
 
   // ============================================
+  // COUNCIL INTEREST (user-scoped)
+  // ============================================
+  {
+    name: 'express_council_interest',
+    description:
+      'Express interest in joining an industry council or other committee that is not yet launched. The user can indicate whether they want to be a participant or a potential leader. This helps gauge interest before the council officially launches.',
+    usage_hints: 'use when user wants to sign up for or show interest in a council',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slug: {
+          type: 'string',
+          description: 'The council/committee slug (e.g., "retail-media-council")',
+        },
+        interest_level: {
+          type: 'string',
+          enum: ['participant', 'leader'],
+          description: 'Whether the user wants to be a participant or is willing to help lead the council (default: participant)',
+        },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'withdraw_council_interest',
+    description:
+      'Withdraw interest in a council or committee. Use this when the user no longer wants to be notified when the council launches.',
+    usage_hints: 'use when user wants to opt out or remove their interest from a council',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slug: {
+          type: 'string',
+          description: 'The council/committee slug to withdraw interest from',
+        },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'get_my_council_interests',
+    description:
+      "Get the current user's council interest signups. Shows which councils they've expressed interest in joining.",
+    usage_hints: 'use for "what councils am I interested in?", checking user\'s interest signups',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
   // MEMBER PROFILE (user-scoped only)
   // ============================================
   {
@@ -1278,6 +1330,93 @@ export function createMemberToolHandlers(
       const role = m.role === 'leader' ? '👑 Leader' : '👤 Member';
       response += `- **${m.working_group.name}** (${m.working_group.slug}) - ${role}\n`;
     });
+
+    return response;
+  });
+
+  // ============================================
+  // COUNCIL INTEREST
+  // ============================================
+  handlers.set('express_council_interest', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to express interest in a council. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.slug as string;
+    const validInterestLevels = ['participant', 'leader'];
+    const interestLevel = validInterestLevels.includes(input.interest_level as string)
+      ? (input.interest_level as string)
+      : 'participant';
+
+    const result = await callApi('POST', `/api/working-groups/${slug}/interest`, memberContext, {
+      interest_level: interestLevel,
+    });
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return `Could not find a council or committee with slug "${slug}". Use list_working_groups with type "council" to see available councils.`;
+      }
+      return `Failed to express interest: ${result.error}`;
+    }
+
+    const data = result.data as { message?: string };
+    return data.message || `You've expressed interest! We'll notify you when this council launches.`;
+  });
+
+  handlers.set('withdraw_council_interest', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to withdraw interest. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.slug as string;
+
+    const result = await callApi('DELETE', `/api/working-groups/${slug}/interest`, memberContext);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        const data = result.data as { error?: string };
+        if (data?.error === 'No interest found') {
+          return `You haven't expressed interest in "${slug}". No action needed.`;
+        }
+        return `Could not find a council or committee with slug "${slug}".`;
+      }
+      return `Failed to withdraw interest: ${result.error}`;
+    }
+
+    const data = result.data as { message?: string };
+    return data.message || `You've withdrawn your interest. You won't be notified when this council launches.`;
+  });
+
+  handlers.set('get_my_council_interests', async () => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your council interests. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const result = await callApi('GET', '/api/me/working-groups/interests', memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch your council interests: ${result.error}`;
+    }
+
+    const interests = result.data as Array<{
+      committee_name: string;
+      slug: string;
+      interest_level: string;
+      created_at: string;
+    }>;
+
+    if (interests.length === 0) {
+      return "You haven't expressed interest in any councils yet. Use list_working_groups with type \"council\" to see available councils!";
+    }
+
+    let response = `## Your Council Interests\n\n`;
+    interests.forEach((i) => {
+      const level = i.interest_level === 'leader' ? '👑 Wants to Lead' : '👤 Participant';
+      const date = new Date(i.created_at).toLocaleDateString();
+      response += `- **${i.committee_name}** (${i.slug}) - ${level} - Signed up ${date}\n`;
+    });
+
+    response += `\nUse withdraw_council_interest to remove your interest from any council.`;
 
     return response;
   });

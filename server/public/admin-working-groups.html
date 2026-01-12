@@ -545,6 +545,17 @@
             <div id="membersList" class="members-list"></div>
           </div>
 
+          <!-- Interest Section (only visible when editing, primarily for councils) -->
+          <div id="interestSection" style="display: none;">
+            <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">
+              Interested Users (<span id="interestCount">0</span>)
+            </h3>
+            <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary); font-size: var(--text-sm);">
+              Users who clicked "I'm Interested" on the committees page
+            </p>
+            <div id="interestList" class="members-list"></div>
+          </div>
+
           <div class="modal-buttons">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
             <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
@@ -976,6 +987,84 @@
       syncSection.style.display = hasSlackChannel ? 'block' : 'none';
     }
 
+    // Load interest records for a committee
+    async function loadInterest(groupId) {
+      try {
+        const response = await fetch(`/api/admin/working-groups/${groupId}/interest`);
+        if (!response.ok) throw new Error('Failed to load interest');
+
+        const data = await response.json();
+        const interests = data.interest || [];
+        document.getElementById('interestCount').textContent = interests.length;
+
+        const interestSection = document.getElementById('interestSection');
+
+        if (interests.length === 0) {
+          interestSection.style.display = 'none';
+          document.getElementById('interestList').innerHTML = '';
+        } else {
+          interestSection.style.display = 'block';
+          document.getElementById('interestList').innerHTML = interests.map(i => {
+            const date = new Date(i.created_at).toLocaleDateString();
+            const levelBadge = i.interest_level === 'leader'
+              ? '<span class="badge" style="background: var(--color-purple-100, #f3e8ff); color: var(--color-purple-700, #7c3aed); margin-left: var(--space-2);">Wants to Lead</span>'
+              : '';
+            return `
+              <div class="member-item">
+                <div>
+                  <strong>${escapeHtml(i.user_name || i.user_email)}</strong>
+                  ${i.user_org_name ? `<span style="color: var(--color-text-secondary);"> - ${escapeHtml(i.user_org_name)}</span>` : ''}
+                  ${levelBadge}
+                </div>
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                  <span style="color: var(--color-text-muted); font-size: var(--text-sm);">${date}</span>
+                  <button class="btn btn-primary btn-small" onclick="addInterestedAsMember('${escapeJs(i.workos_user_id)}', '${escapeJs(i.user_name || '')}', '${escapeJs(i.user_email || '')}', '${escapeJs(i.user_org_name || '')}')">Add as Member</button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      } catch (error) {
+        console.error('Error loading interest:', error);
+        document.getElementById('interestSection').style.display = 'none';
+      }
+    }
+
+    // Add an interested user as a member
+    async function addInterestedAsMember(userId, name, email, orgName) {
+      if (!editingGroup) return;
+
+      try {
+        const response = await fetch(`/api/admin/working-groups/${editingGroup.id}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workos_user_id: userId,
+            user_name: name,
+            user_email: email,
+            user_org_name: orgName
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          if (err.message && err.message.includes('already')) {
+            alert('This user is already a member');
+          } else {
+            throw new Error(err.message || 'Failed to add member');
+          }
+          return;
+        }
+
+        // Reload both lists
+        await loadMembers(editingGroup.id);
+        await loadInterest(editingGroup.id);
+      } catch (error) {
+        console.error('Error adding interested user as member:', error);
+        alert('Failed to add member: ' + error.message);
+      }
+    }
+
     // Sync members from Slack
     async function syncFromSlack() {
       if (!editingGroup || !editingGroup.id) {
@@ -1097,6 +1186,7 @@
       validateSlackUrl(); // Reset status message
       updateRegionVisibility(); // Hide region for non-chapters, hide gathering fields for non-gatherings
       updateMembersSectionVisibility(); // Hide members section for new groups
+      document.getElementById('interestSection').style.display = 'none'; // Hide interest section for new groups
       document.getElementById('groupModal').style.display = 'flex';
     }
 
@@ -1139,6 +1229,7 @@
         // Show members section for existing groups
         updateMembersSectionVisibility();
         await loadMembers(id);
+        await loadInterest(id);
 
         document.getElementById('groupModal').style.display = 'flex';
       } catch (error) {
@@ -1161,6 +1252,10 @@
       // Clear sync result
       document.getElementById('syncResult').style.display = 'none';
       document.getElementById('syncResult').innerHTML = '';
+
+      // Reset interest section
+      document.getElementById('interestSection').style.display = 'none';
+      document.getElementById('interestList').innerHTML = '';
 
       // Reset committee type fields
       document.getElementById('committeeType').value = 'working_group';
@@ -1271,7 +1366,13 @@
     // Escape string for use in JavaScript (for onclick handlers)
     function escapeJs(text) {
       if (!text) return '';
-      return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+      return text
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
     }
 
     // Extract Slack channel ID from URL (mirrors server-side logic)
