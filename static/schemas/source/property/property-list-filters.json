@@ -7,7 +7,7 @@
   "properties": {
     "countries_all": {
       "type": "array",
-      "description": "Property must be compliant in ALL listed countries (ISO codes). Required.",
+      "description": "Property must have feature data for ALL listed countries (ISO codes). Required.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"

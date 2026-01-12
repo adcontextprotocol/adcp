@@ -168,7 +168,7 @@ Filters are applied when the list is resolved (via `get_property_list`):
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| `countries_all` | string[] | ISO country codes - property must be compliant in ALL (required) |
+| `countries_all` | string[] | ISO country codes - property must have feature data for ALL (required) |
 | `channels_any` | string[] | Advertising channels - property must support ANY (required) |
 | `property_types` | string[] | Property types (website, mobile_app, ctv_app, etc.) |
 | `feature_requirements` | FeatureRequirement[] | Requirements based on agent-provided features |
@@ -238,7 +238,7 @@ These are required because governance agents need to know which jurisdiction and
 
 The filter field names make the logic explicit:
 
-- **`countries_all`**: Property must be compliant in **ALL** listed countries. This is critical because different jurisdictions have different laws - a sugary drink ad legal in France may be illegal in the UK.
+- **`countries_all`**: Property must have feature data for **ALL** listed countries.
 - **`channels_any`**: Property must support **ANY** of the listed channels.
 - **`feature_requirements`**: Property must pass **ALL** requirements (AND).
 
