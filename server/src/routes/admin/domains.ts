@@ -255,10 +255,20 @@ export function setupDomainRoutes(
           logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
         });
 
+        // Link the unmapped Slack users to this new prospect
+        const linkResult = await slackDb.linkSlackUsersByDomain(domain, workosOrg.id);
+        if (linkResult.usersLinked > 0) {
+          logger.info(
+            { orgId: workosOrg.id, domain, usersLinked: linkResult.usersLinked },
+            "Linked Slack users to new prospect"
+          );
+        }
+
         res.status(201).json({
           ...result.rows[0],
           domain,
           slack_users: domainInfo.users,
+          slack_users_linked: linkResult.usersLinked,
           workos_org: {
             id: workosOrg.id,
             domains: workosOrg.domains,
@@ -1672,6 +1682,61 @@ export function setupDomainRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to remove personal domain",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // BACKFILL TOOLS
+  // =========================================================================
+
+  // GET /api/admin/slack/backfill-status - Get count of users that can be backfilled
+  apiRouter.get(
+    "/slack/backfill-status",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const status = await slackDb.getBackfillableUserCount();
+        res.json(status);
+      } catch (error) {
+        logger.error({ err: error }, "Error getting backfill status");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to get backfill status",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/slack/backfill-pending-orgs - Backfill pending_organization_id for existing prospects
+  apiRouter.post(
+    "/slack/backfill-pending-orgs",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const result = await slackDb.backfillPendingOrganizations();
+
+        logger.info(
+          {
+            organizationsProcessed: result.organizationsProcessed,
+            usersLinked: result.usersLinked,
+          },
+          "Completed Slack pending organization backfill"
+        );
+
+        res.json({
+          success: true,
+          message: `Linked ${result.usersLinked} Slack users to ${result.details.length} organizations`,
+          ...result,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error running Slack pending org backfill");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to run backfill",
         });
       }
     }

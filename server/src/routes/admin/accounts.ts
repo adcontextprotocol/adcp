@@ -317,6 +317,7 @@ export function setupAccountRoutes(
           membersResult,
           misalignedUsersResult,
           similarOrgsResult,
+          pendingSlackUsersResult,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -535,6 +536,25 @@ export function setupAccountRoutes(
           `,
             [orgId]
           ),
+
+          // Pending Slack users (discovered via domain but not yet members)
+          pool.query(
+            `
+            SELECT
+              slack_user_id,
+              slack_email,
+              slack_display_name,
+              slack_real_name,
+              last_slack_activity_at
+            FROM slack_user_mappings
+            WHERE pending_organization_id = $1
+              AND mapping_status = 'unmapped'
+              AND slack_is_bot = false
+              AND slack_is_deleted = false
+            ORDER BY last_slack_activity_at DESC NULLS LAST, slack_real_name ASC
+          `,
+            [orgId]
+          ),
         ]);
 
         // Get engagement signals
@@ -683,6 +703,10 @@ export function setupAccountRoutes(
               (d: { verified?: boolean }) => !d.verified
             ),
           },
+
+          // Pending Slack users (discovered via domain but not yet linked/members)
+          pending_slack_users: pendingSlackUsersResult.rows,
+          pending_slack_count: pendingSlackUsersResult.rows.length,
 
           owner: owner
             ? {
