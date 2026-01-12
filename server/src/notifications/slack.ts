@@ -343,7 +343,7 @@ export async function notifyWorkingGroupPost(data: {
 }): Promise<boolean> {
   const emoji = data.contentType === 'link' ? '🔗' : '📝';
   const typeLabel = data.contentType === 'link' ? 'Link' : 'Article';
-  const postUrl = `https://agenticadvertising.org/perspectives/${data.postSlug}`;
+  const postUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}#post-${data.postSlug}`;
   const groupUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}`;
 
   return sendSlackMessage({

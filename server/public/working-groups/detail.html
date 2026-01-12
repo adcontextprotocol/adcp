@@ -1029,7 +1029,7 @@
           <div class="form-group">
             <label>Slug</label>
             <input type="text" id="postSlug" required placeholder="url-friendly-slug" pattern="[a-z0-9-]+">
-            <small>URL path: /perspectives/{slug}</small>
+            <small>Post identifier for linking</small>
           </div>
           <div class="form-group">
             <label>Category</label>
@@ -1290,7 +1290,7 @@
         }
 
         postsList.innerHTML = posts.map(post => `
-          <a href="/perspectives/${escapeHtml(post.slug)}" class="post-card">
+          <a href="/working-groups/${currentSlug}#post-${escapeHtml(post.slug)}" class="post-card">
             <div class="post-title">${escapeHtml(post.title)}</div>
             <div class="post-meta">
               <span>${formatDate(post.published_at)}</span>

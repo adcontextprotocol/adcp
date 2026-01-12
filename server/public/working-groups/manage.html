@@ -625,7 +625,7 @@
           <div class="form-group">
             <label>Slug</label>
             <input type="text" id="slug" required placeholder="url-friendly-slug" pattern="[a-z0-9-]+">
-            <small>URL path: /perspectives/{slug}</small>
+            <small>Post identifier for linking</small>
           </div>
           <div class="form-group">
             <label>Category</label>
@@ -1079,7 +1079,7 @@
               </div>
             </div>
             <div class="post-actions">
-              ${post.status === 'published' ? `<a href="/perspectives/${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
+              ${post.status === 'published' ? `<a href="/working-groups/${currentSlug}#post-${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editPost('${post.id}')">Edit</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/'/g, "\\'")}')">Delete</button>
             </div>
