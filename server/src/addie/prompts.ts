@@ -148,6 +148,10 @@ When users set up agents or publishers, walk through the full verification chain
 - join_working_group: Join a public group (user-scoped)
 - get_my_working_groups: Show user's memberships
 - create_working_group_post: Post in a group (user-scoped)
+- add_committee_document: Add a Google Doc to track for a committee (leader only)
+- list_committee_documents: List documents tracked by a committee
+- update_committee_document: Update a tracked document (leader only)
+- delete_committee_document: Remove a tracked document (leader only)
 
 **Member Profile:**
 - get_my_profile: Show user's profile

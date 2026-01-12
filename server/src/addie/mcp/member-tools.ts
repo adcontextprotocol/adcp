@@ -499,6 +499,114 @@ export const MEMBER_TOOLS: AddieTool[] = [
   },
 
   // ============================================
+  // COMMITTEE DOCUMENTS
+  // ============================================
+  {
+    name: 'add_committee_document',
+    description:
+      'Add a Google Docs document to a committee (working group, council, or chapter) for tracking. The document will be automatically indexed and summarized. Only committee leaders can add documents.',
+    usage_hints: 'use when user wants to add a Google Doc to track for a committee',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The committee/working group slug (e.g., "governance", "brand-standards-wg")',
+        },
+        title: {
+          type: 'string',
+          description: 'A title for the document',
+        },
+        document_url: {
+          type: 'string',
+          description: 'The Google Docs URL (must be docs.google.com, sheets.google.com, or drive.google.com)',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description of what the document is for',
+        },
+        is_featured: {
+          type: 'boolean',
+          description: 'Whether this is a featured/highlighted document (default: false)',
+        },
+      },
+      required: ['committee_slug', 'title', 'document_url'],
+    },
+  },
+  {
+    name: 'list_committee_documents',
+    description:
+      'List documents tracked by a committee. Shows document titles, status, and summaries.',
+    usage_hints: 'use for "what documents does X group have?", "show governance docs"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The committee/working group slug',
+        },
+      },
+      required: ['committee_slug'],
+    },
+  },
+  {
+    name: 'update_committee_document',
+    description:
+      'Update a document tracked by a committee. Can change title, description, URL, or featured status. Only committee leaders can update documents.',
+    usage_hints: 'use when user wants to update/edit a tracked document',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The committee/working group slug',
+        },
+        document_id: {
+          type: 'string',
+          description: 'The document ID to update (UUID)',
+        },
+        title: {
+          type: 'string',
+          description: 'New title for the document',
+        },
+        description: {
+          type: 'string',
+          description: 'New description for the document',
+        },
+        document_url: {
+          type: 'string',
+          description: 'New Google Docs URL (must be docs.google.com, sheets.google.com, or drive.google.com)',
+        },
+        is_featured: {
+          type: 'boolean',
+          description: 'Whether this is a featured/highlighted document',
+        },
+      },
+      required: ['committee_slug', 'document_id'],
+    },
+  },
+  {
+    name: 'delete_committee_document',
+    description:
+      'Remove a document from a committee. The document will no longer be tracked or displayed. Only committee leaders can delete documents.',
+    usage_hints: 'use when user wants to remove/delete a tracked document',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: {
+          type: 'string',
+          description: 'The committee/working group slug',
+        },
+        document_id: {
+          type: 'string',
+          description: 'The document ID to delete (UUID)',
+        },
+      },
+      required: ['committee_slug', 'document_id'],
+    },
+  },
+
+  // ============================================
   // ACCOUNT LINKING
   // ============================================
   {
@@ -1654,6 +1762,215 @@ export function createMemberToolHandlers(
     }
 
     return `❌ Content rejected. The author will see the following reason:\n\n> ${reason}\n\nThey can revise and resubmit if appropriate.`;
+  });
+
+  // ============================================
+  // COMMITTEE DOCUMENTS
+  // ============================================
+  handlers.set('add_committee_document', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to add documents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.committee_slug as string;
+    const title = input.title as string;
+    const documentUrl = input.document_url as string;
+    const description = input.description as string | undefined;
+    const isFeatured = input.is_featured as boolean | undefined;
+
+    // Validate URL is a Google domain
+    try {
+      const url = new URL(documentUrl);
+      const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
+      if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
+        return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
+      }
+    } catch {
+      return 'Invalid URL format. Please provide a valid Google Docs URL.';
+    }
+
+    const result = await callApi(
+      'POST',
+      `/api/working-groups/${slug}/documents`,
+      memberContext,
+      {
+        title,
+        document_url: documentUrl,
+        description,
+        is_featured: isFeatured || false,
+        document_type: documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc',
+      }
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return `You're not a leader of the "${slug}" committee. Only committee leaders can add documents.`;
+      }
+      if (result.status === 404) {
+        return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+      }
+      return `Failed to add document: ${result.error}`;
+    }
+
+    let response = `✅ Document added to "${slug}"!\n\n`;
+    response += `**Title:** ${title}\n`;
+    response += `**URL:** ${documentUrl}\n\n`;
+    response += `The document will be automatically indexed and summarized within the hour. `;
+    response += `You can view it at https://agenticadvertising.org/working-groups/${slug}`;
+
+    return response;
+  });
+
+  handlers.set('list_committee_documents', async (input) => {
+    const slug = input.committee_slug as string;
+
+    const result = await callApi('GET', `/api/working-groups/${slug}/documents`, memberContext);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+      }
+      return `Failed to list documents: ${result.error}`;
+    }
+
+    const data = result.data as { documents?: Array<{
+      id: string;
+      title: string;
+      document_url: string;
+      description?: string;
+      document_summary?: string;
+      index_status: string;
+      is_featured: boolean;
+      last_modified_at?: string;
+    }> } | undefined;
+    const documents = data?.documents || [];
+
+    if (documents.length === 0) {
+      return `No documents are being tracked for the "${slug}" committee yet.`;
+    }
+
+    let response = `## Documents for "${slug}"\n\n`;
+    for (const doc of documents) {
+      response += `### ${doc.title}${doc.is_featured ? ' ⭐' : ''}\n`;
+      response += `**ID:** \`${doc.id}\`\n`;
+      response += `**URL:** ${doc.document_url}\n`;
+      response += `**Status:** ${doc.index_status}\n`;
+      if (doc.document_summary) {
+        response += `**Summary:** ${doc.document_summary}\n`;
+      }
+      if (doc.last_modified_at) {
+        const date = new Date(doc.last_modified_at);
+        response += `**Last updated:** ${date.toLocaleDateString()}\n`;
+      }
+      response += '\n';
+    }
+
+    return response;
+  });
+
+  handlers.set('update_committee_document', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to update documents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.committee_slug as string;
+    const documentId = input.document_id as string;
+    const title = input.title as string | undefined;
+    const description = input.description as string | undefined;
+    const documentUrl = input.document_url as string | undefined;
+    const isFeatured = input.is_featured as boolean | undefined;
+
+    // Validate UUID format before API call
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(documentId)) {
+      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+    }
+
+    // Validate URL if provided
+    if (documentUrl) {
+      try {
+        const url = new URL(documentUrl);
+        const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
+        if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
+          return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
+        }
+      } catch {
+        return 'Invalid URL format. Please provide a valid Google Docs URL.';
+      }
+    }
+
+    // Build update payload with only provided fields
+    const updateData: Record<string, unknown> = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (documentUrl !== undefined) {
+      updateData.document_url = documentUrl;
+      updateData.document_type = documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc';
+    }
+    if (isFeatured !== undefined) updateData.is_featured = isFeatured;
+
+    if (Object.keys(updateData).length === 0) {
+      return 'No fields to update. Please provide at least one field to change (title, description, document_url, or is_featured).';
+    }
+
+    const result = await callApi(
+      'PUT',
+      `/api/working-groups/${slug}/documents/${documentId}`,
+      memberContext,
+      updateData
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return `You're not a leader of the "${slug}" committee. Only committee leaders can update documents.`;
+      }
+      if (result.status === 404) {
+        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
+      }
+      return `Failed to update document: ${result.error}`;
+    }
+
+    const data = result.data as { document?: { title: string } } | undefined;
+    const docTitle = data?.document?.title || title || 'Document';
+
+    let response = `✅ Document updated!\n\n`;
+    response += `**${docTitle}** has been updated in "${slug}".\n\n`;
+    response += `View it at https://agenticadvertising.org/working-groups/${slug}`;
+
+    return response;
+  });
+
+  handlers.set('delete_committee_document', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to delete documents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.committee_slug as string;
+    const documentId = input.document_id as string;
+
+    // Validate UUID format before API call
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(documentId)) {
+      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+    }
+
+    const result = await callApi(
+      'DELETE',
+      `/api/working-groups/${slug}/documents/${documentId}`,
+      memberContext
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return `You're not a leader of the "${slug}" committee. Only committee leaders can delete documents.`;
+      }
+      if (result.status === 404) {
+        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
+      }
+      return `Failed to delete document: ${result.error}`;
+    }
+
+    return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
   });
 
   // ============================================
