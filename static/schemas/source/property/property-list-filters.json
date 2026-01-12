@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/property/property-list-filters.json",
   "title": "Property List Filters",
-  "description": "Filters that dynamically modify a property list when resolved",
+  "description": "Filters that dynamically modify a property list when resolved. See Protocol Specification for semantic definitions of geographic and channel compliance.",
   "type": "object",
   "properties": {
     "countries_all": {
       "type": "array",
-      "description": "Property must be compliant in ALL listed countries (ISO codes). Required.",
+      "description": "Property must be compliant for ad delivery to users in ALL listed countries (ISO 3166-1 alpha-2). 'Compliant' means: meets advertising regulations for that jurisdiction, can serve ads to users there, and has required consent mechanisms. Country refers to user location, not publisher headquarters or hosting. Required.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
@@ -15,14 +15,14 @@
     },
     "channels_any": {
       "type": "array",
-      "description": "Property must support ANY of the listed channels. Required.",
+      "description": "Property must support ANY of the listed channels. 'Supports' means: can render the format, offers it for sale, and meets quality thresholds. Required.",
       "items": {
         "$ref": "/schemas/enums/channels.json"
       }
     },
     "property_types": {
       "type": "array",
-      "description": "Filter to these property types",
+      "description": "Filter to these property types. Type is determined by the property's primary platform/medium.",
       "items": {
         "$ref": "/schemas/enums/property-type.json"
       }
