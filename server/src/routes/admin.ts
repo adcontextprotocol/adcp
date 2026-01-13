@@ -240,11 +240,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 mo.response_text,
                 mo.thread_id,
                 mo.dm_channel_id,
-                ig.name as goal_name,
-                ig.question as goal_question,
+                og.name as goal_name,
+                og.description as goal_question,
                 at.message_count as thread_message_count
               FROM member_outreach mo
-              LEFT JOIN insight_goals ig ON ig.id = mo.insight_goal_id
+              LEFT JOIN user_goal_history ugh ON ugh.outreach_id = mo.id
+              LEFT JOIN outreach_goals og ON og.id = ugh.goal_id
               LEFT JOIN addie_threads at ON at.thread_id = mo.thread_id
               WHERE mo.slack_user_id = $1
               ORDER BY mo.sent_at DESC
@@ -590,6 +591,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           contact_name,
           contact_email,
           billing_address,
+          coupon_id,
         } = req.body;
 
         if (!lookup_key || !company_name || !contact_name || !contact_email || !billing_address) {
@@ -609,7 +611,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
         const pool = getPool();
         const orgResult = await pool.query(
-          `SELECT workos_organization_id, name FROM organizations WHERE workos_organization_id = $1`,
+          `SELECT workos_organization_id, name, stripe_coupon_id FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         );
 
@@ -618,6 +620,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         }
 
         const org = orgResult.rows[0];
+
+        // Use explicit coupon_id from request, or fall back to org's saved coupon
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
 
         const result = await createAndSendInvoice({
           lookupKey: lookup_key,
@@ -633,6 +638,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
             country: billing_address.country,
           },
           workosOrganizationId: orgId,
+          couponId: effectiveCouponId,
         });
 
         if (!result) {

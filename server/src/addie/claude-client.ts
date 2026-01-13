@@ -8,12 +8,71 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
-import { ADDIE_SYSTEM_PROMPT, buildMessageTurns } from './prompts.js';
+import { ADDIE_SYSTEM_PROMPT, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
+import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
+import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
+import { formatTokenCount, getConversationTokenLimit } from '../utils/token-limiter.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+/**
+ * Build Claude content blocks from multimodal file content.
+ * Returns null if the content cannot be converted to valid content blocks.
+ */
+function buildMultimodalContentBlocks(
+  multimodal: FileReadResult
+): { content: Anthropic.ToolResultBlockParam['content']; summary: string } | null {
+  if (!multimodal.data) {
+    return null;
+  }
+
+  const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
+
+  if (multimodal.type === 'image') {
+    // Validate media type before using
+    if (!isAllowedImageType(multimodal.media_type)) {
+      logger.warn(
+        { mediaType: multimodal.media_type },
+        'Addie: Invalid image media type in multimodal content'
+      );
+      return null;
+    }
+    contentBlocks.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: multimodal.media_type,
+        data: multimodal.data,
+      },
+    });
+    contentBlocks.push({
+      type: 'text',
+      text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
+    });
+  } else if (multimodal.type === 'document') {
+    contentBlocks.push({
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: multimodal.data,
+      },
+    });
+    contentBlocks.push({
+      type: 'text',
+      text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
+    });
+  } else {
+    // Unknown multimodal type
+    return null;
+  }
+
+  const summary = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
+  return { content: contentBlocks, summary };
+}
 
 /** Default max tool iterations for regular users */
 export const DEFAULT_MAX_ITERATIONS = 10;
@@ -43,6 +102,8 @@ export interface UserScopedToolsResult {
 export interface ProcessMessageOptions {
   /** Maximum tool iterations (default: DEFAULT_MAX_ITERATIONS) */
   maxIterations?: number;
+  /** Override the default model for this request (e.g., for billing queries requiring precision) */
+  modelOverride?: string;
 }
 
 /**
@@ -100,6 +161,7 @@ export type StreamEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
   | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
+  | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
   | { type: 'done'; response: AddieResponse }
   | { type: 'error'; error: string };
 
@@ -258,20 +320,46 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (skip for eval mode)
     const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
+    const maxIterations = options?.maxIterations ?? 10;
+    const effectiveModel = options?.modelOverride ?? this.model;
+
+    // Log if using precision model
+    if (options?.modelOverride && options.modelOverride !== this.model) {
+      logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
+    }
+
+    // Combine global tools with per-request tools
+    // Calculate tool count first to inform token budget for conversation history
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const toolCount = allTools.length + (this.webSearchEnabled ? 1 : 0);
+
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
-    const messageTurns = buildMessageTurns(userMessage, threadContext);
-    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+    // Token-aware: automatically trims older messages if conversation exceeds limits
+    // Pass tool count for more accurate token budget calculation
+    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
+      model: effectiveModel,
+      toolCount,
+    });
+
+    if (messageTurnsResult.wasTrimmed) {
+      logger.info(
+        {
+          messagesRemoved: messageTurnsResult.messagesRemoved,
+          estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(effectiveModel, toolCount)),
+          toolCount,
+        },
+        'Addie: Trimmed conversation history to fit context limit'
+      );
+    }
+
+    const messages: Anthropic.MessageParam[] = messageTurnsResult.messages.map(turn => ({
       role: turn.role,
       content: turn.content,
     }));
-
-    const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
-
-    // Combine global tools with per-request tools
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
 
     while (iteration < maxIterations) {
       iteration++;
@@ -285,22 +373,26 @@ export class AddieClaudeClient {
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      const response = await this.client.beta.messages.create({
-        model: this.model,
-        max_tokens: 4096,
-        system: systemPrompt,
-        tools: [
-          ...customTools,
-          // Add web search tool via beta API
-          ...(this.webSearchEnabled ? [{
-            type: 'web_search_20250305' as const,
-            name: 'web_search' as const,
-          }] : []),
-        ],
-        messages,
-        // Required for beta API
-        betas: ['web-search-2025-03-05'],
-      });
+      const response = await withRetry(
+        () => this.client.beta.messages.create({
+          model: effectiveModel,
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools: [
+            ...customTools,
+            // Add web search tool via beta API
+            ...(this.webSearchEnabled ? [{
+              type: 'web_search_20250305' as const,
+              name: 'web_search' as const,
+            }] : []),
+          ],
+          messages,
+          // Required for beta API
+          betas: ['web-search-2025-03-05'],
+        }),
+        { maxRetries: 3, initialDelayMs: 1000 },
+        'processMessage'
+      );
 
       const llmDuration = Date.now() - llmStart;
       totalLlmMs += llmDuration;
@@ -517,9 +609,11 @@ export class AddieClaudeClient {
           };
         }
 
+        // Tool results can contain multimodal content (images, PDFs)
+        type ToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
         interface ToolResult {
           tool_use_id: string;
-          content: string;
+          content: ToolResultContent;
           is_error?: boolean;
         }
 
@@ -559,16 +653,49 @@ export class AddieClaudeClient {
           try {
             const result = await handler(toolInput);
             const durationMs = Date.now() - startTime;
-            toolResults.push({ tool_use_id: toolUseId, content: result });
-            toolExecutions.push({
-              tool_name: toolName,
-              parameters: toolInput,
-              result,
-              result_summary: this.summarizeToolResult(toolName, result),
-              is_error: false,
-              duration_ms: durationMs,
-              sequence: executionSequence,
-            });
+
+            // Check if result contains multimodal content (images, PDFs)
+            if (isMultimodalContent(result)) {
+              const multimodal = extractMultimodalContent(result);
+              const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
+
+              if (multimodalBlocks) {
+                toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
+                toolExecutions.push({
+                  tool_name: toolName,
+                  parameters: toolInput,
+                  result: multimodalBlocks.summary,
+                  result_summary: multimodalBlocks.summary,
+                  is_error: false,
+                  duration_ms: durationMs,
+                  sequence: executionSequence,
+                });
+                logger.info({ toolName, multimodalType: multimodal?.type, filename: multimodal?.filename }, 'Addie: Processed multimodal tool result');
+              } else {
+                // Failed to parse or validate multimodal content
+                toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
+                toolExecutions.push({
+                  tool_name: toolName,
+                  parameters: toolInput,
+                  result: 'Error: Failed to process file content',
+                  is_error: true,
+                  duration_ms: durationMs,
+                  sequence: executionSequence,
+                });
+              }
+            } else {
+              // Regular text result
+              toolResults.push({ tool_use_id: toolUseId, content: result });
+              toolExecutions.push({
+                tool_name: toolName,
+                parameters: toolInput,
+                result,
+                result_summary: this.summarizeToolResult(toolName, result),
+                is_error: false,
+                duration_ms: durationMs,
+                sequence: executionSequence,
+              });
+            }
           } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -669,20 +796,40 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
+    // Combine global tools with per-request tools
+    // Calculate tool count first to inform token budget for conversation history
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const toolCount = allTools.length; // Note: streaming doesn't use web search
+
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
-    const messageTurns = buildMessageTurns(userMessage, threadContext);
-    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+    // Token-aware: automatically trims older messages if conversation exceeds limits
+    // Pass tool count for more accurate token budget calculation
+    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
+      model: this.model,
+      toolCount,
+    });
+
+    if (messageTurnsResult.wasTrimmed) {
+      logger.info(
+        {
+          messagesRemoved: messageTurnsResult.messagesRemoved,
+          estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(this.model, toolCount)),
+          toolCount,
+        },
+        'Addie Stream: Trimmed conversation history to fit context limit'
+      );
+    }
+
+    const messages: Anthropic.MessageParam[] = messageTurnsResult.messages.map(turn => ({
       role: turn.role,
       content: turn.content,
     }));
 
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
-
-    // Combine global tools with per-request tools
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
 
     try {
       while (iteration < maxIterations) {
@@ -697,31 +844,107 @@ export class AddieClaudeClient {
 
         const llmStart = Date.now();
 
-        // Use streaming API
-        const stream = this.client.messages.stream({
-          model: this.model,
-          max_tokens: 4096,
-          system: systemPrompt,
-          tools: customTools,
-          messages,
-        });
-
         // Collect full response for tool handling
         let currentResponse: Anthropic.Message | null = null;
         const textChunks: string[] = [];
 
-        // Process stream events
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta') {
-            const delta = event.delta;
-            if ('text' in delta && delta.text) {
-              textChunks.push(delta.text);
-              fullText += delta.text;
-              yield { type: 'text', text: delta.text };
+        // Retry loop for streaming API calls (handles overloaded_error)
+        // Only retries if no content has been yielded yet (safe retry)
+        const maxStreamRetries = 3;
+        let streamRetryCount = 0;
+        let streamSucceeded = false;
+        let hasYieldedContent = false;
+
+        while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
+          try {
+            // Use streaming API
+            const stream = this.client.messages.stream({
+              model: this.model,
+              max_tokens: 4096,
+              system: systemPrompt,
+              tools: customTools,
+              messages,
+            });
+
+            // Process stream events
+            for await (const event of stream) {
+              if (event.type === 'content_block_delta') {
+                const delta = event.delta;
+                if ('text' in delta && delta.text) {
+                  hasYieldedContent = true;
+                  textChunks.push(delta.text);
+                  fullText += delta.text;
+                  yield { type: 'text', text: delta.text };
+                }
+              } else if (event.type === 'message_stop') {
+                // Get the final message
+                currentResponse = await stream.finalMessage();
+              }
             }
-          } else if (event.type === 'message_stop') {
-            // Get the final message
-            currentResponse = await stream.finalMessage();
+
+            if (!currentResponse) {
+              currentResponse = await stream.finalMessage();
+            }
+
+            streamSucceeded = true;
+          } catch (streamError) {
+            streamRetryCount++;
+
+            // Only retry if we haven't started streaming content to the user
+            // Once content is yielded, retry could cause duplicate/inconsistent output
+            const canRetry = !hasYieldedContent &&
+                             isRetryableError(streamError) &&
+                             streamRetryCount <= maxStreamRetries;
+
+            if (!canRetry) {
+              // Check if this is exhausted retries on a retryable error (not yielded content)
+              // If so, wrap in RetriesExhaustedError for consistent error handling
+              const isExhausted = !hasYieldedContent &&
+                                  isRetryableError(streamError) &&
+                                  streamRetryCount > maxStreamRetries;
+              if (isExhausted) {
+                throw new RetriesExhaustedError(streamError, streamRetryCount);
+              }
+              // Not retryable or already yielded content - rethrow original error
+              throw streamError;
+            }
+
+            // Calculate delay with exponential backoff
+            const delayMs = Math.min(1000 * Math.pow(2, streamRetryCount - 1), 30000);
+            const jitter = delayMs * 0.25 * (Math.random() * 2 - 1);
+            const totalDelay = Math.round(delayMs + jitter);
+
+            // Determine user-friendly reason
+            const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+            const reason = errorMsg.includes('overloaded') ? 'API is busy' :
+                          errorMsg.includes('rate') ? 'Rate limited' :
+                          errorMsg.includes('timeout') ? 'Request timed out' :
+                          'Temporary issue';
+
+            logger.warn(
+              {
+                attempt: streamRetryCount,
+                maxRetries: maxStreamRetries,
+                delayMs: totalDelay,
+                error: errorMsg,
+              },
+              'Addie Stream: Retryable error, waiting before retry'
+            );
+
+            // Emit retry event so UI can show status
+            yield {
+              type: 'retry',
+              attempt: streamRetryCount,
+              maxRetries: maxStreamRetries,
+              delayMs: totalDelay,
+              reason,
+            };
+
+            await new Promise(resolve => setTimeout(resolve, totalDelay));
+
+            // Reset for retry (safe since no content yielded yet)
+            textChunks.length = 0;
+            currentResponse = null;
           }
         }
 
@@ -729,7 +952,7 @@ export class AddieClaudeClient {
         totalLlmMs += llmDuration;
 
         if (!currentResponse) {
-          currentResponse = await stream.finalMessage();
+          throw new Error('Stream completed without response');
         }
 
         // Track token usage
@@ -815,9 +1038,11 @@ export class AddieClaudeClient {
             return;
           }
 
+          // Tool results can contain multimodal content (images, PDFs)
+          type StreamToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
           interface ToolResult {
             tool_use_id: string;
-            content: string;
+            content: StreamToolResultContent;
             is_error?: boolean;
           }
 
@@ -862,17 +1087,51 @@ export class AddieClaudeClient {
             try {
               const result = await handler(toolInput);
               const durationMs = Date.now() - startTime;
-              toolResults.push({ tool_use_id: toolUseId, content: result });
-              toolExecutions.push({
-                tool_name: toolName,
-                parameters: toolInput,
-                result,
-                result_summary: this.summarizeToolResult(toolName, result),
-                is_error: false,
-                duration_ms: durationMs,
-                sequence: executionSequence,
-              });
-              yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+
+              // Check if result contains multimodal content (images, PDFs)
+              if (isMultimodalContent(result)) {
+                const multimodal = extractMultimodalContent(result);
+                const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
+
+                if (multimodalBlocks) {
+                  toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
+                  toolExecutions.push({
+                    tool_name: toolName,
+                    parameters: toolInput,
+                    result: multimodalBlocks.summary,
+                    result_summary: multimodalBlocks.summary,
+                    is_error: false,
+                    duration_ms: durationMs,
+                    sequence: executionSequence,
+                  });
+                  yield { type: 'tool_end', tool_name: toolName, result: multimodalBlocks.summary, is_error: false };
+                  logger.info({ toolName, multimodalType: multimodal?.type, filename: multimodal?.filename }, 'Addie Stream: Processed multimodal tool result');
+                } else {
+                  toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
+                  toolExecutions.push({
+                    tool_name: toolName,
+                    parameters: toolInput,
+                    result: 'Error: Failed to process file content',
+                    is_error: true,
+                    duration_ms: durationMs,
+                    sequence: executionSequence,
+                  });
+                  yield { type: 'tool_end', tool_name: toolName, result: 'Error: Failed to process file content', is_error: true };
+                }
+              } else {
+                // Regular text result
+                toolResults.push({ tool_use_id: toolUseId, content: result });
+                toolExecutions.push({
+                  tool_name: toolName,
+                  parameters: toolInput,
+                  result,
+                  result_summary: this.summarizeToolResult(toolName, result),
+                  is_error: false,
+                  duration_ms: durationMs,
+                  sequence: executionSequence,
+                });
+                yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+              }
             } catch (error) {
               const durationMs = Date.now() - startTime;
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';

@@ -1,15 +1,18 @@
 /**
  * Slack user sync service
  *
- * Fetches users from Slack workspace and syncs them to the database.
- * Auto-mapping by email is handled separately via the admin API endpoint
- * which has access to WorkOS user data.
+ * Handles syncing between Slack and website accounts:
+ * - Fetches users from Slack workspace and syncs them to the database
+ * - Auto-links accounts by email when users join (either direction)
+ * - Syncs working group memberships based on Slack channel membership
  */
 
 import { logger } from '../logger.js';
 import { getSlackUsers, getChannelMembers, getUserChannels, isSlackConfigured } from './client.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
+import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
+import { invalidateMemberContextCache } from '../addie/index.js';
 import type { SyncSlackUsersResult } from './types.js';
 
 const slackDb = new SlackDatabase();
@@ -71,6 +74,7 @@ export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
           slack_real_name: realName,
           slack_is_bot: user.is_bot,
           slack_is_deleted: user.deleted,
+          slack_tz_offset: user.tz_offset ?? null,
         });
 
         result.total_synced++;
@@ -87,8 +91,12 @@ export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
       }
     }
 
-    // Note: auto_mapped will remain 0 here.
-    // Use POST /api/admin/slack/auto-link-suggested after sync to auto-map by email.
+    // Note: auto_mapped will remain 0 here since bulk sync doesn't auto-map.
+    // Auto-mapping happens on:
+    // - team_join event (Slack user joins workspace)
+    // - user.created webhook (website user signs up)
+    // - organization_membership.created webhook (user joins org)
+    // For historical users, use POST /api/admin/slack/auto-link-suggested
     logger.info(result, 'Slack user sync completed');
     return result;
   } catch (error) {
@@ -417,5 +425,110 @@ export async function syncUserToChaptersFromSlackChannels(
     result.errors.push(`Sync failed: ${errorMessage}`);
     logger.error({ error, workosUserId, slackUserId }, 'User committee sync from Slack failed');
     return result;
+  }
+}
+
+// ============== Auto-Link by Email ==============
+
+export interface AutoLinkResult {
+  linked: boolean;
+  slack_user_id?: string;
+  workos_user_id?: string;
+  chapters_joined?: number;
+  reason?: string;
+}
+
+/**
+ * Try to auto-link a website user to their Slack account by email
+ *
+ * Called when a new user signs up on the website. Looks for a Slack user
+ * with the same email and links them if found.
+ */
+export async function tryAutoLinkWebsiteUserToSlack(
+  workosUserId: string,
+  email: string
+): Promise<AutoLinkResult> {
+  try {
+    // Find Slack user with this email
+    const slackUser = await slackDb.findByEmail(email);
+
+    if (!slackUser) {
+      logger.debug({ email }, 'No Slack user found for website user email');
+      return { linked: false, reason: 'no_slack_user' };
+    }
+
+    // Check if Slack user is already mapped to a different WorkOS user
+    if (slackUser.workos_user_id && slackUser.workos_user_id !== workosUserId) {
+      logger.debug(
+        { email, existingWorkosUserId: slackUser.workos_user_id, newWorkosUserId: workosUserId },
+        'Slack user already mapped to different WorkOS account'
+      );
+      return { linked: false, reason: 'slack_user_already_mapped' };
+    }
+
+    // Check if this WorkOS user is already mapped to a different Slack user
+    const existingMapping = await slackDb.getByWorkosUserId(workosUserId);
+    if (existingMapping && existingMapping.slack_user_id !== slackUser.slack_user_id) {
+      logger.debug(
+        { workosUserId, existingSlackUserId: existingMapping.slack_user_id },
+        'WorkOS user already mapped to different Slack account'
+      );
+      return { linked: false, reason: 'workos_user_already_mapped' };
+    }
+
+    // Already linked (same accounts)
+    if (slackUser.workos_user_id === workosUserId) {
+      logger.debug({ workosUserId, slackUserId: slackUser.slack_user_id }, 'Users already linked');
+      return { linked: false, reason: 'already_linked' };
+    }
+
+    // Skip bots and deleted users
+    if (slackUser.slack_is_bot) {
+      return { linked: false, reason: 'slack_user_is_bot' };
+    }
+    if (slackUser.slack_is_deleted) {
+      return { linked: false, reason: 'slack_user_is_deleted' };
+    }
+
+    // Link the accounts
+    await slackDb.mapUser({
+      slack_user_id: slackUser.slack_user_id,
+      workos_user_id: workosUserId,
+      mapping_source: 'email_auto',
+    });
+
+    logger.info(
+      { workosUserId, slackUserId: slackUser.slack_user_id, email },
+      'Auto-linked website user to Slack account by email'
+    );
+
+    // Sync user to chapters based on their Slack channel memberships
+    let chaptersJoined = 0;
+    try {
+      const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
+      chaptersJoined = chapterSyncResult.chapters_joined;
+      if (chaptersJoined > 0) {
+        logger.info(
+          { workosUserId, chaptersJoined },
+          'Auto-synced user to chapters from Slack channels'
+        );
+      }
+    } catch (error) {
+      logger.error({ error, workosUserId }, 'Failed to sync chapters after auto-link');
+    }
+
+    // Invalidate caches
+    invalidateUnifiedUsersCache();
+    invalidateMemberContextCache(slackUser.slack_user_id);
+
+    return {
+      linked: true,
+      slack_user_id: slackUser.slack_user_id,
+      workos_user_id: workosUserId,
+      chapters_joined: chaptersJoined,
+    };
+  } catch (error) {
+    logger.error({ error, workosUserId, email }, 'Failed to auto-link website user to Slack');
+    return { linked: false, reason: 'error' };
   }
 }

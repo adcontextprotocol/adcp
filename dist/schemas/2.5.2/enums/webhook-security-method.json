@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.2/enums/webhook-security-method.json",
+  "title": "Webhook Security Method",
+  "description": "Security methods for authenticating webhook requests",
+  "type": "string",
+  "enum": [
+    "hmac_sha256",
+    "api_key",
+    "none"
+  ]
+}

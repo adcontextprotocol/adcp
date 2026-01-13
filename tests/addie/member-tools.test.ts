@@ -104,11 +104,13 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool?.description).toContain('Slack account');
   });
 
-  it('has check_agent_health tool', () => {
-    const tool = MEMBER_TOOLS.find(t => t.name === 'check_agent_health');
+  it('has probe_adcp_agent tool', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'probe_adcp_agent');
     expect(tool).toBeDefined();
     expect(tool?.input_schema.properties).toHaveProperty('agent_url');
     expect(tool?.input_schema.required).toContain('agent_url');
+    expect(tool?.description).toContain('online');
+    expect(tool?.description).toContain('capabilities');
   });
 
   it('has check_publisher_authorization tool', () => {
@@ -117,13 +119,6 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool?.input_schema.properties).toHaveProperty('domain');
     expect(tool?.input_schema.properties).toHaveProperty('agent_url');
     expect(tool?.input_schema.required).toContain('domain');
-    expect(tool?.input_schema.required).toContain('agent_url');
-  });
-
-  it('has get_agent_capabilities tool', () => {
-    const tool = MEMBER_TOOLS.find(t => t.name === 'get_agent_capabilities');
-    expect(tool).toBeDefined();
-    expect(tool?.input_schema.properties).toHaveProperty('agent_url');
     expect(tool?.input_schema.required).toContain('agent_url');
   });
 

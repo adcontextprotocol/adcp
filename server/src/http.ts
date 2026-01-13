@@ -4,10 +4,9 @@ import * as fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
-import { createMCPServer } from "./mcp-tools.js";
+import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp/index.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
@@ -58,15 +57,19 @@ import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
-import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { createCommitteeRouters } from "./routes/committees.js";
+import { createContentRouter, createMyContentRouter } from "./routes/content.js";
+import { createMeetingRouters } from "./routes/meetings.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
+import { InsightsDatabase } from "./db/insights-db.js";
 import { sendCommunityReplies } from "./addie/services/community-articles.js";
 import { sendChannelMessage } from "./slack/client.js";
 import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
 import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
+import { runGoalFollowUpJob } from "./addie/jobs/goal-follow-up.js";
+import { jobScheduler } from "./addie/jobs/scheduler.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -385,6 +388,7 @@ export class HTTPServer {
   private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
   private taskReminderIntervalId: NodeJS.Timeout | null = null;
   private engagementScoringIntervalId: NodeJS.Timeout | null = null;
+  private goalFollowUpIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -1287,6 +1291,14 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
 
+    // My Content - unified CMS for all authenticated users
+    this.app.get('/my-content', async (req, res) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect('https://agenticadvertising.org/my-content');
+      }
+      await this.serveHtmlWithConfig(req, res, 'my-content.html');
+    });
+
     // API endpoints
 
     // Public config endpoint - returns feature flags and auth state for nav
@@ -1464,76 +1476,10 @@ export class HTTPServer {
       });
     });
 
-    // MCP endpoint - for AI agents to discover other agents
-    // Uses StreamableHTTPServerTransport from the MCP SDK for stateless HTTP transport
-    
-    // CORS preflight for MCP endpoint
-    this.app.options("/mcp", (req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-      res.status(204).end();
-    });
-
-    // MCP POST handler - stateless mode (new server/transport per request)
-    this.app.post("/mcp", async (req, res) => {
-      // Add CORS headers
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-
-      try {
-        // Create a new MCP server and transport for each request (stateless mode)
-        const server = createMCPServer();
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined, // Stateless mode - no sessions
-        });
-
-        // Connect server to transport
-        await server.connect(transport);
-
-        // Handle the request
-        await transport.handleRequest(req, res, req.body);
-
-        // Clean up after response is sent
-        res.on('close', () => {
-          transport.close();
-          server.close();
-        });
-      } catch (error: any) {
-        if (!res.headersSent) {
-          res.status(500).json({
-            jsonrpc: "2.0",
-            error: {
-              code: -32603,
-              message: error?.message || "Internal error",
-            },
-          });
-        }
-      }
-    });
-
-    // MCP GET handler - not supported in stateless mode
-    this.app.get("/mcp", (req, res) => {
-      res.status(405).json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32601,
-          message: "Method not allowed. Use POST for MCP requests.",
-        },
-      });
-    });
-
-    // MCP DELETE handler - not needed in stateless mode
-    this.app.delete("/mcp", (req, res) => {
-      res.status(405).json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32601,
-          message: "Method not allowed. Session management not supported in stateless mode.",
-        },
-      });
-    });
+    // MCP endpoint - unified server with all Addie capabilities
+    // Supports OAuth 2.1 (users adding to Claude/ChatGPT) and M2M (partner bots)
+    // Auth via WorkOS AuthKit
+    configureMCPRoutes(this.app);
 
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {
@@ -1553,6 +1499,12 @@ export class HTTPServer {
       // Check Addie status
       checks.addie = isAddieBoltReady();
       if (!checks.addie) {
+        allHealthy = false;
+      }
+
+      // Check MCP server status
+      checks.mcp = isMCPServerReady();
+      if (!checks.mcp) {
         allHealthy = false;
       }
 
@@ -3237,390 +3189,6 @@ export class HTTPServer {
     });
 
     // ========================================
-    // Perspectives Admin Routes
-    // ========================================
-
-    // GET /api/admin/perspectives - List all perspectives
-    this.app.get('/api/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const pool = getPool();
-        const result = await pool.query(
-          `SELECT * FROM perspectives
-           ORDER BY display_order ASC, published_at DESC NULLS LAST, created_at DESC`
-        );
-
-        res.json(result.rows);
-      } catch (error) {
-        logger.error({ err: error }, 'Get all perspectives error:');
-        res.status(500).json({
-          error: 'Failed to get perspectives',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/perspectives/:id - Get single perspective
-    this.app.get('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const pool = getPool();
-        const result = await pool.query(
-          'SELECT * FROM perspectives WHERE id = $1',
-          [id]
-        );
-
-        if (result.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Perspective not found',
-            message: `No perspective found with id ${id}`
-          });
-        }
-
-        res.json(result.rows[0]);
-      } catch (error) {
-        logger.error({ err: error }, 'Get perspective error:');
-        res.status(500).json({
-          error: 'Failed to get perspective',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/admin/perspectives/fetch-url - Fetch URL metadata for auto-fill
-    this.app.post('/api/admin/perspectives/fetch-url', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { url } = req.body;
-
-        if (!url) {
-          return res.status(400).json({
-            error: 'URL required',
-            message: 'Please provide a URL to fetch'
-          });
-        }
-
-        // Fetch the page
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
-            'Accept': 'text/html,application/xhtml+xml'
-          },
-          redirect: 'follow'
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch URL: ${response.status}`);
-        }
-
-        const html = await response.text();
-
-        // Extract metadata from HTML
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
-        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
-        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
-        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-
-        // Determine title (prefer og:title, then <title>)
-        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
-        title = decodeHtmlEntities(title.trim());
-
-        // Determine description (prefer og:description, then meta description)
-        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
-        excerpt = decodeHtmlEntities(excerpt.trim());
-
-        // Site name from og:site_name or parse from URL
-        let site_name = ogSiteMatch?.[1] || '';
-        if (!site_name) {
-          try {
-            const parsedUrl = new URL(url);
-            site_name = parsedUrl.hostname.replace('www.', '');
-            // Capitalize first letter
-            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
-          } catch {
-            // ignore URL parse errors
-          }
-        }
-        site_name = decodeHtmlEntities(site_name);
-
-        res.json({
-          title,
-          excerpt,
-          site_name
-        });
-
-      } catch (error) {
-        logger.error({ err: error }, 'Fetch URL metadata error:');
-        res.status(500).json({
-          error: 'Failed to fetch URL',
-          message: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    });
-
-    // POST /api/admin/perspectives - Create new perspective
-    this.app.post('/api/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const {
-          slug,
-          content_type = 'article',
-          title,
-          subtitle,
-          category,
-          excerpt,
-          content,
-          external_url,
-          external_site_name,
-          author_name,
-          author_title,
-          featured_image_url,
-          status = 'draft',
-          published_at,
-          display_order = 0,
-          tags = [],
-          metadata = {},
-        } = req.body;
-
-        const validContentTypes = ['article', 'link'];
-        const validStatuses = ['draft', 'published', 'archived'];
-
-        if (!slug || !title) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'slug and title are required'
-          });
-        }
-
-        if (!validContentTypes.includes(content_type)) {
-          return res.status(400).json({
-            error: 'Invalid content_type',
-            message: 'content_type must be: article or link'
-          });
-        }
-
-        if (!validStatuses.includes(status)) {
-          return res.status(400).json({
-            error: 'Invalid status',
-            message: 'status must be: draft, published, or archived'
-          });
-        }
-
-        // Validate content_type requirements
-        if (content_type === 'link' && !external_url) {
-          return res.status(400).json({
-            error: 'Missing external_url',
-            message: 'external_url is required for link type perspectives'
-          });
-        }
-
-        const pool = getPool();
-        const result = await pool.query(
-          `INSERT INTO perspectives (
-            slug, content_type, title, subtitle, category, excerpt,
-            content, external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            status, published_at, display_order, tags, metadata
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-          RETURNING *`,
-          [
-            slug, content_type, title, subtitle, category, excerpt,
-            content, external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            status, published_at || null, display_order, tags, metadata
-          ]
-        );
-
-        const perspective = result.rows[0];
-
-        // Queue external links for Addie's knowledge base when published
-        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
-          queuePerspectiveLink({
-            id: perspective.id,
-            title: perspective.title,
-            external_url: perspective.external_url,
-            category: perspective.category || 'perspective',
-            tags: perspective.tags,
-          }).catch(err => {
-            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
-          });
-        }
-
-        res.json(perspective);
-      } catch (error) {
-        logger.error({ err: error }, 'Create perspective error:');
-        // Check for unique constraint violation
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          return res.status(400).json({
-            error: 'Slug already exists',
-            message: 'A perspective with this slug already exists'
-          });
-        }
-        res.status(500).json({
-          error: 'Failed to create perspective',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/admin/perspectives/:id - Update perspective
-    this.app.put('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const {
-          slug,
-          content_type,
-          title,
-          subtitle,
-          category,
-          excerpt,
-          content,
-          external_url,
-          external_site_name,
-          author_name,
-          author_title,
-          featured_image_url,
-          status,
-          published_at,
-          display_order,
-          tags,
-          metadata,
-        } = req.body;
-
-        const validContentTypes = ['article', 'link'];
-        const validStatuses = ['draft', 'published', 'archived'];
-
-        if (!slug || !title) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'slug and title are required'
-          });
-        }
-
-        if (content_type && !validContentTypes.includes(content_type)) {
-          return res.status(400).json({
-            error: 'Invalid content_type',
-            message: 'content_type must be: article or link'
-          });
-        }
-
-        if (status && !validStatuses.includes(status)) {
-          return res.status(400).json({
-            error: 'Invalid status',
-            message: 'status must be: draft, published, or archived'
-          });
-        }
-
-        // Validate content_type requirements
-        if (content_type === 'link' && !external_url) {
-          return res.status(400).json({
-            error: 'Missing external_url',
-            message: 'external_url is required for link type perspectives'
-          });
-        }
-
-        const pool = getPool();
-        const result = await pool.query(
-          `UPDATE perspectives SET
-            slug = $1,
-            content_type = $2,
-            title = $3,
-            subtitle = $4,
-            category = $5,
-            excerpt = $6,
-            content = $7,
-            external_url = $8,
-            external_site_name = $9,
-            author_name = $10,
-            author_title = $11,
-            featured_image_url = $12,
-            status = $13,
-            published_at = $14,
-            display_order = $15,
-            tags = $16,
-            metadata = $17
-          WHERE id = $18
-          RETURNING *`,
-          [
-            slug, content_type, title, subtitle, category, excerpt,
-            content, external_url, external_site_name,
-            author_name, author_title, featured_image_url,
-            status, published_at || null, display_order, tags, metadata,
-            id
-          ]
-        );
-
-        if (result.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Perspective not found',
-            message: `No perspective found with id ${id}`
-          });
-        }
-
-        const perspective = result.rows[0];
-
-        // Queue external links for indexing when perspective is published
-        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
-          queuePerspectiveLink({
-            id: perspective.id,
-            title: perspective.title,
-            external_url: perspective.external_url,
-            category: perspective.category || 'perspective',
-            tags: perspective.tags,
-          }).catch(err => {
-            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
-          });
-        }
-
-        res.json(perspective);
-      } catch (error) {
-        logger.error({ err: error }, 'Update perspective error:');
-        // Check for unique constraint violation
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          return res.status(400).json({
-            error: 'Slug already exists',
-            message: 'A perspective with this slug already exists'
-          });
-        }
-        res.status(500).json({
-          error: 'Failed to update perspective',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/admin/perspectives/:id - Delete perspective
-    this.app.delete('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const pool = getPool();
-
-        const result = await pool.query(
-          'DELETE FROM perspectives WHERE id = $1 RETURNING id',
-          [id]
-        );
-
-        if (result.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Perspective not found',
-            message: `No perspective found with id ${id}`
-          });
-        }
-
-        res.json({ success: true, deleted: id });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete perspective error:');
-        res.status(500).json({
-          error: 'Failed to delete perspective',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // ========================================
     // Committee Routes (Working Groups, Councils, Chapters)
     // ========================================
 
@@ -3628,6 +3196,26 @@ export class HTTPServer {
     this.app.use('/api/admin/working-groups', adminApiRouter);
     this.app.use('/api/working-groups', publicApiRouter);
     this.app.use('/api/me/working-groups', userApiRouter);
+
+    // ========================================
+    // Unified Content Management Routes
+    // ========================================
+
+    this.app.use('/api/content', createContentRouter());
+    this.app.use('/api/me/content', createMyContentRouter());
+
+    // ========================================
+    // Meeting Routes
+    // ========================================
+
+    const {
+      adminApiRouter: meetingsAdminRouter,
+      publicApiRouter: meetingsPublicRouter,
+      userApiRouter: meetingsUserRouter
+    } = createMeetingRouters();
+    this.app.use('/api/admin/meetings', meetingsAdminRouter);
+    this.app.use('/api/meetings', meetingsPublicRouter);
+    this.app.use('/api/me/meetings', meetingsUserRouter);
 
     // ========================================
     // SEO Routes (sitemap.xml, robots.txt)
@@ -3895,12 +3483,17 @@ Disallow: /api/admin/
 
     // Note: /admin/billing is now served from billing.ts router
 
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-perspectives.html');
+    // Redirect old admin perspectives to unified CMS
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
+      res.redirect(301, '/my-content');
     });
 
     this.app.get('/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-working-groups.html');
+    });
+
+    this.app.get('/admin/meetings', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-meetings.html');
     });
 
     this.app.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
@@ -4605,6 +4198,16 @@ Disallow: /api/admin/
               const workosOrg = await workos!.organizations.getOrganization(orgId);
               const hasActiveSubscription = org?.subscription_status === 'active';
 
+              // Check if user is linked to Slack (to decide whether to include Slack invite)
+              let isLinkedToSlack = false;
+              try {
+                const slackDb = new SlackDatabase();
+                const slackMapping = await slackDb.getByWorkosUserId(user.id);
+                isLinkedToSlack = !!slackMapping?.slack_user_id;
+              } catch (slackError) {
+                logger.warn({ error: slackError, userId: user.id }, 'Failed to check Slack mapping, defaulting to not linked');
+              }
+
               await sendUserSignupEmail({
                 to: user.email,
                 firstName: user.firstName || undefined,
@@ -4612,9 +4215,10 @@ Disallow: /api/admin/
                 hasActiveSubscription,
                 workosUserId: user.id,
                 workosOrganizationId: orgId,
+                isLinkedToSlack,
               });
 
-              logger.info({ userId: user.id, orgId, hasActiveSubscription }, 'First-time user signup email sent');
+              logger.info({ userId: user.id, orgId, hasActiveSubscription, isLinkedToSlack }, 'First-time user signup email sent');
             } catch (emailError) {
               logger.error({ error: emailError, userId: user.id }, 'Failed to send signup email');
             }
@@ -4673,6 +4277,26 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
               );
+
+              // Track this as an outreach conversion if there was pending outreach
+              try {
+                const insightsDb = new InsightsDatabase();
+                const pendingOutreach = await insightsDb.getPendingOutreach(slackUserIdToLink);
+                if (pendingOutreach) {
+                  // Mark as converted - they clicked the link and completed account linking
+                  await insightsDb.markOutreachConverted(
+                    pendingOutreach.id,
+                    'Converted via link click - account linked'
+                  );
+                  logger.info({
+                    slackUserId: slackUserIdToLink,
+                    outreachId: pendingOutreach.id,
+                    outreachType: pendingOutreach.outreach_type,
+                  }, 'Recorded outreach conversion from link click');
+                }
+              } catch (trackingError) {
+                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to track outreach conversion');
+              }
 
               // Send proactive Addie message if user has a recent conversation
               const firstName = user.firstName || undefined;
@@ -5253,6 +4877,67 @@ Disallow: /api/admin/
             error: 'Already a member',
             message: 'You are already a member of this organization',
           });
+        }
+
+        // Check if user's email domain is verified for this org - auto-approve if so
+        const userDomain = user.email.split('@')[1]?.toLowerCase();
+        if (userDomain) {
+          const pool = getPool();
+          const verifiedDomainResult = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1 AND verified = true AND LOWER(domain) = $2`,
+            [organization_id, userDomain]
+          );
+
+          if (verifiedDomainResult.rows.length > 0) {
+            // Domain is verified - auto-add user to organization
+            const membership = await workos!.userManagement.createOrganizationMembership({
+              userId: user.id,
+              organizationId: organization_id,
+              roleSlug: 'member',
+            });
+
+            // Get org name for response
+            let orgName = 'Organization';
+            try {
+              const org = await workos!.organizations.getOrganization(organization_id);
+              orgName = org.name;
+            } catch {
+              // Org may not exist
+            }
+
+            logger.info({
+              userId: user.id,
+              orgId: organization_id,
+              domain: userDomain,
+            }, 'User auto-added to organization via verified domain');
+
+            // Record audit log
+            await orgDb.recordAuditLog({
+              workos_organization_id: organization_id,
+              workos_user_id: user.id,
+              action: 'member_added',
+              resource_type: 'membership',
+              resource_id: membership.id,
+              details: {
+                user_email: user.email,
+                method: 'verified_domain_auto_join',
+                domain: userDomain,
+              },
+            });
+
+            return res.status(201).json({
+              success: true,
+              message: `You have been added to ${orgName}`,
+              auto_joined: true,
+              membership: {
+                id: membership.id,
+                organization_id: organization_id,
+                organization_name: orgName,
+                role: 'member',
+              },
+            });
+          }
         }
 
         // Check for existing pending request
@@ -7162,12 +6847,9 @@ Disallow: /api/admin/
         logger.warn({ error }, 'Failed to sync organizations from WorkOS (non-fatal)');
       }
 
-      // Then sync Stripe customer IDs
+      // Then sync Stripe customer IDs (method handles errors gracefully)
       try {
-        const result = await orgDb.syncStripeCustomers();
-        if (result.synced > 0) {
-          logger.info({ synced: result.synced, skipped: result.skipped }, 'Synced Stripe customer IDs');
-        }
+        await orgDb.syncStripeCustomers();
       } catch (error) {
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
@@ -7184,11 +6866,11 @@ Disallow: /api/admin/
 
     // Pre-warm caches for all agents in background
     const allAgents = await this.agentService.listAgents();
-    logger.info({ agentCount: allAgents.length }, 'Pre-warming caches');
+    logger.debug({ agentCount: allAgents.length }, 'Pre-warming caches');
 
     // Don't await - let this run in background
     this.prewarmCaches(allAgents).then(() => {
-      logger.info('Cache pre-warming complete');
+      logger.debug('Cache pre-warming complete');
     }).catch(err => {
       logger.error({ err }, 'Cache pre-warming failed');
     });
@@ -7196,7 +6878,7 @@ Disallow: /api/admin/
     // Start periodic property crawler for sales agents
     const salesAgents = await this.agentService.listAgents("sales");
     if (salesAgents.length > 0) {
-      logger.info({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
+      logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
@@ -7215,6 +6897,20 @@ Disallow: /api/admin/
     // Start engagement scoring job
     // Updates user and org engagement scores periodically
     this.startEngagementScoring();
+
+    // Start goal follow-up job
+    // Sends follow-up messages and reconciles goal outcomes
+    this.startGoalFollowUp();
+
+    // Start committee document jobs via scheduler
+    jobScheduler.startDocumentIndexer();
+    jobScheduler.startSummaryGenerator();
+
+    // Start proactive outreach job
+    jobScheduler.startOutreach();
+
+    // Start account enrichment job
+    jobScheduler.startEnrichment();
 
     this.server = this.app.listen(port, () => {
       logger.info({
@@ -7297,7 +6993,7 @@ Disallow: /api/admin/
       }
     }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
 
-    logger.info({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
+    logger.debug({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
   }
 
   /**
@@ -7358,7 +7054,7 @@ Disallow: /api/admin/
       }
     }, ALERT_CHECK_INTERVAL_MINUTES * 60 * 1000);
 
-    logger.info({
+    logger.debug({
       feedFetchIntervalMinutes: FEED_FETCH_INTERVAL_MINUTES,
       alertCheckIntervalMinutes: ALERT_CHECK_INTERVAL_MINUTES,
     }, 'Industry monitor started');
@@ -7403,7 +7099,7 @@ Disallow: /api/admin/
       }
     }, REMINDER_CHECK_INTERVAL_HOURS * 60 * 60 * 1000);
 
-    logger.info({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
+    logger.debug({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
   }
 
   /**
@@ -7431,7 +7127,59 @@ Disallow: /api/admin/
       }
     }, SCORING_INTERVAL_HOURS * 60 * 60 * 1000);
 
-    logger.info({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
+    logger.debug({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
+  }
+
+  /**
+   * Start periodic goal follow-up job
+   * Sends follow-up messages for unanswered outreach and reconciles goal outcomes
+   */
+  private startGoalFollowUp(): void {
+    const FOLLOW_UP_INTERVAL_HOURS = 4; // Check every 4 hours
+
+    // Run after a delay on startup
+    setTimeout(async () => {
+      try {
+        const result = await runGoalFollowUpJob();
+        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
+          logger.info(result, 'Goal follow-up: initial run completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Goal follow-up: initial run failed');
+      }
+    }, 180000); // 3 minute delay
+
+    // Then run periodically
+    this.goalFollowUpIntervalId = setInterval(async () => {
+      try {
+        // Only run during business hours (9am-6pm ET)
+        const now = new Date();
+        const etHour = parseInt(now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          hour: 'numeric',
+          hour12: false,
+        }), 10);
+        const etDay = now.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          weekday: 'short',
+        });
+
+        // Skip weekends and outside business hours
+        if (['Sat', 'Sun'].includes(etDay) || etHour < 9 || etHour >= 18) {
+          logger.debug({ etHour, etDay }, 'Goal follow-up: skipping outside business hours');
+          return;
+        }
+
+        const result = await runGoalFollowUpJob();
+        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
+          logger.info(result, 'Goal follow-up: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Goal follow-up: job failed');
+      }
+    }, FOLLOW_UP_INTERVAL_HOURS * 60 * 60 * 1000);
+
+    logger.debug({ intervalHours: FOLLOW_UP_INTERVAL_HOURS }, 'Goal follow-up job started');
   }
 
   /**
@@ -7493,6 +7241,16 @@ Disallow: /api/admin/
       this.engagementScoringIntervalId = null;
       logger.info('Engagement scoring job stopped');
     }
+
+    // Stop goal follow-up job
+    if (this.goalFollowUpIntervalId) {
+      clearInterval(this.goalFollowUpIntervalId);
+      this.goalFollowUpIntervalId = null;
+      logger.info('Goal follow-up job stopped');
+    }
+
+    // Stop committee document jobs via scheduler
+    jobScheduler.stopAll();
 
     // Close HTTP server
     if (this.server) {

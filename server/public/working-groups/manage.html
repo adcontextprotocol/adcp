@@ -351,6 +351,78 @@
     .badge-hybrid { background: var(--color-purple-100, var(--color-primary-100)); color: var(--color-purple-700, var(--color-primary-700)); }
     .badge-cancelled { background: var(--color-error-100); color: var(--color-error-700); }
 
+    /* Documents list */
+    .documents-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .document-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-4);
+    }
+    .document-item:hover {
+      border-color: var(--color-brand);
+    }
+    .document-item.featured {
+      border-left: 3px solid var(--color-brand);
+    }
+    .document-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .document-info h3 a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .document-info h3 a:hover {
+      color: var(--color-brand);
+    }
+    .document-info h3 svg {
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+    .document-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+    .document-summary-preview {
+      font-size: var(--text-sm);
+      color: var(--color-text-body);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .document-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    .badge-google_doc { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-google_sheet { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-external_link { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-pdf { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-other { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-pending { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-success { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-error { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-access_denied { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-featured { background: var(--color-brand); color: white; }
+
     @media (max-width: 768px) {
       .form-row { grid-template-columns: 1fr; }
       .editor-preview { grid-template-columns: 1fr; }
@@ -413,6 +485,13 @@
           </svg>
           Events
         </button>
+        <button class="tab-btn" onclick="switchTab('documents')" id="documentsTab">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Documents
+        </button>
       </div>
 
       <!-- Posts Tab Content -->
@@ -446,6 +525,27 @@
         </div>
         <div id="eventsList" class="events-list">
           Loading events...
+        </div>
+      </div>
+
+      <!-- Documents Tab Content -->
+      <div id="documentsContent" class="tab-content">
+        <div class="header-bar" style="margin-bottom: var(--space-4);">
+          <div>
+            <p style="font-size: var(--text-sm); color: var(--color-text-muted);">
+              Track external documents like Google Docs. Documents are automatically indexed and summarized.
+            </p>
+          </div>
+          <button class="btn btn-primary" onclick="showCreateDocumentModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Document
+          </button>
+        </div>
+        <div id="documentsList" class="documents-list">
+          Loading documents...
         </div>
       </div>
     </div>
@@ -525,7 +625,7 @@
           <div class="form-group">
             <label>Slug</label>
             <input type="text" id="slug" required placeholder="url-friendly-slug" pattern="[a-z0-9-]+">
-            <small>URL path: /perspectives/{slug}</small>
+            <small>Post identifier for linking</small>
           </div>
           <div class="form-group">
             <label>Category</label>
@@ -731,15 +831,90 @@
     </div>
   </div>
 
+  <!-- Document Create/Edit Modal -->
+  <div id="documentModal" class="modal-overlay">
+    <div class="modal" style="max-width: 600px;">
+      <h2 id="documentModalTitle">Add Document</h2>
+
+      <form id="documentForm" onsubmit="saveDocument(event)">
+        <input type="hidden" id="documentId">
+
+        <div class="form-group">
+          <label>Document Title *</label>
+          <input type="text" id="documentTitle" required placeholder="e.g., Governance Framework Draft">
+        </div>
+
+        <div class="form-group">
+          <label>Document URL *</label>
+          <input type="url" id="documentUrl" required placeholder="https://docs.google.com/document/d/...">
+          <small>Google Docs URLs are automatically indexed and summarized</small>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="documentDescription" placeholder="Brief description of what this document is for..." rows="3"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Document Type</label>
+            <select id="documentType">
+              <option value="google_doc">Google Doc</option>
+              <option value="google_sheet">Google Sheet</option>
+              <option value="external_link">External Link</option>
+              <option value="pdf">PDF</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Display Order</label>
+            <input type="number" id="documentDisplayOrder" value="0" min="0" placeholder="0">
+            <small>Lower numbers appear first</small>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: var(--space-2); cursor: pointer;">
+            <input type="checkbox" id="documentIsFeatured" style="width: auto;">
+            <span>Featured Document</span>
+          </label>
+          <small style="color: var(--color-text-muted);">Featured documents are highlighted on the working group page</small>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeDocumentModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveDocumentBtn">Save Document</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Document Confirmation Modal -->
+  <div id="deleteDocumentModal" class="modal-overlay">
+    <div class="modal" style="max-width: 450px;">
+      <h2>Delete Document</h2>
+      <p style="margin: var(--space-5) 0; color: var(--color-text-secondary);">
+        Are you sure you want to delete "<span id="deleteDocumentTitle"></span>"? This action cannot be undone.
+      </p>
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteDocumentModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDeleteDocument()">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentSlug = '';
     let currentGroup = null;
     let posts = [];
     let events = [];
+    let documents = [];
     let editingPost = null;
     let editingEvent = null;
+    let editingDocument = null;
     let deletingPostId = null;
     let deletingEventId = null;
+    let deletingDocumentId = null;
     let currentTab = 'posts';
 
     async function init() {
@@ -758,8 +933,8 @@
       // Check for tab query param
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab');
-      if (tabParam === 'events') {
-        currentTab = 'events';
+      if (tabParam === 'events' || tabParam === 'documents') {
+        currentTab = tabParam;
       }
 
       // Try to load posts - this will fail with 403 if not a leader
@@ -782,10 +957,15 @@
         loadEvents();
       }
 
+      // Load documents if switching to documents tab for first time
+      if (tab === 'documents' && documents.length === 0) {
+        loadDocuments();
+      }
+
       // Update URL without reload
       const url = new URL(window.location);
-      if (tab === 'events') {
-        url.searchParams.set('tab', 'events');
+      if (tab === 'events' || tab === 'documents') {
+        url.searchParams.set('tab', tab);
       } else {
         url.searchParams.delete('tab');
       }
@@ -899,7 +1079,7 @@
               </div>
             </div>
             <div class="post-actions">
-              ${post.status === 'published' ? `<a href="/perspectives/${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
+              ${post.status === 'published' ? `<a href="/working-groups/${currentSlug}#post-${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editPost('${post.id}')">Edit</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/'/g, "\\'")}')">Delete</button>
             </div>
@@ -1408,6 +1588,243 @@
 
         closeDeleteEventModal();
         await loadEvents();
+      } catch (error) {
+        console.error('Error deleting:', error);
+        alert('Failed to delete: ' + error.message);
+      }
+    }
+
+    // =========================================================================
+    // DOCUMENT MANAGEMENT FUNCTIONS
+    // =========================================================================
+
+    async function loadDocuments() {
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/documents`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load documents');
+        }
+
+        const data = await response.json();
+        documents = data.documents || [];
+        renderDocuments();
+      } catch (error) {
+        console.error('Error loading documents:', error);
+        document.getElementById('documentsList').innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load documents. Please try again.</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderDocuments() {
+      const listDiv = document.getElementById('documentsList');
+
+      if (documents.length === 0) {
+        listDiv.innerHTML = `
+          <div class="empty-state">
+            <p>No documents tracked yet.</p>
+            <p>Click "Add Document" to start tracking external documents.</p>
+          </div>
+        `;
+        return;
+      }
+
+      listDiv.innerHTML = documents.map(doc => {
+        const typeBadge = `<span class="badge badge-${doc.document_type}">${doc.document_type.replace('_', ' ')}</span>`;
+        const statusBadge = doc.index_status !== 'success'
+          ? `<span class="badge badge-${doc.index_status}">${doc.index_status}</span>`
+          : '';
+        const featuredBadge = doc.is_featured ? `<span class="badge badge-featured">featured</span>` : '';
+        const lastModified = doc.last_modified_at
+          ? formatRelativeDate(doc.last_modified_at)
+          : '';
+
+        return `
+          <div class="document-item${doc.is_featured ? ' featured' : ''}">
+            <div class="document-info" style="flex: 1;">
+              <h3>
+                <a href="${escapeHtml(doc.document_url)}" target="_blank" rel="noopener">
+                  ${escapeHtml(doc.title)}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </a>
+              </h3>
+              <div class="document-meta">
+                ${typeBadge}
+                ${statusBadge}
+                ${featuredBadge}
+                ${lastModified ? `<span>Updated ${lastModified}</span>` : ''}
+              </div>
+              ${doc.document_summary ? `<div class="document-summary-preview">${escapeHtml(doc.document_summary)}</div>` : ''}
+            </div>
+            <div class="document-actions">
+              <button class="btn btn-secondary btn-small" onclick="reindexDocument('${doc.id}')" title="Refresh content">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"/>
+                  <path d="M1 20v-6h6"/>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                </svg>
+              </button>
+              <button class="btn btn-primary btn-small" onclick="editDocument('${doc.id}')">Edit</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteDocumentModal('${doc.id}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function formatRelativeDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) return 'today';
+      if (diffDays === 1) return 'yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+      if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+      return `${Math.floor(diffDays / 365)} years ago`;
+    }
+
+    function showCreateDocumentModal() {
+      editingDocument = null;
+      document.getElementById('documentModalTitle').textContent = 'Add Document';
+      document.getElementById('documentForm').reset();
+      document.getElementById('documentId').value = '';
+      document.getElementById('documentDisplayOrder').value = '0';
+      document.getElementById('documentModal').style.display = 'flex';
+    }
+
+    async function editDocument(id) {
+      const doc = documents.find(d => d.id === id);
+      if (!doc) return;
+
+      editingDocument = doc;
+
+      document.getElementById('documentModalTitle').textContent = 'Edit Document';
+      document.getElementById('documentId').value = doc.id;
+      document.getElementById('documentTitle').value = doc.title || '';
+      document.getElementById('documentUrl').value = doc.document_url || '';
+      document.getElementById('documentDescription').value = doc.description || '';
+      document.getElementById('documentType').value = doc.document_type || 'google_doc';
+      document.getElementById('documentDisplayOrder').value = doc.display_order || 0;
+      document.getElementById('documentIsFeatured').checked = doc.is_featured || false;
+
+      document.getElementById('documentModal').style.display = 'flex';
+    }
+
+    function closeDocumentModal() {
+      document.getElementById('documentModal').style.display = 'none';
+      editingDocument = null;
+    }
+
+    async function saveDocument(e) {
+      e.preventDefault();
+
+      const id = document.getElementById('documentId').value;
+      const data = {
+        title: document.getElementById('documentTitle').value.trim(),
+        document_url: document.getElementById('documentUrl').value.trim(),
+        description: document.getElementById('documentDescription').value.trim() || null,
+        document_type: document.getElementById('documentType').value,
+        display_order: parseInt(document.getElementById('documentDisplayOrder').value) || 0,
+        is_featured: document.getElementById('documentIsFeatured').checked,
+      };
+
+      const saveBtn = document.getElementById('saveDocumentBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const url = id
+          ? `/api/working-groups/${currentSlug}/documents/${id}`
+          : `/api/working-groups/${currentSlug}/documents`;
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to save');
+        }
+
+        closeDocumentModal();
+        await loadDocuments();
+      } catch (error) {
+        console.error('Error saving:', error);
+        alert('Failed to save: ' + error.message);
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Document';
+    }
+
+    async function reindexDocument(id) {
+      const doc = documents.find(d => d.id === id);
+      if (!doc) return;
+
+      if (!confirm(`Refresh content for "${doc.title}"? This will re-fetch and re-summarize the document.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/documents/${id}/reindex`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to reindex');
+        }
+
+        alert('Document content refreshed successfully!');
+        await loadDocuments();
+      } catch (error) {
+        console.error('Error reindexing:', error);
+        alert('Failed to refresh: ' + error.message);
+      }
+    }
+
+    function showDeleteDocumentModal(id, title) {
+      deletingDocumentId = id;
+      document.getElementById('deleteDocumentTitle').textContent = title;
+      document.getElementById('deleteDocumentModal').style.display = 'flex';
+    }
+
+    function closeDeleteDocumentModal() {
+      document.getElementById('deleteDocumentModal').style.display = 'none';
+      deletingDocumentId = null;
+    }
+
+    async function confirmDeleteDocument() {
+      if (!deletingDocumentId) return;
+
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/documents/${deletingDocumentId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete');
+
+        closeDeleteDocumentModal();
+        await loadDocuments();
       } catch (error) {
         console.error('Error deleting:', error);
         alert('Failed to delete: ' + error.message);

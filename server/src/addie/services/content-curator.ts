@@ -19,6 +19,12 @@ import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
 import { query } from '../../db/client.js';
 import { getActiveChannels, type NotificationChannel } from '../../db/notification-channels-db.js';
+import {
+  isGoogleDocsUrl,
+  createGoogleDocsToolHandlers,
+  GOOGLE_DOCS_ERROR_PREFIX,
+  GOOGLE_DOCS_ACCESS_DENIED_PREFIX,
+} from '../mcp/google-docs.js';
 
 const addieDb = new AddieDatabase();
 
@@ -28,8 +34,14 @@ const CURATOR_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 /**
  * Fetch URL content and extract article text using Mozilla Readability
  * This extracts just the main article content, removing navigation, ads, footers, etc.
+ * For Google Docs URLs, uses the Google Docs API instead of HTTP fetching.
  */
 async function fetchUrlContent(url: string): Promise<string> {
+  // Handle Google Docs specially via API
+  if (isGoogleDocsUrl(url)) {
+    return fetchGoogleDocsContent(url);
+  }
+
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'AddieBot/1.0 (AgenticAdvertising.org knowledge curator)',
@@ -77,6 +89,36 @@ async function fetchUrlContent(url: string): Promise<string> {
   }
 
   return text;
+}
+
+/**
+ * Fetch content from Google Docs using the Google Docs API
+ */
+async function fetchGoogleDocsContent(url: string): Promise<string> {
+  const handlers = createGoogleDocsToolHandlers();
+
+  if (!handlers) {
+    throw new Error('Google Docs API not configured - missing credentials');
+  }
+
+  const result = await handlers.read_google_doc({ url });
+
+  // Check for errors in the result (using exported constants for reliable detection)
+  if (result.startsWith(GOOGLE_DOCS_ERROR_PREFIX) || result.startsWith(GOOGLE_DOCS_ACCESS_DENIED_PREFIX)) {
+    throw new Error(result);
+  }
+
+  // Strip the title/format header if present (e.g., "**Document Name** (txt)\n\n")
+  const contentMatch = result.match(/^\*\*[^*]+\*\*[^\n]*\n\n([\s\S]*)$/);
+  const content = contentMatch ? contentMatch[1] : result;
+
+  // Limit content length
+  const maxLength = 50000;
+  if (content.length > maxLength) {
+    return content.substring(0, maxLength) + '\n\n[Content truncated...]';
+  }
+
+  return content;
 }
 
 /**
@@ -159,7 +201,8 @@ Provide your analysis as JSON with this structure:
 - Ends with a question or "What's your take?" to invite discussion
 - Is 1-2 sentences max, punchy and clickbaity
 - Examples:
-  - "🤖 Big Tech is building AI agents that lock you into their walled gardens. Is open-source AdCP the antidote, or already too late? What's your take?"
+  - "🏰 Walled gardens avoid RTB because it commoditizes their differentiation. AdCP lets them capture new allocation budgets without sacrificing control. Win-win?"
+  - "📊 Advertisers work with 3-5 platforms today because execution costs are brutal. Agents could unlock 20+ partners. Who captures that spend?"
   - "💰 Another day, another ad tech acquisition. Consolidation keeps winners winning. How do independents compete?"
   - "⚖️ This antitrust ruling could reshape how measurement monopolies operate. Good news for open standards?"
 
@@ -351,6 +394,8 @@ export async function queueWebSearchResult(result: {
   url: string;
   title: string;
   searchQuery: string;
+  /** Who bookmarked this - Slack user ID, WorkOS user ID, or 'system' */
+  created_by?: string;
 }): Promise<number> {
   // Check if already indexed
   const isIndexed = await addieDb.isUrlIndexed(result.url);
@@ -367,6 +412,7 @@ export async function queueWebSearchResult(result: {
     discovery_context: {
       search_query: result.searchQuery,
     },
+    created_by: result.created_by,
   });
 }
 

@@ -6,6 +6,24 @@ import { CompanyTypeValue } from '../config/company-types.js';
 
 const logger = createLogger('organization-db');
 
+/**
+ * Error thrown when trying to link a Stripe customer that's already linked to another organization
+ */
+export class StripeCustomerConflictError extends Error {
+  constructor(
+    public stripeCustomerId: string,
+    public targetOrgId: string,
+    public existingOrgId: string,
+    public existingOrgName: string
+  ) {
+    super(
+      `Stripe customer ${stripeCustomerId} is already linked to organization "${existingOrgName}" (${existingOrgId}). ` +
+      `Cannot link to ${targetOrgId}. Use force option or resolve the conflict manually.`
+    );
+    this.name = 'StripeCustomerConflictError';
+  }
+}
+
 export type CompanyType = CompanyTypeValue;
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
 
@@ -401,17 +419,91 @@ export class OrganizationDatabase {
   // Billing Methods
 
   /**
-   * Set Stripe customer ID for an organization
+   * Set Stripe customer ID for an organization.
+   * Checks for conflicts before setting - throws StripeCustomerConflictError if customer is already linked to another org.
+   * @param options.force - If true, unlinks from existing org first (use with caution)
    */
   async setStripeCustomerId(
     workos_organization_id: string,
-    stripe_customer_id: string
+    stripe_customer_id: string,
+    options?: { force?: boolean }
   ): Promise<void> {
+    // Check if this customer ID is already assigned to another org
+    const existingOrg = await this.getOrganizationByStripeCustomerId(stripe_customer_id);
+    if (existingOrg && existingOrg.workos_organization_id !== workos_organization_id) {
+      if (options?.force) {
+        // Unlink from existing org first
+        logger.warn(
+          { stripeCustomerId: stripe_customer_id, fromOrgId: existingOrg.workos_organization_id, toOrgId: workos_organization_id },
+          'Force-unlinking Stripe customer from existing organization'
+        );
+        await this.unlinkStripeCustomer(existingOrg.workos_organization_id);
+      } else {
+        throw new StripeCustomerConflictError(
+          stripe_customer_id,
+          workos_organization_id,
+          existingOrg.workos_organization_id,
+          existingOrg.name
+        );
+      }
+    }
+
     const pool = getPool();
     await pool.query(
       'UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW() WHERE workos_organization_id = $2',
       [stripe_customer_id, workos_organization_id]
     );
+  }
+
+  /**
+   * Unlink Stripe customer from an organization (set to null)
+   */
+  async unlinkStripeCustomer(workos_organization_id: string): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      'UPDATE organizations SET stripe_customer_id = NULL, updated_at = NOW() WHERE workos_organization_id = $1',
+      [workos_organization_id]
+    );
+  }
+
+  /**
+   * Find all Stripe customer ID conflicts between Stripe metadata and local DB.
+   * Returns cases where Stripe says customer belongs to org A but DB has it linked to org B.
+   */
+  async findStripeCustomerConflicts(): Promise<Array<{
+    stripe_customer_id: string;
+    stripe_says_org_id: string;
+    stripe_says_org_name: string | null;
+    db_has_org_id: string;
+    db_has_org_name: string;
+  }>> {
+    const conflicts: Array<{
+      stripe_customer_id: string;
+      stripe_says_org_id: string;
+      stripe_says_org_name: string | null;
+      db_has_org_id: string;
+      db_has_org_name: string;
+    }> = [];
+
+    // Get all Stripe customers with org metadata
+    const stripeCustomers = await listCustomersWithOrgIds();
+
+    for (const { stripeCustomerId, workosOrgId } of stripeCustomers) {
+      const dbOrg = await this.getOrganizationByStripeCustomerId(stripeCustomerId);
+      if (dbOrg && dbOrg.workos_organization_id !== workosOrgId) {
+        // Conflict: Stripe says org A, DB says org B
+        const stripeOrg = await this.getOrganization(workosOrgId);
+        conflicts.push({
+          stripe_customer_id: stripeCustomerId,
+          stripe_says_org_id: workosOrgId,
+          stripe_says_org_name: stripeOrg?.name || null,
+          db_has_org_id: dbOrg.workos_organization_id,
+          db_has_org_name: dbOrg.name,
+        });
+      }
+    }
+
+    return conflicts;
   }
 
   /**
@@ -625,53 +717,61 @@ export class OrganizationDatabase {
    * This should be called during server startup after WorkOS sync.
    * Only updates orgs that exist locally but are missing stripe_customer_id.
    */
-  async syncStripeCustomers(): Promise<{ synced: number; skipped: number }> {
+  async syncStripeCustomers(): Promise<{ synced: number; skipped: number; conflicts: number }> {
     let synced = 0;
     let skipped = 0;
+    let conflicts = 0;
 
-    try {
-      // Get all Stripe customers with WorkOS org IDs in metadata
-      const customers = await listCustomersWithOrgIds();
+    // Get all Stripe customers with WorkOS org IDs in metadata
+    const customers = await listCustomersWithOrgIds();
 
-      for (const { stripeCustomerId, workosOrgId } of customers) {
-        const localOrg = await this.getOrganization(workosOrgId);
+    for (const { stripeCustomerId, workosOrgId } of customers) {
+      const localOrg = await this.getOrganization(workosOrgId);
 
-        if (!localOrg) {
-          // Org doesn't exist locally - skip (WorkOS sync should have created it)
-          skipped++;
-          continue;
-        }
+      if (!localOrg) {
+        // Org doesn't exist locally - skip (WorkOS sync should have created it)
+        skipped++;
+        continue;
+      }
 
-        if (localOrg.stripe_customer_id === stripeCustomerId) {
-          // Already synced
-          continue;
-        }
+      if (localOrg.stripe_customer_id === stripeCustomerId) {
+        // Already synced
+        continue;
+      }
 
-        if (localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
-          // Different customer ID - log warning but don't overwrite
-          logger.warn(
-            { orgId: workosOrgId, existingCustomerId: localOrg.stripe_customer_id, newCustomerId: stripeCustomerId },
-            'Organization has different Stripe customer ID - not overwriting'
-          );
-          skipped++;
-          continue;
-        }
+      if (localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
+        // Different customer ID - log warning but don't overwrite
+        logger.warn(
+          { orgId: workosOrgId, existingCustomerId: localOrg.stripe_customer_id, newCustomerId: stripeCustomerId },
+          'Organization has different Stripe customer ID - not overwriting'
+        );
+        skipped++;
+        continue;
+      }
 
-        // Update the org with the Stripe customer ID
+      // Try to set the Stripe customer ID (setStripeCustomerId checks for conflicts)
+      try {
         await this.setStripeCustomerId(workosOrgId, stripeCustomerId);
         synced++;
-        logger.info({ orgId: workosOrgId, stripeCustomerId }, 'Synced Stripe customer ID to organization');
+        logger.debug({ orgId: workosOrgId, stripeCustomerId }, 'Synced Stripe customer ID to organization');
+      } catch (error) {
+        if (error instanceof StripeCustomerConflictError) {
+          logger.warn(
+            { stripeCustomerId, targetOrgId: workosOrgId, existingOrgId: error.existingOrgId, existingOrgName: error.existingOrgName },
+            'Stripe customer ID already assigned to different organization - skipping'
+          );
+          conflicts++;
+        } else {
+          throw error;
+        }
       }
-
-      if (synced > 0) {
-        logger.info({ synced, skipped }, 'Stripe customer sync complete');
-      }
-
-      return { synced, skipped };
-    } catch (error) {
-      logger.error({ error }, 'Failed to sync Stripe customers');
-      throw error;
     }
+
+    if (synced > 0 || conflicts > 0) {
+      logger.info({ synced, skipped, conflicts }, 'Stripe customer sync complete');
+    }
+
+    return { synced, skipped, conflicts };
   }
 
   // ========================================

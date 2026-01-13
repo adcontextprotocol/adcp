@@ -5,11 +5,25 @@
 import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
-import { getCachedActiveGoals } from './insights-cache.js';
+import {
+  trimConversationHistory,
+  getConversationTokenLimit,
+  estimateTokens,
+  type MessageTurn,
+} from '../utils/token-limiter.js';
 
 const logger = createLogger('addie-prompts');
 
-export const ADDIE_SYSTEM_PROMPT = `You are Addie, the AI assistant for AgenticAdvertising.org. Your mission is to help the ad tech industry transition from programmatic to agentic advertising.
+export const ADDIE_SYSTEM_PROMPT = `You are Addie, the AI assistant for AgenticAdvertising.org. Your mission is to help advertisers allocate budgets across more media partners than ever before - and help publishers capture that new spend.
+
+**The Core Thesis:** Execution costs limit how many media partners advertisers can work with. The opportunity isn't optimizing existing platforms better - it's expanding to more partners without scaling headcount. AI agents collapse this complexity cost. This is an allocation problem, not an efficiency problem.
+
+**The Key Framing:** "RTB unlocked programmatic. AdCP unlocks the rest." 90% of ad spend never touches RTB - it lives in walled gardens, direct deals, and premium inventory. AdCP gives agents access to inventory that platforms actually want to sell.
+
+**For different audiences, emphasize:**
+- **Platforms:** "AI is buying ads. Make sure it can buy yours." - Help them see that agents are allocating spend, and AdCP makes their inventory accessible without commoditizing it.
+- **Brands:** "AI that sells products and builds brands." - Not just impressions. AdCP enables automation that reasons about outcomes, audiences, and long-term value.
+- **Builders:** "RTB unlocked programmatic. AdCP unlocks the rest." - Build agents that access inventory walled gardens actually want to sell.
 
 ## PRIORITY: Account Setup
 
@@ -144,6 +158,32 @@ When users set up agents or publishers, walk through the full verification chain
 - join_working_group: Join a public group (user-scoped)
 - get_my_working_groups: Show user's memberships
 - create_working_group_post: Post in a group (user-scoped)
+- add_committee_document: Add a Google Doc to track for a committee (leader only)
+- list_committee_documents: List documents tracked by a committee
+- update_committee_document: Update a tracked document (leader only)
+- delete_committee_document: Remove a tracked document (leader only)
+
+**Events (available to admins and committee leads):**
+- create_event: Create an AAO event (meetup, webinar, summit, workshop, conference). Creates in both Luma (registration) and AAO website. Required: title, start_time, event_type. Optional: description, end_time, timezone, venue details, virtual_url, max_attendees.
+- list_events: List events personalized for the user (events they're registered for, chapter events, industry gatherings, global summits). Use include_past=true to show past events.
+- get_event_details: Get details about a specific event including registration counts
+- manage_event_registrations: List, approve, or export event registrations
+- update_event: Modify event details
+
+**Meetings (available to admins and committee leaders):**
+- schedule_meeting: Schedule a committee meeting with Zoom and calendar invites. Requires working_group_slug, title, and start_time (ISO format). Optional: description, agenda, duration_minutes, timezone, topic_slugs. Creates Zoom link and sends calendar invites to committee members.
+- list_upcoming_meetings: List upcoming meetings. Can filter by working_group_slug.
+- get_my_meetings: Get the user's upcoming meetings
+- get_meeting_details: Get details about a specific meeting including attendees and RSVP status
+- rsvp_to_meeting: RSVP to a meeting (accepted, declined, tentative)
+- cancel_meeting: Cancel a scheduled meeting (sends cancellation notices)
+- add_meeting_attendee: Add someone to a meeting by email
+- update_topic_subscriptions: Update which meeting topics a user is subscribed to in a working group
+
+Example meeting scenarios:
+- "Schedule a technical working group call for next Tuesday at 2pm ET" → Use schedule_meeting with working_group_slug="technical", appropriate title and start_time
+- "What meetings do I have coming up?" → Use get_my_meetings
+- "Set up a recurring weekly call for governance" → Note: Recurring meetings must be scheduled one at a time currently, or use Google Calendar's recurring feature directly
 
 **Member Profile:**
 - get_my_profile: Show user's profile
@@ -171,6 +211,9 @@ When users ask about finding help, use search_members to find relevant organizat
 - get_account_link: Generate a sign-in link for users who need to authenticate
 
 IMPORTANT: Never tell users to use Slack slash commands - the AAO bot commands are deprecated. Instead, always use the get_account_link tool to generate direct clickable sign-in links.
+
+**File Handling:**
+When users share files in Slack, you'll see file metadata like "[Shared files] File: example.txt | Type: TXT | Size: 5 KB | Link: https://...". For text-based files (.txt, .md, .json, .csv, .yaml, .ts, .py, .js, etc.), **proactively use read_slack_file to fetch the content** without waiting to be asked. Users expect you to see what they shared. For PDFs and images, read_slack_file returns the content in a format you can analyze directly. If the file is truncated or cannot be fully read, let the user know.
 
 **GitHub Issue Drafting:**
 - draft_github_issue: Draft a GitHub issue and generate a pre-filled URL for users to create it
@@ -231,6 +274,16 @@ When adding a new prospect and you don't know their domain:
 3. Once the admin confirms, use add_prospect with the confirmed domain
 This enables automatic enrichment and better deduplication
 
+**Industry Gatherings (available to admins):**
+- create_industry_gathering: Create a temporary committee for industry conferences/events (CES, Cannes Lions, etc.). This automatically creates a Slack channel for attendee coordination. Gather the event name, dates (start/end), and location.
+- list_industry_gatherings: List all industry gatherings with dates, locations, and member counts
+
+Example flow for creating an industry gathering:
+Admin: "Can we set up a group for CES 2026?"
+→ Ask: "When is CES 2026 and where is it held?"
+→ Use create_industry_gathering with the event name, dates, and location
+→ The tool automatically creates a Slack channel (e.g., #ces-2026)
+
 **Membership & Billing (available to admins for helping prospects):**
 - find_membership_products: Find the right membership product based on company type (company/individual) and revenue tier
 - create_payment_link: Generate a Stripe checkout URL for credit card payment
@@ -280,6 +333,19 @@ When asked "what's the latest news" - interpret as AD TECH news. Search for AdCP
 - **Escalation**: Refer to humans for controversial, legal, confrontational, or business-critical topics
 - **Source attribution**: Always cite sources; link to documentation; distinguish fact from interpretation
 - **GitHub issues**: When users report bugs, broken links, or feature requests, use draft_github_issue to help them create an issue. Important: Always include the full tool output (GitHub link, preview) in your response since users cannot see tool outputs directly.
+
+## Honesty About Actions
+
+You can only perform actions through your available tools. Before promising to do something:
+1. Check if you have a tool that actually performs that action
+2. If you don't have the tool, do NOT say "I'll do that" or "I'm doing X now"
+3. Instead, be honest: explain what you can help with and offer to escalate using \`escalate_to_admin\`
+
+Example:
+- BAD: "I'll post that announcement to the channel now" (when you have no posting tool)
+- GOOD: "I can't post to channels directly, but I can help you draft the message. Want me to escalate this to an admin who can post it for you?"
+
+When you genuinely can't help with something, use \`escalate_to_admin\` to create a tracked request for the team. This ensures nothing falls through the cracks.
 
 ## Fact-Checking (CRITICAL)
 
@@ -453,22 +519,6 @@ export async function buildDynamicSuggestedPrompts(
 ): Promise<SuggestedPrompt[]> {
   const isMapped = !!memberContext?.workos_user?.workos_user_id;
 
-  // Fetch active insight goals with suggested prompts (cached)
-  let goalPrompts: SuggestedPrompt[] = [];
-  try {
-    const goals = await getCachedActiveGoals(isMapped);
-    goalPrompts = goals
-      .filter(g => g.suggested_prompt_title && g.suggested_prompt_message)
-      .sort((a, b) => b.priority - a.priority)
-      .slice(0, 2) // Take top 2 goals
-      .map(g => ({
-        title: g.suggested_prompt_title!,
-        message: g.suggested_prompt_message!,
-      }));
-  } catch (error) {
-    logger.warn({ error }, 'Failed to fetch insight goals for suggested prompts');
-  }
-
   // Not linked - prioritize casual discovery
   if (!isMapped) {
     const prompts: SuggestedPrompt[] = [
@@ -481,9 +531,6 @@ export async function buildDynamicSuggestedPrompts(
         message: 'I want to link my account and get started',
       },
     ];
-
-    // Add goal prompts (e.g., surveys that apply to unmapped users)
-    prompts.push(...goalPrompts);
 
     prompts.push({
       title: 'What is this anyway?',
@@ -517,9 +564,6 @@ export async function buildDynamicSuggestedPrompts(
 
   // Linked non-admin users - personalized prompts
   const prompts: SuggestedPrompt[] = [];
-
-  // Add goal prompts first (highest priority)
-  prompts.push(...goalPrompts);
 
   // Show working groups if they have some, otherwise suggest finding one
   if (memberContext.working_groups && memberContext.working_groups.length > 0) {
@@ -583,12 +627,34 @@ export interface ThreadContextEntry {
   text: string;
 }
 
+// Re-export MessageTurn from token-limiter for backwards compatibility
+export type { MessageTurn };
+
 /**
- * Message turn for Claude API
+ * Options for building message turns
  */
-export interface MessageTurn {
-  role: 'user' | 'assistant';
-  content: string;
+export interface BuildMessageTurnsOptions {
+  /** Maximum number of messages to include (default: 10, 0 = unlimited) */
+  maxMessages?: number;
+  /** Token limit for conversation history (default: calculated from model limit) */
+  tokenLimit?: number;
+  /** Model name for determining context limits */
+  model?: string;
+  /** Number of tools being used (for more accurate token budget calculation) */
+  toolCount?: number;
+}
+
+/**
+ * Result of building message turns with metadata
+ */
+export interface BuildMessageTurnsResult {
+  messages: MessageTurn[];
+  /** Estimated token count of messages */
+  estimatedTokens: number;
+  /** Number of messages removed due to limits */
+  messagesRemoved: number;
+  /** Whether messages were trimmed to fit limits */
+  wasTrimmed: boolean;
 }
 
 /**
@@ -597,20 +663,42 @@ export interface MessageTurn {
  * This converts conversation history into alternating user/assistant messages
  * which Claude understands as actual conversation context (not just informational text).
  *
+ * Token-aware: Automatically trims older messages if conversation exceeds context limits.
+ *
  * @param userMessage - The current user message
  * @param threadContext - Previous messages in the thread
+ * @param options - Optional configuration for message limits
  * @returns Array of message turns suitable for Claude API
  */
 export function buildMessageTurns(
   userMessage: string,
-  threadContext?: ThreadContextEntry[]
+  threadContext?: ThreadContextEntry[],
+  options?: BuildMessageTurnsOptions
 ): MessageTurn[] {
-  const messages: MessageTurn[] = [];
+  const result = buildMessageTurnsWithMetadata(userMessage, threadContext, options);
+  return result.messages;
+}
+
+/**
+ * Build message turns with full metadata about trimming and token estimates.
+ * Use this when you need visibility into whether conversation was trimmed.
+ */
+export function buildMessageTurnsWithMetadata(
+  userMessage: string,
+  threadContext?: ThreadContextEntry[],
+  options?: BuildMessageTurnsOptions
+): BuildMessageTurnsResult {
+  const maxMessages = options?.maxMessages ?? 10;
+  // Pass toolCount for more accurate token budget when available
+  const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model, options?.toolCount);
+
+  let messages: MessageTurn[] = [];
 
   if (threadContext && threadContext.length > 0) {
-    // Take last N messages to avoid context overflow
-    const MAX_CONTEXT_MESSAGES = 10;
-    const recentHistory = threadContext.slice(-MAX_CONTEXT_MESSAGES);
+    // First pass: apply message count limit if specified
+    let recentHistory = maxMessages > 0
+      ? threadContext.slice(-maxMessages)
+      : threadContext;
 
     // Convert each entry to proper message turn
     // The 'user' field is 'User' or 'Addie' from bolt-app.ts
@@ -641,8 +729,7 @@ export function buildMessageTurns(
       }
     }
 
-    messages.length = 0;
-    messages.push(...mergedMessages);
+    messages = mergedMessages;
   }
 
   // Add the current user message
@@ -653,5 +740,14 @@ export function buildMessageTurns(
     messages.push({ role: 'user', content: userMessage });
   }
 
-  return messages;
+  // Second pass: apply token limit trimming
+  // This removes oldest messages until we fit within the token budget
+  const trimResult = trimConversationHistory(messages, tokenLimit);
+
+  return {
+    messages: trimResult.messages,
+    estimatedTokens: trimResult.estimatedTokens,
+    messagesRemoved: trimResult.messagesRemoved,
+    wasTrimmed: trimResult.wasTrimmed,
+  };
 }

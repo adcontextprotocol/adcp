@@ -21,6 +21,7 @@ import {
   isKnowledgeReady,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import {
   BILLING_TOOLS,
@@ -40,6 +41,19 @@ import {
   createEventToolHandlers,
   canCreateEvents,
 } from './mcp/event-tools.js';
+import {
+  DIRECTORY_TOOLS,
+  createDirectoryToolHandlers,
+} from './mcp/directory-tools.js';
+import {
+  MEETING_TOOLS,
+  createMeetingToolHandlers,
+  canScheduleMeetings,
+} from './mcp/meeting-tools.js';
+import {
+  ESCALATION_TOOLS,
+  createEscalationToolHandlers,
+} from './mcp/escalation-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -136,6 +150,15 @@ export async function initializeAddie(): Promise<void> {
     }
   }
 
+  // Register directory tools (lookup members, agents, publishers)
+  const directoryHandlers = createDirectoryToolHandlers();
+  for (const tool of DIRECTORY_TOOLS) {
+    const handler = directoryHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie: Ready');
 }
@@ -223,11 +246,19 @@ async function buildMessageWithMemberContext(
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  threadId?: string
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Add escalation tools (available to all users)
+  const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
+  allTools.push(...ESCALATION_TOOLS);
+  for (const [name, handler] of escalationHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
@@ -251,6 +282,22 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Event tools enabled for this user');
+  }
+
+  // Add meeting tools if user can schedule meetings (admin or committee leader)
+  const canSchedule = slackUserId ? await canScheduleMeetings(slackUserId) : userIsAdmin;
+  if (canSchedule) {
+    const meetingHandlers = createMeetingToolHandlers(memberContext, slackUserId);
+    allTools.push(...MEETING_TOOLS);
+    for (const [name, handler] of meetingHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Meeting tools enabled for this user');
+  }
+
+  // Override bookmark_resource handler with user-scoped version (for attribution)
+  if (slackUserId) {
+    allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
   }
 
   return {
@@ -372,7 +419,7 @@ export async function handleAssistantMessage(
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -523,7 +570,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;

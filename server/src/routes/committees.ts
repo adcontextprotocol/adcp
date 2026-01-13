@@ -14,16 +14,79 @@ import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
-import { notifyWorkingGroupPost } from "../notifications/slack.js";
+import { notifyPublishedPost } from "../notifications/slack.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
+import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
+import { createChannel, setChannelPurpose } from "../slack/client.js";
 
 const logger = createLogger("committee-routes");
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Rate limiting for reindex endpoint (prevent API cost abuse)
+const reindexRateLimit = new Map<string, number[]>();
+const REINDEX_RATE_LIMIT = 5; // Max requests
+const REINDEX_RATE_WINDOW = 60 * 1000; // Per minute
+
+function checkReindexRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const requests = reindexRateLimit.get(userId) || [];
+  const recentRequests = requests.filter(time => now - time < REINDEX_RATE_WINDOW);
+
+  if (recentRequests.length >= REINDEX_RATE_LIMIT) {
+    return false;
+  }
+
+  recentRequests.push(now);
+  reindexRateLimit.set(userId, recentRequests);
+  return true;
+}
+
+// Allowed document URL patterns (whitelist approach to prevent SSRF)
+const ALLOWED_DOCUMENT_DOMAINS = [
+  'docs.google.com',
+  'drive.google.com',
+  'sheets.google.com',
+];
+
+function isAllowedDocumentUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    // Must be HTTPS
+    if (parsed.protocol !== 'https:') {
+      return false;
+    }
+    // Must be an allowed domain
+    return ALLOWED_DOCUMENT_DOMAINS.includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 // Valid committee types
 const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'industry_gathering'] as const;
+
+/**
+ * Validate slug format based on committee type.
+ * Industry gatherings use hierarchical slugs: industry-gatherings/YYYY/name
+ * Other committee types use simple slugs: lowercase letters, numbers, hyphens
+ */
+function isValidCommitteeSlug(slug: string, committeeType?: string): boolean {
+  if (committeeType === 'industry_gathering') {
+    // Industry gatherings: industry-gatherings/YYYY/name-slug
+    // Allow lowercase letters, numbers, hyphens, and forward slashes
+    // Disallow consecutive slashes, consecutive hyphens, or slash-hyphen combinations
+    return /^[a-z0-9/-]+$/.test(slug)
+      && !slug.startsWith('/')
+      && !slug.endsWith('/')
+      && !slug.includes('//')
+      && !slug.includes('--')
+      && !/-\/|\/\-/.test(slug);
+  }
+  // Standard committees: lowercase letters, numbers, hyphens only
+  return /^[a-z0-9-]+$/.test(slug) && !slug.includes('--');
+}
 type CommitteeType = typeof VALID_COMMITTEE_TYPES[number];
 
 // Initialize WorkOS client only if authentication is enabled
@@ -227,18 +290,20 @@ export function createCommitteeRouters(): {
         });
       }
 
-      const slugPattern = /^[a-z0-9-]+$/;
-      if (!slugPattern.test(slug)) {
-        return res.status(400).json({
-          error: 'Invalid slug',
-          message: 'Slug must contain only lowercase letters, numbers, and hyphens'
-        });
-      }
-
       if (committee_type && !VALID_COMMITTEE_TYPES.includes(committee_type)) {
         return res.status(400).json({
           error: 'Invalid committee type',
-          message: 'Committee type must be working_group, council, chapter, or governance'
+          message: 'Committee type must be working_group, council, chapter, governance, or industry_gathering'
+        });
+      }
+
+      if (!isValidCommitteeSlug(slug, committee_type)) {
+        const message = committee_type === 'industry_gathering'
+          ? 'Slug must contain only lowercase letters, numbers, hyphens, and forward slashes'
+          : 'Slug must contain only lowercase letters, numbers, and hyphens';
+        return res.status(400).json({
+          error: 'Invalid slug',
+          message
         });
       }
 
@@ -252,8 +317,41 @@ export function createCommitteeRouters(): {
         });
       }
 
+      // Auto-create Slack channel for industry gatherings if not provided
+      let finalSlackChannelUrl = slack_channel_url;
+      let autoCreatedChannel = null;
+      if (committee_type === 'industry_gathering' && !slack_channel_url) {
+        // Generate channel name from the name (e.g., "CES 2026" -> "ces-2026")
+        const channelName = name.toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 80);
+
+        const channelResult = await createChannel(channelName);
+        if (channelResult) {
+          finalSlackChannelUrl = channelResult.url;
+          autoCreatedChannel = channelResult;
+
+          // Set channel purpose
+          const purpose = description || `Connect with AgenticAdvertising.org members at ${name}.`;
+          await setChannelPurpose(channelResult.channel.id, purpose);
+
+          logger.info(
+            { channelId: channelResult.channel.id, name: channelName },
+            'Auto-created Slack channel for industry gathering'
+          );
+        } else {
+          logger.warn(
+            { name },
+            'Failed to auto-create Slack channel for industry gathering'
+          );
+        }
+      }
+
       const group = await workingGroupDb.createWorkingGroup({
-        name, slug, description, slack_channel_url, is_private, status, display_order,
+        name, slug, description, slack_channel_url: finalSlackChannelUrl, is_private, status, display_order,
         leader_user_ids, committee_type, region: finalRegion
       });
 
@@ -273,6 +371,10 @@ export function createCommitteeRouters(): {
       res.status(201).json({
         ...group,
         sync_result: syncResult,
+        slack_channel_auto_created: !!autoCreatedChannel,
+        slack_channel_warning: (committee_type === 'industry_gathering' && !slack_channel_url && !autoCreatedChannel)
+          ? 'Slack channel auto-creation failed. You may need to manually create and link a channel.'
+          : null,
       });
     } catch (error) {
       logger.error({ err: error }, 'Create working group error:');
@@ -292,7 +394,7 @@ export function createCommitteeRouters(): {
       if (updates.committee_type && !VALID_COMMITTEE_TYPES.includes(updates.committee_type)) {
         return res.status(400).json({
           error: 'Invalid committee type',
-          message: 'Committee type must be working_group, council, chapter, or governance'
+          message: 'Committee type must be working_group, council, chapter, governance, or industry_gathering'
         });
       }
 
@@ -300,13 +402,20 @@ export function createCommitteeRouters(): {
         updates.region = null;
       }
 
+      // Check if we're adding/changing a Slack channel
+      const existingGroup = await workingGroupDb.getWorkingGroupById(id);
+
       // Validate slug format and uniqueness if changing
       if (updates.slug) {
-        const slugPattern = /^[a-z0-9-]+$/;
-        if (!slugPattern.test(updates.slug)) {
+        // Use the committee type being set, or fall back to existing
+        const effectiveCommitteeType = updates.committee_type || existingGroup?.committee_type;
+        if (!isValidCommitteeSlug(updates.slug, effectiveCommitteeType)) {
+          const message = effectiveCommitteeType === 'industry_gathering'
+            ? 'Slug must contain only lowercase letters, numbers, hyphens, and forward slashes'
+            : 'Slug must contain only lowercase letters, numbers, and hyphens';
           return res.status(400).json({
             error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
+            message
           });
         }
 
@@ -318,9 +427,6 @@ export function createCommitteeRouters(): {
           });
         }
       }
-
-      // Check if we're adding/changing a Slack channel
-      const existingGroup = await workingGroupDb.getWorkingGroupById(id);
       const isAddingChannel = updates.slack_channel_url && (!existingGroup?.slack_channel_id || updates.slack_channel_url !== existingGroup.slack_channel_url);
 
       const group = await workingGroupDb.updateWorkingGroup(id, updates);
@@ -452,6 +558,39 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Remove working group member error:');
       res.status(500).json({
         error: 'Failed to remove member',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/admin/working-groups/:id/interest - Get users who expressed interest in a committee
+  adminApiRouter.get('/:id/interest', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const workingGroup = await workingGroupDb.getWorkingGroupById(id);
+      if (!workingGroup) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: 'The specified working group does not exist'
+        });
+      }
+
+      const pool = getPool();
+      const result = await pool.query(
+        `SELECT ci.id, ci.workos_user_id, ci.user_email, ci.user_name, ci.user_org_name,
+                ci.interest_level, ci.created_at
+         FROM committee_interest ci
+         WHERE ci.working_group_id = $1
+         ORDER BY ci.created_at DESC`,
+        [id]
+      );
+
+      res.json({ interest: result.rows });
+    } catch (error) {
+      logger.error({ err: error }, 'List committee interest error:');
+      res.status(500).json({
+        error: 'Failed to list interest records',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -711,7 +850,7 @@ export function createCommitteeRouters(): {
       }
 
       const result = await pool.query(
-        `SELECT id, slug, content_type, title, subtitle, category, excerpt,
+        `SELECT id, slug, content_type, title, subtitle, category, excerpt, content,
           external_url, external_site_name, author_name, author_title,
           featured_image_url, published_at, tags, is_members_only
         FROM perspectives
@@ -954,6 +1093,54 @@ export function createCommitteeRouters(): {
     }
   });
 
+  // DELETE /api/working-groups/:slug/interest - Withdraw interest in a committee
+  publicApiRouter.delete('/:slug/interest', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const user = req.user!;
+      const pool = getPool();
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const result = await pool.query(
+        `DELETE FROM committee_interest
+         WHERE working_group_id = $1 AND workos_user_id = $2
+         RETURNING id`,
+        [group.id, user.id]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({
+          error: 'No interest found',
+          message: 'You have not expressed interest in this committee',
+        });
+      }
+
+      logger.info(
+        { workingGroupId: group.id, userId: user.id },
+        'User withdrew interest in committee'
+      );
+
+      res.json({
+        success: true,
+        message: `You have withdrawn your interest in ${group.name}.`,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Withdraw committee interest error');
+      res.status(500).json({
+        error: 'Failed to withdraw interest',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // DELETE /api/working-groups/:slug/leave - Leave a working group
   publicApiRouter.delete('/:slug/leave', requireAuth, async (req: Request, res: Response) => {
     try {
@@ -969,7 +1156,7 @@ export function createCommitteeRouters(): {
         });
       }
 
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       if (isLeader) {
         return res.status(403).json({
           error: 'Cannot leave',
@@ -1023,7 +1210,7 @@ export function createCommitteeRouters(): {
         });
       }
 
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
 
       if (!title || !post_slug) {
@@ -1068,19 +1255,22 @@ export function createCommitteeRouters(): {
         ]
       );
 
-      if (!finalMembersOnly) {
-        notifyWorkingGroupPost({
-          workingGroupName: group.name,
-          workingGroupSlug: slug,
-          postTitle: title,
-          postSlug: post_slug,
-          authorName,
-          contentType: content_type || 'article',
-          category: category || undefined,
-        }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack notification for working group post');
-        });
-      }
+      // Send Slack notification to the working group's channel
+      notifyPublishedPost({
+        slackChannelId: group.slack_channel_id ?? undefined,
+        workingGroupName: group.name,
+        workingGroupSlug: slug,
+        postTitle: title,
+        postSlug: post_slug,
+        authorName,
+        contentType: content_type || 'article',
+        excerpt: excerpt || undefined,
+        externalUrl: external_url || undefined,
+        category: category || undefined,
+        isMembersOnly: finalMembersOnly,
+      }).catch(err => {
+        logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
+      });
 
       res.status(201).json({ post: result.rows[0] });
     } catch (error) {
@@ -1136,7 +1326,7 @@ export function createCommitteeRouters(): {
       }
 
       const post = existing.rows[0];
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       const isAuthor = post.author_user_id === user.id;
 
       if (!isAuthor && !isLeader) {
@@ -1240,7 +1430,7 @@ export function createCommitteeRouters(): {
       }
 
       const post = existing.rows[0];
-      const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
       const isAuthor = post.author_user_id === user.id;
 
       if (!isAuthor && !isLeader) {
@@ -1302,6 +1492,334 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Fetch URL metadata error (member)');
       res.status(500).json({
         error: 'Failed to fetch URL',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // =========================================================================
+  // COMMITTEE DOCUMENT ROUTES (/api/working-groups/:slug/documents)
+  // =========================================================================
+
+  // GET /api/working-groups/:slug/documents - Get documents for a committee (public)
+  publicApiRouter.get('/:slug/documents', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const documents = await workingGroupDb.getDocumentsByWorkingGroup(group.id);
+
+      // Don't expose internal content to non-leaders
+      const user = req.user;
+      const isLeader = user && await workingGroupDb.isLeader(group.id, user.id);
+
+      const publicDocuments = documents.map(doc => ({
+        id: doc.id,
+        title: doc.title,
+        description: doc.description,
+        document_url: doc.document_url,
+        document_type: doc.document_type,
+        display_order: doc.display_order,
+        is_featured: doc.is_featured,
+        last_modified_at: doc.last_modified_at,
+        document_summary: doc.document_summary,
+        summary_generated_at: doc.summary_generated_at,
+        index_status: doc.index_status,
+        created_at: doc.created_at,
+        // Only include these for leaders
+        ...(isLeader && {
+          index_error: doc.index_error,
+          last_indexed_at: doc.last_indexed_at,
+        }),
+      }));
+
+      res.json({ documents: publicDocuments });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee documents error');
+      res.status(500).json({
+        error: 'Failed to get documents',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/activity - Get recent activity for a committee
+  publicApiRouter.get('/:slug/activity', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const activity = await workingGroupDb.getRecentActivity(group.id);
+      res.json({ activity });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee activity error');
+      res.status(500).json({
+        error: 'Failed to get activity',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/working-groups/:slug/summary - Get current committee summary
+  publicApiRouter.get('/:slug/summary', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const summaryType = (req.query.type as string) || 'activity';
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group || group.status !== 'active') {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      if (!['activity', 'overview', 'changes'].includes(summaryType)) {
+        return res.status(400).json({
+          error: 'Invalid summary type',
+          message: 'Summary type must be: activity, overview, or changes',
+        });
+      }
+
+      const summary = await workingGroupDb.getCurrentSummary(
+        group.id,
+        summaryType as 'activity' | 'overview' | 'changes'
+      );
+
+      res.json({ summary });
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee summary error');
+      res.status(500).json({
+        error: 'Failed to get summary',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/working-groups/:slug/documents - Add a document (leaders only)
+  publicApiRouter.post('/:slug/documents', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const { title, description, document_url, document_type, display_order, is_featured } = req.body;
+      const user = req.user!;
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      if (!title || !document_url) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Title and document_url are required',
+        });
+      }
+
+      // Strict URL validation to prevent SSRF - only allow trusted domains
+      if (!isAllowedDocumentUrl(document_url)) {
+        return res.status(400).json({
+          error: 'Invalid document URL',
+          message: 'Only Google Docs, Sheets, and Drive URLs are supported',
+        });
+      }
+
+      const document = await workingGroupDb.createDocument({
+        working_group_id: group.id,
+        title,
+        description,
+        document_url,
+        document_type,
+        display_order: display_order ?? 0,
+        is_featured: is_featured ?? false,
+        added_by_user_id: user.id,
+      });
+
+      logger.info({ documentId: document.id, groupSlug: slug, userId: user.id }, 'Committee document created');
+
+      res.status(201).json({ document });
+    } catch (error) {
+      logger.error({ err: error }, 'Create committee document error');
+      res.status(500).json({
+        error: 'Failed to create document',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // PUT /api/working-groups/:slug/documents/:documentId - Update a document (leaders only)
+  publicApiRouter.put('/:slug/documents/:documentId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+      const { title, description, document_url, document_type, display_order, is_featured } = req.body;
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({
+          error: 'Invalid document ID',
+          message: 'Document ID must be a valid UUID',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const existingDoc = await workingGroupDb.getDocumentById(documentId);
+      if (!existingDoc || existingDoc.working_group_id !== group.id) {
+        return res.status(404).json({
+          error: 'Document not found',
+          message: 'Document not found in this committee',
+        });
+      }
+
+      // Validate URL if provided - strict validation to prevent SSRF
+      if (document_url && !isAllowedDocumentUrl(document_url)) {
+        return res.status(400).json({
+          error: 'Invalid document URL',
+          message: 'Only Google Docs, Sheets, and Drive URLs are supported',
+        });
+      }
+
+      const document = await workingGroupDb.updateDocument(documentId, {
+        title,
+        description,
+        document_url,
+        document_type,
+        display_order,
+        is_featured,
+      });
+
+      res.json({ document });
+    } catch (error) {
+      logger.error({ err: error }, 'Update committee document error');
+      res.status(500).json({
+        error: 'Failed to update document',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/working-groups/:slug/documents/:documentId/reindex - Trigger reindex (leaders only)
+  publicApiRouter.post('/:slug/documents/:documentId/reindex', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+      const user = req.user!;
+
+      // Rate limit check to prevent API cost abuse
+      if (!checkReindexRateLimit(user.id)) {
+        return res.status(429).json({
+          error: 'Rate limit exceeded',
+          message: 'Too many reindex requests. Please wait a minute before trying again.',
+        });
+      }
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({
+          error: 'Invalid document ID',
+          message: 'Document ID must be a valid UUID',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const existingDoc = await workingGroupDb.getDocumentById(documentId);
+      if (!existingDoc || existingDoc.working_group_id !== group.id) {
+        return res.status(404).json({
+          error: 'Document not found',
+          message: 'Document not found in this committee',
+        });
+      }
+
+      const result = await reindexDocument(documentId);
+
+      if (!result.success) {
+        return res.status(500).json({
+          error: 'Reindex failed',
+          message: result.error,
+        });
+      }
+
+      // Fetch the updated document
+      const updatedDoc = await workingGroupDb.getDocumentById(documentId);
+
+      logger.info({ documentId, groupSlug: slug }, 'Committee document reindexed');
+
+      res.json({
+        success: true,
+        document: updatedDoc,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Reindex committee document error');
+      res.status(500).json({
+        error: 'Failed to reindex document',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // DELETE /api/working-groups/:slug/documents/:documentId - Delete a document (leaders only)
+  publicApiRouter.delete('/:slug/documents/:documentId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
+    try {
+      const { slug, documentId } = req.params;
+
+      if (!UUID_REGEX.test(documentId)) {
+        return res.status(400).json({
+          error: 'Invalid document ID',
+          message: 'Document ID must be a valid UUID',
+        });
+      }
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const existingDoc = await workingGroupDb.getDocumentById(documentId);
+      if (!existingDoc || existingDoc.working_group_id !== group.id) {
+        return res.status(404).json({
+          error: 'Document not found',
+          message: 'Document not found in this committee',
+        });
+      }
+
+      await workingGroupDb.deleteDocument(documentId);
+
+      logger.info({ documentId, groupSlug: slug }, 'Committee document deleted');
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Delete committee document error');
+      res.status(500).json({
+        error: 'Failed to delete document',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -1460,17 +1978,22 @@ export function createCommitteeRouters(): {
 
       const createdPost = result.rows[0];
 
+      // Send Slack notification to the working group's channel
       if (status === 'published') {
-        notifyWorkingGroupPost({
+        notifyPublishedPost({
+          slackChannelId: group.slack_channel_id ?? undefined,
           workingGroupName: group.name,
           workingGroupSlug: slug,
           postTitle: title,
           postSlug: post_slug,
           authorName: authorNameFinal,
           contentType: content_type || 'article',
+          excerpt: excerpt || undefined,
+          externalUrl: external_url || undefined,
           category: category || undefined,
+          isMembersOnly: is_members_only || false,
         }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
         });
       }
 
@@ -1584,17 +2107,22 @@ export function createCommitteeRouters(): {
 
       const updatedPost = result.rows[0];
 
+      // Send Slack notification when post transitions to published
       if (willBePublished && !wasPublished) {
-        notifyWorkingGroupPost({
+        notifyPublishedPost({
+          slackChannelId: group.slack_channel_id ?? undefined,
           workingGroupName: group.name,
           workingGroupSlug: slug,
           postTitle: updatedPost.title,
           postSlug: updatedPost.slug,
           authorName: updatedPost.author_name || 'Unknown',
           contentType: updatedPost.content_type || 'article',
+          excerpt: updatedPost.excerpt || undefined,
+          externalUrl: updatedPost.external_url || undefined,
           category: updatedPost.category || undefined,
+          isMembersOnly: updatedPost.is_members_only || false,
         }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
         });
       }
 
@@ -2032,6 +2560,31 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get user led committees error');
       res.status(500).json({
         error: 'Failed to get led committees',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/me/working-groups/interests - Get current user's council interest signups
+  userApiRouter.get('/interests', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const pool = getPool();
+
+      const result = await pool.query(
+        `SELECT ci.interest_level, ci.created_at, wg.name as committee_name, wg.slug, wg.committee_type
+         FROM committee_interest ci
+         JOIN working_groups wg ON wg.id = ci.working_group_id
+         WHERE ci.workos_user_id = $1
+         ORDER BY ci.created_at DESC`,
+        [user.id]
+      );
+
+      res.json(result.rows);
+    } catch (error) {
+      logger.error({ err: error }, 'Get user council interests error');
+      res.status(500).json({
+        error: 'Failed to get council interests',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

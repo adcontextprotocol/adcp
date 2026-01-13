@@ -29,12 +29,13 @@ export class SlackDatabase {
     slack_real_name: string | null;
     slack_is_bot: boolean;
     slack_is_deleted: boolean;
+    slack_tz_offset?: number | null;
   }): Promise<SlackUserMapping> {
     const result = await query<SlackUserMapping>(
       `INSERT INTO slack_user_mappings (
         slack_user_id, slack_email, slack_display_name, slack_real_name,
-        slack_is_bot, slack_is_deleted, last_slack_sync_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        slack_is_bot, slack_is_deleted, slack_tz_offset, last_slack_sync_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       ON CONFLICT (slack_user_id)
       DO UPDATE SET
         slack_email = EXCLUDED.slack_email,
@@ -42,6 +43,7 @@ export class SlackDatabase {
         slack_real_name = EXCLUDED.slack_real_name,
         slack_is_bot = EXCLUDED.slack_is_bot,
         slack_is_deleted = EXCLUDED.slack_is_deleted,
+        slack_tz_offset = EXCLUDED.slack_tz_offset,
         last_slack_sync_at = NOW(),
         updated_at = NOW()
       RETURNING *`,
@@ -52,6 +54,7 @@ export class SlackDatabase {
         user.slack_real_name,
         user.slack_is_bot,
         user.slack_is_deleted,
+        user.slack_tz_offset ?? null,
       ]
     );
 
@@ -371,6 +374,7 @@ export class SlackDatabase {
     }
 
     // First, get the domains with counts
+    // Exclude users already linked to a pending organization (already have a prospect)
     const domainQuery = `
       SELECT
         LOWER(SPLIT_PART(slack_email, '@', 2)) as domain,
@@ -381,6 +385,7 @@ export class SlackDatabase {
         AND slack_is_deleted = false
         AND slack_email IS NOT NULL
         AND slack_email LIKE '%@%'
+        AND pending_organization_id IS NULL
         ${domainExcludeClause}
       GROUP BY LOWER(SPLIT_PART(slack_email, '@', 2))
       HAVING COUNT(*) >= $${excludeFree ? freeEmailDomains.length + 1 : 1}
@@ -422,6 +427,7 @@ export class SlackDatabase {
          WHERE mapping_status = 'unmapped'
            AND slack_is_bot = false
            AND slack_is_deleted = false
+           AND pending_organization_id IS NULL
            AND LOWER(SPLIT_PART(slack_email, '@', 2)) = $1
          ORDER BY slack_real_name NULLS LAST, slack_display_name NULLS LAST`,
         [row.domain]
@@ -711,6 +717,209 @@ export class SlackDatabase {
       `SELECT workos_user_id FROM slack_user_mappings WHERE workos_user_id IS NOT NULL`
     );
     return new Set(result.rows.map(row => row.workos_user_id));
+  }
+
+  /**
+   * Link unmapped Slack users with a specific email domain to an organization.
+   * Sets the pending_organization_id field so they're associated with the prospect.
+   *
+   * @param domain The email domain to match (e.g., "publicis.com")
+   * @param organizationId The WorkOS organization ID to link users to
+   * @returns Number of users linked and their details
+   */
+  async linkSlackUsersByDomain(
+    domain: string,
+    organizationId: string
+  ): Promise<{
+    usersLinked: number;
+    users: Array<{
+      slack_user_id: string;
+      slack_email: string;
+      slack_real_name: string | null;
+    }>;
+  }> {
+    const normalizedDomain = domain.toLowerCase();
+
+    const updateResult = await query<{
+      slack_user_id: string;
+      slack_email: string;
+      slack_real_name: string | null;
+    }>(
+      `UPDATE slack_user_mappings
+       SET pending_organization_id = $1,
+           updated_at = NOW()
+       WHERE mapping_status = 'unmapped'
+         AND slack_is_bot = false
+         AND slack_is_deleted = false
+         AND LOWER(SPLIT_PART(slack_email, '@', 2)) = $2
+       RETURNING slack_user_id, slack_email, slack_real_name`,
+      [organizationId, normalizedDomain]
+    );
+
+    return {
+      usersLinked: updateResult.rows.length,
+      users: updateResult.rows,
+    };
+  }
+
+  /**
+   * Get count of pending (unmapped) Slack users for an organization by domain
+   */
+  async getPendingSlackUserCount(organizationId: string): Promise<number> {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*) as count
+       FROM slack_user_mappings
+       WHERE pending_organization_id = $1
+         AND mapping_status = 'unmapped'
+         AND slack_is_bot = false
+         AND slack_is_deleted = false`,
+      [organizationId]
+    );
+    return parseInt(result.rows[0]?.count || '0', 10);
+  }
+
+  /**
+   * Get pending (unmapped) Slack users for an organization
+   */
+  async getPendingSlackUsers(organizationId: string): Promise<Array<{
+    slack_user_id: string;
+    slack_email: string;
+    slack_real_name: string | null;
+    slack_display_name: string | null;
+  }>> {
+    const result = await query<{
+      slack_user_id: string;
+      slack_email: string;
+      slack_real_name: string | null;
+      slack_display_name: string | null;
+    }>(
+      `SELECT slack_user_id, slack_email, slack_real_name, slack_display_name
+       FROM slack_user_mappings
+       WHERE pending_organization_id = $1
+         AND mapping_status = 'unmapped'
+         AND slack_is_bot = false
+         AND slack_is_deleted = false
+       ORDER BY slack_real_name NULLS LAST, slack_display_name NULLS LAST`,
+      [organizationId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get count of unmapped Slack users that could be linked to existing organizations.
+   * These are users whose email domain matches an organization but don't have pending_organization_id set.
+   */
+  async getBackfillableUserCount(): Promise<{
+    totalUsers: number;
+    byOrganization: Array<{
+      organizationId: string;
+      organizationName: string;
+      domain: string;
+      userCount: number;
+    }>;
+  }> {
+    const result = await query<{
+      workos_organization_id: string;
+      name: string;
+      domain: string;
+      user_count: string;
+    }>(
+      `SELECT
+         o.workos_organization_id,
+         o.name,
+         COALESCE(od.domain, o.email_domain) as domain,
+         COUNT(sm.id) as user_count
+       FROM organizations o
+       LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+       JOIN slack_user_mappings sm ON
+         LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(COALESCE(od.domain, o.email_domain))
+         AND sm.mapping_status = 'unmapped'
+         AND sm.slack_is_bot = false
+         AND sm.slack_is_deleted = false
+         AND sm.pending_organization_id IS NULL
+       WHERE o.is_personal = false
+         AND (od.domain IS NOT NULL OR o.email_domain IS NOT NULL)
+       GROUP BY o.workos_organization_id, o.name, COALESCE(od.domain, o.email_domain)
+       ORDER BY COUNT(sm.id) DESC`
+    );
+
+    const byOrganization = result.rows.map((r) => ({
+      organizationId: r.workos_organization_id,
+      organizationName: r.name,
+      domain: r.domain,
+      userCount: parseInt(r.user_count, 10),
+    }));
+
+    return {
+      totalUsers: byOrganization.reduce((sum, o) => sum + o.userCount, 0),
+      byOrganization,
+    };
+  }
+
+  /**
+   * Backfill pending_organization_id for existing prospects.
+   * Links unmapped Slack users to organizations based on their email domain
+   * matching organization_domains or organizations.email_domain.
+   *
+   * @returns Summary of organizations and users linked
+   */
+  async backfillPendingOrganizations(): Promise<{
+    organizationsProcessed: number;
+    usersLinked: number;
+    details: Array<{
+      organizationId: string;
+      organizationName: string;
+      domain: string;
+      usersLinked: number;
+    }>;
+  }> {
+    // Find all orgs with domains that have unmapped Slack users
+    const orgsWithDomainsResult = await query<{
+      workos_organization_id: string;
+      name: string;
+      domain: string;
+    }>(
+      `SELECT DISTINCT o.workos_organization_id, o.name, COALESCE(od.domain, o.email_domain) as domain
+       FROM organizations o
+       LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+       WHERE o.is_personal = false
+         AND (od.domain IS NOT NULL OR o.email_domain IS NOT NULL)
+         AND EXISTS (
+           SELECT 1 FROM slack_user_mappings sm
+           WHERE sm.mapping_status = 'unmapped'
+             AND sm.slack_is_bot = false
+             AND sm.slack_is_deleted = false
+             AND sm.pending_organization_id IS NULL
+             AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(COALESCE(od.domain, o.email_domain))
+         )`
+    );
+
+    const details: Array<{
+      organizationId: string;
+      organizationName: string;
+      domain: string;
+      usersLinked: number;
+    }> = [];
+    let totalUsersLinked = 0;
+
+    for (const org of orgsWithDomainsResult.rows) {
+      const linkResult = await this.linkSlackUsersByDomain(org.domain, org.workos_organization_id);
+      if (linkResult.usersLinked > 0) {
+        details.push({
+          organizationId: org.workos_organization_id,
+          organizationName: org.name,
+          domain: org.domain,
+          usersLinked: linkResult.usersLinked,
+        });
+        totalUsersLinked += linkResult.usersLinked;
+      }
+    }
+
+    return {
+      organizationsProcessed: orgsWithDomainsResult.rows.length,
+      usersLinked: totalUsersLinked,
+      details,
+    };
   }
 
 }

@@ -1417,6 +1417,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       // Hide standard filters, show domain source filter
       document.querySelector('.filters').style.display = 'none';
       updateTableHeaders(true);
+      // Clear selection when loading fresh data
+      selectedDomains.clear();
 
       try {
         // Load both Slack and Email domains in parallel
@@ -1561,12 +1563,16 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       renderDomainDiscovery();
     }
 
+    // Track selected domains for bulk creation
+    let selectedDomains = new Set();
+
     function updateTableHeaders(viewType) {
       const header = document.getElementById('tableHeader');
       if (viewType === true || viewType === 'domain_discovery') {
         // Domain discovery view
         header.innerHTML = `
           <tr>
+            <th style="width: 40px;"><input type="checkbox" id="selectAllDomains" onchange="toggleSelectAllDomains(this.checked)" title="Select all new prospects"></th>
             <th>Domain</th>
             <th>Source</th>
             <th>Users</th>
@@ -1622,10 +1628,11 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const emailCount = discoveredDomains.filter(d => d.sources.includes('email') && d.is_new_prospect).length;
 
       const unenrichedCount = discoveredDomains.filter(d => d.is_new_prospect && !enrichmentCache[d.domain]).length;
+      const selectedCount = selectedDomains.size;
 
       countDiv.innerHTML = `
         <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
-          <span>Showing ${domainsToShow.length} domains (${newProspects.length} new prospects)</span>
+          <span>Showing ${domainsToShow.length} domains (${newProspects.length} new prospects)${selectedCount > 0 ? ` \u2022 ${selectedCount} selected` : ''}</span>
           <div style="display: flex; gap: var(--space-2);">
             <button class="source-filter-btn ${currentDomainSource === 'all' ? 'active' : ''}" data-source="all" onclick="filterDomainsBySource('all')">
               All
@@ -1637,18 +1644,25 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
               Email (${emailCount})
             </button>
           </div>
-          ${enrichmentConfigured && unenrichedCount > 0 ? `
-            <button class="btn btn-secondary btn-sm" onclick="enrichAllNewDomains()" style="margin-left: auto;">
-              Research All (${Math.min(unenrichedCount, 25)})
-            </button>
-          ` : ''}
+          <div style="display: flex; gap: var(--space-2); margin-left: auto;">
+            ${selectedCount > 0 ? `
+              <button class="btn btn-primary btn-sm" onclick="createSelectedProspects()" id="createSelectedBtn">
+                Create ${selectedCount} Prospect${selectedCount > 1 ? 's' : ''}
+              </button>
+            ` : ''}
+            ${enrichmentConfigured && unenrichedCount > 0 ? `
+              <button class="btn btn-secondary btn-sm" onclick="enrichAllNewDomains()">
+                Research All (${Math.min(unenrichedCount, 25)})
+              </button>
+            ` : ''}
+          </div>
         </div>
       `;
 
       if (domainsToShow.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="6" class="empty-state">
+            <td colspan="7" class="empty-state">
               <h3>No unmapped domains found</h3>
               <p>No contacts from this source need organization mapping.</p>
             </td>
@@ -1716,8 +1730,14 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           actionHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View Org</a>`;
         }
 
+        // Checkbox for new prospects
+        const checkboxHtml = domain.is_new_prospect
+          ? `<input type="checkbox" class="domain-checkbox" data-domain="${domain.domain}" data-source="${primarySource}" ${selectedDomains.has(domain.domain) ? 'checked' : ''} onchange="toggleDomainSelection('${domain.domain}', '${primarySource}', this.checked)">`
+          : '';
+
         return `
           <tr${domain.is_new_prospect ? '' : ' style="opacity: 0.6;"'}>
+            <td>${checkboxHtml}</td>
             <td><strong>${domain.domain}</strong></td>
             <td>${sourceBadges}</td>
             <td><span title="${domain.total_users} total users">${domain.total_users}</span></td>
@@ -1727,6 +1747,13 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           </tr>
         `;
       }).join('');
+
+      // Sync "select all" checkbox state
+      const selectAllCheckbox = document.getElementById('selectAllDomains');
+      if (selectAllCheckbox && newProspects.length > 0) {
+        const allSelected = newProspects.every(d => selectedDomains.has(d.domain));
+        selectAllCheckbox.checked = allSelected;
+      }
     }
 
     async function enrichDomain(domain) {
@@ -1845,6 +1872,117 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         }
       } catch (error) {
         alert('Error: ' + error.message);
+      }
+    }
+
+    function toggleDomainSelection(domain, source, checked) {
+      if (checked) {
+        selectedDomains.add(domain);
+      } else {
+        selectedDomains.delete(domain);
+      }
+      // Re-render to update button and selection count
+      renderDomainDiscovery();
+    }
+
+    function toggleSelectAllDomains(checked) {
+      // Get currently visible new prospects based on filter
+      let domainsToShow = discoveredDomains;
+      if (currentDomainSource === 'slack') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('slack'));
+      } else if (currentDomainSource === 'email') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('email'));
+      }
+
+      const newProspects = domainsToShow.filter(d => d.is_new_prospect);
+
+      if (checked) {
+        newProspects.forEach(d => selectedDomains.add(d.domain));
+      } else {
+        newProspects.forEach(d => selectedDomains.delete(d.domain));
+      }
+
+      renderDomainDiscovery();
+    }
+
+    async function createSelectedProspects() {
+      if (selectedDomains.size === 0) {
+        alert('No domains selected');
+        return;
+      }
+
+      const count = selectedDomains.size;
+      if (!confirm(`Create ${count} prospect${count > 1 ? 's' : ''} from the selected domains?`)) {
+        return;
+      }
+
+      const btn = document.getElementById('createSelectedBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+      }
+
+      // Disable all checkboxes during creation
+      document.querySelectorAll('.domain-checkbox, #selectAllDomains').forEach(cb => cb.disabled = true);
+
+      try {
+        // Build the domains array with source info
+        const domainsToCreate = [];
+        for (const domain of selectedDomains) {
+          const domainInfo = discoveredDomains.find(d => d.domain === domain);
+          if (domainInfo) {
+            const primarySource = domainInfo.sources.includes('slack') ? 'slack' : 'email';
+            domainsToCreate.push({ domain, source: primarySource });
+          }
+        }
+
+        const response = await fetch('/api/admin/domains/bulk-create-prospects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains: domainsToCreate })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create prospects');
+        }
+
+        const result = await response.json();
+
+        // Clear selection
+        selectedDomains.clear();
+
+        // Show results
+        if (result.failed > 0) {
+          const failedDomains = result.results
+            .filter(r => !r.success)
+            .map(r => `${r.domain}: ${r.error}`)
+            .join('\n');
+          alert(`Created ${result.successful} of ${result.total} prospects.\n\nFailed:\n${failedDomains}`);
+        } else {
+          alert(`Successfully created ${result.successful} prospect${result.successful > 1 ? 's' : ''}`);
+        }
+
+        // Refresh domain discovery view
+        await loadDomainDiscovery();
+        // Also refresh view counts
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+        // Re-enable checkboxes and button on error
+        document.querySelectorAll('.domain-checkbox, #selectAllDomains').forEach(cb => cb.disabled = false);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = `Create ${selectedDomains.size} Prospect${selectedDomains.size > 1 ? 's' : ''}`;
+        }
       }
     }
 

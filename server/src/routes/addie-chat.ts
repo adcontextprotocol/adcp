@@ -45,6 +45,7 @@ import {
   type ThreadContext,
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
+import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -341,8 +342,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools);
       } catch (error) {
         logger.error({ error }, "Addie Chat: Error processing message");
+
+        // Provide user-friendly error message based on error type
+        const errorMessage = isRetriesExhaustedError(error)
+          ? `${error.reason}. Please try again in a moment.`
+          : "I'm sorry, I encountered an error. Please try again.";
+
         response = {
-          text: "I'm sorry, I encountered an error. Please try again.",
+          text: errorMessage,
           tools_used: [],
           tool_executions: [],
           flagged: true,
@@ -564,6 +571,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           sendEvent("tool_start", { tool_name: event.tool_name });
         } else if (event.type === 'tool_end') {
           sendEvent("tool_end", { tool_name: event.tool_name, is_error: event.is_error });
+        } else if (event.type === 'retry') {
+          sendEvent("retry", {
+            attempt: event.attempt,
+            maxRetries: event.maxRetries,
+            reason: event.reason,
+          });
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {

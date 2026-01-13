@@ -30,6 +30,10 @@ export interface SlackUserMapping {
   last_outreach_at: Date | null;
   outreach_opt_out: boolean;
   outreach_opt_out_at: Date | null;
+  // Timezone offset in seconds from UTC (from Slack)
+  slack_tz_offset: number | null;
+  // Organization ID for unmapped users discovered via domain (from migration 160)
+  pending_organization_id: string | null;
   created_at: Date;
   updated_at: Date;
 }

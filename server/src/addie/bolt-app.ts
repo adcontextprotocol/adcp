@@ -35,6 +35,7 @@ import {
   isKnowledgeReady,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import {
   MEMBER_TOOLS,
@@ -54,8 +55,12 @@ import {
   BILLING_TOOLS,
   createBillingToolHandlers,
 } from './mcp/billing-tools.js';
+import {
+  ESCALATION_TOOLS,
+  createEscalationToolHandlers,
+} from './mcp/escalation-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
-import { AddieModelConfig } from '../config/models.js';
+import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
   sanitizeInput,
@@ -72,12 +77,16 @@ import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
+import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
+import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
   extractArticleUrls,
   queueCommunityArticle,
 } from './services/community-articles.js';
+import { InsightsDatabase } from '../db/insights-db.js';
+import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -342,6 +351,27 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     }
   }
 
+  // Register Google Docs tools (for reading Google Docs/Drive files)
+  const googleDocsHandlers = createGoogleDocsToolHandlers();
+  if (googleDocsHandlers) {
+    for (const tool of GOOGLE_DOCS_TOOLS) {
+      const handler = googleDocsHandlers[tool.name];
+      if (handler) {
+        claudeClient.registerTool(tool, handler);
+      }
+    }
+    logger.info('Addie: Google Docs tools registered');
+  }
+
+  // Register directory tools (member/agent/publisher lookup)
+  const directoryHandlers = createDirectoryToolHandlers();
+  for (const tool of DIRECTORY_TOOLS) {
+    const handler = directoryHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   // Create the Assistant
   const assistant = new Assistant({
     threadContextStore,
@@ -583,7 +613,8 @@ async function buildMessageWithMemberContext(
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  threadId?: string
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
@@ -596,6 +627,14 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: Billing tools enabled');
+
+  // Add escalation tools for all users
+  const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
+  allTools.push(...ESCALATION_TOOLS);
+  for (const [name, handler] of escalationHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Escalation tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
@@ -619,6 +658,11 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie Bolt: Event tools enabled for this user');
+  }
+
+  // Override bookmark_resource handler with user-scoped version (for attribution)
+  if (slackUserId) {
+    allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
   }
 
   return {
@@ -742,6 +786,17 @@ async function handleUserMessage({
     return;
   }
 
+  // Skip DMs without thread_ts - these are handled by handleDirectMessage via middleware.
+  // The Assistant framework receives message.im events through a separate pipeline from
+  // the global middleware chain, so both handlers can fire for the same event.
+  // First DMs (without thread_ts) are handled by handleDirectMessage; skip them here.
+  const channelType = 'channel_type' in event ? event.channel_type : undefined;
+  const hasRealThreadTs = 'thread_ts' in event && event.thread_ts !== undefined;
+  if (channelType === 'im' && !hasRealThreadTs) {
+    logger.debug({ channelType, hasThreadTs: hasRealThreadTs }, 'Addie Bolt: Skipping DM without thread_ts in Assistant handler (handled by middleware)');
+    return;
+  }
+
   const startTime = Date.now();
   const channelId = event.channel;
   const threadService = getThreadService();
@@ -751,6 +806,30 @@ async function handleUserMessage({
 
   // Sanitize input
   const inputValidation = sanitizeInput(messageText || '');
+
+  // Check if this is a response to proactive outreach
+  const insightsDb = new InsightsDatabase();
+  let respondedOutreachId: number | null = null;
+  try {
+    const pendingOutreach = await insightsDb.getPendingOutreach(userId);
+    if (pendingOutreach) {
+      const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
+        pendingOutreach.id,
+        messageText || '',
+        false
+      );
+      respondedOutreachId = pendingOutreach.id;
+      logger.info({
+        userId,
+        outreachId: pendingOutreach.id,
+        outreachType: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+      }, 'Addie Bolt: Recorded outreach response (Assistant)');
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
+  }
 
   // Set status with rotating loading messages
   try {
@@ -808,6 +887,16 @@ async function handleUserMessage({
     context: slackThreadContext,
   });
 
+  // Link outreach to thread if this was a response to outreach
+  if (respondedOutreachId) {
+    try {
+      await insightsDb.linkOutreachToThread(respondedOutreachId, thread.thread_id);
+      logger.debug({ outreachId: respondedOutreachId, threadId: thread.thread_id }, 'Addie Bolt: Linked outreach to thread (Assistant)');
+    } catch (err) {
+      logger.warn({ err, outreachId: respondedOutreachId }, 'Addie Bolt: Failed to link outreach to thread');
+    }
+  }
+
   // Fetch conversation history from database for context
   // This ensures Claude has context from previous turns in the DM thread
   const MAX_HISTORY_MESSAGES = 10;
@@ -860,7 +949,7 @@ async function handleUserMessage({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -919,6 +1008,13 @@ async function handleUserMessage({
             parameters: {},
             result: event.result,
           });
+        } else if (event.type === 'retry') {
+          // Show retry status to user
+          try {
+            await setStatus(`${event.reason}, retrying (${event.attempt}/${event.maxRetries})...`);
+          } catch {
+            // Ignore status update errors
+          }
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {
@@ -962,8 +1058,17 @@ async function handleUserMessage({
     }
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing message');
+
+    // Provide user-friendly error message based on error type
+    let errorMessage: string;
+    if (isRetriesExhaustedError(error)) {
+      errorMessage = `${error.reason}. Please try again in a moment.`;
+    } else {
+      errorMessage = "I'm sorry, I encountered an error. Please try again.";
+    }
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: errorMessage,
       tools_used: [],
       tool_executions: [],
       flagged: true,
@@ -1269,7 +1374,7 @@ async function handleAppMention({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1627,6 +1732,34 @@ async function handleDirectMessage(
 
   logger.info({ userId, channelId }, 'Addie Bolt: Processing direct message');
 
+  // Check if this is a response to proactive outreach
+  // We do this early to track responses even if later processing fails
+  const insightsDb = new InsightsDatabase();
+  let respondedOutreachId: number | null = null;
+  try {
+    const pendingOutreach = await insightsDb.getPendingOutreach(userId);
+    if (pendingOutreach) {
+      // Mark the outreach as responded with full analysis
+      const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
+        pendingOutreach.id,
+        messageText,
+        false // insight_extracted - will be updated later if we extract insights
+      );
+      respondedOutreachId = pendingOutreach.id;
+      logger.info({
+        userId,
+        outreachId: pendingOutreach.id,
+        outreachType: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+        followUpDays: analysis.followUpDays,
+      }, 'Addie Bolt: Recorded outreach response');
+    }
+  } catch (err) {
+    // Don't fail the DM handling if outreach tracking fails
+    logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
+  }
+
   // Get member context
   let memberContext: MemberContext | null = null;
   try {
@@ -1646,6 +1779,16 @@ async function handleDirectMessage(
       channel_type: 'im',
     },
   });
+
+  // Link outreach to thread if this was a response to outreach
+  if (respondedOutreachId) {
+    try {
+      await insightsDb.linkOutreachToThread(respondedOutreachId, thread.thread_id);
+      logger.debug({ outreachId: respondedOutreachId, threadId: thread.thread_id }, 'Addie Bolt: Linked outreach to thread');
+    } catch (err) {
+      logger.warn({ err, outreachId: respondedOutreachId }, 'Addie Bolt: Failed to link outreach to thread');
+    }
+  }
 
   // Fetch conversation history from database for context
   const MAX_HISTORY_MESSAGES = 10;
@@ -1695,7 +1838,7 @@ async function handleDirectMessage(
   });
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1718,12 +1861,15 @@ async function handleDirectMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in the DM channel (no threading for DMs - just back-and-forth messages)
+  // Send response in the DM channel
+  // For AI Assistant apps, Slack treats every DM as a thread. We must use thread_ts
+  // to respond in the same thread as the user's message, otherwise our response
+  // appears as a separate notification in a different thread.
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
       text: outputValidation.sanitized,
-      // Don't use thread_ts for DMs - threading feels awkward in direct messages
+      thread_ts: event.ts,
     });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send DM response');
@@ -1976,7 +2122,7 @@ async function handleActiveThreadReply({
   });
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2357,8 +2503,12 @@ async function handleChannelMessage({
     );
 
     // Generate a response with the specified tools (includes admin tools if user is admin)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+    // Use precision model (Opus) for billing/financial queries
+    const processOptions = {
+      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+      ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
+    };
     const response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
 
     if (!response.text || response.text.trim().length === 0) {
@@ -2817,7 +2967,7 @@ async function handleReactionAdded({
   );
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;

@@ -358,9 +358,19 @@ export const COMMITTEE_TYPE_LABELS: Record<CommitteeType, string> = {
 
 export interface WorkingGroupLeader {
   user_id: string;
+  canonical_user_id: string; // WorkOS user ID if Slack user is mapped, else user_id
   name?: string;
   org_name?: string;
   created_at: Date;
+}
+
+/**
+ * Topic within a working group for filtering meetings/docs
+ */
+export interface WorkingGroupTopic {
+  slug: string;
+  name: string;
+  description?: string;
 }
 
 export interface WorkingGroup {
@@ -375,6 +385,8 @@ export interface WorkingGroup {
   display_order: number;
   committee_type: CommitteeType;
   region?: string;
+  // Topics for filtering meetings/docs
+  topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
@@ -468,6 +480,83 @@ export interface AddWorkingGroupMemberInput {
   user_org_name?: string;
   workos_organization_id?: string;
   added_by_user_id?: string;
+}
+
+// Committee Documents Types
+
+export type CommitteeDocumentType = 'google_doc' | 'google_sheet' | 'external_link' | 'pdf' | 'other';
+export type DocumentIndexStatus = 'pending' | 'success' | 'access_denied' | 'error' | 'disabled';
+
+export interface CommitteeDocument {
+  id: string;
+  working_group_id: string;
+  title: string;
+  description?: string;
+  document_url: string;
+  document_type: CommitteeDocumentType;
+  display_order: number;
+  is_featured: boolean;
+  content_hash?: string;
+  last_content?: string;
+  last_indexed_at?: Date;
+  last_modified_at?: Date;
+  document_summary?: string;
+  summary_generated_at?: Date;
+  index_status: DocumentIndexStatus;
+  index_error?: string;
+  added_by_user_id?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateCommitteeDocumentInput {
+  working_group_id: string;
+  title: string;
+  description?: string;
+  document_url: string;
+  document_type?: CommitteeDocumentType;
+  display_order?: number;
+  is_featured?: boolean;
+  added_by_user_id?: string;
+}
+
+export interface UpdateCommitteeDocumentInput {
+  title?: string;
+  description?: string;
+  document_url?: string;
+  document_type?: CommitteeDocumentType;
+  display_order?: number;
+  is_featured?: boolean;
+}
+
+export type CommitteeSummaryType = 'activity' | 'overview' | 'changes';
+
+export interface CommitteeSummary {
+  id: string;
+  working_group_id: string;
+  summary_type: CommitteeSummaryType;
+  summary_text: string;
+  time_period_start?: Date;
+  time_period_end?: Date;
+  input_sources: Array<{ type: string; id: string; title: string }>;
+  generated_at: Date;
+  generated_by: string;
+  is_current: boolean;
+  superseded_by?: string;
+  superseded_at?: Date;
+}
+
+export type DocumentActivityType = 'indexed' | 'content_changed' | 'access_lost' | 'access_restored' | 'error';
+
+export interface CommitteeDocumentActivity {
+  id: string;
+  document_id: string;
+  working_group_id: string;
+  activity_type: DocumentActivityType;
+  content_hash_before?: string;
+  content_hash_after?: string;
+  change_summary?: string;
+  detected_at: Date;
 }
 
 // Federated Discovery Types
@@ -759,4 +848,242 @@ export interface EventSponsorDisplay {
   organization_name: string;
   display_logo_url?: string;
   organization_website?: string;
+}
+
+// =====================================================
+// Meeting Types
+// =====================================================
+
+export type MeetingStatus = 'draft' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+export type MeetingSeriesStatus = 'active' | 'paused' | 'archived';
+export type MeetingInviteMode = 'all_members' | 'topic_subscribers' | 'manual';
+export type RsvpStatus = 'pending' | 'accepted' | 'declined' | 'tentative';
+export type MeetingInviteSource = 'auto' | 'manual' | 'request';
+
+/**
+ * Recurrence rule for meeting series (iCal RRULE-style)
+ */
+export interface RecurrenceRule {
+  freq: 'daily' | 'weekly' | 'monthly';
+  interval?: number;  // every N freq (default 1)
+  byDay?: string[];   // ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+  count?: number;     // stop after N occurrences
+  until?: string;     // stop after this date (ISO string)
+}
+
+/**
+ * Meeting series - recurring meeting template
+ */
+export interface MeetingSeries {
+  id: string;
+  working_group_id: string;
+  title: string;
+  description?: string;
+  topic_slugs: string[];
+  recurrence_rule?: RecurrenceRule;
+  default_start_time?: string;  // TIME as string "14:00:00"
+  duration_minutes: number;
+  timezone: string;
+  zoom_meeting_id?: string;
+  zoom_join_url?: string;
+  zoom_passcode?: string;
+  google_calendar_id?: string;
+  google_event_series_id?: string;
+  invite_mode: MeetingInviteMode;
+  status: MeetingSeriesStatus;
+  created_by_user_id?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateMeetingSeriesInput {
+  working_group_id: string;
+  title: string;
+  description?: string;
+  topic_slugs?: string[];
+  recurrence_rule?: RecurrenceRule;
+  default_start_time?: string;
+  duration_minutes?: number;
+  timezone?: string;
+  invite_mode?: MeetingInviteMode;
+  created_by_user_id?: string;
+}
+
+export interface UpdateMeetingSeriesInput {
+  title?: string;
+  description?: string;
+  topic_slugs?: string[];
+  recurrence_rule?: RecurrenceRule;
+  default_start_time?: string;
+  duration_minutes?: number;
+  timezone?: string;
+  zoom_meeting_id?: string;
+  zoom_join_url?: string;
+  zoom_passcode?: string;
+  google_calendar_id?: string;
+  google_event_series_id?: string;
+  invite_mode?: MeetingInviteMode;
+  status?: MeetingSeriesStatus;
+}
+
+/**
+ * Individual meeting occurrence
+ */
+export interface Meeting {
+  id: string;
+  series_id?: string;
+  working_group_id: string;
+  title: string;
+  description?: string;
+  agenda?: string;
+  topic_slugs: string[];
+  start_time: Date;
+  end_time?: Date;
+  timezone: string;
+  zoom_meeting_id?: string;
+  zoom_join_url?: string;
+  zoom_passcode?: string;
+  google_calendar_event_id?: string;
+  recording_url?: string;
+  transcript_url?: string;
+  transcript_text?: string;
+  summary?: string;
+  status: MeetingStatus;
+  slack_channel_id?: string;
+  slack_thread_ts?: string;
+  slack_announcement_ts?: string;
+  created_by_user_id?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateMeetingInput {
+  series_id?: string;
+  working_group_id: string;
+  title: string;
+  description?: string;
+  agenda?: string;
+  topic_slugs?: string[];
+  start_time: Date;
+  end_time?: Date;
+  timezone?: string;
+  status?: MeetingStatus;
+  created_by_user_id?: string;
+}
+
+export interface UpdateMeetingInput {
+  title?: string;
+  description?: string;
+  agenda?: string;
+  topic_slugs?: string[];
+  start_time?: Date;
+  end_time?: Date;
+  timezone?: string;
+  zoom_meeting_id?: string;
+  zoom_join_url?: string;
+  zoom_passcode?: string;
+  google_calendar_event_id?: string;
+  recording_url?: string;
+  transcript_url?: string;
+  transcript_text?: string;
+  summary?: string;
+  status?: MeetingStatus;
+  slack_channel_id?: string;
+  slack_thread_ts?: string;
+  slack_announcement_ts?: string;
+}
+
+export interface ListMeetingsOptions {
+  working_group_id?: string;
+  series_id?: string;
+  status?: MeetingStatus;
+  topic_slugs?: string[];
+  upcoming_only?: boolean;
+  past_only?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Meeting attendee with RSVP and attendance info
+ */
+export interface MeetingAttendee {
+  id: string;
+  meeting_id: string;
+  workos_user_id?: string;
+  email?: string;
+  name?: string;
+  rsvp_status: RsvpStatus;
+  rsvp_at?: Date;
+  rsvp_note?: string;
+  attended?: boolean;
+  joined_at?: Date;
+  left_at?: Date;
+  invite_source: MeetingInviteSource;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateMeetingAttendeeInput {
+  meeting_id: string;
+  workos_user_id?: string;
+  email?: string;
+  name?: string;
+  rsvp_status?: RsvpStatus;
+  invite_source?: MeetingInviteSource;
+}
+
+export interface UpdateMeetingAttendeeInput {
+  rsvp_status?: RsvpStatus;
+  rsvp_note?: string;
+  attended?: boolean;
+  joined_at?: Date;
+  left_at?: Date;
+}
+
+/**
+ * Topic subscription for a member within a working group
+ */
+export interface WorkingGroupTopicSubscription {
+  id: string;
+  working_group_id: string;
+  workos_user_id: string;
+  topic_slugs: string[];
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UpdateTopicSubscriptionInput {
+  working_group_id: string;
+  workos_user_id: string;
+  topic_slugs: string[];
+}
+
+/**
+ * Meeting with working group info (for list views)
+ */
+export interface MeetingWithGroup extends Meeting {
+  working_group_name: string;
+  working_group_slug: string;
+  committee_type: CommitteeType;
+  series_title?: string;
+  accepted_count?: number;
+  invited_count?: number;
+}
+
+/**
+ * Member's view of upcoming meetings
+ */
+export interface MemberMeeting {
+  workos_user_id: string;
+  rsvp_status: RsvpStatus;
+  meeting_id: string;
+  title: string;
+  start_time: Date;
+  end_time?: Date;
+  timezone: string;
+  zoom_join_url?: string;
+  working_group_id: string;
+  working_group_name: string;
+  working_group_slug: string;
 }

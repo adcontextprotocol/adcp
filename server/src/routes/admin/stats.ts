@@ -16,6 +16,13 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
 import { MemberDatabase } from "../../db/member-db.js";
+import {
+  MEMBER_FILTER,
+  HAS_USER,
+  HAS_ENGAGED_USER,
+  ENGAGED_FILTER,
+  REGISTERED_FILTER,
+} from "../../db/org-filters.js";
 
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const memberDb = new MemberDatabase();
@@ -593,6 +600,229 @@ export function setupStatsRoutes(apiRouter: Router): void {
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch member search analytics",
+      });
+    }
+  });
+
+  // Shared label maps for membership metrics
+  const COMPANY_TYPE_LABELS: Record<string, string> = {
+    adtech: 'Ad Tech',
+    agency: 'Agency',
+    brand: 'Brand',
+    publisher: 'Publisher',
+    data: 'Data & Measurement',
+    ai: 'AI & Tech Platforms',
+    other: 'Other',
+    unknown: 'Unknown',
+  };
+
+  const REVENUE_TIER_LABELS: Record<string, string> = {
+    under_1m: '<$1M',
+    '1m_5m': '$1M-$5M',
+    '5m_50m': '$5M-$50M',
+    '50m_250m': '$50M-$250M',
+    '250m_1b': '$250M-$1B',
+    '1b_plus': '$1B+',
+    unknown: 'Unknown',
+  };
+
+  // GET /api/admin/membership-metrics - Get membership metrics by company_type × revenue_tier
+  // Returns current snapshot using existing category dimensions
+  apiRouter.get("/membership-metrics", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pool = getPool();
+
+      // Run all queries in parallel for better performance
+      const [byTypeResult, byTierResult, matrixResult, individualsResult, totalsResult] = await Promise.all([
+        // Get metrics by company_type
+        pool.query(`
+          SELECT
+            COALESCE(company_type, 'unknown') AS company_type,
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
+          FROM organizations
+          WHERE is_personal IS NOT TRUE
+          GROUP BY company_type
+          ORDER BY
+            CASE company_type
+              WHEN 'adtech' THEN 1
+              WHEN 'agency' THEN 2
+              WHEN 'brand' THEN 3
+              WHEN 'publisher' THEN 4
+              WHEN 'data' THEN 5
+              WHEN 'ai' THEN 6
+              WHEN 'other' THEN 7
+              ELSE 8
+            END
+        `),
+
+        // Get metrics by revenue_tier
+        pool.query(`
+          SELECT
+            COALESCE(revenue_tier, 'unknown') AS revenue_tier,
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
+          FROM organizations
+          WHERE is_personal IS NOT TRUE
+          GROUP BY revenue_tier
+          ORDER BY
+            CASE revenue_tier
+              WHEN 'under_1m' THEN 1
+              WHEN '1m_5m' THEN 2
+              WHEN '5m_50m' THEN 3
+              WHEN '50m_250m' THEN 4
+              WHEN '250m_1b' THEN 5
+              WHEN '1b_plus' THEN 6
+              ELSE 7
+            END
+        `),
+
+        // Get the full matrix: company_type × revenue_tier
+        pool.query(`
+          SELECT
+            COALESCE(company_type, 'unknown') AS company_type,
+            COALESCE(revenue_tier, 'unknown') AS revenue_tier,
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
+          FROM organizations
+          WHERE is_personal IS NOT TRUE
+          GROUP BY company_type, revenue_tier
+          ORDER BY company_type, revenue_tier
+        `),
+
+        // Get individuals (personal workspaces) separately
+        pool.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
+          FROM organizations
+          WHERE is_personal = TRUE
+        `),
+
+        // Get totals
+        pool.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
+          FROM organizations
+        `),
+      ]);
+
+      const formatRow = (row: { members: string; engaged: string; registered: string; arr_cents: string }) => ({
+        members: parseInt(row.members) || 0,
+        engaged: parseInt(row.engaged) || 0,
+        registered: parseInt(row.registered) || 0,
+        arr_cents: parseInt(row.arr_cents) || 0,
+        arr_dollars: Math.round((parseInt(row.arr_cents) || 0) / 100),
+      });
+
+      res.json({
+        by_company_type: byTypeResult.rows.map(row => ({
+          company_type: row.company_type,
+          label: COMPANY_TYPE_LABELS[row.company_type] || row.company_type,
+          ...formatRow(row),
+        })),
+        by_revenue_tier: byTierResult.rows.map(row => ({
+          revenue_tier: row.revenue_tier,
+          label: REVENUE_TIER_LABELS[row.revenue_tier] || row.revenue_tier,
+          ...formatRow(row),
+        })),
+        matrix: matrixResult.rows.map(row => ({
+          company_type: row.company_type,
+          company_type_label: COMPANY_TYPE_LABELS[row.company_type] || row.company_type,
+          revenue_tier: row.revenue_tier,
+          revenue_tier_label: REVENUE_TIER_LABELS[row.revenue_tier] || row.revenue_tier,
+          ...formatRow(row),
+        })),
+        individuals: formatRow(individualsResult.rows[0] || { members: '0', engaged: '0', registered: '0', arr_cents: '0' }),
+        totals: formatRow(totalsResult.rows[0] || { members: '0', engaged: '0', registered: '0', arr_cents: '0' }),
+        labels: {
+          company_types: COMPANY_TYPE_LABELS,
+          revenue_tiers: REVENUE_TIER_LABELS,
+        },
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching membership metrics");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch membership metrics",
+      });
+    }
+  });
+
+  // Escape CSV values to prevent CSV injection and handle special characters
+  function escapeCsvValue(value: string | number): string {
+    const str = String(value);
+    // If value contains comma, quote, newline, or starts with formula chars, escape it
+    if (/[,"\n\r]/.test(str) || /^[=+\-@\t\r]/.test(str)) {
+      // Wrap in quotes and escape any quotes, prefix formula chars with single quote
+      const escaped = str.replace(/"/g, '""');
+      const prefixed = /^[=+\-@\t\r]/.test(escaped) ? `'${escaped}` : escaped;
+      return `"${prefixed}"`;
+    }
+    return str;
+  }
+
+  // GET /api/admin/membership-metrics/csv - Export membership metrics as CSV
+  apiRouter.get("/membership-metrics/csv", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const pool = getPool();
+
+      // Get the full matrix for CSV export
+      const result = await pool.query(`
+        SELECT
+          COALESCE(company_type, 'unknown') AS company_type,
+          COALESCE(revenue_tier, 'unknown') AS revenue_tier,
+          COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+          COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+          COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+          ROUND(COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) / 100.0, 2) AS arr_dollars
+        FROM organizations
+        WHERE is_personal IS NOT TRUE
+        GROUP BY company_type, revenue_tier
+        ORDER BY
+          CASE company_type
+            WHEN 'adtech' THEN 1 WHEN 'agency' THEN 2 WHEN 'brand' THEN 3
+            WHEN 'publisher' THEN 4 WHEN 'data' THEN 5 WHEN 'ai' THEN 6
+            WHEN 'other' THEN 7 ELSE 8
+          END,
+          CASE revenue_tier
+            WHEN 'under_1m' THEN 1 WHEN '1m_5m' THEN 2 WHEN '5m_50m' THEN 3
+            WHEN '50m_250m' THEN 4 WHEN '250m_1b' THEN 5 WHEN '1b_plus' THEN 6
+            ELSE 7
+          END
+      `);
+
+      const headers = ['Company Type', 'Revenue Tier', 'Members', 'Engaged', 'Registered', 'ARR ($)'];
+      const rows = result.rows.map(row => [
+        escapeCsvValue(COMPANY_TYPE_LABELS[row.company_type] || row.company_type),
+        escapeCsvValue(REVENUE_TIER_LABELS[row.revenue_tier] || row.revenue_tier),
+        row.members,
+        row.engaged,
+        row.registered,
+        row.arr_dollars || 0,
+      ].join(','));
+
+      const csv = [headers.join(','), ...rows].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="membership-metrics-${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      logger.error({ err: error }, "Error exporting membership metrics CSV");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to export membership metrics",
       });
     }
   });

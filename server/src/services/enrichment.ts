@@ -300,41 +300,142 @@ export async function enrichDomainsInBatch(
   return results;
 }
 
+export interface EnrichmentStats {
+  configured: boolean;
+  accounts_with_users: {
+    total: number;
+    enriched: number;
+    needs_enrichment: number;
+  };
+  empty_prospects: {
+    total: number;
+    enriched: number;
+    needs_enrichment: number;
+  };
+}
+
 /**
- * Enrich organizations that are missing enrichment data
- * This can be run on startup or periodically
+ * Get enrichment statistics for accounts
+ * Distinguishes between accounts with users vs empty prospects
  */
-export async function enrichMissingOrganizations(): Promise<{
+export async function getEnrichmentStats(): Promise<EnrichmentStats> {
+  const pool = getPool();
+
+  const result = await pool.query(`
+    SELECT
+      -- Accounts with users (have organization memberships)
+      COUNT(DISTINCT CASE
+        WHEN om.workos_organization_id IS NOT NULL THEN o.workos_organization_id
+      END) as accounts_with_users,
+      COUNT(DISTINCT CASE
+        WHEN om.workos_organization_id IS NOT NULL AND o.enrichment_at IS NOT NULL
+        THEN o.workos_organization_id
+      END) as accounts_with_users_enriched,
+      COUNT(DISTINCT CASE
+        WHEN om.workos_organization_id IS NOT NULL
+          AND o.enrichment_at IS NULL
+          AND o.email_domain IS NOT NULL
+          AND o.email_domain != ''
+        THEN o.workos_organization_id
+      END) as accounts_with_users_needs_enrichment,
+
+      -- Empty prospects (no organization memberships)
+      COUNT(DISTINCT CASE
+        WHEN om.workos_organization_id IS NULL THEN o.workos_organization_id
+      END) as empty_prospects,
+      COUNT(DISTINCT CASE
+        WHEN om.workos_organization_id IS NULL AND o.enrichment_at IS NOT NULL
+        THEN o.workos_organization_id
+      END) as empty_prospects_enriched,
+      COUNT(DISTINCT CASE
+        WHEN om.workos_organization_id IS NULL
+          AND o.enrichment_at IS NULL
+          AND o.email_domain IS NOT NULL
+          AND o.email_domain != ''
+        THEN o.workos_organization_id
+      END) as empty_prospects_needs_enrichment
+    FROM organizations o
+    LEFT JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+  `);
+
+  const row = result.rows[0];
+  return {
+    configured: isLushaConfigured(),
+    accounts_with_users: {
+      total: parseInt(row.accounts_with_users) || 0,
+      enriched: parseInt(row.accounts_with_users_enriched) || 0,
+      needs_enrichment: parseInt(row.accounts_with_users_needs_enrichment) || 0,
+    },
+    empty_prospects: {
+      total: parseInt(row.empty_prospects) || 0,
+      enriched: parseInt(row.empty_prospects_enriched) || 0,
+      needs_enrichment: parseInt(row.empty_prospects_needs_enrichment) || 0,
+    },
+  };
+}
+
+export interface BulkEnrichmentOptions {
+  /** Maximum number of orgs to process in this batch */
+  limit?: number;
+  /** Include empty prospects (no users) */
+  includeEmptyProspects?: boolean;
+}
+
+export interface BulkEnrichmentResult {
   total: number;
   enriched: number;
   failed: number;
   skipped: number;
-}> {
+  details: Array<{
+    orgId: string;
+    name: string;
+    domain: string;
+    status: 'enriched' | 'failed' | 'skipped';
+    error?: string;
+  }>;
+}
+
+/**
+ * Enrich organizations that are missing enrichment data
+ * Prioritizes accounts with users over empty prospects
+ */
+export async function enrichMissingOrganizations(
+  options: BulkEnrichmentOptions = {}
+): Promise<BulkEnrichmentResult> {
+  const { limit = 50, includeEmptyProspects = true } = options;
+
   if (!isLushaConfigured()) {
     logger.debug('Enrichment not configured, skipping auto-enrichment');
-    return { total: 0, enriched: 0, failed: 0, skipped: 0 };
+    return { total: 0, enriched: 0, failed: 0, skipped: 0, details: [] };
   }
 
   const pool = getPool();
 
   // Find organizations without enrichment data that have a domain
-  // Priority: those with member profiles or recent activity
+  // Priority: accounts with users first, then prospects
   const result = await pool.query(`
-    SELECT o.workos_organization_id, o.name, o.email_domain
+    SELECT o.workos_organization_id, o.name, o.email_domain,
+           CASE WHEN om.workos_organization_id IS NOT NULL THEN true ELSE false END as has_users
     FROM organizations o
-    LEFT JOIN member_profiles mp ON mp.workos_organization_id = o.workos_organization_id
+    LEFT JOIN (
+      SELECT DISTINCT workos_organization_id FROM organization_memberships
+    ) om ON om.workos_organization_id = o.workos_organization_id
     WHERE o.enrichment_at IS NULL
       AND o.email_domain IS NOT NULL
       AND o.email_domain != ''
+      ${includeEmptyProspects ? '' : 'AND om.workos_organization_id IS NOT NULL'}
     ORDER BY
-      CASE WHEN mp.id IS NOT NULL THEN 0 ELSE 1 END,
-      o.last_activity_at DESC NULLS LAST
-    LIMIT 20
-  `);
+      -- Prioritize accounts with users
+      CASE WHEN om.workos_organization_id IS NOT NULL THEN 0 ELSE 1 END,
+      o.last_activity_at DESC NULLS LAST,
+      o.created_at DESC
+    LIMIT $1
+  `, [limit]);
 
   let enriched = 0;
   let failed = 0;
   let skipped = 0;
+  const details: BulkEnrichmentResult['details'] = [];
 
   for (const org of result.rows) {
     try {
@@ -345,20 +446,52 @@ export async function enrichMissingOrganizations(): Promise<{
 
       if (enrichResult.success) {
         enriched++;
+        details.push({
+          orgId: org.workos_organization_id,
+          name: org.name,
+          domain: org.email_domain,
+          status: 'enriched',
+        });
       } else if (enrichResult.error === 'Company not found') {
+        // Mark as attempted so we don't keep re-querying Lusha for the same domain
+        await pool.query(
+          `UPDATE organizations SET enrichment_at = NOW(), enrichment_source = 'lusha_not_found' WHERE workos_organization_id = $1`,
+          [org.workos_organization_id]
+        );
         skipped++;
+        details.push({
+          orgId: org.workos_organization_id,
+          name: org.name,
+          domain: org.email_domain,
+          status: 'skipped',
+          error: 'Company not found in Lusha',
+        });
       } else {
         failed++;
+        details.push({
+          orgId: org.workos_organization_id,
+          name: org.name,
+          domain: org.email_domain,
+          status: 'failed',
+          error: enrichResult.error,
+        });
       }
 
-      // Delay between requests
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Delay between requests to respect rate limits (500ms is conservative)
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (error) {
       logger.error(
         { err: error, orgId: org.workos_organization_id },
         'Error enriching organization'
       );
       failed++;
+      details.push({
+        orgId: org.workos_organization_id,
+        name: org.name,
+        domain: org.email_domain,
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   }
 
@@ -374,6 +507,7 @@ export async function enrichMissingOrganizations(): Promise<{
     enriched,
     failed,
     skipped,
+    details,
   };
 }
 

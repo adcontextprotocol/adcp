@@ -4,12 +4,6 @@
  * Manages proactive outreach to Slack users via DMs.
  * Uses the OutboundPlanner for intelligent goal selection.
  * Handles eligibility checking, rate limiting, business hours, and A/B testing.
- *
- * Outreach modes (controlled by OUTREACH_MODE env var):
- * - disabled: No outreach (default)
- * - test: Only message accounts in outreach_test_accounts table
- * - dry_run: Log what would be sent without actually sending
- * - live: Full production mode
  */
 
 import { logger } from '../../logger.js';
@@ -30,9 +24,11 @@ import type { SlackUserMapping } from '../../slack/types.js';
 
 const insightsDb = new InsightsDatabase();
 
-// Outreach mode
-type OutreachMode = 'disabled' | 'test' | 'dry_run' | 'live';
-const OUTREACH_MODE = (process.env.OUTREACH_MODE || 'disabled') as OutreachMode;
+// Outreach is always live - rate limiting and business hours provide safety
+const OUTREACH_MODE = 'live' as const;
+
+// Emergency kill switch - set OUTREACH_ENABLED=false to disable all outreach
+const OUTREACH_ENABLED = process.env.OUTREACH_ENABLED !== 'false';
 
 // Configuration
 const RATE_LIMIT_DAYS = 7; // Don't contact same user more than once per week
@@ -49,6 +45,7 @@ interface OutreachCandidate {
   slack_real_name: string | null;
   workos_user_id: string | null;
   last_outreach_at: Date | null;
+  slack_tz_offset: number | null;
   priority: number;
 }
 
@@ -68,27 +65,46 @@ interface OutreachResult {
 }
 
 /**
- * Check if current time is within business hours (9am-5pm ET weekdays)
+ * Check if current time is within business hours (9am-5pm weekdays)
+ * Uses user's timezone if provided, otherwise defaults to ET
+ *
+ * @param tzOffsetSeconds - Slack timezone offset in seconds from UTC (e.g., -18000 for ET)
  */
-export function isBusinessHours(): boolean {
+export function isBusinessHours(tzOffsetSeconds?: number | null): boolean {
   const now = new Date();
 
-  // Get ET timezone offset (handle DST)
-  const etOffset = getEasternTimezoneOffset(now);
-  const etHour = (now.getUTCHours() - etOffset + 24) % 24;
-  const day = now.getUTCDay();
+  // Slack provides tz_offset in seconds, convert to hours
+  // If no timezone provided, default to Eastern Time
+  let offsetHours: number;
+  if (tzOffsetSeconds != null) {
+    offsetHours = tzOffsetSeconds / 3600;
+  } else {
+    // Fall back to ET (handle DST)
+    offsetHours = -getEasternTimezoneOffset(now);
+  }
+
+  // Calculate user's local hour
+  // offsetHours is negative for west of UTC (e.g., -5 for ET)
+  const userLocalHour = (now.getUTCHours() + offsetHours + 24) % 24;
+
+  // Get day of week in user's timezone
+  const utcTimestamp = now.getTime();
+  const userLocalTimestamp = utcTimestamp + offsetHours * 3600 * 1000;
+  const userLocalDate = new Date(userLocalTimestamp);
+  const day = userLocalDate.getUTCDay();
 
   // Weekend check
   if (day === 0 || day === 6) {
     return false;
   }
 
-  // Business hours check
-  return etHour >= BUSINESS_HOURS_START && etHour < BUSINESS_HOURS_END;
+  // Business hours check (9am-5pm in user's timezone)
+  return userLocalHour >= BUSINESS_HOURS_START && userLocalHour < BUSINESS_HOURS_END;
 }
 
 /**
  * Get Eastern timezone offset (handles DST)
+ * Returns positive number (hours behind UTC)
  */
 function getEasternTimezoneOffset(date: Date): number {
   // ET is UTC-5 (EST) or UTC-4 (EDT)
@@ -252,30 +268,6 @@ async function getEligibleCandidates(limit = 10): Promise<OutreachCandidate[]> {
     ...user,
     priority: calculatePriority(user),
   }));
-}
-
-/**
- * Get test account candidates (for OUTREACH_MODE=test)
- */
-async function getTestAccountCandidates(): Promise<OutreachCandidate[]> {
-  const testAccounts = await insightsDb.listTestAccounts();
-  const slackUserIds = testAccounts.map(a => a.slack_user_id);
-
-  if (slackUserIds.length === 0) {
-    return [];
-  }
-
-  const result = await query<SlackUserMapping>(
-    `SELECT * FROM slack_user_mappings WHERE slack_user_id = ANY($1)`,
-    [slackUserIds]
-  );
-
-  return result.rows
-    .filter(isUserEligible)
-    .map(user => ({
-      ...user,
-      priority: calculatePriority(user),
-    }));
 }
 
 /**
@@ -445,19 +437,6 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
   const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
   const message = planner.buildMessage(plannedAction.goal, ctx, linkUrl);
 
-  // DRY_RUN mode: log but don't send
-  if (OUTREACH_MODE === 'dry_run') {
-    logger.info({
-      mode: 'dry_run',
-      candidate: candidate.slack_user_id,
-      goal: plannedAction.goal.name,
-      reason: plannedAction.reason,
-      decision_method: plannedAction.decision_method,
-      message: message.substring(0, 100) + '...',
-    }, 'DRY RUN: Would send planned outreach');
-    return { success: true };
-  }
-
   // Open DM channel
   const channelId = await openDmChannel(candidate.slack_user_id);
   if (!channelId) {
@@ -535,18 +514,6 @@ async function initiateOutreach(candidate: OutreachCandidate): Promise<OutreachR
   // Build message
   const message = buildMessage(variant, candidate, goal);
 
-  // DRY_RUN mode: log but don't send
-  if (OUTREACH_MODE === 'dry_run') {
-    logger.info({
-      mode: 'dry_run',
-      candidate: candidate.slack_user_id,
-      outreachType,
-      variant: variant.name,
-      message: message.substring(0, 100) + '...',
-    }, 'DRY RUN: Would send outreach');
-    return { success: true };
-  }
-
   // Open DM channel
   const channelId = await openDmChannel(candidate.slack_user_id);
   if (!channelId) {
@@ -563,7 +530,6 @@ async function initiateOutreach(candidate: OutreachCandidate): Promise<OutreachR
   const outreach = await insightsDb.recordOutreach({
     slack_user_id: candidate.slack_user_id,
     outreach_type: outreachType,
-    insight_goal_id: goal?.id,
     dm_channel_id: channelId,
     initial_message: message,
     variant_id: variant.id,
@@ -607,24 +573,16 @@ export async function runOutreachScheduler(options: {
   const limit = options.limit ?? 5;
   const usePlanner = options.usePlanner ?? true;
 
-  // Check if outreach is enabled
-  if (OUTREACH_MODE === 'disabled') {
-    logger.debug('Outreach scheduler: Mode is disabled');
+  // Check kill switch
+  if (!OUTREACH_ENABLED) {
+    logger.info('Outreach scheduler: Disabled via OUTREACH_ENABLED=false');
     return { processed: 0, sent: 0, skipped: 0, errors: 0 };
   }
 
-  // Check business hours (unless forced)
-  if (!options.forceRun && !isBusinessHours()) {
-    logger.debug('Outreach scheduler: Outside business hours');
-    return { processed: 0, sent: 0, skipped: 0, errors: 0 };
-  }
+  logger.info({ limit, usePlanner }, 'Running outreach scheduler');
 
-  logger.info({ mode: OUTREACH_MODE, limit, usePlanner }, 'Running outreach scheduler');
-
-  // Get candidates based on mode
-  const candidates = OUTREACH_MODE === 'test'
-    ? await getTestAccountCandidates()
-    : await getEligibleCandidates(limit);
+  // Get candidates (we'll check business hours per-user based on their timezone)
+  const candidates = await getEligibleCandidates(limit * 3); // Fetch more since some may be outside business hours
 
   if (candidates.length === 0) {
     logger.info('Outreach scheduler: No eligible candidates');
@@ -637,7 +595,22 @@ export async function runOutreachScheduler(options: {
   let skipped = 0;
   let errors = 0;
 
-  for (const candidate of candidates.slice(0, limit)) {
+  for (const candidate of candidates) {
+    // Stop once we've sent enough messages
+    if (sent >= limit) {
+      break;
+    }
+
+    // Check business hours in user's timezone (unless forced)
+    if (!options.forceRun && !isBusinessHours(candidate.slack_tz_offset)) {
+      logger.debug({
+        candidate: candidate.slack_user_id,
+        tzOffset: candidate.slack_tz_offset,
+      }, 'Skipped - outside business hours in user timezone');
+      skipped++;
+      continue;
+    }
+
     try {
       const result = usePlanner
         ? await initiateOutreachWithPlanner(candidate)
@@ -794,6 +767,7 @@ export async function manualOutreachWithGoal(
     slack_real_name: user.slack_real_name,
     workos_user_id: user.workos_user_id,
     last_outreach_at: user.last_outreach_at,
+    slack_tz_offset: user.slack_tz_offset,
     priority: calculatePriority(user),
   };
   const ctx = await buildPlannerContext(candidate);
@@ -801,20 +775,6 @@ export async function manualOutreachWithGoal(
   // Build the message from the goal template
   const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
   const message = planner.buildMessage(goal, ctx, linkUrl);
-
-  // DRY_RUN mode: log but don't send
-  if (OUTREACH_MODE === 'dry_run') {
-    logger.info({
-      mode: 'dry_run',
-      candidate: slackUserId,
-      goal: goal.name,
-      goalId: goal.id,
-      triggeredBy: triggeredBy?.id,
-      hasAdminContext: !!adminContext,
-      message: message.substring(0, 100) + '...',
-    }, 'DRY RUN: Would send admin-override outreach');
-    return { success: true };
-  }
 
   // Open DM channel
   const channelId = await openDmChannel(slackUserId);
@@ -889,11 +849,17 @@ export async function manualOutreachWithGoal(
 }
 
 /**
- * Get current outreach mode
+ * Get current outreach mode (always 'live')
  */
-export function getOutreachMode(): OutreachMode {
+export function getOutreachMode(): 'live' {
   return OUTREACH_MODE;
 }
+
+/**
+ * Slack's built-in system bot user ID.
+ * Slackbot sends system notifications that should always be ignored.
+ */
+const SLACKBOT_USER_ID = 'USLACKBOT';
 
 /**
  * Check if a specific user can be contacted
@@ -902,6 +868,11 @@ export async function canContactUser(slackUserId: string): Promise<{
   canContact: boolean;
   reason?: string;
 }> {
+  // Always reject Slackbot - it's a system bot, not a real user
+  if (slackUserId === SLACKBOT_USER_ID) {
+    return { canContact: false, reason: 'Slackbot is a system bot' };
+  }
+
   const result = await query<SlackUserMapping>(
     `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
     [slackUserId]

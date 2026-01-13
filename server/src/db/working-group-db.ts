@@ -11,6 +11,14 @@ import type {
   CommitteeType,
   EventInterestLevel,
   EventInterestSource,
+  CommitteeDocument,
+  CreateCommitteeDocumentInput,
+  UpdateCommitteeDocumentInput,
+  CommitteeSummary,
+  CommitteeSummaryType,
+  CommitteeDocumentActivity,
+  DocumentActivityType,
+  DocumentIndexStatus,
 } from '../types.js';
 
 /**
@@ -60,6 +68,21 @@ function extractSlackChannelId(url: string | null | undefined): string | null {
  * Database operations for working groups
  */
 export class WorkingGroupDatabase {
+  /**
+   * Resolve a user ID to its canonical WorkOS user ID.
+   * If the ID is a Slack user ID with a linked WorkOS account, returns the WorkOS ID.
+   * Otherwise returns the original ID unchanged.
+   */
+  async resolveToCanonicalUserId(userId: string): Promise<string> {
+    // Check if this is a Slack user ID with a linked WorkOS account
+    const result = await query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM slack_user_mappings
+       WHERE slack_user_id = $1 AND workos_user_id IS NOT NULL`,
+      [userId]
+    );
+    return result.rows[0]?.workos_user_id ?? userId;
+  }
+
   // ============== Working Groups ==============
 
   /**
@@ -408,6 +431,9 @@ export class WorkingGroupDatabase {
    * Add a member to a working group
    */
   async addMembership(input: AddWorkingGroupMemberInput): Promise<WorkingGroupMembership> {
+    // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
+
     const result = await query<WorkingGroupMembership>(
       `INSERT INTO working_group_memberships (
         working_group_id, workos_user_id, user_email, user_name, user_org_name,
@@ -418,7 +444,7 @@ export class WorkingGroupDatabase {
       RETURNING *`,
       [
         input.working_group_id,
-        input.workos_user_id,
+        canonicalUserId,
         input.user_email || null,
         input.user_name || null,
         input.user_org_name || null,
@@ -434,11 +460,12 @@ export class WorkingGroupDatabase {
    * Remove a member from a working group (soft delete by setting status to inactive)
    */
   async removeMembership(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `UPDATE working_group_memberships
        SET status = 'inactive', updated_at = NOW()
        WHERE working_group_id = $1 AND workos_user_id = $2`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return (result.rowCount || 0) > 0;
   }
@@ -447,10 +474,11 @@ export class WorkingGroupDatabase {
    * Hard delete a membership record
    */
   async deleteMembership(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `DELETE FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return (result.rowCount || 0) > 0;
   }
@@ -459,10 +487,11 @@ export class WorkingGroupDatabase {
    * Get a specific membership
    */
   async getMembership(workingGroupId: string, userId: string): Promise<WorkingGroupMembership | null> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query<WorkingGroupMembership>(
       `SELECT * FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return result.rows[0] || null;
   }
@@ -471,11 +500,12 @@ export class WorkingGroupDatabase {
    * Check if user is a member of a working group
    */
   async isMember(workingGroupId: string, userId: string): Promise<boolean> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `SELECT 1 FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'
        LIMIT 1`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
     return result.rows.length > 0;
   }
@@ -568,36 +598,43 @@ export class WorkingGroupDatabase {
     // 1. working_group_memberships (if they're a member with cached name)
     // 2. users table (canonical user data synced from WorkOS)
     // 3. organization_memberships (older sync table)
-    // 4. slack_user_mappings (if user_id is a Slack ID)
+    // 4. slack_user_mappings (Slack profile name for unmapped Slack users)
     // 5. Falls back to user_id if no name found
+    //
+    // canonical_user_id is resolved at read time via slack_user_mappings
+    // to handle cases where leaders were added via Slack ID before linking WorkOS
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
+         COALESCE(sm.workos_user_id, wgl.user_id) AS canonical_user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
            NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
-           NULLIF(sm.slack_real_name, ''),
-           sm.slack_email,
+           NULLIF(slack_profile.slack_real_name, ''),
+           NULLIF(slack_profile.slack_display_name, ''),
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
-       LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
-       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       -- sm: resolves Slack ID -> WorkOS ID (only for linked users)
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       -- slack_profile: gets Slack profile name (for all Slack users, including unlinked)
+       LEFT JOIN slack_user_mappings slack_profile ON wgl.user_id = slack_profile.slack_user_id
+       LEFT JOIN working_group_memberships wgm ON COALESCE(sm.workos_user_id, wgl.user_id) = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON COALESCE(sm.workos_user_id, wgl.user_id) = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN LATERAL (
          SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
          FROM organization_memberships om
-         WHERE om.workos_user_id = wgl.user_id
+         WHERE om.workos_user_id = COALESCE(sm.workos_user_id, wgl.user_id)
          ORDER BY om.created_at DESC
          LIMIT 1
        ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = $1
        ORDER BY wgl.created_at`,
       [workingGroupId]
@@ -614,35 +651,41 @@ export class WorkingGroupDatabase {
       return new Map();
     }
 
+    // canonical_user_id is resolved at read time via slack_user_mappings
+    // to handle cases where leaders were added via Slack ID before linking WorkOS
     const result = await query<WorkingGroupLeader & { working_group_id: string }>(
       `SELECT
          wgl.working_group_id,
          wgl.user_id,
+         COALESCE(sm.workos_user_id, wgl.user_id) AS canonical_user_id,
          COALESCE(
            NULLIF(wgm.user_name, ''),
            NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
            NULLIF(TRIM(CONCAT(om.first_name, ' ', om.last_name)), ''),
            u.email,
            om.email,
-           NULLIF(sm.slack_real_name, ''),
-           sm.slack_email,
+           NULLIF(slack_profile.slack_real_name, ''),
+           NULLIF(slack_profile.slack_display_name, ''),
            wgl.user_id
          ) AS name,
          COALESCE(wgm.user_org_name, user_org.name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
-       LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
-       LEFT JOIN users u ON wgl.user_id = u.workos_user_id
+       -- sm: resolves Slack ID -> WorkOS ID (only for linked users)
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       -- slack_profile: gets Slack profile name (for all Slack users, including unlinked)
+       LEFT JOIN slack_user_mappings slack_profile ON wgl.user_id = slack_profile.slack_user_id
+       LEFT JOIN working_group_memberships wgm ON COALESCE(sm.workos_user_id, wgl.user_id) = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN users u ON COALESCE(sm.workos_user_id, wgl.user_id) = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
        LEFT JOIN LATERAL (
          SELECT om.first_name, om.last_name, om.email, om.workos_organization_id
          FROM organization_memberships om
-         WHERE om.workos_user_id = wgl.user_id
+         WHERE om.workos_user_id = COALESCE(sm.workos_user_id, wgl.user_id)
          ORDER BY om.created_at DESC
          LIMIT 1
        ) om ON true
        LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id
        WHERE wgl.working_group_id = ANY($1)
        ORDER BY wgl.created_at`,
       [workingGroupIds]
@@ -657,6 +700,7 @@ export class WorkingGroupDatabase {
       }
       leadersByGroup.get(groupId)!.push({
         user_id: row.user_id,
+        canonical_user_id: row.canonical_user_id,
         name: row.name,
         org_name: row.org_name,
         created_at: row.created_at,
@@ -670,6 +714,13 @@ export class WorkingGroupDatabase {
    * Set leaders for a working group (replaces existing leaders)
    */
   async setLeaders(workingGroupId: string, userIds: string[]): Promise<void> {
+    // Resolve all Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserIds = await Promise.all(
+      userIds.map(id => this.resolveToCanonicalUserId(id))
+    );
+    // Dedupe in case multiple Slack IDs resolve to the same WorkOS ID
+    const uniqueUserIds = [...new Set(canonicalUserIds)];
+
     // Remove existing leaders
     await query(
       'DELETE FROM working_group_leaders WHERE working_group_id = $1',
@@ -677,13 +728,13 @@ export class WorkingGroupDatabase {
     );
 
     // Add new leaders in a single bulk insert
-    if (userIds.length > 0) {
-      const values = userIds.map((_, i) => `($1, $${i + 2})`).join(', ');
+    if (uniqueUserIds.length > 0) {
+      const values = uniqueUserIds.map((_, i) => `($1, $${i + 2})`).join(', ');
       await query(
         `INSERT INTO working_group_leaders (working_group_id, user_id)
          VALUES ${values}
          ON CONFLICT DO NOTHING`,
-        [workingGroupId, ...userIds]
+        [workingGroupId, ...uniqueUserIds]
       );
     }
 
@@ -695,11 +746,14 @@ export class WorkingGroupDatabase {
    * Add a leader to a working group
    */
   async addLeader(workingGroupId: string, userId: string): Promise<void> {
+    // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
+
     await query(
       `INSERT INTO working_group_leaders (working_group_id, user_id)
        VALUES ($1, $2)
        ON CONFLICT DO NOTHING`,
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
 
     // Ensure leader is a member
@@ -710,19 +764,26 @@ export class WorkingGroupDatabase {
    * Remove a leader from a working group
    */
   async removeLeader(workingGroupId: string, userId: string): Promise<void> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     await query(
       'DELETE FROM working_group_leaders WHERE working_group_id = $1 AND user_id = $2',
-      [workingGroupId, userId]
+      [workingGroupId, canonicalUserId]
     );
   }
 
   /**
    * Check if a user is a leader of a working group
+   * Handles both WorkOS and Slack user IDs by checking both directions of the mapping
    */
   async isLeader(workingGroupId: string, userId: string): Promise<boolean> {
+    // Check if:
+    // 1. The leader record has the user ID directly, OR
+    // 2. The leader record has a Slack ID that maps to this WorkOS user ID
     const result = await query(
-      `SELECT 1 FROM working_group_leaders
-       WHERE working_group_id = $1 AND user_id = $2
+      `SELECT 1 FROM working_group_leaders wgl
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       WHERE wgl.working_group_id = $1
+         AND (wgl.user_id = $2 OR sm.workos_user_id = $2)
        LIMIT 1`,
       [workingGroupId, userId]
     );
@@ -732,14 +793,16 @@ export class WorkingGroupDatabase {
   /**
    * Get all committees led by a user
    * Returns committees of all types where the user is a leader
+   * Handles both WorkOS and Slack user IDs by checking both directions of the mapping
    */
   async getCommitteesLedByUser(userId: string): Promise<WorkingGroupWithMemberCount[]> {
     const result = await query<WorkingGroupWithMemberCount>(
-      `SELECT wg.*, COUNT(wgm.id)::int AS member_count
+      `SELECT wg.*, COUNT(DISTINCT wgm.id)::int AS member_count
        FROM working_groups wg
        INNER JOIN working_group_leaders wgl ON wg.id = wgl.working_group_id
+       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
        LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
-       WHERE wgl.user_id = $1
+       WHERE (wgl.user_id = $1 OR sm.workos_user_id = $1)
          AND wg.status = 'active'
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,
@@ -1238,6 +1301,9 @@ export class WorkingGroupDatabase {
     interest_level?: EventInterestLevel;
     interest_source?: EventInterestSource;
   }): Promise<WorkingGroupMembership> {
+    // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
+    const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
+
     const result = await query<WorkingGroupMembership>(
       `INSERT INTO working_group_memberships (
         working_group_id, workos_user_id, user_email, user_name, user_org_name,
@@ -1252,7 +1318,7 @@ export class WorkingGroupDatabase {
       RETURNING *`,
       [
         input.working_group_id,
-        input.workos_user_id,
+        canonicalUserId,
         input.user_email || null,
         input.user_name || null,
         input.user_org_name || null,
@@ -1307,5 +1373,349 @@ export class WorkingGroupDatabase {
     };
 
     return { members, stats };
+  }
+
+  // ============== Committee Documents ==============
+
+  /**
+   * Create a new committee document
+   */
+  async createDocument(input: CreateCommitteeDocumentInput): Promise<CommitteeDocument> {
+    // Detect document type from URL if not provided
+    const documentType = input.document_type || this.detectDocumentType(input.document_url);
+
+    const result = await query<CommitteeDocument>(
+      `INSERT INTO committee_documents (
+        working_group_id, title, description, document_url, document_type,
+        display_order, is_featured, added_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *`,
+      [
+        input.working_group_id,
+        input.title,
+        input.description || null,
+        input.document_url,
+        documentType,
+        input.display_order ?? 0,
+        input.is_featured ?? false,
+        input.added_by_user_id || null,
+      ]
+    );
+
+    return result.rows[0];
+  }
+
+  /**
+   * Detect document type from URL
+   */
+  private detectDocumentType(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'docs.google.com') {
+        if (parsed.pathname.includes('/document/')) return 'google_doc';
+        if (parsed.pathname.includes('/spreadsheets/')) return 'google_sheet';
+      }
+      if (parsed.hostname === 'drive.google.com') return 'google_doc';
+      if (url.toLowerCase().endsWith('.pdf')) return 'pdf';
+      return 'external_link';
+    } catch {
+      return 'external_link';
+    }
+  }
+
+  /**
+   * Get document by ID
+   */
+  async getDocumentById(id: string): Promise<CommitteeDocument | null> {
+    const result = await query<CommitteeDocument>(
+      'SELECT * FROM committee_documents WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get all documents for a working group
+   */
+  async getDocumentsByWorkingGroup(workingGroupId: string): Promise<CommitteeDocument[]> {
+    const result = await query<CommitteeDocument>(
+      `SELECT * FROM committee_documents
+       WHERE working_group_id = $1
+       ORDER BY is_featured DESC, display_order ASC, created_at DESC`,
+      [workingGroupId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get documents that need indexing (pending or due for refresh)
+   */
+  async getDocumentsPendingIndex(limit = 50): Promise<CommitteeDocument[]> {
+    const result = await query<CommitteeDocument>(
+      `SELECT cd.* FROM committee_documents cd
+       JOIN working_groups wg ON wg.id = cd.working_group_id
+       WHERE wg.status = 'active'
+         AND cd.index_status IN ('pending', 'success')
+         AND cd.document_type IN ('google_doc', 'google_sheet')
+         AND (
+           cd.last_indexed_at IS NULL
+           OR cd.last_indexed_at < NOW() - INTERVAL '1 hour'
+         )
+       ORDER BY cd.last_indexed_at ASC NULLS FIRST
+       LIMIT $1`,
+      [limit]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Update document with new indexed content
+   */
+  async updateDocumentIndex(
+    id: string,
+    contentHash: string,
+    content: string,
+    status: DocumentIndexStatus,
+    error?: string
+  ): Promise<CommitteeDocument | null> {
+    const result = await query<CommitteeDocument>(
+      `UPDATE committee_documents
+       SET content_hash = $2::varchar(64),
+           last_content = $3,
+           index_status = $4,
+           index_error = $5,
+           last_indexed_at = NOW(),
+           last_modified_at = CASE
+             WHEN content_hash IS DISTINCT FROM $2::varchar(64) THEN NOW()
+             ELSE last_modified_at
+           END
+       WHERE id = $1
+       RETURNING *`,
+      [id, contentHash, content, status, error || null]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update document summary
+   */
+  async updateDocumentSummary(id: string, summary: string): Promise<CommitteeDocument | null> {
+    const result = await query<CommitteeDocument>(
+      `UPDATE committee_documents
+       SET document_summary = $2, summary_generated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, summary]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update a document
+   */
+  async updateDocument(id: string, updates: UpdateCommitteeDocumentInput): Promise<CommitteeDocument | null> {
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    const fieldMap: Record<string, string> = {
+      title: 'title',
+      description: 'description',
+      document_url: 'document_url',
+      document_type: 'document_type',
+      display_order: 'display_order',
+      is_featured: 'is_featured',
+    };
+
+    for (const [key, value] of Object.entries(updates)) {
+      const columnName = fieldMap[key];
+      if (!columnName) continue;
+
+      setClauses.push(`${columnName} = $${paramIndex}`);
+      params.push(value ?? null);
+      paramIndex++;
+    }
+
+    if (setClauses.length === 0) {
+      return this.getDocumentById(id);
+    }
+
+    params.push(id);
+    const result = await query<CommitteeDocument>(
+      `UPDATE committee_documents SET ${setClauses.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING *`,
+      params
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Delete a document
+   */
+  async deleteDocument(id: string): Promise<boolean> {
+    const result = await query(
+      'DELETE FROM committee_documents WHERE id = $1',
+      [id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ============== Committee Summaries ==============
+
+  /**
+   * Create a new summary (marks previous of same type as superseded)
+   */
+  async createSummary(
+    workingGroupId: string,
+    summaryType: CommitteeSummaryType,
+    summaryText: string,
+    inputSources: Array<{ type: string; id: string; title: string }>,
+    timePeriodStart?: Date,
+    timePeriodEnd?: Date,
+    generatedBy = 'addie'
+  ): Promise<CommitteeSummary> {
+    // Mark previous current summaries of this type as superseded
+    await query(
+      `UPDATE committee_summaries
+       SET is_current = FALSE, superseded_at = NOW()
+       WHERE working_group_id = $1
+         AND summary_type = $2
+         AND is_current = TRUE`,
+      [workingGroupId, summaryType]
+    );
+
+    const result = await query<CommitteeSummary>(
+      `INSERT INTO committee_summaries (
+        working_group_id, summary_type, summary_text, input_sources,
+        time_period_start, time_period_end, generated_by, is_current
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+      RETURNING *`,
+      [
+        workingGroupId,
+        summaryType,
+        summaryText,
+        JSON.stringify(inputSources),
+        timePeriodStart || null,
+        timePeriodEnd || null,
+        generatedBy,
+      ]
+    );
+
+    // Update superseded_by on old summaries
+    if (result.rows[0]) {
+      await query(
+        `UPDATE committee_summaries
+         SET superseded_by = $1
+         WHERE working_group_id = $2
+           AND summary_type = $3
+           AND is_current = FALSE
+           AND superseded_by IS NULL`,
+        [result.rows[0].id, workingGroupId, summaryType]
+      );
+    }
+
+    return result.rows[0];
+  }
+
+  /**
+   * Get current summary of a specific type
+   */
+  async getCurrentSummary(
+    workingGroupId: string,
+    summaryType: CommitteeSummaryType
+  ): Promise<CommitteeSummary | null> {
+    const result = await query<CommitteeSummary>(
+      `SELECT * FROM committee_summaries
+       WHERE working_group_id = $1
+         AND summary_type = $2
+         AND is_current = TRUE`,
+      [workingGroupId, summaryType]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get all current summaries for a working group
+   */
+  async getCurrentSummaries(workingGroupId: string): Promise<CommitteeSummary[]> {
+    const result = await query<CommitteeSummary>(
+      `SELECT * FROM committee_summaries
+       WHERE working_group_id = $1 AND is_current = TRUE
+       ORDER BY summary_type`,
+      [workingGroupId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get working groups that need summary refresh
+   */
+  async getWorkingGroupsNeedingSummaryRefresh(limit = 20): Promise<string[]> {
+    const result = await query<{ id: string }>(
+      `SELECT wg.id
+       FROM working_groups wg
+       LEFT JOIN committee_summaries cs ON cs.working_group_id = wg.id
+         AND cs.summary_type = 'activity'
+         AND cs.is_current = TRUE
+       WHERE wg.status = 'active'
+         AND wg.committee_type != 'industry_gathering'
+         AND (
+           cs.id IS NULL
+           OR cs.generated_at < NOW() - INTERVAL '24 hours'
+         )
+       ORDER BY cs.generated_at ASC NULLS FIRST
+       LIMIT $1`,
+      [limit]
+    );
+    return result.rows.map(r => r.id);
+  }
+
+  // ============== Document Activity ==============
+
+  /**
+   * Log document activity
+   */
+  async logDocumentActivity(
+    documentId: string,
+    workingGroupId: string,
+    activityType: DocumentActivityType,
+    contentHashBefore?: string,
+    contentHashAfter?: string,
+    changeSummary?: string
+  ): Promise<CommitteeDocumentActivity> {
+    const result = await query<CommitteeDocumentActivity>(
+      `INSERT INTO committee_document_activity (
+        document_id, working_group_id, activity_type,
+        content_hash_before, content_hash_after, change_summary
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+      [
+        documentId,
+        workingGroupId,
+        activityType,
+        contentHashBefore || null,
+        contentHashAfter || null,
+        changeSummary || null,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Get recent activity for a working group
+   */
+  async getRecentActivity(workingGroupId: string, limit = 20): Promise<CommitteeDocumentActivity[]> {
+    const result = await query<CommitteeDocumentActivity>(
+      `SELECT cda.*, cd.title as document_title
+       FROM committee_document_activity cda
+       JOIN committee_documents cd ON cd.id = cda.document_id
+       WHERE cda.working_group_id = $1
+       ORDER BY cda.detected_at DESC
+       LIMIT $2`,
+      [workingGroupId, limit]
+    );
+    return result.rows;
   }
 }

@@ -591,6 +591,9 @@ function rowToGoal(row: Record<string, unknown>): OutreachGoal {
     base_priority: row.base_priority as number,
     message_template: row.message_template as string,
     follow_up_on_question: row.follow_up_on_question as string | null,
+    follow_up_template: row.follow_up_template as string | null,
+    max_attempts: (row.max_attempts as number) ?? 2,
+    days_between_attempts: (row.days_between_attempts as number) ?? 7,
     is_enabled: row.is_enabled as boolean,
     created_by: row.created_by as string | null,
     created_at: new Date(row.created_at as string),
@@ -742,13 +745,17 @@ export async function getMemberCapabilities(
          WHERE wg.committee_type = 'working_group'
          AND (
            EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
-           OR EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1)
+           OR EXISTS(SELECT 1 FROM working_group_leaders wgl
+                     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+                     WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1))
          )) as wg_count,
         (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
          WHERE wg.committee_type = 'council'
          AND (
            EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
-           OR EXISTS(SELECT 1 FROM working_group_leaders wgl WHERE wgl.working_group_id = wg.id AND wgl.user_id = $1)
+           OR EXISTS(SELECT 1 FROM working_group_leaders wgl
+                     LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+                     WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1))
          )) as council_count`,
       [workosUserId]
     ),

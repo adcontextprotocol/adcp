@@ -6,12 +6,22 @@
  */
 
 import { logger } from '../logger.js';
+import { SlackDatabase } from '../db/slack-db.js';
 import type {
   SlackUser,
   SlackChannel,
   SlackPaginatedResponse,
   SlackBlockMessage,
 } from './types.js';
+
+// Lazy-initialized database instance for user persistence
+let slackDb: SlackDatabase | null = null;
+function getSlackDb(): SlackDatabase {
+  if (!slackDb) {
+    slackDb = new SlackDatabase();
+  }
+  return slackDb;
+}
 
 // Use ADDIE_BOT_TOKEN as the primary token (fall back to SLACK_BOT_TOKEN for migration)
 const SLACK_BOT_TOKEN = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
@@ -206,6 +216,101 @@ export async function getSlackUser(userId: string): Promise<SlackUser | null> {
     logger.error({ error, userId }, 'Failed to get Slack user');
     return null;
   }
+}
+
+/**
+ * Result from resolving a Slack user's display name
+ */
+export interface ResolvedSlackUser {
+  slack_user_id: string;
+  display_name: string | null;
+  email: string | null;
+}
+
+/**
+ * Resolve a Slack user ID to display name, checking database first then API.
+ * Persists to database for future lookups.
+ */
+export async function resolveSlackUserDisplayName(
+  slackUserId: string
+): Promise<ResolvedSlackUser | null> {
+  const db = getSlackDb();
+
+  // Check database first
+  const existing = await db.getBySlackUserId(slackUserId);
+  if (existing) {
+    return {
+      slack_user_id: existing.slack_user_id,
+      display_name: existing.slack_display_name || existing.slack_real_name,
+      email: existing.slack_email,
+    };
+  }
+
+  // Fetch from Slack API and persist
+  try {
+    const slackUser = await getSlackUser(slackUserId);
+    if (!slackUser) {
+      return null;
+    }
+
+    const displayName = slackUser.profile?.display_name ||
+                       slackUser.profile?.real_name ||
+                       slackUser.real_name ||
+                       null;
+    const email = slackUser.profile?.email || null;
+
+    // Persist for future requests
+    await db.upsertSlackUser({
+      slack_user_id: slackUserId,
+      slack_email: email,
+      slack_display_name: slackUser.profile?.display_name || null,
+      slack_real_name: slackUser.profile?.real_name || slackUser.real_name || null,
+      slack_is_bot: slackUser.is_bot,
+      slack_is_deleted: slackUser.deleted,
+    });
+
+    logger.debug({ slackUserId, displayName }, 'Resolved and persisted Slack user from API');
+
+    return {
+      slack_user_id: slackUserId,
+      display_name: displayName,
+      email: email,
+    };
+  } catch (error) {
+    logger.debug({ slackUserId, error }, 'Failed to resolve Slack user');
+    return null;
+  }
+}
+
+/**
+ * Resolve multiple Slack user IDs to display names with concurrency limiting.
+ * Returns a map of user ID -> display name.
+ */
+export async function resolveSlackUserDisplayNames(
+  slackUserIds: string[],
+  concurrency = 5
+): Promise<Record<string, string>> {
+  const results: Record<string, string> = {};
+  const uniqueIds = [...new Set(slackUserIds)];
+
+  // Process in batches to avoid rate limiting
+  for (let i = 0; i < uniqueIds.length; i += concurrency) {
+    const batch = uniqueIds.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (userId) => {
+        const resolved = await resolveSlackUserDisplayName(userId);
+        return { userId, displayName: resolved?.display_name };
+      })
+    );
+
+    for (const { userId, displayName } of batchResults) {
+      if (displayName) {
+        results[userId] = displayName;
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -721,4 +826,109 @@ export async function getUserChannels(userId: string): Promise<string[]> {
 
   logger.debug({ userId, channelCount: channelIds.length }, 'Fetched user channel memberships');
   return channelIds;
+}
+
+/**
+ * Message from conversations.history
+ */
+export interface SlackHistoryMessage {
+  type: string;
+  user?: string;
+  bot_id?: string;
+  text?: string;
+  ts: string;
+  thread_ts?: string;
+  subtype?: string;
+  reply_count?: number;  // Number of replies in thread (for parent messages)
+}
+
+/**
+ * Get channel message history (conversations.history)
+ * Returns messages from a channel, paginated
+ *
+ * @param channelId - The channel ID to fetch history from
+ * @param options - Pagination and filtering options
+ * @returns Array of messages and pagination info
+ */
+export async function getChannelHistory(
+  channelId: string,
+  options: {
+    oldest?: string;  // Unix timestamp - only messages after this time
+    latest?: string;  // Unix timestamp - only messages before this time
+    limit?: number;   // Max messages per request (default 100, max 1000)
+    cursor?: string;  // Pagination cursor
+  } = {}
+): Promise<{ messages: SlackHistoryMessage[]; hasMore: boolean; nextCursor?: string }> {
+  try {
+    const response = await slackRequest<{
+      messages: SlackHistoryMessage[];
+      has_more: boolean;
+      response_metadata?: { next_cursor?: string };
+    }>('conversations.history', {
+      channel: channelId,
+      oldest: options.oldest,
+      latest: options.latest,
+      limit: options.limit ?? 100,
+      cursor: options.cursor,
+    });
+
+    return {
+      messages: response.messages ?? [],
+      hasMore: response.has_more ?? false,
+      nextCursor: response.response_metadata?.next_cursor,
+    };
+  } catch (error) {
+    logger.error({ error, channelId }, 'Failed to get channel history');
+    return { messages: [], hasMore: false };
+  }
+}
+
+/**
+ * Get all messages from a channel within a time range
+ * Handles pagination automatically with rate limiting
+ *
+ * @param channelId - The channel ID to fetch history from
+ * @param options - Time range and limit options
+ * @returns Array of all messages in the time range
+ */
+export async function getFullChannelHistory(
+  channelId: string,
+  options: {
+    oldest?: string;  // Unix timestamp - only messages after this time
+    latest?: string;  // Unix timestamp - only messages before this time
+    maxMessages?: number;  // Stop after this many messages (default: no limit)
+    onProgress?: (count: number) => void;  // Callback for progress updates
+  } = {}
+): Promise<SlackHistoryMessage[]> {
+  const allMessages: SlackHistoryMessage[] = [];
+  let cursor: string | undefined;
+  const maxMessages = options.maxMessages ?? Infinity;
+
+  do {
+    const result = await getChannelHistory(channelId, {
+      oldest: options.oldest,
+      latest: options.latest,
+      limit: 200,  // Fetch in larger batches for efficiency
+      cursor,
+    });
+
+    allMessages.push(...result.messages);
+
+    if (options.onProgress) {
+      options.onProgress(allMessages.length);
+    }
+
+    if (allMessages.length >= maxMessages) {
+      break;
+    }
+
+    cursor = result.nextCursor;
+
+    if (cursor) {
+      await sleep(RATE_LIMIT_DELAY_MS);
+    }
+  } while (cursor);
+
+  logger.debug({ channelId, messageCount: allMessages.length }, 'Fetched full channel history');
+  return allMessages.slice(0, maxMessages);
 }

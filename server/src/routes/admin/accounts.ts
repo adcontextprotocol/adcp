@@ -17,34 +17,62 @@ import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
+import {
+  MEMBER_FILTER_ALIASED,
+  NOT_MEMBER_ALIASED,
+  type OrgTier,
+} from "../../db/org-filters.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
 
 /**
- * Derive member status from subscription fields
+ * Derive organization tier from subscription and engagement data
+ * Uses the shared tier definitions from org-filters.ts
+ *
+ * Tiers (mutually exclusive, highest wins):
+ * - member: paying subscription (active, not canceled, amount > 0)
+ * - engaged: not paying, but has users with engagement
+ * - registered: not paying, no engaged users, but has users
+ * - prospect: no users at all (pure placeholder)
+ *
+ * For backward compatibility, if has_users/has_engaged_users are not provided,
+ * returns simplified "member" or "prospect" based on subscription only.
  */
-function deriveMemberStatus(org: {
+function deriveOrgTier(org: {
   subscription_status: string | null;
-  subscription_canceled_at: Date | null;
-}): "member" | "trial" | "lapsed" | "prospect" {
-  if (!org.subscription_status) {
-    return "prospect";
-  }
-
-  if (org.subscription_status === "active") {
+  subscription_canceled_at?: Date | null;
+  subscription_amount?: number | null;
+  has_users?: boolean;
+  has_engaged_users?: boolean;
+}): OrgTier {
+  // Member: paying subscription
+  if (
+    org.subscription_status === "active" &&
+    !org.subscription_canceled_at &&
+    org.subscription_amount &&
+    org.subscription_amount > 0
+  ) {
     return "member";
   }
 
-  if (org.subscription_status === "trialing") {
-    return "trial";
+  // If we have the engagement data, use full tier logic
+  if (org.has_engaged_users !== undefined || org.has_users !== undefined) {
+    // Engaged: has users with engagement
+    if (org.has_engaged_users) {
+      return "engaged";
+    }
+
+    // Registered: has users but no engagement
+    if (org.has_users) {
+      return "registered";
+    }
+
+    // Prospect: no users at all
+    return "prospect";
   }
 
-  // canceled, past_due, unpaid, etc. - check if they ever had an active subscription
-  if (org.subscription_canceled_at) {
-    return "lapsed";
-  }
-
+  // Backward compatibility: no engagement data, just return prospect for non-members
   return "prospect";
 }
 
@@ -182,14 +210,14 @@ export function setupAccountRoutes(
                 AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Hot prospects
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            WHERE (${NOT_MEMBER_ALIASED})
               AND COALESCE(o.engagement_score, 0) >= 50
               AND o.interest_level IN ('high', 'very_high')
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -201,7 +229,7 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Going cold
@@ -211,7 +239,7 @@ export function setupAccountRoutes(
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // My accounts
@@ -231,7 +259,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
               AND o.subscription_current_period_end > NOW()
@@ -241,7 +269,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
           `),
 
           // Disqualified
@@ -304,7 +332,7 @@ export function setupAccountRoutes(
         const org = orgResult.rows[0];
 
         // Derive member status from subscription
-        const memberStatus = deriveMemberStatus(org);
+        const memberStatus = deriveOrgTier(org);
         const isDisqualified = org.prospect_status === "disqualified";
 
         // Run parallel queries for related data (including members from local cache)
@@ -315,6 +343,9 @@ export function setupAccountRoutes(
           stakeholdersResult,
           domainsResult,
           membersResult,
+          misalignedUsersResult,
+          similarOrgsResult,
+          pendingSlackUsersResult,
         ] = await Promise.all([
           // Working groups
           pool.query(
@@ -435,6 +466,120 @@ export function setupAccountRoutes(
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
+          `,
+            [orgId]
+          ),
+
+          // Domain health: Users with this org's domains who are in personal workspaces
+          // (They should be in this org but aren't)
+          pool.query(
+            `
+            WITH org_domains AS (
+              -- Get all domains claimed by this org
+              SELECT domain FROM organization_domains WHERE workos_organization_id = $1
+            ),
+            users_with_domain AS (
+              -- Find users whose email domain matches one of this org's domains
+              SELECT DISTINCT
+                om.workos_user_id,
+                om.email,
+                om.first_name,
+                om.last_name,
+                om.workos_organization_id,
+                o.name as org_name,
+                o.is_personal,
+                LOWER(SUBSTRING(om.email FROM POSITION('@' IN om.email) + 1)) as user_domain
+              FROM organization_memberships om
+              JOIN organizations o ON om.workos_organization_id = o.workos_organization_id
+              JOIN org_domains od ON LOWER(SUBSTRING(om.email FROM POSITION('@' IN om.email) + 1)) = od.domain
+            )
+            SELECT
+              workos_user_id as user_id,
+              email,
+              first_name,
+              last_name,
+              user_domain,
+              workos_organization_id as current_org_id,
+              org_name as current_org_name,
+              is_personal as in_personal_workspace
+            FROM users_with_domain
+            WHERE workos_organization_id != $1  -- Not already in this org
+            ORDER BY is_personal DESC, email ASC
+          `,
+            [orgId]
+          ),
+
+          // Domain health: Similar organization names (potential duplicates)
+          // Uses pg_trgm trigram similarity for fuzzy matching
+          // Skip for personal workspaces - they shouldn't have duplicates
+          pool.query(
+            `
+            WITH this_org AS (
+              SELECT
+                workos_organization_id,
+                name,
+                is_personal,
+                LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
+                  '[^a-z0-9\\s]', '', 'g'
+                )) as normalized_name
+              FROM organizations
+              WHERE workos_organization_id = $1
+            ),
+            other_orgs AS (
+              SELECT
+                workos_organization_id,
+                name,
+                subscription_status,
+                LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(name, '\\s*(Inc\\.?|LLC|Corp\\.?|Ltd\\.?|Company|Co\\.?)\\s*$', '', 'i'),
+                  '[^a-z0-9\\s]', '', 'g'
+                )) as normalized_name
+              FROM organizations
+              WHERE workos_organization_id != $1
+                AND is_personal = false
+            )
+            SELECT
+              oo.workos_organization_id as org_id,
+              oo.name,
+              oo.subscription_status,
+              oo.normalized_name,
+              similarity(oo.normalized_name, t.normalized_name) as match_score
+            FROM this_org t
+            JOIN other_orgs oo ON (
+              -- Exact match on normalized name
+              oo.normalized_name = t.normalized_name
+              -- Or one is a prefix/suffix of the other (e.g., "Yahoo" vs "Yahoo Inc")
+              OR oo.normalized_name LIKE t.normalized_name || '%'
+              OR oo.normalized_name LIKE '%' || t.normalized_name
+              OR t.normalized_name LIKE oo.normalized_name || '%'
+              OR t.normalized_name LIKE '%' || oo.normalized_name
+              -- Or high trigram similarity (0.4+ catches typos and variations)
+              OR similarity(oo.normalized_name, t.normalized_name) >= 0.4
+            )
+            WHERE LENGTH(t.normalized_name) >= 3
+              AND LENGTH(oo.normalized_name) >= 3
+              AND t.is_personal = false
+            ORDER BY similarity(oo.normalized_name, t.normalized_name) DESC, oo.name ASC
+          `,
+            [orgId]
+          ),
+
+          // Pending Slack users (discovered via domain but not yet members)
+          pool.query(
+            `
+            SELECT
+              slack_user_id,
+              slack_email,
+              slack_display_name,
+              slack_real_name,
+              last_slack_activity_at
+            FROM slack_user_mappings
+            WHERE pending_organization_id = $1
+              AND mapping_status = 'unmapped'
+              AND slack_is_bot = false
+              AND slack_is_deleted = false
+            ORDER BY last_slack_activity_at DESC NULLS LAST, slack_real_name ASC
           `,
             [orgId]
           ),
@@ -574,6 +719,23 @@ export function setupAccountRoutes(
           working_groups: workingGroupResult.rows,
           stakeholders: stakeholdersResult.rows,
           domains: domainsResult.rows,
+
+          // Domain health insights for this org
+          domain_health: {
+            // Users who have this org's domain but aren't in this org
+            misaligned_users: misalignedUsersResult.rows,
+            // Potential duplicate orgs with similar names
+            similar_orgs: similarOrgsResult.rows,
+            // Whether all domains are verified
+            has_unverified_domains: domainsResult.rows.some(
+              (d: { verified?: boolean }) => !d.verified
+            ),
+          },
+
+          // Pending Slack users (discovered via domain but not yet linked/members)
+          pending_slack_users: pendingSlackUsersResult.rows,
+          pending_slack_count: pendingSlackUsersResult.rows.length,
+
           owner: owner
             ? {
                 user_id: owner.user_id,
@@ -671,7 +833,7 @@ export function setupAccountRoutes(
               WHEN na.next_step_due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
               WHEN o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
-                AND o.subscription_status = 'active' THEN 'expiring_soon'
+                AND ${MEMBER_FILTER_ALIASED} THEN 'expiring_soon'
               WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
@@ -688,7 +850,7 @@ export function setupAccountRoutes(
               AND (
                 -- Non-members: show if they have action items
                 (
-                  (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+                  (${NOT_MEMBER_ALIASED})
                   AND (
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
@@ -703,7 +865,7 @@ export function setupAccountRoutes(
                 OR
                 -- Members: only show if they have a real problem
                 (
-                  o.subscription_status = 'active'
+                  ${MEMBER_FILTER_ALIASED}
                   AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
@@ -755,10 +917,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE (
-              o.subscription_status IS NULL
-              OR o.subscription_status NOT IN ('active', 'trialing')
-            )
+            WHERE (${NOT_MEMBER_ALIASED})
             AND (
               COALESCE(o.engagement_score, 0) >= 50
               OR o.interest_level IN ('high', 'very_high')
@@ -776,10 +935,7 @@ export function setupAccountRoutes(
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (
-                o.subscription_status IS NULL
-                OR o.subscription_status NOT IN ('active', 'trialing')
-              )
+              AND (${NOT_MEMBER_ALIASED})
           `;
           orderBy = ` ORDER BY o.last_activity_at DESC`;
           break;
@@ -799,7 +955,7 @@ export function setupAccountRoutes(
                 AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             ) latest_activity ON latest_activity.latest_activity_at IS NOT NULL
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `;
           orderBy = ` ORDER BY latest_activity.latest_activity_at DESC`;
           break;
@@ -809,7 +965,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
           `;
           orderBy = ` ORDER BY o.name ASC`;
           break;
@@ -819,7 +975,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
               AND o.subscription_current_period_end > NOW()
@@ -832,7 +988,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND COALESCE(o.engagement_score, 0) < 30
           `;
           orderBy = ` ORDER BY o.engagement_score ASC NULLS FIRST`;
@@ -863,7 +1019,7 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `;
           orderBy = ` ORDER BY o.created_at DESC`;
           break;
@@ -876,6 +1032,26 @@ export function setupAccountRoutes(
             WHERE o.prospect_status = 'disqualified'
           `;
           orderBy = ` ORDER BY o.updated_at DESC`;
+          break;
+
+        case "most_users":
+          // Accounts with the most users (members + Slack-only)
+          query = `
+            ${selectFields},
+            (
+              COALESCE((SELECT COUNT(*) FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id), 0) +
+              COALESCE((SELECT COUNT(*) FROM slack_user_mappings sm
+                WHERE sm.pending_organization_id = o.workos_organization_id
+                AND sm.mapping_status = 'unmapped'
+                AND sm.workos_user_id IS NULL
+                AND sm.slack_is_bot = false
+                AND sm.slack_is_deleted = false), 0)
+            ) as computed_user_count
+            FROM organizations o
+            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND o.is_personal = false
+          `;
+          orderBy = ` ORDER BY computed_user_count DESC, o.engagement_score DESC NULLS LAST`;
           break;
 
         default:
@@ -920,7 +1096,7 @@ export function setupAccountRoutes(
       const orgIds = result.rows.map((r) => r.workos_organization_id);
 
       // Fetch related data in parallel
-      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts] =
+      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts] =
         await Promise.all([
           pool.query(
             `
@@ -964,6 +1140,21 @@ export function setupAccountRoutes(
           `,
             [orgIds]
           ),
+
+          // Slack-only users (not linked to a WorkOS user but associated with org via pending_organization_id)
+          pool.query(
+            `
+            SELECT pending_organization_id as workos_organization_id, COUNT(*) as count
+            FROM slack_user_mappings
+            WHERE pending_organization_id = ANY($1)
+              AND mapping_status = 'unmapped'
+              AND workos_user_id IS NULL
+              AND slack_is_bot = false
+              AND slack_is_deleted = false
+            GROUP BY pending_organization_id
+          `,
+            [orgIds]
+          ),
         ]);
 
       // Build maps
@@ -997,9 +1188,16 @@ export function setupAccountRoutes(
         ])
       );
 
+      const slackOnlyCountMap = new Map(
+        slackOnlyCounts.rows.map((r) => [
+          r.workos_organization_id,
+          parseInt(r.count),
+        ])
+      );
+
       // Transform results
       const accounts = result.rows.map((row) => {
-        const memberStatus = deriveMemberStatus(row);
+        const memberStatus = deriveOrgTier(row);
         const engagementScore = row.engagement_score || 0;
         const stakeholders =
           stakeholdersMap.get(row.workos_organization_id) || [];
@@ -1019,9 +1217,12 @@ export function setupAccountRoutes(
           engagement_fires: scoreToFires(engagementScore),
           interest_level: row.interest_level,
 
-          // Counts
+          // Counts - user_count combines formal members + Slack-only users
           slack_user_count: slackCountMap.get(row.workos_organization_id) || 0,
           member_count: memberCountMap.get(row.workos_organization_id) || 0,
+          slack_only_count: slackOnlyCountMap.get(row.workos_organization_id) || 0,
+          user_count: (memberCountMap.get(row.workos_organization_id) || 0) +
+                      (slackOnlyCountMap.get(row.workos_organization_id) || 0),
 
           // Domains
           domain:
@@ -1108,7 +1309,7 @@ export function setupAccountRoutes(
               AND (
                 -- Non-members: show if they have action items
                 (
-                  (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+                  (${NOT_MEMBER_ALIASED})
                   AND (
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
@@ -1123,7 +1324,7 @@ export function setupAccountRoutes(
                 OR
                 -- Members: only show if they have a real problem (expiring soon)
                 (
-                  o.subscription_status = 'active'
+                  ${MEMBER_FILTER_ALIASED}
                   AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
@@ -1140,14 +1341,14 @@ export function setupAccountRoutes(
                 AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Hot prospects (engagement >= 50 OR high interest)
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            WHERE (${NOT_MEMBER_ALIASED})
               AND (
                 COALESCE(o.engagement_score, 0) >= 50
                 OR o.interest_level IN ('high', 'very_high')
@@ -1161,7 +1362,7 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Going cold
@@ -1171,7 +1372,7 @@ export function setupAccountRoutes(
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // My accounts
@@ -1191,7 +1392,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
               AND o.subscription_current_period_end > NOW()
@@ -1201,7 +1402,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
           `),
 
           // Disqualified

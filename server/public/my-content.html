@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>My Content - AgenticAdvertising.org</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="/nav.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-lg);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .page-header {
+      margin-bottom: var(--space-6);
+    }
+    .page-header h1 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+    .page-header .subtitle {
+      color: var(--color-text-secondary);
+    }
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      margin-bottom: var(--space-6);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .tab {
+      padding: var(--space-3) var(--space-5);
+      background: none;
+      border: none;
+      border-bottom: var(--border-2) solid transparent;
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      transition: var(--transition-all);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .tab:hover {
+      color: var(--color-text-heading);
+    }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+    .tab .count {
+      background: var(--color-gray-200);
+      color: var(--color-text-secondary);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+    }
+    .tab.active .count {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+    }
+    .tab .count.alert {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+    }
+    .section-header h2 {
+      font-size: var(--text-lg);
+      color: var(--color-text-heading);
+    }
+    .content-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .content-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-4);
+      transition: var(--transition-all);
+    }
+    .content-item:hover {
+      border-color: var(--color-brand);
+    }
+    .content-item.pending {
+      border-left: var(--border-4) solid var(--color-warning-500);
+    }
+    .content-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .content-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .content-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+    .content-meta .separator {
+      color: var(--color-gray-300);
+    }
+    .content-excerpt {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .content-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-draft { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-published { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-pending_review { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-rejected { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-archived { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-article { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-link { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-personal { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .badge-committee { background: var(--color-primary-50); color: var(--color-primary-700); }
+    .badge-author { background: var(--color-info-50); color: var(--color-info-700); }
+    .badge-proposer { background: var(--color-warning-50); color: var(--color-warning-700); }
+    .badge-owner { background: var(--color-success-50); color: var(--color-success-700); }
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1.5);
+    }
+    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
+    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-success { background: var(--color-success-500); color: white; }
+    .btn-success:hover { background: var(--color-success-600); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-outline {
+      background: transparent;
+      border: var(--border-1) solid var(--color-gray-300);
+      color: var(--color-text-heading);
+    }
+    .btn-outline:hover {
+      background: var(--color-gray-100);
+    }
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-secondary);
+    }
+    .empty-state h3 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+    .filter-bar {
+      display: flex;
+      gap: var(--space-2.5);
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+    }
+    .filter-bar select {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      background: white;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: var(--space-5);
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-8);
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin-bottom: var(--space-5);
+      color: var(--color-text-heading);
+    }
+    .form-group {
+      margin-bottom: var(--space-5);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-family: inherit;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .form-group textarea {
+      min-height: 120px;
+    }
+    .form-group small {
+      display: block;
+      margin-top: var(--space-1);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-5);
+    }
+    @media (max-width: 640px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+    .modal-buttons {
+      display: flex;
+      gap: var(--space-2.5);
+      justify-content: flex-end;
+      margin-top: var(--space-6);
+      padding-top: var(--space-5);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .type-toggle {
+      display: flex;
+      gap: var(--space-2.5);
+      margin-bottom: var(--space-6);
+    }
+    .type-toggle button {
+      padding: var(--space-3) var(--space-6);
+      border: var(--border-2) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      cursor: pointer;
+      font-weight: var(--font-medium);
+      font-size: var(--text-sm);
+      transition: var(--transition-all);
+    }
+    .type-toggle button.active {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+      color: var(--color-brand);
+    }
+    .url-input-group {
+      display: flex;
+      gap: var(--space-2.5);
+    }
+    .url-input-group input { flex: 1; }
+    .markdown-editor-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    @media (max-width: 768px) {
+      .markdown-editor-container { grid-template-columns: 1fr; }
+    }
+    .markdown-editor-container textarea {
+      min-height: 300px;
+      font-family: var(--font-mono);
+    }
+    .preview-pane {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      background: var(--color-gray-50);
+      min-height: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .preview-pane.empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-gray-400);
+      font-style: italic;
+    }
+    .preview-pane h1 { font-size: var(--text-2xl); margin-top: var(--space-5); margin-bottom: var(--space-2.5); }
+    .preview-pane h1:first-child { margin-top: 0; }
+    .preview-pane h2 { font-size: var(--text-xl); margin-top: var(--space-5); margin-bottom: var(--space-2.5); }
+    .preview-pane p { margin-bottom: var(--space-3); line-height: var(--leading-relaxed); }
+    .char-count {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      text-align: right;
+      margin-top: var(--space-1);
+    }
+    .char-count.warning { color: var(--color-warning-600); }
+    .char-count.over { color: var(--color-error-600); }
+
+    /* Review actions */
+    .review-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+
+    /* Proposer info */
+    .proposer-info {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+    }
+
+    /* Rejection reason display */
+    .rejection-reason {
+      background: var(--color-error-50);
+      border: var(--border-1) solid var(--color-error-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      margin-top: var(--space-2);
+      font-size: var(--text-sm);
+      color: var(--color-error-700);
+    }
+
+    /* Authors display */
+    .authors-list {
+      display: flex;
+      gap: var(--space-1);
+      flex-wrap: wrap;
+      margin-top: var(--space-1);
+    }
+    .author-tag {
+      background: var(--color-gray-100);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    /* Hidden elements */
+    .hidden { display: none !important; }
+
+    /* Alert banner */
+    .alert-banner {
+      background: var(--color-warning-50);
+      border: var(--border-1) solid var(--color-warning-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin-bottom: var(--space-5);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .alert-banner-icon {
+      color: var(--color-warning-600);
+      font-size: var(--text-xl);
+    }
+    .alert-banner-content h3 {
+      color: var(--color-warning-800);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-1);
+    }
+    .alert-banner-content p {
+      color: var(--color-warning-700);
+      font-size: var(--text-sm);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">
+    Loading...
+  </div>
+
+  <div id="content" class="hidden">
+    <div class="container">
+      <div class="page-header">
+        <h1>My Content</h1>
+        <p class="subtitle">Create, manage, and review content for AgenticAdvertising.org</p>
+      </div>
+
+      <!-- Alert banner for pending reviews -->
+      <div id="pendingAlert" class="alert-banner hidden">
+        <span class="alert-banner-icon">!</span>
+        <div class="alert-banner-content">
+          <h3>Content Awaiting Review</h3>
+          <p id="pendingAlertText">You have content pending your review.</p>
+        </div>
+        <button class="btn btn-small btn-primary" onclick="switchTab('review')">Review Now</button>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="my-content" onclick="switchTab('my-content')">
+          My Content
+          <span class="count" id="myContentCount">0</span>
+        </button>
+        <button class="tab hidden" data-tab="review" id="reviewTab" onclick="switchTab('review')">
+          Pending Review
+          <span class="count alert" id="pendingCount">0</span>
+        </button>
+      </div>
+
+      <!-- My Content Tab -->
+      <div id="myContentTab" class="tab-content">
+        <div class="card">
+          <div class="section-header">
+            <h2>Your Content</h2>
+            <button class="btn btn-primary" onclick="showCreateModal()">+ Create New</button>
+          </div>
+
+          <div class="filter-bar">
+            <select id="statusFilter" onchange="renderMyContent()">
+              <option value="">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="pending_review">Pending Review</option>
+              <option value="published">Published</option>
+              <option value="rejected">Rejected</option>
+              <option value="archived">Archived</option>
+            </select>
+            <select id="collectionFilter" onchange="renderMyContent()">
+              <option value="">All Collections</option>
+              <!-- Collections added dynamically -->
+            </select>
+          </div>
+
+          <div id="myContentList" class="content-list">
+            Loading...
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Tab -->
+      <div id="reviewTab-content" class="tab-content hidden">
+        <div class="card">
+          <div class="section-header">
+            <h2>Content Pending Review</h2>
+          </div>
+
+          <div class="filter-bar">
+            <select id="reviewCollectionFilter" onchange="renderPendingContent()">
+              <option value="">All Committees</option>
+              <!-- Options added dynamically -->
+            </select>
+          </div>
+
+          <div id="pendingList" class="content-list">
+            Loading...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div id="contentModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">Create Content</h2>
+
+      <div class="type-toggle">
+        <button type="button" id="typeArticle" class="active" onclick="setContentType('article')">
+          Article
+        </button>
+        <button type="button" id="typeLink" onclick="setContentType('link')">
+          External Link
+        </button>
+      </div>
+
+      <form id="contentForm" onsubmit="saveContent(event)">
+        <input type="hidden" id="contentId">
+        <input type="hidden" id="contentTypeField" value="article">
+
+        <!-- Collection Selection -->
+        <div class="form-group">
+          <label>Publish To</label>
+          <select id="collection" required>
+            <!-- Collections loaded dynamically from /api/content/collections -->
+          </select>
+          <small>Where this content will appear on the site</small>
+        </div>
+
+        <!-- Link Fields -->
+        <div id="linkFields" class="hidden">
+          <div class="form-group">
+            <label>URL</label>
+            <div class="url-input-group">
+              <input type="url" id="externalUrl" placeholder="https://...">
+              <button type="button" class="btn btn-secondary" id="fetchBtn" onclick="fetchUrlMetadata()">
+                Fetch Info
+              </button>
+            </div>
+            <small>Paste a URL and click "Fetch Info" to auto-fill</small>
+          </div>
+        </div>
+
+        <!-- Common Fields -->
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="title" required placeholder="Enter title">
+        </div>
+
+        <div class="form-group">
+          <label>Excerpt / Summary</label>
+          <textarea id="excerpt" placeholder="Brief description (shown in previews)"></textarea>
+          <div class="char-count" id="excerptCount">0 / 160 characters</div>
+        </div>
+
+        <!-- Article Content -->
+        <div id="articleFields">
+          <div class="form-group">
+            <label>Content (Markdown)</label>
+            <div class="markdown-editor-container">
+              <div>
+                <textarea id="articleContent" oninput="updatePreview()" placeholder="Write your content in Markdown..."></textarea>
+              </div>
+              <div>
+                <div id="contentPreview" class="preview-pane empty">Start typing to see preview...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category (optional)</label>
+            <select id="category">
+              <option value="">None</option>
+              <option value="Press Coverage">Press Coverage</option>
+              <option value="Interview">Interview</option>
+              <option value="Industry Analysis">Industry Analysis</option>
+              <option value="Tutorial">Tutorial</option>
+              <option value="Case Study">Case Study</option>
+              <option value="Announcement">Announcement</option>
+              <option value="Opinion">Opinion</option>
+            </select>
+          </div>
+          <div class="form-group" id="statusGroup">
+            <label>Status</label>
+            <select id="statusSelect">
+              <option value="draft">Draft</option>
+              <option value="published">Publish Now</option>
+            </select>
+            <small id="statusHint"></small>
+          </div>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Review Modal -->
+  <div id="reviewModal" class="modal-overlay">
+    <div class="modal" style="max-width: 600px;">
+      <h2>Review Content</h2>
+      <div id="reviewContent">
+        <h3 id="reviewTitle"></h3>
+        <p id="reviewExcerpt" style="color: var(--color-text-secondary); margin: var(--space-4) 0;"></p>
+        <div id="reviewDetails" style="font-size: var(--text-sm); color: var(--color-text-secondary);"></div>
+      </div>
+
+      <div class="form-group" style="margin-top: var(--space-5);">
+        <label>Rejection Reason (required if rejecting)</label>
+        <textarea id="rejectionReason" placeholder="Explain why this content is being rejected..."></textarea>
+      </div>
+
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeReviewModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="rejectContent()">Reject</button>
+        <button type="button" class="btn btn-success" onclick="approveContent()">Approve & Publish</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let myContent = [];
+    let pendingContent = [];
+    let committees = [];
+    let currentUser = null;
+    let editingContent = null;
+    let reviewingContent = null;
+    let canReview = false;
+    let isAdmin = false;
+
+    // Initialize
+    async function init() {
+      try {
+        // Check auth and get user info
+        const meResponse = await fetch('/api/me');
+        if (!meResponse.ok) {
+          window.location.href = '/auth/login?returnTo=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        currentUser = await meResponse.json();
+        isAdmin = currentUser.is_admin;
+
+        // Load collections user can post to
+        await loadCollections();
+
+        // Load user's content
+        await loadMyContent();
+
+        // Check if user can review content
+        await checkReviewPermissions();
+
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+      } catch (error) {
+        console.error('Init error:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load. <a href="/auth/login">Try logging in</a></p>';
+      }
+    }
+
+    // Load available collections for content submission
+    async function loadCollections() {
+      try {
+        const response = await fetch('/api/content/collections');
+        if (response.ok) {
+          const data = await response.json();
+          committees = data.collections.map(c => ({
+            slug: c.slug,
+            name: c.name,
+            type: c.type,
+            canPublishDirectly: c.can_publish_directly
+          }));
+
+          // Populate dropdowns
+          populateCommitteeDropdowns();
+        }
+      } catch (error) {
+        console.error('Failed to load collections:', error);
+      }
+    }
+
+    function populateCommitteeDropdowns() {
+      const collectionSelect = document.getElementById('collection');
+      const collectionFilter = document.getElementById('collectionFilter');
+      const reviewFilter = document.getElementById('reviewCollectionFilter');
+
+      // Clear existing options
+      collectionSelect.innerHTML = '';
+      collectionFilter.innerHTML = '<option value="">All Collections</option>';
+
+      // Group collections by type
+      const publicCollections = committees.filter(c => c.type === 'public');
+      const committeeCollections = committees.filter(c => c.type === 'committee');
+
+      // Add public collections first (site-wide)
+      if (publicCollections.length > 0) {
+        const publicGroup = document.createElement('optgroup');
+        publicGroup.label = 'Site-wide';
+        publicCollections.forEach(c => {
+          const option = document.createElement('option');
+          option.value = c.slug;
+          option.textContent = c.name;
+          publicGroup.appendChild(option);
+        });
+        collectionSelect.appendChild(publicGroup);
+      }
+
+      // Add committee collections
+      if (committeeCollections.length > 0) {
+        const committeeGroup = document.createElement('optgroup');
+        committeeGroup.label = 'Your Committees';
+        committeeCollections.forEach(c => {
+          const option = document.createElement('option');
+          option.value = c.slug;
+          option.textContent = c.name;
+          committeeGroup.appendChild(option);
+        });
+        collectionSelect.appendChild(committeeGroup);
+      }
+
+      // Add all to filter dropdown
+      committees.forEach(c => {
+        const option = document.createElement('option');
+        option.value = c.slug;
+        option.textContent = c.name;
+        collectionFilter.appendChild(option);
+      });
+
+      // Add collections user can review to review filter
+      const reviewableCollections = committees.filter(c => c.canPublishDirectly);
+      reviewableCollections.forEach(c => {
+        const option = document.createElement('option');
+        option.value = c.slug;
+        option.textContent = c.name;
+        reviewFilter.appendChild(option);
+      });
+    }
+
+    // Load user's content
+    async function loadMyContent() {
+      try {
+        const response = await fetch('/api/me/content');
+        if (!response.ok) throw new Error('Failed to load content');
+
+        const data = await response.json();
+        myContent = data.items || [];
+        document.getElementById('myContentCount').textContent = myContent.length;
+        renderMyContent();
+      } catch (error) {
+        console.error('Failed to load content:', error);
+        document.getElementById('myContentList').innerHTML =
+          '<div class="empty-state"><p>Failed to load content</p></div>';
+      }
+    }
+
+    // Check if user can review and load pending content
+    async function checkReviewPermissions() {
+      const reviewableCollections = committees.filter(c => c.canPublishDirectly);
+      canReview = isAdmin || reviewableCollections.length > 0;
+
+      if (canReview) {
+        document.getElementById('reviewTab').classList.remove('hidden');
+        await loadPendingContent();
+      }
+    }
+
+    // Load pending content for review
+    async function loadPendingContent() {
+      try {
+        const response = await fetch('/api/content/pending');
+        if (!response.ok) throw new Error('Failed to load pending content');
+
+        const data = await response.json();
+        pendingContent = data.items || [];
+        document.getElementById('pendingCount').textContent = pendingContent.length;
+
+        // Show alert banner if there's pending content
+        if (pendingContent.length > 0) {
+          document.getElementById('pendingAlert').classList.remove('hidden');
+          document.getElementById('pendingAlertText').textContent =
+            `You have ${pendingContent.length} content item${pendingContent.length > 1 ? 's' : ''} pending your review.`;
+        }
+
+        renderPendingContent();
+      } catch (error) {
+        console.error('Failed to load pending content:', error);
+      }
+    }
+
+    // Render my content list
+    function renderMyContent() {
+      const list = document.getElementById('myContentList');
+      const statusFilter = document.getElementById('statusFilter').value;
+      const collectionFilter = document.getElementById('collectionFilter').value;
+
+      let filtered = myContent;
+
+      if (statusFilter) {
+        filtered = filtered.filter(c => c.status === statusFilter);
+      }
+      if (collectionFilter) {
+        filtered = filtered.filter(c =>
+          c.collection?.committee_slug === collectionFilter ||
+          c.collection?.slug === collectionFilter);
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <h3>No content found</h3>
+            <p>Create your first piece of content to share with the community.</p>
+            <button class="btn btn-primary" onclick="showCreateModal()" style="margin-top: var(--space-4);">+ Create New</button>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = filtered.map(item => renderContentItem(item, false)).join('');
+    }
+
+    // Render pending content list
+    function renderPendingContent() {
+      const list = document.getElementById('pendingList');
+      const collectionFilter = document.getElementById('reviewCollectionFilter').value;
+
+      let filtered = pendingContent;
+
+      if (collectionFilter) {
+        filtered = filtered.filter(c => c.collection?.committee_slug === collectionFilter);
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <h3>All caught up!</h3>
+            <p>No content pending review.</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = filtered.map(item => renderContentItem(item, true)).join('');
+    }
+
+    // Render a content item
+    function renderContentItem(item, isPendingView) {
+      const statusBadge = `<span class="badge badge-${item.status}">${formatStatus(item.status)}</span>`;
+      const typeBadge = `<span class="badge badge-${item.content_type}">${item.content_type}</span>`;
+      const collectionName = item.collection?.committee_name || item.collection?.name || item.collection?.committee_slug || 'Unknown';
+      const collectionBadge = `<span class="badge badge-committee">${collectionName}</span>`;
+
+      const relationships = (item.relationships || []).map(r =>
+        `<span class="badge badge-${r}">${r}</span>`
+      ).join('');
+
+      const authors = (item.authors || []).map(a =>
+        `<span class="author-tag">${escapeHtml(a.display_name)}</span>`
+      ).join('');
+
+      const proposerInfo = item.proposer
+        ? `<div class="proposer-info">Proposed by ${escapeHtml(item.proposer.name)} on ${formatDate(item.proposed_at)}</div>`
+        : '';
+
+      const rejectionInfo = item.status === 'rejected' && item.rejection_reason
+        ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${escapeHtml(item.rejection_reason)}</div>`
+        : '';
+
+      let actions = '';
+      if (isPendingView) {
+        actions = `
+          <button class="btn btn-small btn-success" onclick="showReviewModal('${item.id}')">Review</button>
+        `;
+      } else {
+        const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author');
+        actions = `
+          ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${item.id}')">Edit</button>` : ''}
+          ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${item.id}')">View</button>` : ''}
+        `;
+      }
+
+      return `
+        <div class="content-item ${item.status === 'pending_review' ? 'pending' : ''}">
+          <div class="content-info">
+            <h3>${escapeHtml(item.title)}</h3>
+            <div class="content-meta">
+              ${statusBadge}
+              ${typeBadge}
+              ${collectionBadge}
+              ${!isPendingView ? relationships : ''}
+            </div>
+            ${authors ? `<div class="authors-list">${authors}</div>` : ''}
+            ${item.excerpt ? `<div class="content-excerpt">${escapeHtml(item.excerpt)}</div>` : ''}
+            ${proposerInfo}
+            ${rejectionInfo}
+          </div>
+          <div class="content-actions">
+            ${actions}
+          </div>
+        </div>
+      `;
+    }
+
+    // Switch tabs
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+      document.getElementById('myContentTab').classList.toggle('hidden', tabName !== 'my-content');
+      document.getElementById('reviewTab-content').classList.toggle('hidden', tabName !== 'review');
+    }
+
+    // Show create modal
+    function showCreateModal() {
+      editingContent = null;
+      document.getElementById('modalTitle').textContent = 'Create Content';
+      document.getElementById('contentForm').reset();
+      document.getElementById('contentId').value = '';
+      setContentType('article');
+      updateExcerptCount();
+      updateStatusHint();
+      document.getElementById('contentModal').style.display = 'flex';
+    }
+
+    // Edit content
+    async function editContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+
+      editingContent = item;
+      document.getElementById('modalTitle').textContent = 'Edit Content';
+      document.getElementById('contentId').value = item.id;
+      document.getElementById('title').value = item.title || '';
+      document.getElementById('excerpt').value = item.excerpt || '';
+      document.getElementById('externalUrl').value = item.external_url || '';
+      document.getElementById('articleContent').value = item.content || '';
+      document.getElementById('category').value = item.category || '';
+      document.getElementById('statusSelect').value = item.status === 'published' ? 'published' : 'draft';
+
+      // Set collection
+      const collectionSlug = item.collection?.committee_slug || item.collection?.slug;
+      if (collectionSlug) {
+        document.getElementById('collection').value = collectionSlug;
+      }
+
+      setContentType(item.content_type || 'article');
+      updatePreview();
+      updateExcerptCount();
+      updateStatusHint();
+      document.getElementById('contentModal').style.display = 'flex';
+    }
+
+    // View published content
+    function viewContent(id) {
+      const item = myContent.find(c => c.id === id);
+      if (!item) return;
+
+      // All content now lives under perspectives
+      const url = `/perspectives/${item.slug}`;
+      window.open(url, '_blank');
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('contentModal').style.display = 'none';
+      editingContent = null;
+    }
+
+    // Set content type
+    function setContentType(type) {
+      document.getElementById('contentTypeField').value = type;
+      document.getElementById('typeArticle').classList.toggle('active', type === 'article');
+      document.getElementById('typeLink').classList.toggle('active', type === 'link');
+      document.getElementById('articleFields').classList.toggle('hidden', type !== 'article');
+      document.getElementById('linkFields').classList.toggle('hidden', type !== 'link');
+    }
+
+    // Update excerpt count
+    function updateExcerptCount() {
+      const excerpt = document.getElementById('excerpt').value;
+      const count = excerpt.length;
+      const el = document.getElementById('excerptCount');
+      el.textContent = `${count} / 160 characters`;
+      el.className = 'char-count';
+      if (count > 200) el.className = 'char-count over';
+      else if (count > 160) el.className = 'char-count warning';
+    }
+
+    // Update preview
+    function updatePreview() {
+      const text = document.getElementById('articleContent').value;
+      const preview = document.getElementById('contentPreview');
+
+      if (!text.trim()) {
+        preview.classList.add('empty');
+        preview.innerHTML = 'Start typing to see preview...';
+        return;
+      }
+
+      preview.classList.remove('empty');
+      preview.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    }
+
+    // Update status hint based on collection
+    function updateStatusHint() {
+      const collectionSlug = document.getElementById('collection').value;
+      const hint = document.getElementById('statusHint');
+      const statusSelect = document.getElementById('statusSelect');
+
+      const collection = committees.find(c => c.slug === collectionSlug);
+
+      if (collection?.canPublishDirectly || isAdmin) {
+        hint.textContent = collection?.type === 'committee'
+          ? 'As a lead, you can publish directly.'
+          : 'You can publish directly.';
+        statusSelect.disabled = false;
+      } else {
+        hint.textContent = 'Will be submitted for review.';
+        statusSelect.value = 'draft';
+        statusSelect.disabled = true;
+      }
+    }
+
+    // Fetch URL metadata
+    async function fetchUrlMetadata() {
+      const url = document.getElementById('externalUrl').value.trim();
+      if (!url) return;
+
+      const btn = document.getElementById('fetchBtn');
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+
+      try {
+        const response = await fetch('/api/content/fetch-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.title) document.getElementById('title').value = data.title;
+          if (data.excerpt) document.getElementById('excerpt').value = data.excerpt;
+          updateExcerptCount();
+        }
+      } catch (error) {
+        console.error('Fetch error:', error);
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Fetch Info';
+    }
+
+    // Save content
+    async function saveContent(event) {
+      event.preventDefault();
+
+      const id = document.getElementById('contentId').value;
+      const collectionSlug = document.getElementById('collection').value;
+      const statusValue = document.getElementById('statusSelect').value;
+
+      const data = {
+        title: document.getElementById('title').value.trim(),
+        content: document.getElementById('articleContent').value || null,
+        content_type: document.getElementById('contentTypeField').value,
+        external_url: document.getElementById('externalUrl').value.trim() || null,
+        excerpt: document.getElementById('excerpt').value.trim() || null,
+        category: document.getElementById('category').value || null,
+        collection: { slug: collectionSlug },
+      };
+
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        let response;
+        if (id) {
+          // Update existing
+          response = await fetch(`/api/me/content/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...data, status: statusValue })
+          });
+        } else {
+          // Create new via propose endpoint
+          response = await fetch('/api/content/propose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        }
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Failed to save');
+        }
+
+        closeModal();
+        await loadMyContent();
+        if (canReview) await loadPendingContent();
+      } catch (error) {
+        console.error('Save error:', error);
+        alert('Failed to save: ' + error.message);
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    }
+
+    // Show review modal
+    function showReviewModal(id) {
+      const item = pendingContent.find(c => c.id === id);
+      if (!item) return;
+
+      reviewingContent = item;
+      document.getElementById('reviewTitle').textContent = item.title;
+      document.getElementById('reviewExcerpt').textContent = item.excerpt || '';
+      document.getElementById('reviewDetails').innerHTML = `
+        <p><strong>Type:</strong> ${item.content_type}</p>
+        <p><strong>Collection:</strong> ${item.collection?.committee_name || 'Personal'}</p>
+        <p><strong>Proposed by:</strong> ${item.proposer?.name || 'Unknown'}</p>
+        <p><strong>Proposed:</strong> ${formatDate(item.proposed_at)}</p>
+      `;
+      document.getElementById('rejectionReason').value = '';
+      document.getElementById('reviewModal').style.display = 'flex';
+    }
+
+    // Close review modal
+    function closeReviewModal() {
+      document.getElementById('reviewModal').style.display = 'none';
+      reviewingContent = null;
+    }
+
+    // Approve content
+    async function approveContent() {
+      if (!reviewingContent) return;
+
+      try {
+        const response = await fetch(`/api/content/${reviewingContent.id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publish_immediately: true })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Failed to approve');
+        }
+
+        closeReviewModal();
+        await loadPendingContent();
+        await loadMyContent();
+      } catch (error) {
+        console.error('Approve error:', error);
+        alert('Failed to approve: ' + error.message);
+      }
+    }
+
+    // Reject content
+    async function rejectContent() {
+      if (!reviewingContent) return;
+
+      const reason = document.getElementById('rejectionReason').value.trim();
+      if (!reason) {
+        alert('Please provide a rejection reason');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/content/${reviewingContent.id}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Failed to reject');
+        }
+
+        closeReviewModal();
+        await loadPendingContent();
+      } catch (error) {
+        console.error('Reject error:', error);
+        alert('Failed to reject: ' + error.message);
+      }
+    }
+
+    // Helpers
+    function formatStatus(status) {
+      const labels = {
+        draft: 'Draft',
+        pending_review: 'Pending Review',
+        published: 'Published',
+        rejected: 'Rejected',
+        archived: 'Archived'
+      };
+      return labels[status] || status;
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Event listeners
+    document.getElementById('collection').addEventListener('change', updateStatusHint);
+    document.getElementById('excerpt').addEventListener('input', updateExcerptCount);
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>

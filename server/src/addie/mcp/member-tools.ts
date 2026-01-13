@@ -165,16 +165,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        domain: {
-          type: 'string',
-          description:
-            'The domain to check (e.g., "example.com" or "https://example.com"). The protocol and path will be normalized.',
-        },
-        validate_cards: {
-          type: 'boolean',
-          description:
-            'Whether to also validate the agent cards for each authorized agent (default: false). This makes additional HTTP requests to each agent URL.',
-        },
+        domain: { type: 'string', description: 'Domain to check' },
+        validate_cards: { type: 'boolean', description: 'Also validate agent cards (default: false)' },
       },
       required: ['domain'],
     },
@@ -191,15 +183,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of groups to return (default 20, max 50)',
-        },
-        type: {
-          type: 'string',
-          enum: ['working_group', 'council', 'chapter', 'all'],
-          description: 'Filter by committee type. working_group=technical groups, council=industry verticals, chapter=regional groups, all=show all types (default)',
-        },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+        type: { type: 'string', enum: ['working_group', 'council', 'chapter', 'all'], description: 'Committee type filter' },
       },
       required: [],
     },
@@ -212,10 +197,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        slug: {
-          type: 'string',
-          description: 'The working group slug (e.g., "sustainability", "creative-formats")',
-        },
+        slug: { type: 'string', description: 'Working group slug' },
       },
       required: ['slug'],
     },
@@ -228,10 +210,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        slug: {
-          type: 'string',
-          description: 'The working group slug to join',
-        },
+        slug: { type: 'string', description: 'Group slug to join' },
       },
       required: ['slug'],
     },
@@ -241,6 +220,48 @@ export const MEMBER_TOOLS: AddieTool[] = [
     description:
       "Get the current user's working group memberships. Shows which groups they belong to and their role in each.",
     usage_hints: 'use for "what groups am I in?", checking user\'s memberships',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================
+  // COUNCIL INTEREST (user-scoped)
+  // ============================================
+  {
+    name: 'express_council_interest',
+    description:
+      'Express interest in joining an industry council or other committee that is not yet launched. The user can indicate whether they want to be a participant or a potential leader. This helps gauge interest before the council officially launches.',
+    usage_hints: 'use when user wants to sign up for or show interest in a council',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Council slug' },
+        interest_level: { type: 'string', enum: ['participant', 'leader'], description: 'Interest level (default: participant)' },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'withdraw_council_interest',
+    description:
+      'Withdraw interest in a council or committee. Use this when the user no longer wants to be notified when the council launches.',
+    usage_hints: 'use when user wants to opt out or remove their interest from a council',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Council slug' },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'get_my_council_interests',
+    description:
+      "Get the current user's council interest signups. Shows which councils they've expressed interest in joining.",
+    usage_hints: 'use for "what councils am I interested in?", checking user\'s interest signups',
     input_schema: {
       type: 'object',
       properties: {},
@@ -270,32 +291,12 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        headline: {
-          type: 'string',
-          description: 'Short headline/title (e.g., "VP of Product at Acme")',
-        },
-        bio: {
-          type: 'string',
-          description: 'Longer bio/description in markdown format',
-        },
-        focus_areas: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Areas of focus (e.g., ["sustainability", "CTV", "measurement"])',
-        },
-        website: {
-          type: 'string',
-          description: 'Website URL',
-        },
-        linkedin: {
-          type: 'string',
-          description: 'LinkedIn profile URL',
-        },
-        location: {
-          type: 'string',
-          description: 'Location (e.g., "New York, NY")',
-        },
+        headline: { type: 'string', description: 'Short headline/title' },
+        bio: { type: 'string', description: 'Bio in markdown' },
+        focus_areas: { type: 'array', items: { type: 'string' }, description: 'Areas of focus' },
+        website: { type: 'string', description: 'Website URL' },
+        linkedin: { type: 'string', description: 'LinkedIn URL' },
+        location: { type: 'string', description: 'Location' },
       },
       required: [],
     },
@@ -312,10 +313,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number to return (default 10)',
-        },
+        limit: { type: 'number', description: 'Max results (default 10)' },
       },
       required: [],
     },
@@ -328,29 +326,163 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        working_group_slug: {
-          type: 'string',
-          description: 'The working group to post in',
-        },
-        title: {
-          type: 'string',
-          description: 'Post title',
-        },
-        content: {
-          type: 'string',
-          description: 'Post content in markdown format',
-        },
-        post_type: {
-          type: 'string',
-          enum: ['article', 'link', 'discussion'],
-          description: 'Type of post (default: discussion)',
-        },
-        link_url: {
-          type: 'string',
-          description: 'URL for link posts',
-        },
+        working_group_slug: { type: 'string', description: 'Working group slug' },
+        title: { type: 'string', description: 'Post title' },
+        content: { type: 'string', description: 'Content in markdown' },
+        post_type: { type: 'string', enum: ['article', 'link', 'discussion'], description: 'Post type (default: discussion)' },
+        link_url: { type: 'string', description: 'URL for link posts' },
       },
       required: ['working_group_slug', 'title', 'content'],
+    },
+  },
+
+  // ============================================
+  // UNIFIED CONTENT MANAGEMENT
+  // ============================================
+  {
+    name: 'propose_content',
+    description:
+      'Create content for the website (perspectives, committee posts). Content can be for personal perspectives or committee collections. Committee leads and admins can publish directly; others submit for review. Supports co-authors.',
+    usage_hints: 'use for "write a perspective", "post to the sustainability group", "create an article", "share my thoughts on X"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Title' },
+        content: { type: 'string', description: 'Content in markdown' },
+        content_type: { type: 'string', enum: ['article', 'link'], description: 'Type (default: article)' },
+        external_url: { type: 'string', description: 'URL for link type' },
+        excerpt: { type: 'string', description: 'Short excerpt/summary' },
+        category: { type: 'string', description: 'Category' },
+        collection: {
+          type: 'object', description: 'Where to publish',
+          properties: { type: { type: 'string', enum: ['personal', 'committee'], description: 'Collection type' }, committee_slug: { type: 'string', description: 'Committee slug' } },
+          required: ['type'],
+        },
+        co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
+      },
+      required: ['title', 'collection'],
+    },
+  },
+  {
+    name: 'get_my_content',
+    description:
+      'Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.',
+    usage_hints: 'use for "show my content", "my perspectives", "what have I written?", "my pending posts"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['draft', 'pending_review', 'published', 'archived', 'rejected', 'all'], description: 'Filter by status' },
+        collection: { type: 'string', description: 'Filter by collection' },
+        relationship: { type: 'string', enum: ['author', 'proposer', 'owner'], description: 'Filter by relationship' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_pending_content',
+    description:
+      'List content pending review that the user can approve/reject. Only committee leads see their committee content; admins see all pending content.',
+    usage_hints: 'use for "what content needs approval?", "pending posts", "review queue"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug filter' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'approve_content',
+    description:
+      'Approve pending content for publication. Only committee leads (for their committees) and admins can approve content.',
+    usage_hints: 'use for "approve this post", "publish this content"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content_id: { type: 'string', description: 'Content ID' },
+        publish_immediately: { type: 'boolean', description: 'Publish immediately (default: true)' },
+      },
+      required: ['content_id'],
+    },
+  },
+  {
+    name: 'reject_content',
+    description:
+      'Reject pending content with a reason. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason.',
+    usage_hints: 'use for "reject this post", "decline this content"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content_id: { type: 'string', description: 'Content ID' },
+        reason: { type: 'string', description: 'Rejection reason' },
+      },
+      required: ['content_id', 'reason'],
+    },
+  },
+
+  // ============================================
+  // COMMITTEE DOCUMENTS
+  // ============================================
+  {
+    name: 'add_committee_document',
+    description:
+      'Add a Google Docs document to a committee (working group, council, or chapter) for tracking. The document will be automatically indexed and summarized. Only committee leaders can add documents.',
+    usage_hints: 'use when user wants to add a Google Doc to track for a committee',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        title: { type: 'string', description: 'Document title' },
+        document_url: { type: 'string', description: 'Google Docs URL' },
+        description: { type: 'string', description: 'Description' },
+        is_featured: { type: 'boolean', description: 'Featured document (default: false)' },
+      },
+      required: ['committee_slug', 'title', 'document_url'],
+    },
+  },
+  {
+    name: 'list_committee_documents',
+    description:
+      'List documents tracked by a committee. Shows document titles, status, and summaries.',
+    usage_hints: 'use for "what documents does X group have?", "show governance docs"',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug' },
+      },
+      required: ['committee_slug'],
+    },
+  },
+  {
+    name: 'update_committee_document',
+    description:
+      'Update a document tracked by a committee. Can change title, description, URL, or featured status. Only committee leaders can update documents.',
+    usage_hints: 'use when user wants to update/edit a tracked document',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        document_id: { type: 'string', description: 'Document ID' },
+        title: { type: 'string', description: 'New title' },
+        description: { type: 'string', description: 'New description' },
+        document_url: { type: 'string', description: 'New Google Docs URL' },
+        is_featured: { type: 'boolean', description: 'Featured document' },
+      },
+      required: ['committee_slug', 'document_id'],
+    },
+  },
+  {
+    name: 'delete_committee_document',
+    description:
+      'Remove a document from a committee. The document will no longer be tracked or displayed. Only committee leaders can delete documents.',
+    usage_hints: 'use when user wants to remove/delete a tracked document',
+    input_schema: {
+      type: 'object',
+      properties: {
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        document_id: { type: 'string', description: 'Document ID' },
+      },
+      required: ['committee_slug', 'document_id'],
     },
   },
 
@@ -373,17 +505,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   // AGENT TESTING & COMPLIANCE
   // ============================================
   {
-    name: 'check_agent_health',
+    name: 'probe_adcp_agent',
     description:
-      'Check if an AdCP agent is online and responding. Tests the agent\'s endpoint and returns health status, response time, and available tools. Use this when users want to verify their agent is working before adding it to their profile or authorizing it.',
-    usage_hints: 'use for "is my agent working?", "test my agent endpoint"',
+      'Check if an AdCP agent is online and discover its capabilities. Always validates connectivity first, then retrieves available tools and operations. Use this as the primary tool for investigating agents - it combines health checking with capability discovery.',
+    usage_hints: 'use for "is this agent working?", "what can this agent do?", "check my agent", "probe agent", "test connectivity"',
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to check (e.g., "https://sales.example.com")',
-        },
+        agent_url: { type: 'string', description: 'The agent URL to probe' },
       },
       required: ['agent_url'],
     },
@@ -391,37 +520,15 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'check_publisher_authorization',
     description:
-      'Check if a publisher domain has authorized a specific agent. Validates the publisher\'s adagents.json and confirms the agent is listed. Use this when users want to verify their publisher setup before testing integrations.',
+      'Check if a publisher domain has authorized a specific agent.',
     usage_hints: 'use for authorization verification, "is my agent authorized?"',
     input_schema: {
       type: 'object',
       properties: {
-        domain: {
-          type: 'string',
-          description: 'The publisher domain (e.g., "example.com")',
-        },
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to check authorization for',
-        },
+        domain: { type: 'string', description: 'Publisher domain' },
+        agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['domain', 'agent_url'],
-    },
-  },
-  {
-    name: 'get_agent_capabilities',
-    description:
-      'Get detailed capabilities of an AdCP agent including available tools and supported operations. Use this to help users understand what an agent can do before using it.',
-    usage_hints: 'use for "what can this agent do?", inspecting agent tools',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to inspect',
-        },
-      },
-      required: ['agent_url'],
     },
   },
   {
@@ -432,76 +539,65 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to test (e.g., "https://sales.example.com" or "https://test-agent.adcontextprotocol.org")',
-        },
-        scenario: {
-          type: 'string',
-          enum: [
-            'health_check',
-            'discovery',
-            'create_media_buy',
-            'full_sales_flow',
-            'creative_sync',
-            'creative_inline',
-            'creative_reference',
-            'pricing_models',
-            'creative_flow',
-            'signals_flow',
-            'error_handling',
-            'validation',
-            'pricing_edge_cases',
-            'temporal_validation',
-            'behavior_analysis',
-            'response_consistency',
-          ],
-          description: 'Test scenario: health_check (agent responds), discovery (products/formats/properties), create_media_buy (discovery + create), full_sales_flow (create + update + delivery), creative_sync (sync_creatives flow), creative_inline (inline creatives in create_media_buy), creative_reference (reference existing creatives), pricing_models (analyze pricing options), creative_flow (creative agents), signals_flow (signals agents), error_handling (proper error responses), validation (invalid input rejection), pricing_edge_cases (auction vs fixed, min spend), temporal_validation (date ordering, format), behavior_analysis (auth requirements, brief relevance, filtering behavior), response_consistency (schema errors, pagination bugs, data mismatches)',
-        },
-        brief: {
-          type: 'string',
-          description: 'Optional custom brief for product discovery (default: generic tech brand brief)',
-        },
-        budget: {
-          type: 'number',
-          description: 'Budget for test media buy in dollars (default: 1000)',
-        },
-        dry_run: {
-          type: 'boolean',
-          description: 'Whether to run in dry-run mode (default: true). Set to false for real testing that creates actual media buys.',
-        },
-        channels: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific channels to test (e.g., ["display", "video", "ctv"]). If not specified, tests all channels the agent supports.',
-        },
-        pricing_models: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific pricing models to test (e.g., ["cpm", "cpcv"]). If not specified, uses first available.',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
+        scenario: { type: 'string', enum: ['health_check', 'discovery', 'create_media_buy', 'full_sales_flow', 'creative_sync', 'creative_inline', 'creative_reference', 'pricing_models', 'creative_flow', 'signals_flow', 'error_handling', 'validation', 'pricing_edge_cases', 'temporal_validation', 'behavior_analysis', 'response_consistency'], description: 'Test scenario' },
+        brief: { type: 'string', description: 'Custom brief' },
+        budget: { type: 'number', description: 'Budget in dollars (default: 1000)' },
+        dry_run: { type: 'boolean', description: 'Dry-run mode (default: true)' },
+        channels: { type: 'array', items: { type: 'string' }, description: 'Channels to test' },
+        pricing_models: { type: 'array', items: { type: 'string' }, description: 'Pricing models to test' },
         brand_manifest: {
-          type: 'object',
-          description: 'Brand manifest for the test advertiser. Can specify a well-known brand like {name: "Nike", url: "https://nike.com"} or a custom brand. If not specified, uses Nike as the default.',
-          properties: {
-            name: {
-              type: 'string',
-              description: 'Brand name (e.g., "Nike", "Coca-Cola", "Acme Corp")',
-            },
-            url: {
-              type: 'string',
-              format: 'uri',
-              description: 'Brand website URL',
-            },
-            tagline: {
-              type: 'string',
-              description: 'Brand tagline or slogan',
-            },
-          },
+          type: 'object', description: 'Brand manifest',
+          properties: { name: { type: 'string', description: 'Brand name' }, url: { type: 'string', format: 'uri', description: 'Brand URL' }, tagline: { type: 'string', description: 'Tagline' } },
           required: ['name'],
         },
       },
       required: ['agent_url'],
+    },
+  },
+  {
+    name: 'call_adcp_agent',
+    description:
+      'Execute an AdCP protocol task on an agent. This is a low-level proxy that forwards requests directly to the agent. Use adcp-media-buy, adcp-signals, or adcp-creative skills for detailed parameter schemas.',
+    usage_hints: 'use for "call get_products", "execute create_media_buy", "run sync_creatives", "get_signals", "build_creative", "interact with the agent directly", "use the full AdCP spec". For testing workflows, prefer test_adcp_agent instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The agent URL (must be HTTPS, e.g., "https://sales.example.com")',
+        },
+        task: {
+          type: 'string',
+          enum: [
+            // Media Buy tasks
+            'get_products',
+            'list_authorized_properties',
+            'list_creative_formats',
+            'create_media_buy',
+            'update_media_buy',
+            'sync_creatives',
+            'list_creatives',
+            'get_media_buy_delivery',
+            // Signals tasks
+            'get_signals',
+            'activate_signal',
+            // Creative tasks
+            'build_creative',
+            'preview_creative',
+          ],
+          description: 'The AdCP task to execute',
+        },
+        params: {
+          type: 'object',
+          description: 'Task parameters - structure depends on the task. See protocol skills for schemas.',
+        },
+        auth_token: {
+          type: 'string',
+          description: 'Optional auth token. If not provided, will use saved token for this agent.',
+        },
+      },
+      required: ['agent_url', 'task'],
     },
   },
   // ============================================
@@ -515,23 +611,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to save (e.g., "https://sales.example.com/mcp")',
-        },
-        agent_name: {
-          type: 'string',
-          description: 'Friendly name for the agent (e.g., "Production Sales Agent")',
-        },
-        auth_token: {
-          type: 'string',
-          description: 'Optional auth token to store securely. Will be encrypted and never shown again.',
-        },
-        protocol: {
-          type: 'string',
-          enum: ['mcp', 'a2a'],
-          description: 'Protocol type (default: mcp)',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
+        agent_name: { type: 'string', description: 'Agent name' },
+        auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
+        protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
       },
       required: ['agent_url'],
     },
@@ -555,10 +638,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to remove',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['agent_url'],
     },
@@ -581,31 +661,15 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'draft_github_issue',
     description:
-      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool\'s entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
+      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool\'s entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. All issues go to the "adcp" repository which contains the protocol, schemas, AgenticAdvertising.org server, and documentation.',
     usage_hints: 'use when user wants to report a bug or request a feature - MUST include full output in response',
     input_schema: {
       type: 'object',
       properties: {
-        title: {
-          type: 'string',
-          description: 'Issue title - clear and concise summary of the bug or feature request',
-        },
-        body: {
-          type: 'string',
-          description:
-            'Issue body in markdown format. Include context, steps to reproduce (for bugs), or detailed description (for features). Reference the Slack conversation if relevant.',
-        },
-        repo: {
-          type: 'string',
-          description:
-            'Repository name within adcontextprotocol org (e.g., "adcp" for protocol/docs, "aao-server" for website/community). Default: "adcp"',
-        },
-        labels: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Optional labels to suggest (e.g., ["bug"], ["enhancement"], ["documentation"]). Common labels: bug, enhancement, documentation, good first issue',
-        },
+        title: { type: 'string', description: 'Issue title' },
+        body: { type: 'string', description: 'Issue body (no PII - GitHub is public)' },
+        repo: { type: 'string', description: 'Repo name (default: "adcp")' },
+        labels: { type: 'array', items: { type: 'string' }, description: 'Optional labels' },
       },
       required: ['title', 'body'],
     },
@@ -622,23 +686,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        url: {
-          type: 'string',
-          description: 'URL of the proposed news source (website or RSS feed URL)',
-        },
-        name: {
-          type: 'string',
-          description: 'Suggested name for the feed (e.g., "AdExchanger", "Marketing Week")',
-        },
-        reason: {
-          type: 'string',
-          description: 'Brief reason why this source is relevant to the community',
-        },
-        category: {
-          type: 'string',
-          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
-          description: 'Category that best fits this publication',
-        },
+        url: { type: 'string', description: 'Source URL' },
+        name: { type: 'string', description: 'Feed name' },
+        reason: { type: 'string', description: 'Why this source is relevant' },
+        category: { type: 'string', enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'], description: 'Category' },
       },
       required: ['url'],
     },
@@ -655,22 +706,9 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'What the user is looking for in natural language (e.g., "run a sales agent for me", "help implementing AdCP", "CTV advertising expertise", "managed services for publishers")',
-        },
-        offerings: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'],
-          },
-          description: 'Optional: filter by specific service offerings',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default 5, max 10)',
-        },
+        query: { type: 'string', description: 'Natural language search query' },
+        offerings: { type: 'array', items: { type: 'string', enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'] }, description: 'Filter by offerings' },
+        limit: { type: 'number', description: 'Max results (default 5)' },
       },
       required: ['query'],
     },
@@ -683,34 +721,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        member_slug: {
-          type: 'string',
-          description: 'The slug (URL identifier) of the member to be introduced to',
-        },
-        requester_name: {
-          type: 'string',
-          description: 'Full name of the person requesting the introduction',
-        },
-        requester_email: {
-          type: 'string',
-          description: 'Email address of the person requesting the introduction',
-        },
-        requester_company: {
-          type: 'string',
-          description: 'Company/organization of the person requesting the introduction (optional)',
-        },
-        message: {
-          type: 'string',
-          description: 'Brief message from the requester explaining what they\'re looking for or why they want to connect',
-        },
-        search_query: {
-          type: 'string',
-          description: 'The original search query the user used to find this member (if applicable)',
-        },
-        reasoning: {
-          type: 'string',
-          description: 'Addie\'s explanation of why this member is a good fit for what the requester is looking for. Be specific about matching capabilities.',
-        },
+        member_slug: { type: 'string', description: 'Member slug' },
+        requester_name: { type: 'string', description: 'Requester name' },
+        requester_email: { type: 'string', description: 'Requester email' },
+        requester_company: { type: 'string', description: 'Requester company' },
+        message: { type: 'string', description: 'Message to member' },
+        search_query: { type: 'string', description: 'Original search query' },
+        reasoning: { type: 'string', description: 'Why this member is a good fit' },
       },
       required: ['member_slug', 'requester_name', 'requester_email', 'message', 'reasoning'],
     },
@@ -1031,6 +1048,93 @@ export function createMemberToolHandlers(
   });
 
   // ============================================
+  // COUNCIL INTEREST
+  // ============================================
+  handlers.set('express_council_interest', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to express interest in a council. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.slug as string;
+    const validInterestLevels = ['participant', 'leader'];
+    const interestLevel = validInterestLevels.includes(input.interest_level as string)
+      ? (input.interest_level as string)
+      : 'participant';
+
+    const result = await callApi('POST', `/api/working-groups/${slug}/interest`, memberContext, {
+      interest_level: interestLevel,
+    });
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return `Could not find a council or committee with slug "${slug}". Use list_working_groups with type "council" to see available councils.`;
+      }
+      return `Failed to express interest: ${result.error}`;
+    }
+
+    const data = result.data as { message?: string };
+    return data.message || `You've expressed interest! We'll notify you when this council launches.`;
+  });
+
+  handlers.set('withdraw_council_interest', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to withdraw interest. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.slug as string;
+
+    const result = await callApi('DELETE', `/api/working-groups/${slug}/interest`, memberContext);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        const data = result.data as { error?: string };
+        if (data?.error === 'No interest found') {
+          return `You haven't expressed interest in "${slug}". No action needed.`;
+        }
+        return `Could not find a council or committee with slug "${slug}".`;
+      }
+      return `Failed to withdraw interest: ${result.error}`;
+    }
+
+    const data = result.data as { message?: string };
+    return data.message || `You've withdrawn your interest. You won't be notified when this council launches.`;
+  });
+
+  handlers.set('get_my_council_interests', async () => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your council interests. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const result = await callApi('GET', '/api/me/working-groups/interests', memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch your council interests: ${result.error}`;
+    }
+
+    const interests = result.data as Array<{
+      committee_name: string;
+      slug: string;
+      interest_level: string;
+      created_at: string;
+    }>;
+
+    if (interests.length === 0) {
+      return "You haven't expressed interest in any councils yet. Use list_working_groups with type \"council\" to see available councils!";
+    }
+
+    let response = `## Your Council Interests\n\n`;
+    interests.forEach((i) => {
+      const level = i.interest_level === 'leader' ? '👑 Wants to Lead' : '👤 Participant';
+      const date = new Date(i.created_at).toLocaleDateString();
+      response += `- **${i.committee_name}** (${i.slug}) - ${level} - Signed up ${date}\n`;
+    });
+
+    response += `\nUse withdraw_council_interest to remove your interest from any council.`;
+
+    return response;
+  });
+
+  // ============================================
   // MEMBER PROFILE
   // ============================================
   handlers.set('get_my_profile', async () => {
@@ -1128,6 +1232,7 @@ export function createMemberToolHandlers(
       author_name: string;
       published_at: string;
       excerpt?: string;
+      external_url?: string;
     }>;
 
     if (perspectives.length === 0) {
@@ -1135,11 +1240,14 @@ export function createMemberToolHandlers(
     }
 
     let response = `## Recent Perspectives\n\n`;
+    response += `_View all at: https://agenticadvertising.org/latest/research_\n\n`;
     perspectives.forEach((p) => {
       response += `### ${p.title}\n`;
       response += `**By:** ${p.author_name} | **Published:** ${new Date(p.published_at).toLocaleDateString()}\n`;
       if (p.excerpt) response += `${p.excerpt}\n`;
-      response += `**Read more:** https://agenticadvertising.org/perspectives/${p.slug}\n\n`;
+      // Link content points to external URL, articles would be internal
+      const readMoreUrl = p.external_url || `https://agenticadvertising.org/latest/research`;
+      response += `**Read more:** ${readMoreUrl}\n\n`;
     });
 
     return response;
@@ -1184,6 +1292,549 @@ export function createMemberToolHandlers(
   });
 
   // ============================================
+  // UNIFIED CONTENT MANAGEMENT
+  // ============================================
+  handlers.set('propose_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to create content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const title = input.title as string;
+    const contentBody = input.content as string | undefined;
+    const contentType = (input.content_type as string) || 'article';
+    const externalUrl = input.external_url as string | undefined;
+    const excerpt = input.excerpt as string | undefined;
+    const category = input.category as string | undefined;
+    const inputCollection = input.collection as { type: string; committee_slug?: string } | undefined;
+    const coAuthorEmails = input.co_author_emails as string[] | undefined;
+
+    // Default to editorial collection for personal/perspectives content
+    const collection = inputCollection?.type === 'personal' || !inputCollection
+      ? { type: 'committee', committee_slug: 'editorial' }
+      : inputCollection;
+
+    // Validate requirements
+    if (contentType === 'article' && !contentBody) {
+      return 'Content is required for article type. Please provide the content in markdown format.';
+    }
+    if (contentType === 'link' && !externalUrl) {
+      return 'A URL is required for link type content. Please provide the external_url.';
+    }
+    if (collection.type === 'committee' && !collection.committee_slug) {
+      return 'committee_slug is required when targeting a committee collection.';
+    }
+
+    // Build request body
+    const body: Record<string, unknown> = {
+      title,
+      content: contentBody,
+      content_type: contentType,
+      external_url: externalUrl,
+      excerpt,
+      category,
+      collection,
+    };
+
+    // Handle co-authors by looking up user IDs from emails
+    if (coAuthorEmails && coAuthorEmails.length > 0) {
+      // For now, co-authors are added via a separate call after content creation
+      // We'll note them in the response
+    }
+
+    const result = await callApi('POST', '/api/content/propose', memberContext, body);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return `Committee "${collection.committee_slug}" not found. Use list_working_groups to see available committees.`;
+      }
+      return `Failed to create content: ${result.error}`;
+    }
+
+    const data = result.data as { id: string; slug: string; status: string; message: string };
+
+    let response = `## Content ${data.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
+    response += `**Title:** ${title}\n`;
+    response += `**Status:** ${data.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
+
+    if (collection.committee_slug === 'editorial') {
+      response += `**Collection:** Perspectives\n`;
+    } else {
+      response += `**Collection:** ${collection.committee_slug}\n`;
+    }
+
+    if (data.status === 'published') {
+      if (collection.committee_slug === 'editorial') {
+        response += `\n**View:** https://agenticadvertising.org/latest/research\n`;
+        response += `_Your perspective is now live in The Latest > Research section._\n`;
+      } else {
+        response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
+      }
+    } else {
+      if (collection.committee_slug === 'editorial') {
+        response += `\n_Your perspective has been submitted for review. Once approved, it will appear in The Latest > Research section._\n`;
+      } else {
+        response += `\n_Your content has been submitted for review. A committee lead will review it and you'll be notified when it's approved._\n`;
+      }
+    }
+
+    if (coAuthorEmails && coAuthorEmails.length > 0) {
+      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${data.id}`;
+    }
+
+    return response;
+  });
+
+  handlers.set('get_my_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see your content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const status = input.status as string | undefined;
+    const collection = input.collection as string | undefined;
+    const relationship = input.relationship as string | undefined;
+
+    // Build query string
+    const params = new URLSearchParams();
+    if (status && status !== 'all') params.set('status', status);
+    if (collection) params.set('collection', collection);
+    if (relationship) params.set('relationship', relationship);
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const result = await callApi('GET', `/api/me/content${queryString}`, memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch your content: ${result.error}`;
+    }
+
+    const data = result.data as {
+      items: Array<{
+        id: string;
+        slug: string;
+        title: string;
+        status: string;
+        content_type: string;
+        collection: { type: string; committee_name?: string; committee_slug?: string };
+        relationships: string[];
+        authors: Array<{ display_name: string }>;
+        published_at?: string;
+        created_at: string;
+      }>;
+    };
+
+    if (data.items.length === 0) {
+      let response = "You don't have any content yet.\n\n";
+      response += 'Use `propose_content` to create your first article or perspective!';
+      return response;
+    }
+
+    let response = `## Your Content\n\n`;
+
+    // Group by status
+    const byStatus: Record<string, typeof data.items> = {};
+    for (const item of data.items) {
+      if (!byStatus[item.status]) byStatus[item.status] = [];
+      byStatus[item.status].push(item);
+    }
+
+    // Display order: pending_review first, then published, then others
+    const statusOrder = ['pending_review', 'published', 'draft', 'rejected', 'archived'];
+    const statusEmoji: Record<string, string> = {
+      pending_review: '⏳',
+      published: '✅',
+      draft: '📝',
+      rejected: '❌',
+      archived: '📦',
+    };
+    const statusLabel: Record<string, string> = {
+      pending_review: 'Pending Review',
+      published: 'Published',
+      draft: 'Drafts',
+      rejected: 'Rejected',
+      archived: 'Archived',
+    };
+
+    for (const statusKey of statusOrder) {
+      const items = byStatus[statusKey];
+      if (!items || items.length === 0) continue;
+
+      response += `### ${statusEmoji[statusKey] || ''} ${statusLabel[statusKey] || statusKey} (${items.length})\n\n`;
+
+      for (const item of items) {
+        const collectionLabel = item.collection.type === 'committee'
+          ? `📁 ${item.collection.committee_name || item.collection.committee_slug}`
+          : '📁 Personal';
+        const roleLabels = item.relationships.map(r => {
+          if (r === 'author') return '✍️ Author';
+          if (r === 'proposer') return '📤 Proposer';
+          if (r === 'owner') return '👑 Owner';
+          return r;
+        }).join(' | ');
+
+        response += `**${item.title}**\n`;
+        response += `${collectionLabel} | ${roleLabels}\n`;
+        if (item.authors.length > 1) {
+          response += `_Co-authors: ${item.authors.map(a => a.display_name).join(', ')}_\n`;
+        }
+        if (item.published_at) {
+          response += `_Published: ${new Date(item.published_at).toLocaleDateString()}_\n`;
+        }
+        response += `\n`;
+      }
+    }
+
+    return response;
+  });
+
+  handlers.set('list_pending_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to see pending content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const committeeSlug = input.committee_slug as string | undefined;
+    const queryString = committeeSlug ? `?committee_slug=${encodeURIComponent(committeeSlug)}` : '';
+
+    const result = await callApi('GET', `/api/content/pending${queryString}`, memberContext);
+
+    if (!result.ok) {
+      return `Failed to fetch pending content: ${result.error}`;
+    }
+
+    const data = result.data as {
+      items: Array<{
+        id: string;
+        title: string;
+        slug: string;
+        excerpt?: string;
+        content_type: string;
+        proposer: { id: string; name: string };
+        proposed_at: string;
+        collection: { type: string; committee_name?: string; committee_slug?: string };
+        authors: Array<{ display_name: string }>;
+      }>;
+      summary: {
+        total: number;
+        by_collection: Record<string, number>;
+      };
+    };
+
+    if (data.items.length === 0) {
+      return '✅ No pending content to review! All caught up.';
+    }
+
+    let response = `## Pending Content for Review\n\n`;
+    response += `**Total:** ${data.summary.total} item(s)\n\n`;
+
+    // Show breakdown by collection
+    if (Object.keys(data.summary.by_collection).length > 1) {
+      response += `**By collection:**\n`;
+      for (const [col, count] of Object.entries(data.summary.by_collection)) {
+        const label = col === 'personal' ? 'Personal perspectives' : col;
+        response += `- ${label}: ${count}\n`;
+      }
+      response += `\n`;
+    }
+
+    for (const item of data.items) {
+      const collectionLabel = item.collection.type === 'committee'
+        ? `📁 ${item.collection.committee_name || item.collection.committee_slug}`
+        : '📁 Personal';
+      const proposedDate = new Date(item.proposed_at).toLocaleDateString();
+
+      response += `---\n\n`;
+      response += `### ${item.title}\n`;
+      response += `**ID:** \`${item.id}\`\n`;
+      response += `${collectionLabel} | Proposed by ${item.proposer.name} on ${proposedDate}\n`;
+      if (item.excerpt) {
+        response += `\n_${item.excerpt}_\n`;
+      }
+      response += `\n**Actions:** \`approve_content\` or \`reject_content\` with content_id: \`${item.id}\`\n\n`;
+    }
+
+    return response;
+  });
+
+  handlers.set('approve_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to approve content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const contentId = input.content_id as string;
+    const publishImmediately = input.publish_immediately !== false; // default true
+
+    const result = await callApi(
+      'POST',
+      `/api/content/${contentId}/approve`,
+      memberContext,
+      { publish_immediately: publishImmediately }
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return 'Permission denied. Only committee leads and admins can approve content.';
+      }
+      if (result.status === 404) {
+        return `Content not found with ID: ${contentId}`;
+      }
+      if (result.status === 400) {
+        return `This content is not pending review. It may have already been processed.`;
+      }
+      return `Failed to approve content: ${result.error}`;
+    }
+
+    const data = result.data as { status: string; message: string };
+
+    if (publishImmediately) {
+      return `✅ Content approved and published! The author will be notified.`;
+    } else {
+      return `✅ Content approved and saved as draft. The author can publish when ready.`;
+    }
+  });
+
+  handlers.set('reject_content', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to reject content. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const contentId = input.content_id as string;
+    const reason = input.reason as string;
+
+    if (!reason) {
+      return 'A reason is required when rejecting content. This helps the author understand and improve.';
+    }
+
+    const result = await callApi(
+      'POST',
+      `/api/content/${contentId}/reject`,
+      memberContext,
+      { reason }
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return 'Permission denied. Only committee leads and admins can reject content.';
+      }
+      if (result.status === 404) {
+        return `Content not found with ID: ${contentId}`;
+      }
+      if (result.status === 400) {
+        return `This content is not pending review. It may have already been processed.`;
+      }
+      return `Failed to reject content: ${result.error}`;
+    }
+
+    return `❌ Content rejected. The author will see the following reason:\n\n> ${reason}\n\nThey can revise and resubmit if appropriate.`;
+  });
+
+  // ============================================
+  // COMMITTEE DOCUMENTS
+  // ============================================
+  handlers.set('add_committee_document', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to add documents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.committee_slug as string;
+    const title = input.title as string;
+    const documentUrl = input.document_url as string;
+    const description = input.description as string | undefined;
+    const isFeatured = input.is_featured as boolean | undefined;
+
+    // Validate URL is a Google domain
+    try {
+      const url = new URL(documentUrl);
+      const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
+      if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
+        return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
+      }
+    } catch {
+      return 'Invalid URL format. Please provide a valid Google Docs URL.';
+    }
+
+    const result = await callApi(
+      'POST',
+      `/api/working-groups/${slug}/documents`,
+      memberContext,
+      {
+        title,
+        document_url: documentUrl,
+        description,
+        is_featured: isFeatured || false,
+        document_type: documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc',
+      }
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return `You're not a leader of the "${slug}" committee. Only committee leaders can add documents.`;
+      }
+      if (result.status === 404) {
+        return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+      }
+      return `Failed to add document: ${result.error}`;
+    }
+
+    let response = `✅ Document added to "${slug}"!\n\n`;
+    response += `**Title:** ${title}\n`;
+    response += `**URL:** ${documentUrl}\n\n`;
+    response += `The document will be automatically indexed and summarized within the hour. `;
+    response += `You can view it at https://agenticadvertising.org/working-groups/${slug}`;
+
+    return response;
+  });
+
+  handlers.set('list_committee_documents', async (input) => {
+    const slug = input.committee_slug as string;
+
+    const result = await callApi('GET', `/api/working-groups/${slug}/documents`, memberContext);
+
+    if (!result.ok) {
+      if (result.status === 404) {
+        return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+      }
+      return `Failed to list documents: ${result.error}`;
+    }
+
+    const data = result.data as { documents?: Array<{
+      id: string;
+      title: string;
+      document_url: string;
+      description?: string;
+      document_summary?: string;
+      index_status: string;
+      is_featured: boolean;
+      last_modified_at?: string;
+    }> } | undefined;
+    const documents = data?.documents || [];
+
+    if (documents.length === 0) {
+      return `No documents are being tracked for the "${slug}" committee yet.`;
+    }
+
+    let response = `## Documents for "${slug}"\n\n`;
+    for (const doc of documents) {
+      response += `### ${doc.title}${doc.is_featured ? ' ⭐' : ''}\n`;
+      response += `**ID:** \`${doc.id}\`\n`;
+      response += `**URL:** ${doc.document_url}\n`;
+      response += `**Status:** ${doc.index_status}\n`;
+      if (doc.document_summary) {
+        response += `**Summary:** ${doc.document_summary}\n`;
+      }
+      if (doc.last_modified_at) {
+        const date = new Date(doc.last_modified_at);
+        response += `**Last updated:** ${date.toLocaleDateString()}\n`;
+      }
+      response += '\n';
+    }
+
+    return response;
+  });
+
+  handlers.set('update_committee_document', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to update documents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.committee_slug as string;
+    const documentId = input.document_id as string;
+    const title = input.title as string | undefined;
+    const description = input.description as string | undefined;
+    const documentUrl = input.document_url as string | undefined;
+    const isFeatured = input.is_featured as boolean | undefined;
+
+    // Validate UUID format before API call
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(documentId)) {
+      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+    }
+
+    // Validate URL if provided
+    if (documentUrl) {
+      try {
+        const url = new URL(documentUrl);
+        const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
+        if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
+          return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
+        }
+      } catch {
+        return 'Invalid URL format. Please provide a valid Google Docs URL.';
+      }
+    }
+
+    // Build update payload with only provided fields
+    const updateData: Record<string, unknown> = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (documentUrl !== undefined) {
+      updateData.document_url = documentUrl;
+      updateData.document_type = documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc';
+    }
+    if (isFeatured !== undefined) updateData.is_featured = isFeatured;
+
+    if (Object.keys(updateData).length === 0) {
+      return 'No fields to update. Please provide at least one field to change (title, description, document_url, or is_featured).';
+    }
+
+    const result = await callApi(
+      'PUT',
+      `/api/working-groups/${slug}/documents/${documentId}`,
+      memberContext,
+      updateData
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return `You're not a leader of the "${slug}" committee. Only committee leaders can update documents.`;
+      }
+      if (result.status === 404) {
+        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
+      }
+      return `Failed to update document: ${result.error}`;
+    }
+
+    const data = result.data as { document?: { title: string } } | undefined;
+    const docTitle = data?.document?.title || title || 'Document';
+
+    let response = `✅ Document updated!\n\n`;
+    response += `**${docTitle}** has been updated in "${slug}".\n\n`;
+    response += `View it at https://agenticadvertising.org/working-groups/${slug}`;
+
+    return response;
+  });
+
+  handlers.set('delete_committee_document', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to delete documents. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const slug = input.committee_slug as string;
+    const documentId = input.document_id as string;
+
+    // Validate UUID format before API call
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(documentId)) {
+      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+    }
+
+    const result = await callApi(
+      'DELETE',
+      `/api/working-groups/${slug}/documents/${documentId}`,
+      memberContext
+    );
+
+    if (!result.ok) {
+      if (result.status === 403) {
+        return `You're not a leader of the "${slug}" committee. Only committee leaders can delete documents.`;
+      }
+      if (result.status === 404) {
+        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
+      }
+      return `Failed to delete document: ${result.error}`;
+    }
+
+    return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
+  });
+
+  // ============================================
   // ACCOUNT LINKING
   // ============================================
   handlers.set('get_account_link', async () => {
@@ -1225,74 +1876,106 @@ export function createMemberToolHandlers(
   // ============================================
   // AGENT TESTING & COMPLIANCE
   // ============================================
-  handlers.set('check_agent_health', async (input) => {
+  handlers.set('probe_adcp_agent', async (input) => {
     const agentUrl = input.agent_url as string;
 
-    // Use the validate-cards endpoint which checks agent card + health
-    const result = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
+    // Step 1: Health check (always do this first)
+    const healthResult = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
       agent_urls: [agentUrl],
     });
 
-    if (!result.ok) {
-      return `Failed to check agent health: ${result.error}`;
+    if (!healthResult.ok) {
+      return `## Agent Probe Failed\n\nUnable to probe agent at ${agentUrl}.\n\n**Error:** ${healthResult.error || 'Unknown error occurred while checking agent health.'}`;
     }
 
-    const data = result.data as {
+    const healthData = healthResult.data as {
       agent_cards: Array<{
         agent_url: string;
         valid: boolean;
-        errors: string[];
+        errors?: string[];
         status_code?: number;
         response_time_ms?: number;
-        card_data?: {
-          name?: string;
-          description?: string;
-          protocol?: string;
-        };
+        card_data?: { name?: string; description?: string; protocol?: string };
         card_endpoint?: string;
       }>;
     };
 
-    if (!data.agent_cards || data.agent_cards.length === 0) {
-      return `No response received for agent ${agentUrl}`;
-    }
+    const card = healthData?.agent_cards?.[0];
+    const isHealthy = card?.valid === true;
 
-    const card = data.agent_cards[0];
-    let response = `## Agent Health Check: ${agentUrl}\n\n`;
+    // Step 2: Try capability discovery (non-blocking - show health status regardless of outcome)
+    const encodedUrl = encodeURIComponent(agentUrl);
+    const capResult = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
+    const capData = capResult.data as {
+      agents: Array<{
+        name: string;
+        url: string;
+        type: string;
+        protocol: string;
+        description?: string;
+        capabilities?: {
+          tools_count: number;
+          tools: Array<{ name: string; description?: string }>;
+          standard_operations?: string[];
+        };
+      }>;
+    };
+    const agent = capData?.agents?.[0];
 
-    if (card.valid) {
-      response += `**Status:** ✅ Online and responding\n`;
+    // Step 3: Format unified response
+    let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+
+    // Health section
+    response += `### Connectivity\n`;
+    if (isHealthy) {
+      response += `**Status:** ✅ Online\n`;
       if (card.response_time_ms) {
         response += `**Response Time:** ${card.response_time_ms}ms\n`;
-      }
-      if (card.card_data?.name) {
-        response += `**Name:** ${card.card_data.name}\n`;
-      }
-      if (card.card_data?.description) {
-        response += `**Description:** ${card.card_data.description}\n`;
       }
       if (card.card_data?.protocol) {
         response += `**Protocol:** ${card.card_data.protocol}\n`;
       }
-      if (card.card_endpoint) {
-        response += `**Card Endpoint:** ${card.card_endpoint}\n`;
-      }
-      response += `\n✅ This agent is properly configured and ready to use.`;
     } else {
-      response += `**Status:** ❌ Not responding or invalid\n`;
-      if (card.status_code) {
+      response += `**Status:** ❌ Unreachable\n`;
+      if ((card?.errors?.length ?? 0) > 0) {
+        response += `**Error:** ${card?.errors?.[0]}\n`;
+      } else if (card?.status_code) {
         response += `**HTTP Status:** ${card.status_code}\n`;
       }
-      if (card.errors.length > 0) {
-        response += `\n### Errors\n`;
-        card.errors.forEach((err) => {
-          response += `- ${err}\n`;
-        });
+    }
+
+    // Capabilities section
+    response += `\n### Capabilities\n`;
+    if (agent?.capabilities?.tools && agent.capabilities.tools.length > 0) {
+      if (!isHealthy) {
+        response += `> ⚠️ **Warning:** Agent is currently unreachable. Showing cached capabilities.\n\n`;
       }
-      response += `\n⚠️ This agent needs to be fixed before it can be used. Common issues:\n`;
-      response += `- Agent endpoint not reachable\n`;
-      response += `- Missing or invalid agent card at /.well-known/agent.json\n`;
-      response += `- HTTPS not configured\n`;
+      response += `**Tools Available:** ${agent.capabilities.tools_count}\n\n`;
+      agent.capabilities.tools.forEach((tool) => {
+        response += `- **${tool.name}**`;
+        if (tool.description) {
+          response += `: ${tool.description}`;
+        }
+        response += `\n`;
+      });
+
+      if (agent.capabilities.standard_operations && agent.capabilities.standard_operations.length > 0) {
+        response += `\n**Standard Operations:** ${agent.capabilities.standard_operations.join(', ')}\n`;
+      }
+    } else if (!isHealthy) {
+      response += `No cached capabilities available. Agent must be online to discover tools.\n`;
+    } else {
+      response += `Agent is online but capabilities could not be discovered. It may not be in the public registry.\n`;
+    }
+
+    // Summary
+    response += `\n---\n`;
+    if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
+      response += `✅ Agent is healthy and ready to use. Try \`test_adcp_agent\` to run a full workflow test.`;
+    } else if (isHealthy) {
+      response += `✅ Agent is responding but not in the registry. You can still use \`call_adcp_agent\` to execute tasks directly.`;
+    } else {
+      response += `❌ Agent is not responding. Check the URL and ensure the agent is running.`;
     }
 
     return response;
@@ -1340,81 +2023,6 @@ export function createMemberToolHandlers(
       response += `1. The publisher needs to add this agent to their adagents.json file\n`;
       response += `2. The file should be at: https://${data.domain}/.well-known/adagents.json\n`;
       response += `3. Use validate_adagents to check the publisher's current configuration\n`;
-    }
-
-    return response;
-  });
-
-  handlers.set('get_agent_capabilities', async (input) => {
-    const agentUrl = input.agent_url as string;
-
-    // URL encode the agent URL for the path
-    const encodedUrl = encodeURIComponent(agentUrl);
-    const result = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
-
-    if (!result.ok) {
-      return `Failed to get agent capabilities: ${result.error}`;
-    }
-
-    const data = result.data as {
-      agents: Array<{
-        name: string;
-        url: string;
-        type: string;
-        protocol: string;
-        description?: string;
-        capabilities?: {
-          tools_count: number;
-          tools: Array<{
-            name: string;
-            description?: string;
-          }>;
-          standard_operations?: string[];
-        };
-      }>;
-    };
-
-    if (!data.agents || data.agents.length === 0) {
-      // Try direct capabilities endpoint if not in registry
-      const directResult = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
-        agent_urls: [agentUrl],
-      });
-
-      if (!directResult.ok) {
-        return `Agent not found in registry and couldn't fetch directly. The agent may not be publicly registered. Try check_agent_health first to verify the agent is online.`;
-      }
-
-      return `Agent ${agentUrl} is not in the public registry. Use check_agent_health to verify it's online, then check its documentation for available capabilities.`;
-    }
-
-    const agent = data.agents[0];
-    let response = `## Agent Capabilities: ${agent.name || agentUrl}\n\n`;
-    response += `**URL:** ${agent.url}\n`;
-    response += `**Type:** ${agent.type}\n`;
-    response += `**Protocol:** ${agent.protocol}\n`;
-    if (agent.description) {
-      response += `**Description:** ${agent.description}\n`;
-    }
-
-    if (agent.capabilities) {
-      response += `\n### Available Tools (${agent.capabilities.tools_count})\n`;
-      if (agent.capabilities.tools && agent.capabilities.tools.length > 0) {
-        agent.capabilities.tools.forEach((tool) => {
-          response += `\n**${tool.name}**\n`;
-          if (tool.description) {
-            response += `${tool.description}\n`;
-          }
-        });
-      }
-
-      if (agent.capabilities.standard_operations && agent.capabilities.standard_operations.length > 0) {
-        response += `\n### Standard AdCP Operations\n`;
-        agent.capabilities.standard_operations.forEach((op) => {
-          response += `- ${op}\n`;
-        });
-      }
-    } else {
-      response += `\n_Capabilities not available. The agent may need to be contacted directly to discover its tools._\n`;
     }
 
     return response;
@@ -1565,6 +2173,87 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // ADCP AGENT PROXY
+  // ============================================
+  handlers.set('call_adcp_agent', async (input) => {
+    const agentUrl = input.agent_url as string;
+    const task = input.task as string;
+    const params = (input.params as Record<string, unknown>) || {};
+    let authToken = input.auth_token as string | undefined;
+
+    // Validate URL to prevent SSRF attacks
+    try {
+      const url = new URL(agentUrl);
+
+      // Must be HTTPS
+      if (url.protocol !== 'https:') {
+        return '**Error:** Agent URL must use HTTPS protocol.';
+      }
+
+      // Block internal/private networks
+      const hostname = url.hostname.toLowerCase();
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname.endsWith('.local') ||
+        hostname.endsWith('.internal') ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('192.168.') ||
+        hostname.match(/^172\.(1[6-9]|2\d|3[01])\./) ||
+        hostname === '169.254.169.254' // AWS metadata
+      ) {
+        return '**Error:** Agent URL cannot point to internal or private networks.';
+      }
+    } catch {
+      return '**Error:** Invalid agent URL format.';
+    }
+
+    // Look up saved auth token if not provided
+    if (!authToken && memberContext?.organization?.workos_organization_id) {
+      const savedContext = await agentContextDb.getByOrgAndUrl(
+        memberContext.organization.workos_organization_id,
+        agentUrl
+      );
+      if (savedContext?.id) {
+        authToken = (await agentContextDb.getAuthToken(savedContext.id)) ?? undefined;
+      }
+    }
+
+    logger.info({ agentUrl, task, hasAuth: !!authToken }, 'Addie: call_adcp_agent');
+
+    try {
+      const { AdCPClient } = await import('@adcp/client');
+      const multiClient = new AdCPClient([
+        {
+          id: 'target',
+          name: 'target',
+          agent_uri: agentUrl,
+          protocol: 'mcp',
+          ...(authToken && { auth_token: authToken }),
+        },
+      ]);
+      const client = multiClient.agent('target');
+
+      const result = await client.executeTask(task, params);
+
+      if (!result.success) {
+        // Return errors in a structured way
+        return `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
+      }
+
+      // Format successful response
+      let output = `**Task:** \`${task}\`\n**Status:** Success\n\n`;
+      output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+
+      return output;
+    } catch (error) {
+      logger.error({ error, agentUrl, task }, 'Addie: call_adcp_agent failed');
+      return `**Task failed:** \`${task}\`\n\n**Error:** ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

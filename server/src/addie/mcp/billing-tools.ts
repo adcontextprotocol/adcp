@@ -16,8 +16,10 @@ import {
   getPriceByLookupKey,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
+import { OrganizationDatabase } from '../../db/organization-db.js';
 
 const logger = createLogger('addie-billing-tools');
+const orgDb = new OrganizationDatabase();
 
 /**
  * Tool definitions for billing operations
@@ -69,7 +71,9 @@ Returns a URL the user can click to complete payment.`,
     name: 'send_invoice',
     description: `Send an invoice for a membership product to a customer.
 Use this when the customer needs to pay via invoice/PO instead of credit card.
-Requires full billing information including address.`,
+Requires full billing information including address.
+If the organization has a discount on file (from grant_discount), it will be automatically applied.
+You can also pass an explicit coupon_id to override.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -101,6 +105,10 @@ Requires full billing information including address.`,
             country: { type: 'string', description: 'Country code (e.g., US)' },
           },
           required: ['line1', 'city', 'state', 'postal_code', 'country'],
+        },
+        coupon_id: {
+          type: 'string',
+          description: 'Explicit Stripe coupon ID to apply (optional - org discount is used automatically if available)',
         },
       },
       required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
@@ -264,9 +272,41 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
       postal_code: string;
       country: string;
     };
+    const explicitCouponId = input.coupon_id as string | undefined;
+
+    // Try to find organization by name to get stored discount
+    let effectiveCouponId = explicitCouponId;
+    let orgDiscount: string | undefined;
+    let workosOrgId: string | undefined;
+
+    try {
+      const orgs = await orgDb.searchOrganizations({ query: companyName, limit: 1 });
+      if (orgs.length > 0) {
+        const org = await orgDb.getOrganization(orgs[0].workos_organization_id);
+        if (org) {
+          workosOrgId = org.workos_organization_id;
+          // Use org's stored coupon if no explicit coupon provided
+          if (!explicitCouponId && org.stripe_coupon_id) {
+            effectiveCouponId = org.stripe_coupon_id;
+            orgDiscount = org.discount_percent
+              ? `${org.discount_percent}% off`
+              : org.discount_amount_cents
+                ? `$${org.discount_amount_cents / 100} off`
+                : undefined;
+            logger.info(
+              { orgId: org.workos_organization_id, orgName: org.name, couponId: effectiveCouponId, discount: orgDiscount },
+              'Addie: Using organization stored discount for invoice'
+            );
+          }
+        }
+      }
+    } catch (orgLookupError) {
+      // Non-fatal - continue without org lookup
+      logger.debug({ error: orgLookupError, companyName }, 'Could not look up organization for discount');
+    }
 
     logger.info(
-      { lookupKey, contactEmail, companyName },
+      { lookupKey, contactEmail, companyName, hasCoupon: !!effectiveCouponId, usingOrgDiscount: !!orgDiscount },
       'Addie: Sending invoice'
     );
 
@@ -277,6 +317,8 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
         contactName,
         contactEmail,
         billingAddress,
+        couponId: effectiveCouponId,
+        workosOrganizationId: workosOrgId,
       });
 
       if (!result) {
@@ -286,11 +328,26 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
         });
       }
 
+      // Build response message
+      let message = `Invoice sent to ${contactEmail}. They will receive an email with payment instructions.`;
+      if (result.discountWarning) {
+        message += `\n\n⚠️ WARNING: ${result.discountWarning}`;
+      } else if (result.discountApplied) {
+        if (orgDiscount) {
+          message += `\n\n✅ Organization discount applied: ${orgDiscount}`;
+        } else {
+          message += `\n\n✅ Discount applied successfully.`;
+        }
+      }
+
       return JSON.stringify({
         success: true,
         invoice_id: result.invoiceId,
         invoice_url: result.invoiceUrl,
-        message: `Invoice sent to ${contactEmail}. They will receive an email with payment instructions.`,
+        discount_applied: result.discountApplied,
+        discount_description: orgDiscount,
+        discount_warning: result.discountWarning,
+        message,
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error sending invoice');

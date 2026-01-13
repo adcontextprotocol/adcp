@@ -419,6 +419,104 @@
       background: var(--color-gray-50);
       border-color: var(--color-gray-300);
     }
+
+    /* Enrichment Panel */
+    .enrichment-panel {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-xs);
+      padding: var(--space-5);
+      margin-bottom: var(--space-5);
+    }
+    .enrichment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+    .enrichment-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .enrichment-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+    }
+    .enrichment-stat-card {
+      background: var(--color-gray-50);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4);
+    }
+    .enrichment-stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-1);
+    }
+    .enrichment-stat-value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .enrichment-stat-detail {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .enrichment-actions {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--color-brand-hover);
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .enrichment-result {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+    }
+    .enrichment-result.success {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .enrichment-result.error {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+    .enrichment-not-configured {
+      color: var(--color-text-muted);
+      font-style: italic;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+    .checkbox-label input {
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -435,6 +533,20 @@
     </div>
 
     <p class="subtitle" id="viewDescription">Accounts needing action: overdue tasks, open invoices, high engagement unowned</p>
+
+    <!-- Enrichment Panel (collapsed by default) -->
+    <div class="enrichment-panel" id="enrichmentPanel" style="display: none;">
+      <div class="enrichment-header">
+        <span class="enrichment-title">Company Research (Lusha)</span>
+        <button class="btn btn-secondary" onclick="toggleEnrichmentPanel()">Hide</button>
+      </div>
+      <div id="enrichmentContent">
+        <div class="loading">Loading enrichment stats...</div>
+      </div>
+    </div>
+    <div style="margin-bottom: var(--space-4);">
+      <button class="btn btn-secondary" id="showEnrichmentBtn" onclick="toggleEnrichmentPanel()">Show Research Status</button>
+    </div>
 
     <!-- View Tabs -->
     <div class="view-tabs">
@@ -465,6 +577,9 @@
       <button class="view-tab" data-view="members">
         Members <span class="badge" id="count-members">-</span>
       </button>
+      <button class="view-tab" data-view="most_users">
+        Most Users
+      </button>
       <button class="view-tab" data-view="all">
         All
       </button>
@@ -487,6 +602,7 @@
           <tr>
             <th>Account</th>
             <th>Status</th>
+            <th>Users</th>
             <th style="width: 60px;">🔥</th>
             <th>Interest</th>
             <th>Last Activity</th>
@@ -495,7 +611,7 @@
           </tr>
         </thead>
         <tbody id="accountsTable">
-          <tr><td colspan="7" class="loading">Loading accounts...</td></tr>
+          <tr><td colspan="8" class="loading">Loading accounts...</td></tr>
         </tbody>
       </table>
     </div>
@@ -641,13 +757,13 @@
         renderAccounts();
       } catch (e) {
         console.error('Error loading accounts:', e);
-        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="7" class="empty-state">Error loading accounts</td></tr>';
+        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="empty-state">Error loading accounts</td></tr>';
       }
     }
 
     function renderAccounts() {
       if (accounts.length === 0) {
-        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="7" class="empty-state">No accounts found</td></tr>';
+        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="empty-state">No accounts found</td></tr>';
         return;
       }
 
@@ -696,12 +812,17 @@
           extraColumnHtml = '<td>-</td>';
         }
 
+        // User count (members + slack-only users)
+        const userCount = account.user_count || account.member_count || 0;
+        const userCountHtml = userCount > 0 ? userCount : '<span style="color: var(--color-text-muted);">0</span>';
+
         html += `<tr>
           <td>
             <a href="/admin/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>
             ${account.domain ? `<div class="account-domain">${escapeHtml(account.domain)}</div>` : ''}
           </td>
           <td><span class="status-badge status-${statusClass}">${statusLabel}</span></td>
+          <td>${userCountHtml}</td>
           <td class="engagement-fires">${firesDisplay}</td>
           <td>${interestHtml || '-'}</td>
           <td>${activityHtml}</td>
@@ -963,6 +1084,118 @@
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d ago`;
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    // Enrichment Panel Functions
+    let enrichmentPanelVisible = false;
+    let enrichmentStats = null;
+
+    function toggleEnrichmentPanel() {
+      enrichmentPanelVisible = !enrichmentPanelVisible;
+      document.getElementById('enrichmentPanel').style.display = enrichmentPanelVisible ? 'block' : 'none';
+      document.getElementById('showEnrichmentBtn').style.display = enrichmentPanelVisible ? 'none' : 'inline-block';
+
+      if (enrichmentPanelVisible && !enrichmentStats) {
+        loadEnrichmentStats();
+      }
+    }
+
+    async function loadEnrichmentStats() {
+      const content = document.getElementById('enrichmentContent');
+      content.innerHTML = '<div class="loading">Loading enrichment stats...</div>';
+
+      try {
+        const response = await fetch('/api/admin/enrichment/stats');
+        if (!response.ok) throw new Error('Failed to load stats');
+        enrichmentStats = await response.json();
+        renderEnrichmentPanel();
+      } catch (e) {
+        console.error('Error loading enrichment stats:', e);
+        content.innerHTML = '<div class="enrichment-not-configured">Unable to load enrichment statistics</div>';
+      }
+    }
+
+    function renderEnrichmentPanel() {
+      const content = document.getElementById('enrichmentContent');
+
+      if (!enrichmentStats.configured) {
+        content.innerHTML = '<div class="enrichment-not-configured">Lusha API not configured. Set LUSHA_API_KEY to enable company research.</div>';
+        return;
+      }
+
+      const totalNeedsEnrichment = enrichmentStats.accounts_with_users.needs_enrichment + enrichmentStats.empty_prospects.needs_enrichment;
+
+      content.innerHTML = `
+        <div class="enrichment-stats">
+          <div class="enrichment-stat-card">
+            <div class="enrichment-stat-label">Accounts with Users</div>
+            <div class="enrichment-stat-value">${enrichmentStats.accounts_with_users.enriched} / ${enrichmentStats.accounts_with_users.total}</div>
+            <div class="enrichment-stat-detail">${enrichmentStats.accounts_with_users.needs_enrichment} need research</div>
+          </div>
+          <div class="enrichment-stat-card">
+            <div class="enrichment-stat-label">Empty Prospects</div>
+            <div class="enrichment-stat-value">${enrichmentStats.empty_prospects.enriched} / ${enrichmentStats.empty_prospects.total}</div>
+            <div class="enrichment-stat-detail">${enrichmentStats.empty_prospects.needs_enrichment} need research</div>
+          </div>
+          <div class="enrichment-stat-card">
+            <div class="enrichment-stat-label">Total Needing Research</div>
+            <div class="enrichment-stat-value">${totalNeedsEnrichment}</div>
+            <div class="enrichment-stat-detail">Accounts with users prioritized</div>
+          </div>
+        </div>
+        <div class="enrichment-actions">
+          <button class="btn-primary" id="runEnrichmentBtn" onclick="runEnrichment()" ${totalNeedsEnrichment === 0 ? 'disabled' : ''}>
+            Run Research (up to 50)
+          </button>
+          <label class="checkbox-label">
+            <input type="checkbox" id="includeProspectsCheckbox" checked>
+            Include empty prospects
+          </label>
+        </div>
+        <div id="enrichmentResult"></div>
+      `;
+    }
+
+    async function runEnrichment() {
+      const btn = document.getElementById('runEnrichmentBtn');
+      const resultDiv = document.getElementById('enrichmentResult');
+      const includeProspects = document.getElementById('includeProspectsCheckbox').checked;
+
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      resultDiv.innerHTML = '';
+
+      try {
+        const response = await fetch('/api/admin/enrichment/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            limit: 50,
+            includeEmptyProspects: includeProspects
+          })
+        });
+
+        if (!response.ok) throw new Error('Failed to run enrichment');
+        const result = await response.json();
+
+        resultDiv.innerHTML = `
+          <div class="enrichment-result success">
+            Processed ${result.total} accounts: ${result.enriched} enriched, ${result.skipped} not found, ${result.failed} failed
+          </div>
+        `;
+
+        // Reload stats after enrichment
+        await loadEnrichmentStats();
+      } catch (e) {
+        console.error('Error running enrichment:', e);
+        resultDiv.innerHTML = `
+          <div class="enrichment-result error">
+            Error running enrichment: ${e.message}
+          </div>
+        `;
+        btn.disabled = false;
+        btn.textContent = 'Run Research (up to 50)';
+      }
     }
 
     document.addEventListener('DOMContentLoaded', init);

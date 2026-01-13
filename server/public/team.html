@@ -440,9 +440,12 @@
       </div>
 
       <div class="card" id="domainUsersCard" style="display: none;">
-        <h2>Potential Members</h2>
+        <h2>
+          <span>Potential Members</span>
+          <button id="addAllBtn" class="btn btn-primary" onclick="addAllDomainUsers()" style="display: none;">+ Add All</button>
+        </h2>
         <div class="info-box">
-          <p>These people are in the AgenticAdvertising.org Slack workspace with your verified domain but haven't joined your organization yet.</p>
+          <p>These people are in the AgenticAdvertising.org Slack workspace with your verified domain but haven't joined your organization yet. Click "Add" to add them directly to your team.</p>
         </div>
         <div id="domainUsersContent">
           <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">Loading...</div>
@@ -1084,10 +1087,14 @@
       }
     }
 
+    // Store domain users for batch add
+    let domainUsersList = [];
+
     // Load domain users not in team (potential members)
     async function loadDomainUsers(orgId) {
       const card = document.getElementById('domainUsersCard');
       const content = document.getElementById('domainUsersContent');
+      const addAllBtn = document.getElementById('addAllBtn');
 
       try {
         const response = await fetch(`/api/organizations/${orgId}/domain-users`, { credentials: 'include' });
@@ -1097,13 +1104,23 @@
         }
 
         const data = await response.json();
+        domainUsersList = data.users || [];
 
-        if (data.users && data.users.length > 0) {
+        if (domainUsersList.length > 0) {
           card.style.display = 'block';
+          // Show "Add All" button if more than one user
+          addAllBtn.style.display = domainUsersList.length > 1 ? 'inline-block' : 'none';
 
           let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
-          data.users.forEach(user => {
+          domainUsersList.forEach(user => {
             const displayName = user.slack_real_name || user.slack_display_name || user.slack_email || 'Unknown User';
+            const hasAccount = !!user.workos_user_id;
+            const buttonText = hasAccount ? 'Add' : 'Invite';
+            const buttonClass = hasAccount ? 'btn-primary' : 'btn-secondary';
+            const accountBadge = hasAccount
+              ? '<span style="display: inline-block; padding: 2px 6px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-size: 10px; margin-left: 8px;">Has Account</span>'
+              : '';
+
             html += `
               <div style="
                 display: flex;
@@ -1112,17 +1129,17 @@
                 padding: 12px;
                 background: var(--color-gray-50);
                 border-radius: var(--radius-md);
-              ">
+              " id="domain-user-${escapeHtml(user.slack_email).replace(/[@.]/g, '-')}">
                 <div>
                   <div style="font-weight: 500; color: var(--color-text-heading);">
-                    ${escapeHtml(displayName)}
+                    ${escapeHtml(displayName)}${accountBadge}
                   </div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">
                     ${escapeHtml(user.slack_email)}
                   </div>
                 </div>
-                <button class="btn btn-secondary btn-sm" data-invite-email="${escapeHtml(user.slack_email || '')}">
-                  Invite
+                <button class="btn ${buttonClass} btn-sm" data-add-email="${escapeHtml(user.slack_email || '')}">
+                  ${buttonText}
                 </button>
               </div>
             `;
@@ -1130,21 +1147,146 @@
           html += '</div>';
           content.innerHTML = html;
 
-          // Add event delegation for invite buttons
-          content.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-invite-email]');
-            if (btn) {
-              openInviteModal();
-              document.getElementById('inviteEmail').value = btn.dataset.inviteEmail;
+          // Add event delegation for add buttons (use onclick handler to avoid listener accumulation)
+          content.onclick = async (e) => {
+            const btn = e.target.closest('[data-add-email]');
+            if (btn && !btn.disabled) {
+              await addDomainUser(btn.dataset.addEmail, btn);
             }
-          });
+          };
         } else {
           card.style.display = 'none';
+          addAllBtn.style.display = 'none';
         }
       } catch (error) {
         console.error('Error loading domain users:', error);
         card.style.display = 'none';
       }
+    }
+
+    // Add a single domain user
+    async function addDomainUser(email, buttonEl) {
+      if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Adding...';
+      }
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/domain-users/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, role: 'member' }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          alert(data.message || 'Failed to add user');
+          if (buttonEl) {
+            buttonEl.disabled = false;
+            buttonEl.textContent = 'Add';
+          }
+          return false;
+        }
+
+        // Remove the row from the UI
+        const rowId = `domain-user-${email.replace(/[@.]/g, '-')}`;
+        const row = document.getElementById(rowId);
+        if (row) {
+          row.style.opacity = '0.5';
+          row.style.transition = 'opacity 0.3s';
+          setTimeout(() => {
+            row.remove();
+            // Check if there are any users left
+            const content = document.getElementById('domainUsersContent');
+            if (!content.querySelector('[data-add-email]')) {
+              document.getElementById('domainUsersCard').style.display = 'none';
+            }
+            // Update Add All button visibility
+            const remainingButtons = content.querySelectorAll('[data-add-email]');
+            document.getElementById('addAllBtn').style.display = remainingButtons.length > 1 ? 'inline-block' : 'none';
+          }, 300);
+        }
+
+        // Show appropriate message
+        if (data.action === 'invited') {
+          alert(`${email} has not signed up yet. An invitation has been sent.`);
+        }
+
+        // Refresh the members list
+        loadTeamMembers();
+        return true;
+      } catch (error) {
+        console.error('Error adding domain user:', error);
+        alert('Failed to add user. Please try again.');
+        if (buttonEl) {
+          buttonEl.disabled = false;
+          buttonEl.textContent = 'Add';
+        }
+        return false;
+      }
+    }
+
+    // Add all domain users at once
+    async function addAllDomainUsers() {
+      const addAllBtn = document.getElementById('addAllBtn');
+      addAllBtn.disabled = true;
+      addAllBtn.textContent = 'Adding...';
+
+      const buttons = document.querySelectorAll('#domainUsersContent [data-add-email]');
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const btn of buttons) {
+        const email = btn.dataset.addEmail;
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+
+        try {
+          const response = await fetch(`/api/organizations/${currentOrg}/domain-users/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, role: 'member' }),
+          });
+
+          if (response.ok) {
+            successCount++;
+            const rowId = `domain-user-${email.replace(/[@.]/g, '-')}`;
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+          } else {
+            failCount++;
+            btn.disabled = false;
+            btn.textContent = 'Add';
+          }
+        } catch {
+          failCount++;
+          btn.disabled = false;
+          btn.textContent = 'Add';
+        }
+      }
+
+      addAllBtn.disabled = false;
+      addAllBtn.textContent = '+ Add All';
+
+      // Update visibility
+      const content = document.getElementById('domainUsersContent');
+      if (!content.querySelector('[data-add-email]')) {
+        document.getElementById('domainUsersCard').style.display = 'none';
+      }
+      const remainingButtons = content.querySelectorAll('[data-add-email]');
+      addAllBtn.style.display = remainingButtons.length > 1 ? 'inline-block' : 'none';
+
+      // Show summary
+      if (successCount > 0 || failCount > 0) {
+        let message = '';
+        if (successCount > 0) message += `${successCount} user(s) added successfully. `;
+        if (failCount > 0) message += `${failCount} user(s) could not be added.`;
+        alert(message.trim());
+      }
+
+      // Refresh the members list
+      loadTeamMembers();
     }
 
     // Domain Verification

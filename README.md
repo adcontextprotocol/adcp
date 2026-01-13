@@ -1,6 +1,6 @@
 # AdCP - Open Standard for Advertising Automation
 
-**Unified advertising automation protocol built on Model Context Protocol (MCP)**
+**Open standard for advertising automation over MCP and A2A protocols**
 
 [![GitHub stars](https://img.shields.io/github/stars/adcontextprotocol/adcp?style=social)](https://github.com/adcontextprotocol/adcp)
 [![Documentation](https://img.shields.io/badge/docs-adcontextprotocol.org-blue)](https://adcontextprotocol.org)
@@ -15,7 +15,7 @@ Visit [adcontextprotocol.org](https://adcontextprotocol.org) for full documentat
 
 ## What is AdCP?
 
-Ad Context Protocol (AdCP) is an **open standard for advertising automation** that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP provides:
+Ad Context Protocol (AdCP) is an **open standard for advertising automation** that enables AI assistants to interact with advertising platforms through natural language. AdCP defines domain-specific tasks and schemas that work over MCP and A2A as transports:
 
 - 🔌 **Unified Advertising API** - Single interface for all advertising platforms
 - 🤖 **AI-Powered Automation** - Built for natural language campaign management

@@ -68,7 +68,7 @@ function validateRssContent(content: string, contentType: string): { valid: bool
 }
 
 interface FeedItem {
-  guid?: string;
+  guid?: string | { _?: string; $?: Record<string, string> };
   link?: string;
   title?: string;
   pubDate?: string;
@@ -98,11 +98,8 @@ function isRssFetchable(feedUrl: string | null): feedUrl is string {
 async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
   // Skip email-only feeds (those with non-HTTP URLs like email://)
   if (!isRssFetchable(feed.feed_url)) {
-    logger.debug({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Skipping non-HTTP feed');
     return [];
   }
-
-  logger.debug({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Fetching RSS feed');
 
   // Pre-fetch content to validate it's actually RSS/XML before parsing
   // This prevents cryptic XML parsing errors when sites return HTML
@@ -131,7 +128,6 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
   const parsed = await parser.parseString(content);
 
   if (!parsed.items || parsed.items.length === 0) {
-    logger.warn({ feedId: feed.id }, 'Feed returned no items');
     return [];
   }
 
@@ -144,7 +140,18 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
     }
 
     // Generate a stable GUID
-    const guid = item.guid || item.link;
+    // Handle RSS guids that may be objects with _ property (text content) from XML parsing
+    // Some feeds have guid with only attributes ($) but no text content (_)
+    const rawGuid = item.guid;
+    let guid: string;
+    if (typeof rawGuid === 'string') {
+      guid = rawGuid;
+    } else if (typeof rawGuid === 'object' && rawGuid !== null && '_' in rawGuid && rawGuid._) {
+      guid = rawGuid._;
+    } else {
+      // Fall back to link if guid is missing or empty object
+      guid = item.link;
+    }
 
     // Parse publication date
     let publishedAt: Date | undefined;
@@ -179,7 +186,6 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
     });
   }
 
-  logger.debug({ feedId: feed.id, articlesFound: articles.length }, 'Parsed RSS feed');
   return articles;
 }
 
@@ -194,11 +200,8 @@ export async function processFeedsToFetch(): Promise<{
   const feeds = await getFeedsToFetch();
 
   if (feeds.length === 0) {
-    logger.debug('No feeds need fetching');
     return { feedsProcessed: 0, newPerspectives: 0, errors: 0 };
   }
-
-  logger.debug({ feedCount: feeds.length }, 'Processing RSS feeds');
 
   let totalNewPerspectives = 0;
   let errorCount = 0;
@@ -208,10 +211,8 @@ export async function processFeedsToFetch(): Promise<{
       const articles = await fetchFeed(feed);
 
       if (articles.length > 0) {
-        // Create perspectives from RSS articles
         const created = await createRssPerspectivesBatch(articles);
         totalNewPerspectives += created;
-        logger.debug({ feedId: feed.id, created }, 'Created perspectives from RSS');
       }
 
       await updateFeedStatus(feed.id, true);
@@ -226,10 +227,13 @@ export async function processFeedsToFetch(): Promise<{
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
-  logger.info(
-    { feedsProcessed: feeds.length, newPerspectives: totalNewPerspectives, errors: errorCount },
-    'Completed RSS feed processing'
-  );
+  // Only log when there's something notable
+  if (totalNewPerspectives > 0 || errorCount > 0) {
+    logger.info(
+      { feedsProcessed: feeds.length, newPerspectives: totalNewPerspectives, errors: errorCount },
+      'RSS feed processing complete'
+    );
+  }
 
   return {
     feedsProcessed: feeds.length,

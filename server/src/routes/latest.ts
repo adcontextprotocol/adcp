@@ -1,8 +1,10 @@
 /**
  * Latest content routes module
  *
- * Public routes for the "The Latest" section that displays curated content
- * from notification channels as website sections.
+ * Public routes for the "The Latest" section:
+ * - /latest/research - Member perspectives from the perspectives table
+ * - /latest/industry-news - Curated RSS content from addie_knowledge
+ * - Other sections - Curated content from addie_knowledge
  */
 
 import { Router, type Request, type Response } from "express";
@@ -18,9 +20,27 @@ import { query } from "../db/client.js";
 
 const logger = createLogger("latest-routes");
 
+// Research section pulls from perspectives table, not addie_knowledge
+const RESEARCH_SECTION_SLUG = "research";
+
+/**
+ * Get the count of published research perspectives from the Editorial working group.
+ */
+async function getResearchArticleCount(): Promise<number> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count
+     FROM perspectives p
+     JOIN working_groups wg ON p.working_group_id = wg.id
+     WHERE p.status = 'published'
+       AND wg.slug = 'editorial'
+       AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))`
+  );
+  return parseInt(result.rows[0]?.count || "0", 10);
+}
+
 // Article type for API responses
 interface LatestArticle {
-  id: number;
+  id: number | string;
   title: string;
   source_url: string;
   summary: string | null;
@@ -28,8 +48,24 @@ interface LatestArticle {
   quality_score: number | null;
   relevance_tags: string[];
   feed_name: string | null;
+  author_name?: string | null;
+  author_title?: string | null;
   published_at: string | null;
   created_at: string;
+}
+
+// Perspective type for research section
+interface PerspectiveArticle {
+  id: string;
+  title: string;
+  source_url: string;
+  summary: string | null;
+  author_name: string | null;
+  author_title: string | null;
+  feed_name: string | null;
+  published_at: string | null;
+  created_at: string;
+  tags: string[];
 }
 
 // Section type for API responses
@@ -42,7 +78,6 @@ interface LatestSection {
 
 /**
  * Decode HTML entities in article text fields.
- * This handles cases where RSS feed data contains encoded entities.
  */
 function decodeArticle<T extends LatestArticle>(article: T): T {
   return {
@@ -98,24 +133,32 @@ export function createLatestRouter(): {
       // Get article counts for each channel
       const sections: LatestSection[] = await Promise.all(
         channels.map(async (channel) => {
-          const countResult = await query<{ count: string }>(
-            `SELECT COUNT(*) as count
-             FROM addie_knowledge k
-             WHERE k.fetch_status = 'success'
-               AND k.publication_status != 'rejected'
-               AND (
-                 -- Check human override first, then AI routing
-                 $1 = ANY(COALESCE(k.human_routing_override, k.notification_channel_ids))
-               )
-               AND COALESCE(k.human_quality_override, k.quality_score) >= COALESCE(($2::jsonb->>'min_quality')::int, 0)`,
-            [channel.slack_channel_id, JSON.stringify(channel.fallback_rules)]
-          );
+          let articleCount: number;
+
+          // Research section pulls from perspectives table
+          if (channel.website_slug === RESEARCH_SECTION_SLUG) {
+            articleCount = await getResearchArticleCount();
+          } else {
+            // Other sections pull from addie_knowledge
+            const countResult = await query<{ count: string }>(
+              `SELECT COUNT(*) as count
+               FROM addie_knowledge k
+               WHERE k.fetch_status = 'success'
+                 AND k.publication_status != 'rejected'
+                 AND (
+                   $1 = ANY(COALESCE(k.human_routing_override, k.notification_channel_ids))
+                 )
+                 AND COALESCE(k.human_quality_override, k.quality_score) >= COALESCE(($2::jsonb->>'min_quality')::int, 0)`,
+              [channel.slack_channel_id, JSON.stringify(channel.fallback_rules)]
+            );
+            articleCount = parseInt(countResult.rows[0]?.count || "0", 10);
+          }
 
           return {
             slug: channel.website_slug!,
             name: channel.name,
             description: channel.description,
-            article_count: parseInt(countResult.rows[0]?.count || "0", 10),
+            article_count: articleCount,
           };
         })
       );
@@ -140,24 +183,32 @@ export function createLatestRouter(): {
         return res.status(404).json({ error: "Section not found" });
       }
 
-      // Get article count
-      const countResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count
-         FROM addie_knowledge k
-         WHERE k.fetch_status = 'success'
-           AND k.publication_status != 'rejected'
-           AND (
-             $1 = ANY(COALESCE(k.human_routing_override, k.notification_channel_ids))
-           )
-           AND COALESCE(k.human_quality_override, k.quality_score) >= COALESCE(($2::jsonb->>'min_quality')::int, 0)`,
-        [channel.slack_channel_id, JSON.stringify(channel.fallback_rules)]
-      );
+      let articleCount: number;
+
+      // Research section pulls from perspectives table
+      if (slug === RESEARCH_SECTION_SLUG) {
+        articleCount = await getResearchArticleCount();
+      } else {
+        // Other sections pull from addie_knowledge
+        const countResult = await query<{ count: string }>(
+          `SELECT COUNT(*) as count
+           FROM addie_knowledge k
+           WHERE k.fetch_status = 'success'
+             AND k.publication_status != 'rejected'
+             AND (
+               $1 = ANY(COALESCE(k.human_routing_override, k.notification_channel_ids))
+             )
+             AND COALESCE(k.human_quality_override, k.quality_score) >= COALESCE(($2::jsonb->>'min_quality')::int, 0)`,
+          [channel.slack_channel_id, JSON.stringify(channel.fallback_rules)]
+        );
+        articleCount = parseInt(countResult.rows[0]?.count || "0", 10);
+      }
 
       const section: LatestSection = {
         slug: channel.website_slug!,
         name: channel.name,
         description: channel.description,
-        article_count: parseInt(countResult.rows[0]?.count || "0", 10),
+        article_count: articleCount,
       };
 
       res.json({ section });
@@ -170,6 +221,9 @@ export function createLatestRouter(): {
   /**
    * GET /api/latest/sections/:slug/articles
    * Get paginated articles for a section
+   *
+   * - research: Member perspectives from perspectives table
+   * - other sections: Curated content from addie_knowledge
    */
   apiRouter.get("/latest/sections/:slug/articles", async (req: Request, res: Response) => {
     try {
@@ -183,7 +237,60 @@ export function createLatestRouter(): {
         return res.status(404).json({ error: "Section not found" });
       }
 
-      // Get articles routed to this channel
+      // Research section: published perspectives from the Editorial working group
+      if (slug === RESEARCH_SECTION_SLUG) {
+        const result = await query<PerspectiveArticle>(
+          `SELECT
+             p.id::text as id,
+             p.title,
+             COALESCE(p.external_url, '/perspectives/' || p.slug) as source_url,
+             p.excerpt as summary,
+             p.author_name,
+             p.author_title,
+             p.external_site_name as feed_name,
+             p.published_at,
+             p.created_at,
+             p.tags
+           FROM perspectives p
+           JOIN working_groups wg ON p.working_group_id = wg.id
+           WHERE p.status = 'published'
+             AND wg.slug = 'editorial'
+             AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+           ORDER BY p.published_at DESC NULLS LAST
+           LIMIT $1 OFFSET $2`,
+          [limit, offset]
+        );
+
+        const total = await getResearchArticleCount();
+
+        // Map to LatestArticle format for consistent API response
+        const articles = result.rows.map((p) => ({
+          id: p.id,
+          title: decodeHtmlEntities(p.title),
+          source_url: p.source_url,
+          summary: p.summary ? decodeHtmlEntities(p.summary) : null,
+          addie_notes: null,
+          quality_score: null,
+          relevance_tags: p.tags || [],
+          feed_name: p.feed_name,
+          author_name: p.author_name,
+          author_title: p.author_title,
+          published_at: p.published_at,
+          created_at: p.created_at,
+        }));
+
+        return res.json({
+          articles,
+          pagination: {
+            total,
+            limit,
+            offset,
+            has_more: offset + result.rows.length < total,
+          },
+        });
+      }
+
+      // Other sections: curated content from addie_knowledge
       const result = await query<LatestArticle & { human_quality_override: number | null }>(
         `SELECT
            k.id,
@@ -212,7 +319,6 @@ export function createLatestRouter(): {
         [channel.slack_channel_id, JSON.stringify(channel.fallback_rules), limit, offset]
       );
 
-      // Get total count for pagination
       const countResult = await query<{ count: string }>(
         `SELECT COUNT(*) as count
          FROM addie_knowledge k
