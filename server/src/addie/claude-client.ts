@@ -8,12 +8,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
-import { ADDIE_SYSTEM_PROMPT, buildMessageTurns } from './prompts.js';
+import { ADDIE_SYSTEM_PROMPT, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
+import { formatTokenCount, getConversationTokenLimit } from '../utils/token-limiter.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -319,16 +320,31 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (skip for eval mode)
     const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
+    const maxIterations = options?.maxIterations ?? 10;
+    const effectiveModel = options?.modelOverride ?? this.model;
+
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
-    const messageTurns = buildMessageTurns(userMessage, threadContext);
-    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+    // Token-aware: automatically trims older messages if conversation exceeds limits
+    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
+      model: effectiveModel,
+    });
+
+    if (messageTurnsResult.wasTrimmed) {
+      logger.info(
+        {
+          messagesRemoved: messageTurnsResult.messagesRemoved,
+          estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(effectiveModel)),
+        },
+        'Addie: Trimmed conversation history to fit context limit'
+      );
+    }
+
+    const messages: Anthropic.MessageParam[] = messageTurnsResult.messages.map(turn => ({
       role: turn.role,
       content: turn.content,
     }));
-
-    const maxIterations = options?.maxIterations ?? 10;
-    const effectiveModel = options?.modelOverride ?? this.model;
     let iteration = 0;
 
     // Log if using precision model
@@ -777,8 +793,23 @@ export class AddieClaudeClient {
 
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
-    const messageTurns = buildMessageTurns(userMessage, threadContext);
-    const messages: Anthropic.MessageParam[] = messageTurns.map(turn => ({
+    // Token-aware: automatically trims older messages if conversation exceeds limits
+    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
+      model: this.model,
+    });
+
+    if (messageTurnsResult.wasTrimmed) {
+      logger.info(
+        {
+          messagesRemoved: messageTurnsResult.messagesRemoved,
+          estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(this.model)),
+        },
+        'Addie Stream: Trimmed conversation history to fit context limit'
+      );
+    }
+
+    const messages: Anthropic.MessageParam[] = messageTurnsResult.messages.map(turn => ({
       role: turn.role,
       content: turn.content,
     }));

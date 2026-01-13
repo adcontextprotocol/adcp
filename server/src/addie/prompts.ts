@@ -6,6 +6,12 @@ import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
 import { getCachedActiveGoals } from './insights-cache.js';
+import {
+  trimConversationHistory,
+  getConversationTokenLimit,
+  estimateTokens,
+  type MessageTurn,
+} from '../utils/token-limiter.js';
 
 const logger = createLogger('addie-prompts');
 
@@ -606,12 +612,32 @@ export interface ThreadContextEntry {
   text: string;
 }
 
+// Re-export MessageTurn from token-limiter for backwards compatibility
+export type { MessageTurn };
+
 /**
- * Message turn for Claude API
+ * Options for building message turns
  */
-export interface MessageTurn {
-  role: 'user' | 'assistant';
-  content: string;
+export interface BuildMessageTurnsOptions {
+  /** Maximum number of messages to include (default: 10, 0 = unlimited) */
+  maxMessages?: number;
+  /** Token limit for conversation history (default: calculated from model limit) */
+  tokenLimit?: number;
+  /** Model name for determining context limits */
+  model?: string;
+}
+
+/**
+ * Result of building message turns with metadata
+ */
+export interface BuildMessageTurnsResult {
+  messages: MessageTurn[];
+  /** Estimated token count of messages */
+  estimatedTokens: number;
+  /** Number of messages removed due to limits */
+  messagesRemoved: number;
+  /** Whether messages were trimmed to fit limits */
+  wasTrimmed: boolean;
 }
 
 /**
@@ -620,20 +646,41 @@ export interface MessageTurn {
  * This converts conversation history into alternating user/assistant messages
  * which Claude understands as actual conversation context (not just informational text).
  *
+ * Token-aware: Automatically trims older messages if conversation exceeds context limits.
+ *
  * @param userMessage - The current user message
  * @param threadContext - Previous messages in the thread
+ * @param options - Optional configuration for message limits
  * @returns Array of message turns suitable for Claude API
  */
 export function buildMessageTurns(
   userMessage: string,
-  threadContext?: ThreadContextEntry[]
+  threadContext?: ThreadContextEntry[],
+  options?: BuildMessageTurnsOptions
 ): MessageTurn[] {
-  const messages: MessageTurn[] = [];
+  const result = buildMessageTurnsWithMetadata(userMessage, threadContext, options);
+  return result.messages;
+}
+
+/**
+ * Build message turns with full metadata about trimming and token estimates.
+ * Use this when you need visibility into whether conversation was trimmed.
+ */
+export function buildMessageTurnsWithMetadata(
+  userMessage: string,
+  threadContext?: ThreadContextEntry[],
+  options?: BuildMessageTurnsOptions
+): BuildMessageTurnsResult {
+  const maxMessages = options?.maxMessages ?? 10;
+  const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model);
+
+  let messages: MessageTurn[] = [];
 
   if (threadContext && threadContext.length > 0) {
-    // Take last N messages to avoid context overflow
-    const MAX_CONTEXT_MESSAGES = 10;
-    const recentHistory = threadContext.slice(-MAX_CONTEXT_MESSAGES);
+    // First pass: apply message count limit if specified
+    let recentHistory = maxMessages > 0
+      ? threadContext.slice(-maxMessages)
+      : threadContext;
 
     // Convert each entry to proper message turn
     // The 'user' field is 'User' or 'Addie' from bolt-app.ts
@@ -664,8 +711,7 @@ export function buildMessageTurns(
       }
     }
 
-    messages.length = 0;
-    messages.push(...mergedMessages);
+    messages = mergedMessages;
   }
 
   // Add the current user message
@@ -676,5 +722,14 @@ export function buildMessageTurns(
     messages.push({ role: 'user', content: userMessage });
   }
 
-  return messages;
+  // Second pass: apply token limit trimming
+  // This removes oldest messages until we fit within the token budget
+  const trimResult = trimConversationHistory(messages, tokenLimit);
+
+  return {
+    messages: trimResult.messages,
+    estimatedTokens: trimResult.estimatedTokens,
+    messagesRemoved: trimResult.messagesRemoved,
+    wasTrimmed: trimResult.wasTrimmed,
+  };
 }

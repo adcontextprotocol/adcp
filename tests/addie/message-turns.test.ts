@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { buildMessageTurns, type ThreadContextEntry, type MessageTurn } from '../../server/src/addie/prompts.js';
+import { buildMessageTurns, buildMessageTurnsWithMetadata, type ThreadContextEntry, type MessageTurn } from '../../server/src/addie/prompts.js';
 
 describe('buildMessageTurns', () => {
   it('should return single user message when no thread context', () => {
@@ -128,5 +128,75 @@ describe('buildMessageTurns', () => {
     expect(result).toEqual([
       { role: 'user', content: 'Hello\n\nFollow up\n\nCurrent' },
     ]);
+  });
+});
+
+describe('buildMessageTurnsWithMetadata', () => {
+  it('should return metadata about message building', () => {
+    const threadContext: ThreadContextEntry[] = [
+      { user: 'User', text: 'Hello' },
+      { user: 'Addie', text: 'Hi!' },
+    ];
+
+    const result = buildMessageTurnsWithMetadata('Current', threadContext);
+
+    expect(result.messages).toHaveLength(3);
+    expect(result.estimatedTokens).toBeGreaterThan(0);
+    expect(result.messagesRemoved).toBe(0);
+    expect(result.wasTrimmed).toBe(false);
+  });
+
+  it('should respect maxMessages option', () => {
+    const threadContext: ThreadContextEntry[] = [];
+    for (let i = 1; i <= 20; i++) {
+      threadContext.push({ user: i % 2 === 1 ? 'User' : 'Addie', text: `Message ${i}` });
+    }
+
+    const result = buildMessageTurnsWithMetadata('Current', threadContext, { maxMessages: 5 });
+
+    // Should only include last 5 messages from history plus current
+    // Last 5 messages are: 16, 17, 18, 19, 20
+    // After merging and adding placeholder if needed, count may vary slightly
+    // But the first history message should be from the limited set (16+)
+    const firstHistoryMsg = result.messages.find(m => m.content.includes('Message'));
+    expect(firstHistoryMsg?.content).toContain('Message 16');
+    // Ensure older messages are not included
+    expect(result.messages.some(m => m.content.includes('Message 1\n') || m.content === 'Message 1')).toBe(false);
+    expect(result.messages.some(m => m.content.includes('Message 15'))).toBe(false);
+  });
+
+  it('should trim messages when tokenLimit is exceeded', () => {
+    // Create messages that exceed a small token limit
+    const threadContext: ThreadContextEntry[] = [
+      { user: 'User', text: 'A'.repeat(1000) },
+      { user: 'Addie', text: 'B'.repeat(1000) },
+      { user: 'User', text: 'C'.repeat(100) },
+    ];
+
+    // Very small limit - should trim older messages
+    const result = buildMessageTurnsWithMetadata('D', threadContext, { tokenLimit: 100 });
+
+    expect(result.wasTrimmed).toBe(true);
+    expect(result.messagesRemoved).toBeGreaterThan(0);
+    // Most recent messages should be preserved
+    expect(result.messages.length).toBeLessThan(4);
+  });
+
+  it('should disable message count limit when maxMessages is 0', () => {
+    const threadContext: ThreadContextEntry[] = [];
+    for (let i = 1; i <= 15; i++) {
+      threadContext.push({ user: i % 2 === 1 ? 'User' : 'Addie', text: `Message ${i}` });
+    }
+
+    // Use a very large token limit and no message limit
+    const result = buildMessageTurnsWithMetadata('Current', threadContext, {
+      maxMessages: 0,
+      tokenLimit: 1000000,
+    });
+
+    // Should include all 15 messages (merged as needed) plus current
+    const messageContents = result.messages.map(m => m.content).join(' ');
+    expect(messageContents).toContain('Message 1');
+    expect(messageContents).toContain('Message 15');
   });
 });
