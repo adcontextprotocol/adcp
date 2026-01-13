@@ -2671,11 +2671,15 @@
     }
 
     function copyThreadLink(threadId, buttonEl) {
-      const url = `${window.location.origin}/admin/addie/?thread=${threadId}`;
-      navigator.clipboard.writeText(url);
-      const original = buttonEl.textContent;
-      buttonEl.textContent = 'Copied!';
-      setTimeout(() => buttonEl.textContent = original, 1500);
+      const url = `${window.location.origin}/admin/addie/?thread=${encodeURIComponent(threadId)}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const original = buttonEl.textContent;
+        buttonEl.textContent = 'Copied!';
+        setTimeout(() => buttonEl.textContent = original, 1500);
+      }).catch(() => {
+        buttonEl.textContent = 'Failed';
+        setTimeout(() => buttonEl.textContent = 'Copy Link', 1500);
+      });
     }
 
     function getSlackPermalink(externalId) {
@@ -2683,6 +2687,10 @@
       if (!externalId || !externalId.includes(':')) return null;
       const [channelId, threadTs] = externalId.split(':');
       if (!channelId || !threadTs) return null;
+      // Validate channelId matches expected Slack channel ID pattern
+      if (!/^[A-Z][A-Z0-9]{8,}$/.test(channelId)) return null;
+      // Validate threadTs is a valid timestamp format (digits.digits)
+      if (!/^\d+\.\d+$/.test(threadTs)) return null;
       // Convert thread_ts to Slack's permalink format (remove the dot)
       const tsForLink = threadTs.replace('.', '');
       // Using the hardcoded workspace - this is the AAO Slack workspace
@@ -3169,7 +3177,7 @@
             <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
               <code style="font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-bg-muted); padding: 2px 6px; border-radius: var(--radius-sm); cursor: pointer;" data-thread-id="${escapeHtml(data.thread_id)}" onclick="copyThreadId(this)" title="Click to copy thread ID">${escapeHtml(data.thread_id)}</code>
               <button class="btn btn-small btn-secondary" onclick="copyThreadLink('${escapeHtml(data.thread_id)}', this)" title="Copy shareable link to this thread">Copy Link</button>
-              ${data.channel === 'slack' && data.external_id ? `<a href="${getSlackPermalink(data.external_id)}" target="_blank" rel="noopener" class="btn btn-small btn-secondary" title="Open in Slack">Open in Slack</a>` : ''}
+              ${(() => { const slackLink = data.channel === 'slack' && data.external_id ? getSlackPermalink(data.external_id) : null; return slackLink ? `<a href="${escapeHtml(slackLink)}" target="_blank" rel="noopener" class="btn btn-small btn-secondary" title="Open in Slack">Open in Slack</a>` : ''; })()}
               ${!data.reviewed ? `<button class="btn btn-small btn-primary" onclick="markThreadReviewed('${data.thread_id}')">Mark Reviewed</button>` : ''}
               ${!data.flagged ? `<button class="btn btn-small btn-secondary" onclick="flagThread('${data.thread_id}')">Flag</button>` : `<button class="btn btn-small btn-secondary" onclick="unflagThread('${data.thread_id}')">Unflag</button>`}
             </div>
