@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.3/signals/get-signals-request.json",
+  "title": "Get Signals Request",
+  "description": "Request parameters for discovering signals based on description",
+  "type": "object",
+  "properties": {
+    "signal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired signals"
+    },
+    "deliver_to": {
+      "type": "object",
+      "description": "Deployment targets where signals need to be activated",
+      "properties": {
+        "deployments": {
+          "type": "array",
+          "description": "List of deployment targets (DSPs, sales agents, etc.). If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
+          "items": {
+            "$ref": "/schemas/2.5.3/core/destination.json"
+          },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "Countries where signals will be used (ISO codes)",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "required": [
+        "deployments",
+        "countries"
+      ],
+      "additionalProperties": true
+    },
+    "filters": {
+      "$ref": "/schemas/2.5.3/core/signal-filters.json"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "minimum": 1
+    },
+    "context": {
+      "$ref": "/schemas/2.5.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.5.3/core/ext.json"
+    }
+  },
+  "required": [
+    "signal_spec",
+    "deliver_to"
+  ],
+  "additionalProperties": true
+}
