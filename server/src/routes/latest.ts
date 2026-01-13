@@ -29,9 +29,10 @@ const RESEARCH_SECTION_SLUG = "research";
 async function getResearchArticleCount(): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*) as count
-     FROM perspectives
-     WHERE status = 'published'
-       AND working_group_id IS NULL`
+     FROM perspectives p
+     WHERE p.status = 'published'
+       AND p.working_group_id IS NULL
+       AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))`
   );
   return parseInt(result.rows[0]?.count || "0", 10);
 }
@@ -235,7 +236,7 @@ export function createLatestRouter(): {
         return res.status(404).json({ error: "Section not found" });
       }
 
-      // Research section: member perspectives
+      // Research section: member perspectives (excluding RSS/email content)
       if (slug === RESEARCH_SECTION_SLUG) {
         const result = await query<PerspectiveArticle>(
           `SELECT
@@ -252,6 +253,7 @@ export function createLatestRouter(): {
            FROM perspectives p
            WHERE p.status = 'published'
              AND p.working_group_id IS NULL
+             AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
            ORDER BY p.published_at DESC NULLS LAST
            LIMIT $1 OFFSET $2`,
           [limit, offset]
