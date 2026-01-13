@@ -1,5 +1,5 @@
 ---
-"adcp": patch
+"adcontextprotocol": patch
 ---
 
 Add missing fields to package request schemas for consistency with core/package.json.
