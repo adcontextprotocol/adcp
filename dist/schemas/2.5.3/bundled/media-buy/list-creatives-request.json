@@ -1,0 +1,294 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.3/bundled/media-buy/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "title": "Creative Filters",
+      "description": "Filter criteria for querying creative assets from the centralized library",
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Filter by creative format type (e.g., video, audio, display)"
+        },
+        "formats": {
+          "type": "array",
+          "description": "Filter by multiple creative format types",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "title": "Creative Status",
+          "description": "Filter by creative approval status",
+          "type": "string",
+          "enum": [
+            "processing",
+            "approved",
+            "rejected",
+            "pending_review"
+          ],
+          "enumDescriptions": {
+            "processing": "Creative is being processed or transcoded",
+            "approved": "Creative has been approved and is ready for delivery",
+            "rejected": "Creative has been rejected due to policy or technical issues",
+            "pending_review": "Creative is under review"
+          }
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Filter by multiple creative statuses",
+          "items": {
+            "title": "Creative Status",
+            "description": "Status of a creative asset",
+            "type": "string",
+            "enum": [
+              "processing",
+              "approved",
+              "rejected",
+              "pending_review"
+            ],
+            "enumDescriptions": {
+              "processing": "Creative is being processed or transcoded",
+              "approved": "Creative has been approved and is ready for delivery",
+              "rejected": "Creative has been rejected due to policy or technical issues",
+              "pending_review": "Creative is under review"
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "description": "Filter by creative tags (all tags must match)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags_any": {
+          "type": "array",
+          "description": "Filter by creative tags (any tag must match)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name_contains": {
+          "type": "string",
+          "description": "Filter by creative names containing this text (case-insensitive)"
+        },
+        "creative_ids": {
+          "type": "array",
+          "description": "Filter by specific creative IDs",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100
+        },
+        "created_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created after this date (ISO 8601)"
+        },
+        "created_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created before this date (ISO 8601)"
+        },
+        "updated_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated after this date (ISO 8601)"
+        },
+        "updated_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated before this date (ISO 8601)"
+        },
+        "assigned_to_package": {
+          "type": "string",
+          "description": "Filter creatives assigned to this specific package"
+        },
+        "assigned_to_packages": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these packages",
+          "items": {
+            "type": "string"
+          }
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these media buys",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buyer_refs": {
+          "type": "array",
+          "description": "Filter creatives assigned to media buys with any of these buyer references",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unassigned": {
+          "type": "boolean",
+          "description": "Filter for unassigned creatives when true, assigned creatives when false"
+        },
+        "has_performance_data": {
+          "type": "boolean",
+          "description": "Filter creatives that have performance data when true"
+        }
+      },
+      "additionalProperties": true
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "title": "Creative Sort Field",
+          "description": "Field to sort by",
+          "type": "string",
+          "enum": [
+            "created_date",
+            "updated_date",
+            "name",
+            "status",
+            "assignment_count",
+            "performance_score"
+          ],
+          "default": "created_date"
+        },
+        "direction": {
+          "title": "Sort Direction",
+          "description": "Sort direction",
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "default": "desc"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination parameters",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of creatives to return"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Number of creatives to skip"
+        }
+      },
+      "additionalProperties": true
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_performance": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include aggregated performance metrics in response"
+    },
+    "include_sub_assets": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include sub-assets (for carousel/native formats) in response"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields)",
+      "items": {
+        "type": "string",
+        "enum": [
+          "creative_id",
+          "name",
+          "format",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "performance",
+          "sub_assets"
+        ]
+      }
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all approved video creatives",
+      "data": {
+        "filters": {
+          "format": "video",
+          "status": "approved"
+        }
+      }
+    },
+    {
+      "description": "Search for Nike creatives with performance data",
+      "data": {
+        "filters": {
+          "name_contains": "nike",
+          "has_performance_data": true
+        },
+        "include_performance": true
+      }
+    },
+    {
+      "description": "Get unassigned creatives for assignment",
+      "data": {
+        "filters": {
+          "unassigned": true
+        },
+        "sort": {
+          "field": "created_date",
+          "direction": "desc"
+        },
+        "pagination": {
+          "limit": 20
+        }
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
+        "include_assignments": false
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-01-13T22:53:43.829Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
