@@ -314,9 +314,9 @@
           <thead>
             <tr>
               <th>Company Type</th>
-              <th>Total Orgs</th>
-              <th>Paying</th>
-              <th>Subscribed</th>
+              <th>Members</th>
+              <th>Engaged</th>
+              <th>Registered</th>
               <th>ARR</th>
             </tr>
           </thead>
@@ -331,9 +331,9 @@
           <thead>
             <tr>
               <th>Revenue Tier</th>
-              <th>Total Orgs</th>
-              <th>Paying</th>
-              <th>Subscribed</th>
+              <th>Members</th>
+              <th>Engaged</th>
+              <th>Registered</th>
               <th>ARR</th>
             </tr>
           </thead>
@@ -350,9 +350,9 @@
               <tr>
                 <th>Company Type</th>
                 <th>Revenue Tier</th>
-                <th>Total Orgs</th>
-                <th>Paying</th>
-                <th>Subscribed</th>
+                <th>Members</th>
+                <th>Engaged</th>
+                <th>Registered</th>
                 <th>ARR</th>
               </tr>
             </thead>
@@ -508,41 +508,41 @@
           const rows = data.by_company_type.map(row => `
             <tr>
               <td>${escapeHtml(row.label)}</td>
-              <td class="text-right">${row.total_orgs}</td>
-              <td class="text-right">${row.paying_members}</td>
-              <td class="text-right">${row.subscribed}</td>
+              <td class="text-right">${row.members}</td>
+              <td class="text-right">${row.engaged}</td>
+              <td class="text-right">${row.registered}</td>
               <td class="text-right">${formatCurrency(row.arr_dollars)}</td>
             </tr>
           `).join('');
 
           // Add totals row (excluding individuals which are separate)
           const totals = data.by_company_type.reduce((acc, row) => ({
-            total_orgs: acc.total_orgs + row.total_orgs,
-            paying_members: acc.paying_members + row.paying_members,
-            subscribed: acc.subscribed + row.subscribed,
+            members: acc.members + row.members,
+            engaged: acc.engaged + row.engaged,
+            registered: acc.registered + row.registered,
             arr_dollars: acc.arr_dollars + row.arr_dollars,
-          }), { total_orgs: 0, paying_members: 0, subscribed: 0, arr_dollars: 0 });
+          }), { members: 0, engaged: 0, registered: 0, arr_dollars: 0 });
 
           companyTypeTable.innerHTML = rows + `
             <tr class="totals-row">
               <td>Subtotal (Companies)</td>
-              <td class="text-right">${totals.total_orgs}</td>
-              <td class="text-right">${totals.paying_members}</td>
-              <td class="text-right">${totals.subscribed}</td>
+              <td class="text-right">${totals.members}</td>
+              <td class="text-right">${totals.engaged}</td>
+              <td class="text-right">${totals.registered}</td>
               <td class="text-right">${formatCurrency(totals.arr_dollars)}</td>
             </tr>
             <tr>
               <td>Individuals</td>
-              <td class="text-right">${data.individuals.total_orgs}</td>
-              <td class="text-right">${data.individuals.paying_members}</td>
-              <td class="text-right">${data.individuals.subscribed}</td>
+              <td class="text-right">${data.individuals.members}</td>
+              <td class="text-right">${data.individuals.engaged}</td>
+              <td class="text-right">${data.individuals.registered}</td>
               <td class="text-right">${formatCurrency(data.individuals.arr_dollars)}</td>
             </tr>
             <tr class="totals-row">
               <td><strong>Total</strong></td>
-              <td class="text-right"><strong>${data.totals.total_orgs}</strong></td>
-              <td class="text-right"><strong>${data.totals.paying_members}</strong></td>
-              <td class="text-right"><strong>${data.totals.subscribed}</strong></td>
+              <td class="text-right"><strong>${data.totals.members}</strong></td>
+              <td class="text-right"><strong>${data.totals.engaged}</strong></td>
+              <td class="text-right"><strong>${data.totals.registered}</strong></td>
               <td class="text-right"><strong>${formatCurrency(data.totals.arr_dollars)}</strong></td>
             </tr>
           `;
@@ -556,9 +556,9 @@
           revenueTierTable.innerHTML = data.by_revenue_tier.map(row => `
             <tr>
               <td>${escapeHtml(row.label)}</td>
-              <td class="text-right">${row.total_orgs}</td>
-              <td class="text-right">${row.paying_members}</td>
-              <td class="text-right">${row.subscribed}</td>
+              <td class="text-right">${row.members}</td>
+              <td class="text-right">${row.engaged}</td>
+              <td class="text-right">${row.registered}</td>
               <td class="text-right">${formatCurrency(row.arr_dollars)}</td>
             </tr>
           `).join('');
@@ -573,9 +573,9 @@
             <tr>
               <td>${escapeHtml(row.company_type_label)}</td>
               <td>${escapeHtml(row.revenue_tier_label)}</td>
-              <td class="text-right">${row.total_orgs}</td>
-              <td class="text-right">${row.paying_members}</td>
-              <td class="text-right">${row.subscribed}</td>
+              <td class="text-right">${row.members}</td>
+              <td class="text-right">${row.engaged}</td>
+              <td class="text-right">${row.registered}</td>
               <td class="text-right">${formatCurrency(row.arr_dollars)}</td>
             </tr>
           `).join('');

@@ -16,6 +16,13 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
 import { MemberDatabase } from "../../db/member-db.js";
+import {
+  MEMBER_FILTER,
+  HAS_USER,
+  HAS_ENGAGED_USER,
+  ENGAGED_FILTER,
+  REGISTERED_FILTER,
+} from "../../db/org-filters.js";
 
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const memberDb = new MemberDatabase();
@@ -619,10 +626,6 @@ export function setupStatsRoutes(apiRouter: Router): void {
     unknown: 'Unknown',
   };
 
-  // Shared SQL fragments for membership metrics
-  const PAYING_FILTER = `subscription_status = 'active' AND subscription_canceled_at IS NULL AND subscription_amount > 0`;
-  const SUBSCRIBED_FILTER = `subscription_status IN ('active', 'past_due', 'trialing')`;
-
   // GET /api/admin/membership-metrics - Get membership metrics by company_type × revenue_tier
   // Returns current snapshot using existing category dimensions
   apiRouter.get("/membership-metrics", requireAuth, requireAdmin, async (req, res) => {
@@ -635,10 +638,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
         pool.query(`
           SELECT
             COALESCE(company_type, 'unknown') AS company_type,
-            COUNT(*) AS total_orgs,
-            COUNT(*) FILTER (WHERE ${PAYING_FILTER}) AS paying_members,
-            COUNT(*) FILTER (WHERE ${SUBSCRIBED_FILTER}) AS subscribed,
-            COALESCE(SUM(subscription_amount) FILTER (WHERE ${PAYING_FILTER}), 0) AS arr_cents
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
           FROM organizations
           WHERE is_personal IS NOT TRUE
           GROUP BY company_type
@@ -659,10 +662,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
         pool.query(`
           SELECT
             COALESCE(revenue_tier, 'unknown') AS revenue_tier,
-            COUNT(*) AS total_orgs,
-            COUNT(*) FILTER (WHERE ${PAYING_FILTER}) AS paying_members,
-            COUNT(*) FILTER (WHERE ${SUBSCRIBED_FILTER}) AS subscribed,
-            COALESCE(SUM(subscription_amount) FILTER (WHERE ${PAYING_FILTER}), 0) AS arr_cents
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
           FROM organizations
           WHERE is_personal IS NOT TRUE
           GROUP BY revenue_tier
@@ -683,10 +686,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
           SELECT
             COALESCE(company_type, 'unknown') AS company_type,
             COALESCE(revenue_tier, 'unknown') AS revenue_tier,
-            COUNT(*) AS total_orgs,
-            COUNT(*) FILTER (WHERE ${PAYING_FILTER}) AS paying_members,
-            COUNT(*) FILTER (WHERE ${SUBSCRIBED_FILTER}) AS subscribed,
-            COALESCE(SUM(subscription_amount) FILTER (WHERE ${PAYING_FILTER}), 0) AS arr_cents
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
           FROM organizations
           WHERE is_personal IS NOT TRUE
           GROUP BY company_type, revenue_tier
@@ -696,10 +699,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
         // Get individuals (personal workspaces) separately
         pool.query(`
           SELECT
-            COUNT(*) AS total_orgs,
-            COUNT(*) FILTER (WHERE ${PAYING_FILTER}) AS paying_members,
-            COUNT(*) FILTER (WHERE ${SUBSCRIBED_FILTER}) AS subscribed,
-            COALESCE(SUM(subscription_amount) FILTER (WHERE ${PAYING_FILTER}), 0) AS arr_cents
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
           FROM organizations
           WHERE is_personal = TRUE
         `),
@@ -707,18 +710,18 @@ export function setupStatsRoutes(apiRouter: Router): void {
         // Get totals
         pool.query(`
           SELECT
-            COUNT(*) AS total_orgs,
-            COUNT(*) FILTER (WHERE ${PAYING_FILTER}) AS paying_members,
-            COUNT(*) FILTER (WHERE ${SUBSCRIBED_FILTER}) AS subscribed,
-            COALESCE(SUM(subscription_amount) FILTER (WHERE ${PAYING_FILTER}), 0) AS arr_cents
+            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
           FROM organizations
         `),
       ]);
 
-      const formatRow = (row: { total_orgs: string; paying_members: string; subscribed: string; arr_cents: string }) => ({
-        total_orgs: parseInt(row.total_orgs) || 0,
-        paying_members: parseInt(row.paying_members) || 0,
-        subscribed: parseInt(row.subscribed) || 0,
+      const formatRow = (row: { members: string; engaged: string; registered: string; arr_cents: string }) => ({
+        members: parseInt(row.members) || 0,
+        engaged: parseInt(row.engaged) || 0,
+        registered: parseInt(row.registered) || 0,
         arr_cents: parseInt(row.arr_cents) || 0,
         arr_dollars: Math.round((parseInt(row.arr_cents) || 0) / 100),
       });
@@ -741,8 +744,8 @@ export function setupStatsRoutes(apiRouter: Router): void {
           revenue_tier_label: REVENUE_TIER_LABELS[row.revenue_tier] || row.revenue_tier,
           ...formatRow(row),
         })),
-        individuals: formatRow(individualsResult.rows[0] || { total_orgs: '0', paying_members: '0', subscribed: '0', arr_cents: '0' }),
-        totals: formatRow(totalsResult.rows[0] || { total_orgs: '0', paying_members: '0', subscribed: '0', arr_cents: '0' }),
+        individuals: formatRow(individualsResult.rows[0] || { members: '0', engaged: '0', registered: '0', arr_cents: '0' }),
+        totals: formatRow(totalsResult.rows[0] || { members: '0', engaged: '0', registered: '0', arr_cents: '0' }),
         labels: {
           company_types: COMPANY_TYPE_LABELS,
           revenue_tiers: REVENUE_TIER_LABELS,
@@ -780,10 +783,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
         SELECT
           COALESCE(company_type, 'unknown') AS company_type,
           COALESCE(revenue_tier, 'unknown') AS revenue_tier,
-          COUNT(*) AS total_orgs,
-          COUNT(*) FILTER (WHERE ${PAYING_FILTER}) AS paying_members,
-          COUNT(*) FILTER (WHERE ${SUBSCRIBED_FILTER}) AS subscribed,
-          ROUND(COALESCE(SUM(subscription_amount) FILTER (WHERE ${PAYING_FILTER}), 0) / 100.0, 2) AS arr_dollars
+          COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+          COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+          COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+          ROUND(COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) / 100.0, 2) AS arr_dollars
         FROM organizations
         WHERE is_personal IS NOT TRUE
         GROUP BY company_type, revenue_tier
@@ -800,13 +803,13 @@ export function setupStatsRoutes(apiRouter: Router): void {
           END
       `);
 
-      const headers = ['Company Type', 'Revenue Tier', 'Total Orgs', 'Paying Members', 'Subscribed', 'ARR ($)'];
+      const headers = ['Company Type', 'Revenue Tier', 'Members', 'Engaged', 'Registered', 'ARR ($)'];
       const rows = result.rows.map(row => [
         escapeCsvValue(COMPANY_TYPE_LABELS[row.company_type] || row.company_type),
         escapeCsvValue(REVENUE_TIER_LABELS[row.revenue_tier] || row.revenue_tier),
-        row.total_orgs,
-        row.paying_members,
-        row.subscribed,
+        row.members,
+        row.engaged,
+        row.registered,
         row.arr_dollars || 0,
       ].join(','));
 
