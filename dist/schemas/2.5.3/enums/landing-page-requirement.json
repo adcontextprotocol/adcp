@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.3/enums/landing-page-requirement.json",
+  "title": "Landing Page Requirement",
+  "description": "Landing page policy for creative click-through destinations",
+  "type": "string",
+  "enum": [
+    "any",
+    "retailer_site_only",
+    "must_include_retailer"
+  ]
+}
