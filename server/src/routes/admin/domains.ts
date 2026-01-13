@@ -2080,4 +2080,273 @@ export function setupDomainRoutes(
       }
     }
   );
+
+  // GET /api/admin/domain-users/backfill-status - Get status of domain users who can be auto-added as members
+  apiRouter.get(
+    "/domain-users/backfill-status",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const pool = getPool();
+
+        // Find all orgs with verified domains and get slack users who have WorkOS accounts but aren't members
+        const result = await pool.query(`
+          WITH verified_domain_orgs AS (
+            SELECT
+              od.workos_organization_id,
+              LOWER(od.domain) as domain,
+              o.name as org_name
+            FROM organization_domains od
+            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+            WHERE od.verified = true
+          ),
+          domain_users_with_workos AS (
+            SELECT
+              vdo.workos_organization_id,
+              vdo.org_name,
+              vdo.domain,
+              sum.slack_email,
+              sum.slack_real_name,
+              sum.workos_user_id
+            FROM verified_domain_orgs vdo
+            JOIN slack_user_mappings sum ON LOWER(SPLIT_PART(sum.slack_email, '@', 2)) = vdo.domain
+            WHERE sum.workos_user_id IS NOT NULL
+              AND sum.slack_is_bot = false
+              AND sum.slack_is_deleted = false
+          )
+          SELECT
+            workos_organization_id,
+            org_name,
+            domain,
+            COUNT(*) as user_count,
+            json_agg(json_build_object(
+              'email', slack_email,
+              'name', slack_real_name,
+              'workos_user_id', workos_user_id
+            )) as users
+          FROM domain_users_with_workos
+          GROUP BY workos_organization_id, org_name, domain
+          ORDER BY user_count DESC
+        `);
+
+        // Now filter out users who are already members
+        const orgUsersToAdd: Array<{
+          org_id: string;
+          org_name: string;
+          domain: string;
+          users: Array<{ email: string; name: string | null; workos_user_id: string }>;
+        }> = [];
+        let totalUsersToAdd = 0;
+
+        for (const row of result.rows) {
+          const orgId = row.workos_organization_id;
+
+          // Get existing members for this org
+          try {
+            const memberships = await config.workos!.userManagement.listOrganizationMemberships({
+              organizationId: orgId,
+            });
+            const existingMemberUserIds = new Set(memberships.data.map(m => m.userId));
+
+            // Filter to users who aren't already members
+            const usersToAdd = (row.users as Array<{ email: string; name: string | null; workos_user_id: string }>)
+              .filter(u => !existingMemberUserIds.has(u.workos_user_id));
+
+            if (usersToAdd.length > 0) {
+              orgUsersToAdd.push({
+                org_id: orgId,
+                org_name: row.org_name,
+                domain: row.domain,
+                users: usersToAdd,
+              });
+              totalUsersToAdd += usersToAdd.length;
+            }
+          } catch (err) {
+            logger.warn({ err, orgId }, 'Failed to check memberships for org');
+          }
+        }
+
+        res.json({
+          total_users: totalUsersToAdd,
+          total_orgs: orgUsersToAdd.length,
+          by_organization: orgUsersToAdd,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error getting domain users backfill status");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to get backfill status",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/domain-users/backfill-members - Auto-add verified domain users as org members
+  apiRouter.post(
+    "/domain-users/backfill-members",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const adminUser = req.user!;
+        const { org_id } = req.body; // Optional: limit to specific org
+
+        // Validate org_id if provided
+        if (org_id !== undefined && (typeof org_id !== 'string' || org_id.trim() === '')) {
+          return res.status(400).json({
+            error: 'Invalid org_id',
+            message: 'org_id must be a non-empty string if provided',
+          });
+        }
+
+        const pool = getPool();
+
+        // Find all orgs with verified domains and get slack users who have WorkOS accounts
+        let query = `
+          WITH verified_domain_orgs AS (
+            SELECT
+              od.workos_organization_id,
+              LOWER(od.domain) as domain,
+              o.name as org_name
+            FROM organization_domains od
+            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+            WHERE od.verified = true
+            ${org_id ? 'AND od.workos_organization_id = $1' : ''}
+          ),
+          domain_users_with_workos AS (
+            SELECT
+              vdo.workos_organization_id,
+              vdo.org_name,
+              vdo.domain,
+              sum.slack_email,
+              sum.slack_real_name,
+              sum.workos_user_id
+            FROM verified_domain_orgs vdo
+            JOIN slack_user_mappings sum ON LOWER(SPLIT_PART(sum.slack_email, '@', 2)) = vdo.domain
+            WHERE sum.workos_user_id IS NOT NULL
+              AND sum.slack_is_bot = false
+              AND sum.slack_is_deleted = false
+          )
+          SELECT
+            workos_organization_id,
+            org_name,
+            domain,
+            json_agg(json_build_object(
+              'email', slack_email,
+              'name', slack_real_name,
+              'workos_user_id', workos_user_id
+            )) as users
+          FROM domain_users_with_workos
+          GROUP BY workos_organization_id, org_name, domain
+        `;
+
+        const result = org_id
+          ? await pool.query(query, [org_id])
+          : await pool.query(query);
+
+        let totalAdded = 0;
+        let totalSkipped = 0;
+        let totalErrors = 0;
+        const details: Array<{
+          org_id: string;
+          org_name: string;
+          domain: string;
+          added: number;
+          skipped: number;
+          errors: number;
+        }> = [];
+
+        for (const row of result.rows) {
+          const orgId = row.workos_organization_id;
+          let orgAdded = 0;
+          let orgSkipped = 0;
+          let orgErrors = 0;
+
+          // Get existing members for this org
+          let existingMemberUserIds: Set<string>;
+          try {
+            const memberships = await config.workos!.userManagement.listOrganizationMemberships({
+              organizationId: orgId,
+            });
+            existingMemberUserIds = new Set(memberships.data.map(m => m.userId));
+          } catch (err) {
+            logger.warn({ err, orgId }, 'Failed to get memberships for org, skipping');
+            continue;
+          }
+
+          const users = row.users as Array<{ email: string; name: string | null; workos_user_id: string }>;
+
+          for (const user of users) {
+            if (existingMemberUserIds.has(user.workos_user_id)) {
+              orgSkipped++;
+              continue;
+            }
+
+            try {
+              await config.workos!.userManagement.createOrganizationMembership({
+                userId: user.workos_user_id,
+                organizationId: orgId,
+                roleSlug: 'member',
+              });
+              orgAdded++;
+
+              logger.info({
+                orgId,
+                email: user.email,
+                userId: user.workos_user_id,
+                addedBy: adminUser.id,
+              }, 'Domain user auto-added to organization via backfill');
+            } catch (err) {
+              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+              if (errorMessage.includes('already a member')) {
+                orgSkipped++;
+              } else {
+                logger.warn({ err, orgId, email: user.email }, 'Failed to add domain user');
+                orgErrors++;
+              }
+            }
+          }
+
+          if (orgAdded > 0 || orgSkipped > 0 || orgErrors > 0) {
+            details.push({
+              org_id: orgId,
+              org_name: row.org_name,
+              domain: row.domain,
+              added: orgAdded,
+              skipped: orgSkipped,
+              errors: orgErrors,
+            });
+          }
+
+          totalAdded += orgAdded;
+          totalSkipped += orgSkipped;
+          totalErrors += orgErrors;
+        }
+
+        logger.info({
+          totalAdded,
+          totalSkipped,
+          totalErrors,
+          orgsProcessed: details.length,
+          adminUserId: adminUser.id,
+        }, 'Completed domain users member backfill');
+
+        res.json({
+          success: true,
+          total_added: totalAdded,
+          total_skipped: totalSkipped,
+          total_errors: totalErrors,
+          orgs_processed: details.length,
+          details,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error running domain users backfill");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to run backfill",
+        });
+      }
+    }
+  );
 }

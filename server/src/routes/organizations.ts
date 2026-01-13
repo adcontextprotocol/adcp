@@ -636,15 +636,39 @@ export function createOrganizationsRouter(): Router {
         }
       }
 
-      // Get Slack users from these domains who aren't members
+      // Get pending join request emails for this org
+      const joinRequestsResult = await pool.query(
+        `SELECT LOWER(user_email) as email FROM organization_join_requests
+         WHERE workos_organization_id = $1 AND status = 'pending'`,
+        [orgId]
+      );
+      const pendingJoinRequestEmails = new Set(joinRequestsResult.rows.map(r => r.email));
+
+      // Get pending invitation emails from WorkOS
+      const pendingInvitationEmails = new Set<string>();
+      try {
+        const invitations = await workos!.userManagement.listInvitations({
+          organizationId: orgId,
+        });
+        for (const inv of invitations.data) {
+          if (inv.state === 'pending' && inv.email) {
+            pendingInvitationEmails.add(inv.email.toLowerCase());
+          }
+        }
+      } catch {
+        // Continue without invitation filtering if API fails
+      }
+
+      // Get Slack users from these domains who aren't members, with WorkOS user info
       const domainUsers: Array<{
         slack_email: string;
         slack_real_name: string | null;
         slack_display_name: string | null;
+        workos_user_id: string | null;
       }> = [];
 
       const slackUsersResult = await pool.query(
-        `SELECT slack_email, slack_real_name, slack_display_name
+        `SELECT slack_email, slack_real_name, slack_display_name, workos_user_id
          FROM slack_user_mappings
          WHERE slack_is_bot = false
            AND slack_is_deleted = false
@@ -656,10 +680,20 @@ export function createOrganizationsRouter(): Router {
 
       for (const row of slackUsersResult.rows) {
         if (row.slack_email && !memberEmails.has(row.slack_email.toLowerCase())) {
+          const emailLower = row.slack_email.toLowerCase();
+          const hasPendingJoinRequest = pendingJoinRequestEmails.has(emailLower);
+          const hasPendingInvitation = pendingInvitationEmails.has(emailLower);
+
+          // Skip users who already have pending join requests or invitations
+          if (hasPendingJoinRequest || hasPendingInvitation) {
+            continue;
+          }
+
           domainUsers.push({
             slack_email: row.slack_email,
             slack_real_name: row.slack_real_name,
             slack_display_name: row.slack_display_name,
+            workos_user_id: row.workos_user_id,
           });
         }
       }
@@ -670,6 +704,253 @@ export function createOrganizationsRouter(): Router {
       res.status(500).json({
         error: 'Failed to get domain users',
         message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/organizations/:orgId/domain-users/add - Directly add a domain user to org (admin only)
+  router.post('/:orgId/domain-users/add', requireAuth, async (req, res) => {
+    try {
+      const adminUser = req.user!;
+      const { orgId } = req.params;
+      const { email, role } = req.body;
+
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({
+          error: 'Missing required field',
+          message: 'email is required',
+        });
+      }
+
+      // Basic email format validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          error: 'Invalid email format',
+          message: 'Please provide a valid email address',
+        });
+      }
+
+      // Validate role if provided
+      const validRoles = ['member', 'admin'];
+      const roleToAssign = role || 'member';
+      if (!validRoles.includes(roleToAssign)) {
+        return res.status(400).json({
+          error: 'Invalid role',
+          message: `Role must be one of: ${validRoles.join(', ')}`,
+        });
+      }
+
+      // Verify user is admin/owner of this organization
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: adminUser.id,
+        organizationId: orgId,
+      });
+
+      if (memberships.data.length === 0) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are not a member of this organization',
+        });
+      }
+
+      const userRole = memberships.data[0].role?.slug || 'member';
+      if (userRole !== 'admin' && userRole !== 'owner') {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only admins and owners can add members',
+        });
+      }
+
+      // Check if organization is personal
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Personal workspace',
+          message: 'Personal workspaces cannot have team members.',
+        });
+      }
+
+      // Get verified domains for this org
+      const pool = getPool();
+      const domainsResult = await pool.query(
+        `SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true`,
+        [orgId]
+      );
+
+      if (domainsResult.rows.length === 0) {
+        return res.status(400).json({
+          error: 'No verified domains',
+          message: 'Organization has no verified domains. Use standard invitation instead.',
+        });
+      }
+
+      const verifiedDomains = domainsResult.rows.map(r => r.domain.toLowerCase());
+      const emailDomain = email.split('@')[1]?.toLowerCase();
+
+      if (!emailDomain || !verifiedDomains.includes(emailDomain)) {
+        return res.status(400).json({
+          error: 'Domain not verified',
+          message: `Email domain ${emailDomain} is not verified for this organization. Use standard invitation instead.`,
+        });
+      }
+
+      // Find the Slack user mapping with WorkOS user ID
+      const slackUserResult = await pool.query(
+        `SELECT workos_user_id, slack_real_name, slack_display_name
+         FROM slack_user_mappings
+         WHERE LOWER(slack_email) = LOWER($1)`,
+        [email]
+      );
+
+      if (slackUserResult.rows.length === 0) {
+        return res.status(400).json({
+          error: 'User not found',
+          message: 'User not found in Slack workspace. Use standard invitation instead.',
+        });
+      }
+
+      const slackUser = slackUserResult.rows[0];
+
+      if (!slackUser.workos_user_id) {
+        // User exists in Slack but hasn't signed up yet - send invitation instead
+        const invitation = await workos!.userManagement.sendInvitation({
+          email,
+          organizationId: orgId,
+          inviterUserId: adminUser.id,
+          roleSlug: roleToAssign,
+        });
+
+        logger.info({ orgId, email, inviterId: adminUser.id }, 'Domain user invited (no WorkOS account yet)');
+
+        return res.json({
+          success: true,
+          action: 'invited',
+          message: 'User has not signed up yet. An invitation has been sent.',
+          invitation: {
+            id: invitation.id,
+            email: invitation.email,
+            state: invitation.state,
+          },
+        });
+      }
+
+      // Check if user is already a member
+      const existingMembership = await workos!.userManagement.listOrganizationMemberships({
+        userId: slackUser.workos_user_id,
+        organizationId: orgId,
+      });
+
+      if (existingMembership.data.length > 0) {
+        return res.status(400).json({
+          error: 'Already a member',
+          message: 'This user is already a member of the organization.',
+        });
+      }
+
+      // Directly add user to organization
+      const membership = await workos!.userManagement.createOrganizationMembership({
+        userId: slackUser.workos_user_id,
+        organizationId: orgId,
+        roleSlug: roleToAssign,
+      });
+
+      logger.info({
+        orgId,
+        email,
+        userId: slackUser.workos_user_id,
+        addedBy: adminUser.id,
+      }, 'Domain user directly added to organization');
+
+      // Record audit log
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: adminUser.id,
+        action: 'member_added',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: { email, role: roleToAssign, method: 'domain_auto_add' },
+      });
+
+      // Cancel any pending join requests from this user
+      await pool.query(
+        `UPDATE organization_join_requests
+         SET status = 'cancelled', handled_by_user_id = $1, handled_at = NOW()
+         WHERE workos_organization_id = $2
+           AND LOWER(user_email) = LOWER($3)
+           AND status = 'pending'`,
+        [adminUser.id, orgId, email]
+      );
+
+      // Notify via Slack (fire-and-forget)
+      (async () => {
+        try {
+          let orgName = 'Organization';
+          try {
+            const org = await workos!.organizations.getOrganization(orgId);
+            orgName = org.name;
+          } catch {
+            // Org may not exist
+          }
+
+          // Get org admins/owners for notification
+          const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+            organizationId: orgId,
+          });
+          const adminEmails: string[] = [];
+          for (const membership of orgMemberships.data) {
+            if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+              try {
+                const memberUser = await workos!.userManagement.getUser(membership.userId);
+                if (memberUser.email) {
+                  adminEmails.push(memberUser.email);
+                }
+              } catch {
+                // Skip if can't fetch user
+              }
+            }
+          }
+
+          if (adminEmails.length > 0) {
+            await notifyMemberAdded({
+              orgId,
+              orgName,
+              adminEmails,
+              memberEmail: email,
+              memberFirstName: slackUser.slack_real_name?.split(' ')[0],
+              memberLastName: slackUser.slack_real_name?.split(' ').slice(1).join(' '),
+              role: roleToAssign,
+            });
+          }
+        } catch (err) {
+          logger.warn({ err }, 'Failed to send member added notification');
+        }
+      })();
+
+      res.json({
+        success: true,
+        action: 'added',
+        message: 'User has been added to the organization.',
+        membership: {
+          id: membership.id,
+          userId: membership.userId,
+          role: membership.role?.slug || roleToAssign,
+        },
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Add domain user error');
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('already a member')) {
+        return res.status(400).json({
+          error: 'Already a member',
+          message: 'This user is already a member of the organization.',
+        });
+      }
+
+      res.status(500).json({
+        error: 'Failed to add domain user',
+        message: errorMessage,
       });
     }
   });

@@ -4879,6 +4879,67 @@ Disallow: /api/admin/
           });
         }
 
+        // Check if user's email domain is verified for this org - auto-approve if so
+        const userDomain = user.email.split('@')[1]?.toLowerCase();
+        if (userDomain) {
+          const pool = getPool();
+          const verifiedDomainResult = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1 AND verified = true AND LOWER(domain) = $2`,
+            [organization_id, userDomain]
+          );
+
+          if (verifiedDomainResult.rows.length > 0) {
+            // Domain is verified - auto-add user to organization
+            const membership = await workos!.userManagement.createOrganizationMembership({
+              userId: user.id,
+              organizationId: organization_id,
+              roleSlug: 'member',
+            });
+
+            // Get org name for response
+            let orgName = 'Organization';
+            try {
+              const org = await workos!.organizations.getOrganization(organization_id);
+              orgName = org.name;
+            } catch {
+              // Org may not exist
+            }
+
+            logger.info({
+              userId: user.id,
+              orgId: organization_id,
+              domain: userDomain,
+            }, 'User auto-added to organization via verified domain');
+
+            // Record audit log
+            await orgDb.recordAuditLog({
+              workos_organization_id: organization_id,
+              workos_user_id: user.id,
+              action: 'member_added',
+              resource_type: 'membership',
+              resource_id: membership.id,
+              details: {
+                user_email: user.email,
+                method: 'verified_domain_auto_join',
+                domain: userDomain,
+              },
+            });
+
+            return res.status(201).json({
+              success: true,
+              message: `You have been added to ${orgName}`,
+              auto_joined: true,
+              membership: {
+                id: membership.id,
+                organization_id: organization_id,
+                organization_name: orgName,
+                role: 'member',
+              },
+            });
+          }
+        }
+
         // Check for existing pending request
         const existingRequest = await joinRequestDb.getPendingRequest(user.id, organization_id);
         if (existingRequest) {
