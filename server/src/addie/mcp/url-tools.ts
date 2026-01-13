@@ -118,8 +118,8 @@ export const URL_TOOLS: AddieTool[] = [
   {
     name: 'read_slack_file',
     description:
-      'Download and read a file that was shared in Slack. Use this when a user shares a file (PDF, document, text file, etc.) and asks about its contents. Provide the file URL from the shared file info.',
-    usage_hints: 'use when user shares a file in Slack and asks "what is in this file?", "can you read this?"',
+      'Download and read a file that was shared in Slack. PROACTIVELY use this whenever a user shares a file (PDF, document, text file, image, etc.) - don\'t wait to be asked. Users expect you to see what they shared. Provide the file URL from the shared file info.',
+    usage_hints: 'use IMMEDIATELY when you see "[Shared files]" in a message - read the file proactively',
     input_schema: {
       type: 'object',
       properties: {
