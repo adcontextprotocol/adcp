@@ -3,7 +3,6 @@
  *
  * Routes:
  * - /api/admin/insight-types - Manage insight taxonomy
- * - /api/admin/insight-goals - Manage insight goals
  * - /api/admin/insights - View and manage member insights
  * - /api/admin/outreach - Proactive outreach management
  */
@@ -21,7 +20,7 @@ import {
   getOutreachMode,
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
-import { invalidateInsightsCache, invalidateGoalsCache } from '../addie/insights-cache.js';
+import { invalidateInsightsCache } from '../addie/insights-cache.js';
 import {
   getActionItems,
   getOpenActionItems,
@@ -67,13 +66,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   pageRouter.get('/insight-types', requireAuth, requireAdmin, (req, res) => {
     serveHtmlWithConfig(req, res, 'admin-insight-types.html').catch((err) => {
       logger.error({ err }, 'Error serving insight types page');
-      res.status(500).send('Internal server error');
-    });
-  });
-
-  pageRouter.get('/insight-goals', requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, 'admin-insight-goals.html').catch((err) => {
-      logger.error({ err }, 'Error serving insight goals page');
       res.status(500).send('Internal server error');
     });
   });
@@ -217,141 +209,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       res.json({ success: true });
     } catch (error) {
       logger.error({ err: error }, 'Error deleting insight type');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =========================================================================
-  // INSIGHT GOALS API
-  // =========================================================================
-
-  // GET /api/admin/insight-goals - List all insight goals
-  apiRouter.get('/insight-goals', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const activeOnly = req.query.activeOnly === 'true';
-      const goals = await insightsDb.listGoals({ activeOnly });
-      res.json(goals);
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing insight goals');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/insight-goals/:id - Get single insight goal
-  apiRouter.get('/insight-goals/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const goal = await insightsDb.getGoal(id);
-      if (!goal) {
-        return res.status(404).json({ error: 'Insight goal not found' });
-      }
-      res.json(goal);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting insight goal');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/insight-goals - Create insight goal
-  apiRouter.post('/insight-goals', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const {
-        name,
-        question,
-        insight_type_id,
-        goal_type,
-        start_date,
-        end_date,
-        is_enabled,
-        priority,
-        target_mapped_only,
-        target_unmapped_only,
-        target_response_count,
-        suggested_prompt_title,
-        suggested_prompt_message,
-      } = req.body;
-
-      if (!name || !question) {
-        return res.status(400).json({ error: 'Name and question are required' });
-      }
-
-      const goal = await insightsDb.createGoal({
-        name,
-        question,
-        insight_type_id,
-        goal_type,
-        start_date: start_date ? new Date(start_date) : undefined,
-        end_date: end_date ? new Date(end_date) : undefined,
-        is_enabled,
-        priority,
-        target_mapped_only,
-        target_unmapped_only,
-        target_response_count,
-        suggested_prompt_title,
-        suggested_prompt_message,
-        created_by: req.user?.id,
-      });
-
-      // Invalidate goals cache so routing uses fresh goal data
-      invalidateGoalsCache();
-
-      logger.info({ goalId: goal.id, name }, 'Created insight goal');
-      res.status(201).json(goal);
-    } catch (error) {
-      logger.error({ err: error }, 'Error creating insight goal');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // PUT /api/admin/insight-goals/:id - Update insight goal
-  apiRouter.put('/insight-goals/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const goal = await insightsDb.updateGoal(id, req.body);
-
-      if (!goal) {
-        return res.status(404).json({ error: 'Insight goal not found' });
-      }
-
-      // Invalidate goals cache so routing uses fresh goal data
-      invalidateGoalsCache();
-
-      logger.info({ goalId: goal.id }, 'Updated insight goal');
-      res.json(goal);
-    } catch (error) {
-      logger.error({ err: error }, 'Error updating insight goal');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // DELETE /api/admin/insight-goals/:id - Delete insight goal
-  apiRouter.delete('/insight-goals/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const deleted = await insightsDb.deleteGoal(id);
-      if (!deleted) {
-        return res.status(404).json({ error: 'Insight goal not found' });
-      }
-
-      // Invalidate goals cache so routing uses fresh goal data
-      invalidateGoalsCache();
-
-      logger.info({ goalId: id }, 'Deleted insight goal');
-      res.json({ success: true });
-    } catch (error) {
-      logger.error({ err: error }, 'Error deleting insight goal');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -909,17 +766,17 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
 
       const variant = variantResult.rows[0];
 
-      // Get insight goal if applicable
+      // Get outreach goal description if applicable (for {{goal_question}} placeholder)
       let goalQuestion: string | null = null;
       if (outreachType === 'insight_goal') {
         const goalResult = await pool.query(`
-          SELECT question FROM insight_goals
-          WHERE is_active = TRUE AND target_unmapped_only = FALSE
-          ORDER BY priority DESC
+          SELECT description FROM outreach_goals
+          WHERE is_enabled = TRUE AND requires_mapped = TRUE
+          ORDER BY base_priority DESC
           LIMIT 1
         `);
         if (goalResult.rows.length > 0) {
-          goalQuestion = goalResult.rows[0].question;
+          goalQuestion = goalResult.rows[0].description;
         }
       }
 

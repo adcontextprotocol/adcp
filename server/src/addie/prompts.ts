@@ -5,7 +5,6 @@
 import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
-import { getCachedActiveGoals } from './insights-cache.js';
 import {
   trimConversationHistory,
   getConversationTokenLimit,
@@ -504,22 +503,6 @@ export async function buildDynamicSuggestedPrompts(
 ): Promise<SuggestedPrompt[]> {
   const isMapped = !!memberContext?.workos_user?.workos_user_id;
 
-  // Fetch active insight goals with suggested prompts (cached)
-  let goalPrompts: SuggestedPrompt[] = [];
-  try {
-    const goals = await getCachedActiveGoals(isMapped);
-    goalPrompts = goals
-      .filter(g => g.suggested_prompt_title && g.suggested_prompt_message)
-      .sort((a, b) => b.priority - a.priority)
-      .slice(0, 2) // Take top 2 goals
-      .map(g => ({
-        title: g.suggested_prompt_title!,
-        message: g.suggested_prompt_message!,
-      }));
-  } catch (error) {
-    logger.warn({ error }, 'Failed to fetch insight goals for suggested prompts');
-  }
-
   // Not linked - prioritize casual discovery
   if (!isMapped) {
     const prompts: SuggestedPrompt[] = [
@@ -532,9 +515,6 @@ export async function buildDynamicSuggestedPrompts(
         message: 'I want to link my account and get started',
       },
     ];
-
-    // Add goal prompts (e.g., surveys that apply to unmapped users)
-    prompts.push(...goalPrompts);
 
     prompts.push({
       title: 'What is this anyway?',
@@ -568,9 +548,6 @@ export async function buildDynamicSuggestedPrompts(
 
   // Linked non-admin users - personalized prompts
   const prompts: SuggestedPrompt[] = [];
-
-  // Add goal prompts first (highest priority)
-  prompts.push(...goalPrompts);
 
   // Show working groups if they have some, otherwise suggest finding one
   if (memberContext.working_groups && memberContext.working_groups.length > 0) {
