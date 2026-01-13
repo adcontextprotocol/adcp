@@ -1289,6 +1289,10 @@
         "additionalProperties": true
       }
     },
+    "property_list_applied": {
+      "type": "boolean",
+      "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
+    },
     "context": {
       "title": "Context Object",
       "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
@@ -1307,7 +1311,7 @@
   ],
   "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-07T19:56:54.830Z",
+    "generatedAt": "2026-01-13T23:32:36.218Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

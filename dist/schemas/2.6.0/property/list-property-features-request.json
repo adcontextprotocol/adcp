@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/property/list-property-features-request.json",
+  "title": "List Property Features Request",
+  "description": "Request payload for list_property_features task. Discovers what features a governance agent can evaluate.",
+  "type": "object",
+  "properties": {
+    "property_types": {
+      "type": "array",
+      "description": "Filter to features available for these property types",
+      "items": {
+        "type": "string"
+      }
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter to features available in these countries",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/2.6.0/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}
