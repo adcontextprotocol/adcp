@@ -240,11 +240,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 mo.response_text,
                 mo.thread_id,
                 mo.dm_channel_id,
-                ig.name as goal_name,
-                ig.question as goal_question,
+                og.name as goal_name,
+                og.description as goal_question,
                 at.message_count as thread_message_count
               FROM member_outreach mo
-              LEFT JOIN insight_goals ig ON ig.id = mo.insight_goal_id
+              LEFT JOIN user_goal_history ugh ON ugh.outreach_id = mo.id
+              LEFT JOIN outreach_goals og ON og.id = ugh.goal_id
               LEFT JOIN addie_threads at ON at.thread_id = mo.thread_id
               WHERE mo.slack_user_id = $1
               ORDER BY mo.sent_at DESC

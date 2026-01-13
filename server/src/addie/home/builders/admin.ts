@@ -1,17 +1,15 @@
 /**
  * Admin Panel Builder
  *
- * Builds admin-only panel with flagged threads and insight goals.
+ * Builds admin-only panel with flagged threads and outreach goal stats.
  */
 
 import type { AdminPanel, GoalProgress } from '../types.js';
 import { AddieDatabase } from '../../../db/addie-db.js';
-import { InsightsDatabase } from '../../../db/insights-db.js';
 import { getPool } from '../../../db/client.js';
 import { logger } from '../../../logger.js';
 
 const addieDb = new AddieDatabase();
-const insightsDb = new InsightsDatabase();
 
 /**
  * Build admin panel with flagged threads, goal progress, and prospect stats
@@ -30,18 +28,30 @@ export async function buildAdminPanel(adminUserId?: string): Promise<AdminPanel>
     logger.warn({ error }, 'Failed to fetch flagged threads count for admin panel');
   }
 
-  // Get active insight goals with progress
+  // Get outreach goal stats from the planner's tracking
   try {
-    const activeGoals = await insightsDb.listGoals({ activeOnly: true });
-    for (const goal of activeGoals.slice(0, 5)) {
+    const pool = getPool();
+    const result = await pool.query(`
+      SELECT
+        og.name,
+        COUNT(ugh.id) FILTER (WHERE ugh.status = 'success') as success_count,
+        COUNT(ugh.id) as attempt_count
+      FROM outreach_goals og
+      LEFT JOIN user_goal_history ugh ON ugh.goal_id = og.id
+      WHERE og.is_enabled = TRUE
+      GROUP BY og.id, og.name
+      ORDER BY og.base_priority DESC
+      LIMIT 5
+    `);
+    for (const row of result.rows) {
       insightGoals.push({
-        goalName: goal.name,
-        current: goal.current_response_count,
-        target: goal.target_response_count,
+        goalName: row.name,
+        current: parseInt(row.success_count) || 0,
+        target: null, // No fixed target - show success count
       });
     }
   } catch (error) {
-    logger.warn({ error }, 'Failed to fetch insight goals for admin panel');
+    logger.warn({ error }, 'Failed to fetch outreach goals for admin panel');
   }
 
   // Get prospect stats if we have a user ID

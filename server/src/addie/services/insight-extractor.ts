@@ -304,8 +304,6 @@ export async function extractInsights(
           });
         }
 
-        // Increment goal response count
-        await insightsDb.incrementGoalResponseCount(goal.id);
         storedGoalResponses.push(goalResponse);
 
         logger.debug(

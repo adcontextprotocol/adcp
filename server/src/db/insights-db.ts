@@ -6,7 +6,6 @@ import { query } from './client.js';
 
 export type InsightConfidence = 'high' | 'medium' | 'low';
 export type InsightSourceType = 'conversation' | 'observation' | 'manual';
-export type GoalType = 'campaign' | 'persistent';
 export type OutreachType = 'account_link' | 'introduction' | 'insight_goal' | 'custom';
 export type OutreachTone = 'casual' | 'professional' | 'brief';
 export type OutreachApproach = 'direct' | 'conversational' | 'minimal';
@@ -41,25 +40,18 @@ export interface MemberInsight {
   insight_type_name?: string;
 }
 
+/**
+ * InsightGoal - mapped from outreach_goals for passive extraction
+ * Used by the insight extractor to know what to look for in conversations
+ */
 export interface InsightGoal {
   id: number;
   name: string;
-  question: string;
-  insight_type_id: number | null;
-  goal_type: GoalType;
-  start_date: Date | null;
-  end_date: Date | null;
+  question: string; // Maps from outreach_goals.description
+  insight_type_id: number | null; // Looked up via success_insight_type -> member_insight_types
   is_enabled: boolean;
-  priority: number;
-  target_mapped_only: boolean;
-  target_unmapped_only: boolean;
-  target_response_count: number | null;
-  current_response_count: number;
-  suggested_prompt_title: string | null;
-  suggested_prompt_message: string | null;
-  created_by: string | null;
-  created_at: Date;
-  updated_at: Date;
+  priority: number; // Maps from base_priority
+  requires_mapped: boolean;
 }
 
 export interface OutreachVariant {
@@ -141,23 +133,6 @@ export interface CreateInsightInput {
   source_thread_id?: string;
   source_message_id?: string;
   extracted_from?: string;
-  created_by?: string;
-}
-
-export interface CreateGoalInput {
-  name: string;
-  question: string;
-  insight_type_id?: number;
-  goal_type?: GoalType;
-  start_date?: Date;
-  end_date?: Date;
-  is_enabled?: boolean;
-  priority?: number;
-  target_mapped_only?: boolean;
-  target_unmapped_only?: boolean;
-  target_response_count?: number;
-  suggested_prompt_title?: string;
-  suggested_prompt_message?: string;
   created_by?: string;
 }
 
@@ -295,8 +270,8 @@ export interface OutreachStats {
 export interface OutreachGoalStats {
   goal_id: number;
   goal_name: string;
-  goal_question: string;
-  goal_type: GoalType;
+  goal_question: string | null;
+  goal_type: string;
   is_enabled: boolean;
   total_sent: number;
   total_responded: number;
@@ -576,137 +551,89 @@ export class InsightsDatabase {
     return (result.rowCount ?? 0) > 0;
   }
 
-  // ============== Insight Goals ==============
+  // ============== Insight Goals (from outreach_goals for passive extraction) ==============
 
   /**
-   * Create a new insight goal
-   */
-  async createGoal(input: CreateGoalInput): Promise<InsightGoal> {
-    const result = await query<InsightGoal>(
-      `INSERT INTO insight_goals (
-        name, question, insight_type_id, goal_type, start_date, end_date,
-        is_enabled, priority, target_mapped_only, target_unmapped_only,
-        target_response_count, suggested_prompt_title, suggested_prompt_message, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING *`,
-      [
-        input.name,
-        input.question,
-        input.insight_type_id || null,
-        input.goal_type || 'persistent',
-        input.start_date || null,
-        input.end_date || null,
-        input.is_enabled ?? true,
-        input.priority ?? 50,
-        input.target_mapped_only ?? false,
-        input.target_unmapped_only ?? false,
-        input.target_response_count || null,
-        input.suggested_prompt_title || null,
-        input.suggested_prompt_message || null,
-        input.created_by || null,
-      ]
-    );
-    return result.rows[0];
-  }
-
-  /**
-   * Get all insight goals
+   * Get all insight goals (from outreach_goals table)
+   * Used for passive extraction during conversations
    */
   async listGoals(options: { activeOnly?: boolean } = {}): Promise<InsightGoal[]> {
-    let whereClause = '';
-    if (options.activeOnly) {
-      whereClause = `WHERE is_enabled = TRUE AND (
-        goal_type = 'persistent' OR
-        (goal_type = 'campaign' AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE)
-      )`;
-    }
+    const whereClause = options.activeOnly ? 'WHERE og.is_enabled = TRUE' : '';
 
-    const result = await query<InsightGoal>(
-      `SELECT * FROM insight_goals ${whereClause} ORDER BY priority DESC, created_at DESC`
+    const result = await query<{
+      id: number;
+      name: string;
+      description: string | null;
+      insight_type_id: number | null;
+      is_enabled: boolean;
+      base_priority: number;
+      requires_mapped: boolean;
+    }>(
+      `SELECT
+        og.id,
+        og.name,
+        og.description,
+        mit.id as insight_type_id,
+        og.is_enabled,
+        og.base_priority,
+        og.requires_mapped
+       FROM outreach_goals og
+       LEFT JOIN member_insight_types mit ON mit.name = og.success_insight_type
+       ${whereClause}
+       ORDER BY og.base_priority DESC, og.created_at DESC`
     );
-    return result.rows;
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      question: row.description || '', // description serves as the "question" for extraction
+      insight_type_id: row.insight_type_id,
+      is_enabled: row.is_enabled,
+      priority: row.base_priority,
+      requires_mapped: row.requires_mapped,
+    }));
   }
 
   /**
-   * Get active goals for a specific user context
+   * Get active goals for a specific user context (from outreach_goals table)
+   * Filters by requires_mapped to return appropriate goals for the user type
    */
   async getActiveGoalsForUser(isMapped: boolean): Promise<InsightGoal[]> {
-    const result = await query<InsightGoal>(
-      `SELECT * FROM insight_goals
-       WHERE is_enabled = TRUE
-         AND (goal_type = 'persistent' OR
-              (goal_type = 'campaign' AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE))
-         AND (
-           (target_mapped_only = FALSE AND target_unmapped_only = FALSE) OR
-           (target_mapped_only = TRUE AND $1 = TRUE) OR
-           (target_unmapped_only = TRUE AND $1 = FALSE)
-         )
-       ORDER BY priority DESC`,
+    const result = await query<{
+      id: number;
+      name: string;
+      description: string | null;
+      insight_type_id: number | null;
+      is_enabled: boolean;
+      base_priority: number;
+      requires_mapped: boolean;
+    }>(
+      `SELECT
+        og.id,
+        og.name,
+        og.description,
+        mit.id as insight_type_id,
+        og.is_enabled,
+        og.base_priority,
+        og.requires_mapped
+       FROM outreach_goals og
+       LEFT JOIN member_insight_types mit ON mit.name = og.success_insight_type
+       WHERE og.is_enabled = TRUE
+         AND og.description IS NOT NULL
+         AND (og.requires_mapped = FALSE OR og.requires_mapped = $1)
+       ORDER BY og.base_priority DESC`,
       [isMapped]
     );
-    return result.rows;
-  }
 
-  /**
-   * Get a specific goal
-   */
-  async getGoal(id: number): Promise<InsightGoal | null> {
-    const result = await query<InsightGoal>(
-      'SELECT * FROM insight_goals WHERE id = $1',
-      [id]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Update an insight goal
-   */
-  async updateGoal(id: number, updates: Partial<CreateGoalInput>): Promise<InsightGoal | null> {
-    const setClauses: string[] = [];
-    const values: unknown[] = [];
-    let paramIndex = 1;
-
-    const fields: Array<keyof CreateGoalInput> = [
-      'name', 'question', 'insight_type_id', 'goal_type', 'start_date', 'end_date',
-      'is_enabled', 'priority', 'target_mapped_only', 'target_unmapped_only',
-      'target_response_count', 'suggested_prompt_title', 'suggested_prompt_message',
-    ];
-
-    for (const field of fields) {
-      if (updates[field] !== undefined) {
-        setClauses.push(`${field} = $${paramIndex++}`);
-        values.push(updates[field]);
-      }
-    }
-
-    if (setClauses.length === 0) return this.getGoal(id);
-
-    setClauses.push('updated_at = NOW()');
-    values.push(id);
-
-    const result = await query<InsightGoal>(
-      `UPDATE insight_goals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-      values
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Increment goal response count
-   */
-  async incrementGoalResponseCount(id: number): Promise<void> {
-    await query(
-      'UPDATE insight_goals SET current_response_count = current_response_count + 1, updated_at = NOW() WHERE id = $1',
-      [id]
-    );
-  }
-
-  /**
-   * Delete an insight goal
-   */
-  async deleteGoal(id: number): Promise<boolean> {
-    const result = await query('DELETE FROM insight_goals WHERE id = $1', [id]);
-    return (result.rowCount ?? 0) > 0;
+    return result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      question: row.description || '',
+      insight_type_id: row.insight_type_id,
+      is_enabled: row.is_enabled,
+      priority: row.base_priority,
+      requires_mapped: row.requires_mapped,
+    }));
   }
 
   // ============== Outreach Variants ==============
@@ -1252,8 +1179,8 @@ export class InsightsDatabase {
     const result = await query<{
       goal_id: string;
       goal_name: string;
-      goal_question: string;
-      goal_type: GoalType;
+      goal_question: string | null;
+      goal_type: string;
       is_enabled: boolean;
       total_sent: string;
       total_responded: string;
