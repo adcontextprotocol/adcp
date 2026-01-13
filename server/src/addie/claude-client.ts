@@ -323,11 +323,24 @@ export class AddieClaudeClient {
     const maxIterations = options?.maxIterations ?? 10;
     const effectiveModel = options?.modelOverride ?? this.model;
 
+    // Log if using precision model
+    if (options?.modelOverride && options.modelOverride !== this.model) {
+      logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
+    }
+
+    // Combine global tools with per-request tools
+    // Calculate tool count first to inform token budget for conversation history
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const toolCount = allTools.length + (this.webSearchEnabled ? 1 : 0);
+
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
     // Token-aware: automatically trims older messages if conversation exceeds limits
+    // Pass tool count for more accurate token budget calculation
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
+      toolCount,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -335,7 +348,8 @@ export class AddieClaudeClient {
         {
           messagesRemoved: messageTurnsResult.messagesRemoved,
           estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
-          tokenLimit: formatTokenCount(getConversationTokenLimit(effectiveModel)),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(effectiveModel, toolCount)),
+          toolCount,
         },
         'Addie: Trimmed conversation history to fit context limit'
       );
@@ -346,15 +360,6 @@ export class AddieClaudeClient {
       content: turn.content,
     }));
     let iteration = 0;
-
-    // Log if using precision model
-    if (options?.modelOverride && options.modelOverride !== this.model) {
-      logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
-    }
-
-    // Combine global tools with per-request tools
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
 
     while (iteration < maxIterations) {
       iteration++;
@@ -791,11 +796,19 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
+    // Combine global tools with per-request tools
+    // Calculate tool count first to inform token budget for conversation history
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const toolCount = allTools.length; // Note: streaming doesn't use web search
+
     // Build proper message turns from thread context
     // This sends conversation history as actual user/assistant turns, not flattened text
     // Token-aware: automatically trims older messages if conversation exceeds limits
+    // Pass tool count for more accurate token budget calculation
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: this.model,
+      toolCount,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -803,7 +816,8 @@ export class AddieClaudeClient {
         {
           messagesRemoved: messageTurnsResult.messagesRemoved,
           estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
-          tokenLimit: formatTokenCount(getConversationTokenLimit(this.model)),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(this.model, toolCount)),
+          toolCount,
         },
         'Addie Stream: Trimmed conversation history to fit context limit'
       );
@@ -816,10 +830,6 @@ export class AddieClaudeClient {
 
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
-
-    // Combine global tools with per-request tools
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
 
     try {
       while (iteration < maxIterations) {

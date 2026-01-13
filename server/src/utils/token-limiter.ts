@@ -26,13 +26,29 @@ export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
 
 /**
  * Buffer sizes for different components that contribute to context
- * These are conservative estimates to prevent hitting limits
+ *
+ * IMPORTANT: These buffers must account for worst-case scenarios.
+ * Tool definitions are the biggest variable - admin users can have 100+ tools
+ * with complex schemas and descriptions.
+ *
+ * Actual measured tool sizes (Jan 2026):
+ * - ADMIN_TOOLS: ~50 tools, ~15K tokens
+ * - MEMBER_TOOLS: ~38 tools, ~10K tokens
+ * - KNOWLEDGE_TOOLS: ~8 tools, ~2.5K tokens
+ * - DIRECTORY_TOOLS: ~7 tools, ~1.2K tokens
+ * - EVENT_TOOLS: ~5 tools, ~1.8K tokens
+ * - MEETING_TOOLS: ~8 tools, ~1.6K tokens
+ * - URL_TOOLS: ~2 tools, ~0.5K tokens
+ * Admin user total: ~33K tokens for tools alone
  */
 export const TOKEN_BUFFERS = {
   /** System prompt typically 8-15K tokens */
   systemPrompt: 20000,
-  /** Tool definitions can be significant */
-  toolDefinitions: 15000,
+  /**
+   * Tool definitions - admin users can have 100+ tools
+   * Increased from 15K to 45K to prevent prompt overflow errors
+   */
+  toolDefinitions: 45000,
   /** Reserve space for response generation */
   responseBuffer: 5000,
   /** Safety margin for any miscalculation */
@@ -49,10 +65,40 @@ export const RESERVED_TOKENS =
   TOKEN_BUFFERS.safetyMargin;
 
 /**
- * Get the effective limit for conversation history
+ * Estimate tokens for tool definitions based on tool count.
+ * Uses ~300 tokens per tool as a conservative estimate based on measured data.
+ *
+ * @param toolCount - Number of tools being used
+ * @returns Estimated token count for tool definitions
  */
-export function getConversationTokenLimit(model?: string): number {
+export function estimateToolTokens(toolCount: number): number {
+  // Based on measurements: ~300 tokens per tool on average
+  // This accounts for name, description, and input_schema
+  return toolCount * 300;
+}
+
+/**
+ * Get the effective limit for conversation history
+ *
+ * @param model - Model name (for looking up context limit)
+ * @param toolCount - Optional actual tool count for more accurate estimation
+ * @returns Maximum tokens available for conversation history
+ */
+export function getConversationTokenLimit(model?: string, toolCount?: number): number {
   const limit = MODEL_CONTEXT_LIMITS[model ?? 'default'] ?? MODEL_CONTEXT_LIMITS.default;
+
+  // If tool count is provided, use dynamic calculation
+  if (toolCount !== undefined) {
+    const toolTokens = estimateToolTokens(toolCount);
+    const reserved =
+      TOKEN_BUFFERS.systemPrompt +
+      toolTokens +
+      TOKEN_BUFFERS.responseBuffer +
+      TOKEN_BUFFERS.safetyMargin;
+    return limit - reserved;
+  }
+
+  // Fall back to default static buffer
   return limit - RESERVED_TOKENS;
 }
 
