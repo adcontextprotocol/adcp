@@ -635,6 +635,32 @@
       },
       "additionalProperties": true
     },
+    "property_list": {
+      "title": "Property List Reference",
+      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list.",
+      "type": "object",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the agent managing the property list"
+        },
+        "list_id": {
+          "type": "string",
+          "description": "Identifier for the property list within the agent",
+          "minLength": 1
+        },
+        "auth_token": {
+          "type": "string",
+          "description": "JWT or other authorization token for accessing the list. Optional if the list is public or caller has implicit access."
+        }
+      },
+      "required": [
+        "agent_url",
+        "list_id"
+      ],
+      "additionalProperties": false
+    },
     "context": {
       "title": "Context Object",
       "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
@@ -651,7 +677,7 @@
   "required": [],
   "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-07T19:56:54.829Z",
+    "generatedAt": "2026-01-13T23:32:36.217Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }
