@@ -30,6 +30,7 @@ const { execSync } = require('child_process');
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
+const SKILLS_DIR = path.join(__dirname, '../skills');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -295,6 +296,79 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   return { successCount, errorCount };
 }
 
+/**
+ * Copy schemas from a source directory to a skill schemas directory
+ * Returns the count of files copied
+ */
+function copySchemaDir(sourceDir, targetDir) {
+  if (!fs.existsSync(sourceDir)) {
+    return 0;
+  }
+
+  ensureDir(targetDir);
+  const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+  let count = 0;
+
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith('.json')) {
+      const sourcePath = path.join(sourceDir, entry.name);
+      const targetPath = path.join(targetDir, entry.name);
+      fs.copyFileSync(sourcePath, targetPath);
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Generate schemas for a single skill
+ * Returns the count of files copied, or 0 if source doesn't exist
+ */
+function generateSkillSchema(versionDir, version, protocol, skillName) {
+  const sourceDir = path.join(versionDir, protocol);
+  const skillDir = path.join(SKILLS_DIR, skillName, 'schemas');
+
+  if (!fs.existsSync(sourceDir)) {
+    return 0;
+  }
+
+  if (fs.existsSync(skillDir)) {
+    fs.rmSync(skillDir, { recursive: true, force: true });
+  }
+  ensureDir(skillDir);
+
+  let count = copySchemaDir(sourceDir, skillDir);
+  count += copySchemaDir(path.join(versionDir, 'core'), path.join(skillDir, 'core'));
+  count += copySchemaDir(path.join(versionDir, 'enums'), path.join(skillDir, 'enums'));
+
+  console.log(`📚 Generated skill schemas: skills/${skillName}/schemas/ (${count} files from ${version})`);
+  return count;
+}
+
+/**
+ * Generate skill schemas from versioned dist schemas
+ * Copies protocol schemas to skills/{protocol}/schemas/
+ */
+function generateSkillSchemas(versionDir, version) {
+  const skills = [
+    { protocol: 'media-buy', skillName: 'adcp-media-buy' },
+    { protocol: 'creative', skillName: 'adcp-creative' },
+    { protocol: 'signals', skillName: 'adcp-signals' },
+  ];
+
+  let totalCount = 0;
+  for (const { protocol, skillName } of skills) {
+    const count = generateSkillSchema(versionDir, version, protocol, skillName);
+    if (count === 0 && protocol === 'media-buy') {
+      console.log(`   ⚠️  No media-buy schemas found in ${versionDir}`);
+    }
+    totalCount += count;
+  }
+
+  return totalCount;
+}
+
 async function main() {
   const version = getVersion();
   const majorVersion = getMajorVersion(version);
@@ -354,6 +428,9 @@ async function main() {
     const latestBundledDir = path.join(latestDir, 'bundled');
     await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
 
+    // Generate skill schemas from the release version
+    generateSkillSchemas(versionDir, version);
+
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
@@ -400,6 +477,9 @@ async function main() {
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+
+    // Generate skill schemas from latest
+    generateSkillSchemas(latestDir, 'latest');
 
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
