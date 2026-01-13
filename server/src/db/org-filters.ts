@@ -2,7 +2,7 @@
  * Shared SQL filters for organization tiers
  *
  * Three mutually exclusive tiers (highest wins):
- * - Members: paying subscription
+ * - Members: active subscription (including comped members with $0 amount)
  * - Engaged: not paying, but has at least one site user with engagement_score > 0
  *            OR at least one Slack user with activity in the last 30 days
  * - Registered: not paying, no engaged users, but has at least one user on site/Slack
