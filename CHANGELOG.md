@@ -1,5 +1,67 @@
 # Changelog
 
+## 2.7.0
+
+### Minor Changes
+
+- e2b0b62: Add unified `assets` field to format schema for better asset discovery
+
+  - Add new `assets` array to format schema with `required` boolean per asset
+  - Deprecate `assets_required` (still supported for backward compatibility)
+  - Enables full asset discovery for buyers and AI agents to see all supported assets
+  - Optional assets like impression trackers can now be discovered and used
+
+- 5cd83b8: Add Property Governance Protocol support to get_products
+
+  - Add optional `property_list` parameter to get_products request for filtering products by property list
+  - Add `property_list_applied` response field to indicate whether filtering was applied
+  - Enables buyers to pass property lists from governance agents to sales agents for compliant inventory discovery
+
+### Patch Changes
+
+- 309a880: Allow additional properties in all JSON schemas for forward compatibility
+
+  Changes all schemas from `"additionalProperties": false` to `"additionalProperties": true`. This enables clients running older schema versions to accept responses from servers with newer schemas without breaking validation - a standard practice for protocol evolution in distributed systems.
+
+- 5d0ce75: Add explicit type definition to error.json details property
+
+  The `details` property in core/error.json now explicitly declares `"type": "object"` and `"additionalProperties": true`, consistent with other error details definitions in the codebase. This addresses issue #343 where the data type was unspecified.
+
+- cdcd70f: Fix migration 151 to delete duplicates before updating Slack IDs to WorkOS IDs
+- 39abf79: Add missing fields to package request schemas for consistency with core/package.json.
+
+  **Schema Changes:**
+
+  - `media-buy/package-request.json`: Added `impressions` and `paused` fields
+  - `media-buy/update-media-buy-request.json`: Added `impressions` field to package updates
+
+  **Details:**
+
+  - `impressions`: Impression goal for the package (optional, minimum: 0)
+  - `paused`: Create package in paused state (optional, default: false)
+
+  These fields were defined in `core/package.json` but missing from the request schemas, making it impossible to set impression goals or initial paused state when creating/updating media buys.
+
+  **Documentation:**
+
+  - Updated `create_media_buy` task reference with new package parameters
+  - Updated `update_media_buy` task reference with impressions parameter
+
+- fa68588: fix: display Slack profile name for chapter leaders without WorkOS accounts
+
+  Leaders added via Slack ID that haven't linked their WorkOS account now display
+  their Slack profile name (real_name or display_name) instead of the raw Slack
+  user ID (e.g., U09BEKNJ3GB).
+
+  The getLeaders and getLeadersBatch queries now include slack_user_mappings as an
+  additional name source in the COALESCE chain.
+
+- 9315247: Release schemas with `additionalProperties: true` for forward compatibility
+
+  This releases `dist/schemas/2.5.2/` containing the relaxed schema validation
+  introduced in #646. Clients can now safely ignore unknown fields when parsing
+  API responses, allowing the API to evolve without breaking existing integrations.
+
 ## 2.6.0
 
 ### Minor Changes
@@ -16,10 +78,12 @@
   Previously, buyers and AI agents could only see required assets via `assets_required`. There was no way to discover optional assets that enhance creatives (companion banners, third-party tracking pixels, etc.).
 
   Since each asset already has a `required` boolean field, we introduced a unified `assets` array where:
+
   - `required: true` - Asset MUST be provided for a valid creative
   - `required: false` - Asset is optional, enhances the creative when provided
 
   This enables:
+
   - **Full asset discovery**: Buyers and AI agents can see ALL assets a format supports
   - **Richer creatives**: Optional assets like impression trackers can now be discovered and used
   - **Cleaner schema**: Single array instead of two separate arrays
@@ -28,11 +92,29 @@
 
   ```json
   {
-    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_30s"
+    },
     "assets": [
-      { "item_type": "individual", "asset_id": "video_file", "asset_type": "video", "required": true },
-      { "item_type": "individual", "asset_id": "end_card", "asset_type": "image", "required": false },
-      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "url", "required": false }
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "asset_type": "video",
+        "required": true
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "end_card",
+        "asset_type": "image",
+        "required": false
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "asset_type": "url",
+        "required": false
+      }
     ]
   }
   ```

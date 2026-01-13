@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/bundled/media-buy/list-creative-formats-request.json",
+  "title": "List Creative Formats Request",
+  "description": "Request parameters for discovering supported creative formats",
+  "type": "object",
+  "properties": {
+    "format_ids": {
+      "type": "array",
+      "description": "Return only these specific format IDs (e.g., from get_products response)",
+      "items": {
+        "title": "Format ID",
+        "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+          }
+        },
+        "required": [
+          "agent_url",
+          "id"
+        ],
+        "additionalProperties": true,
+        "dependencies": {
+          "width": [
+            "height"
+          ],
+          "height": [
+            "width"
+          ]
+        }
+      }
+    },
+    "type": {
+      "title": "Format Category",
+      "description": "Filter by format type (technical categories with distinct requirements)",
+      "type": "string",
+      "enum": [
+        "audio",
+        "video",
+        "display",
+        "native",
+        "dooh",
+        "rich_media",
+        "universal"
+      ]
+    },
+    "asset_types": {
+      "type": "array",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "items": {
+        "title": "Asset Content Type",
+        "description": "Types of content that can be used as creative assets. Describes what KIND of content an asset contains (image, video, code, etc.), not where it displays.",
+        "type": "string",
+        "enum": [
+          "image",
+          "video",
+          "audio",
+          "text",
+          "markdown",
+          "html",
+          "css",
+          "javascript",
+          "vast",
+          "daast",
+          "promoted_offerings",
+          "url",
+          "webhook"
+        ]
+      }
+    },
+    "max_width": {
+      "type": "integer",
+      "description": "Maximum width in pixels (inclusive). Returns formats where ANY render has width <= this value. For multi-render formats, matches if at least one render fits."
+    },
+    "max_height": {
+      "type": "integer",
+      "description": "Maximum height in pixels (inclusive). Returns formats where ANY render has height <= this value. For multi-render formats, matches if at least one render fits."
+    },
+    "min_width": {
+      "type": "integer",
+      "description": "Minimum width in pixels (inclusive). Returns formats where ANY render has width >= this value."
+    },
+    "min_height": {
+      "type": "integer",
+      "description": "Minimum height in pixels (inclusive). Returns formats where ANY render has height >= this value."
+    },
+    "is_responsive": {
+      "type": "boolean",
+      "description": "Filter for responsive formats that adapt to container size. When true, returns formats without fixed dimensions."
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search for formats by name (case-insensitive partial match)"
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-01-13T23:11:16.137Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
