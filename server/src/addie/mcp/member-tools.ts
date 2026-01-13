@@ -1903,7 +1903,7 @@ export function createMemberToolHandlers(
     const card = healthData?.agent_cards?.[0];
     const isHealthy = card?.valid === true;
 
-    // Step 2: Try capability discovery
+    // Step 2: Try capability discovery (non-blocking - show health status regardless of outcome)
     const encodedUrl = encodeURIComponent(agentUrl);
     const capResult = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
     const capData = capResult.data as {
