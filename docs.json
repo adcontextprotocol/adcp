@@ -204,6 +204,9 @@
           {
             "group": "Reference",
             "pages": [
+              "docs/reference/media-buy-quick-reference",
+              "docs/reference/signals-quick-reference",
+              "docs/reference/creative-quick-reference",
               "docs/reference/roadmap",
               "docs/reference/release-notes",
               "docs/reference/changelog",

@@ -40,6 +40,9 @@ coverage/
 # Addie external repo cache
 .addie-repos/
 
+# Generated skill schemas (built from dist/schemas)
+skills/*/schemas/
+
 # Stripe webhook secret (dynamically generated)
 .stripe-webhook-secret
 test-results/

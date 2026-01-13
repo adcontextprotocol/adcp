@@ -30,6 +30,7 @@ const { execSync } = require('child_process');
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
+const SKILLS_DIR = path.join(__dirname, '../skills');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -295,6 +296,127 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   return { successCount, errorCount };
 }
 
+/**
+ * Copy schemas from a source directory to a skill schemas directory
+ * Returns the count of files copied
+ */
+function copySchemaDir(sourceDir, targetDir) {
+  if (!fs.existsSync(sourceDir)) {
+    return 0;
+  }
+
+  ensureDir(targetDir);
+  const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+  let count = 0;
+
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith('.json')) {
+      const sourcePath = path.join(sourceDir, entry.name);
+      const targetPath = path.join(targetDir, entry.name);
+      fs.copyFileSync(sourcePath, targetPath);
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Generate skill schemas from versioned dist schemas
+ * Copies protocol schemas to skills/{protocol}/schemas/
+ */
+function generateSkillSchemas(versionDir, version) {
+  let totalCount = 0;
+
+  // Generate media-buy skill schemas
+  const mediaBuySkillDir = path.join(SKILLS_DIR, 'adcp-media-buy', 'schemas');
+  const sourceMediaBuyDir = path.join(versionDir, 'media-buy');
+
+  if (fs.existsSync(mediaBuySkillDir)) {
+    fs.rmSync(mediaBuySkillDir, { recursive: true, force: true });
+  }
+  ensureDir(mediaBuySkillDir);
+
+  if (!fs.existsSync(sourceMediaBuyDir)) {
+    console.log(`   ⚠️  No media-buy schemas found in ${versionDir}`);
+  } else {
+    let mediaBuyCount = copySchemaDir(sourceMediaBuyDir, mediaBuySkillDir);
+
+    // Copy core schemas
+    mediaBuyCount += copySchemaDir(
+      path.join(versionDir, 'core'),
+      path.join(mediaBuySkillDir, 'core')
+    );
+
+    // Copy enum schemas
+    mediaBuyCount += copySchemaDir(
+      path.join(versionDir, 'enums'),
+      path.join(mediaBuySkillDir, 'enums')
+    );
+
+    console.log(`📚 Generated skill schemas: skills/adcp-media-buy/schemas/ (${mediaBuyCount} files from ${version})`);
+    totalCount += mediaBuyCount;
+  }
+
+  // Generate creative skill schemas if creative directory exists
+  const sourceCreativeDir = path.join(versionDir, 'creative');
+  if (fs.existsSync(sourceCreativeDir)) {
+    const creativeSkillDir = path.join(SKILLS_DIR, 'adcp-creative', 'schemas');
+
+    if (fs.existsSync(creativeSkillDir)) {
+      fs.rmSync(creativeSkillDir, { recursive: true, force: true });
+    }
+    ensureDir(creativeSkillDir);
+
+    let creativeCount = copySchemaDir(sourceCreativeDir, creativeSkillDir);
+
+    // Copy core schemas
+    creativeCount += copySchemaDir(
+      path.join(versionDir, 'core'),
+      path.join(creativeSkillDir, 'core')
+    );
+
+    // Copy enum schemas
+    creativeCount += copySchemaDir(
+      path.join(versionDir, 'enums'),
+      path.join(creativeSkillDir, 'enums')
+    );
+
+    console.log(`📚 Generated skill schemas: skills/adcp-creative/schemas/ (${creativeCount} files from ${version})`);
+    totalCount += creativeCount;
+  }
+
+  // Generate signals skill schemas if signals directory exists
+  const sourceSignalsDir = path.join(versionDir, 'signals');
+  if (fs.existsSync(sourceSignalsDir)) {
+    const signalsSkillDir = path.join(SKILLS_DIR, 'adcp-signals', 'schemas');
+
+    if (fs.existsSync(signalsSkillDir)) {
+      fs.rmSync(signalsSkillDir, { recursive: true, force: true });
+    }
+    ensureDir(signalsSkillDir);
+
+    let signalsCount = copySchemaDir(sourceSignalsDir, signalsSkillDir);
+
+    // Copy core schemas
+    signalsCount += copySchemaDir(
+      path.join(versionDir, 'core'),
+      path.join(signalsSkillDir, 'core')
+    );
+
+    // Copy enum schemas
+    signalsCount += copySchemaDir(
+      path.join(versionDir, 'enums'),
+      path.join(signalsSkillDir, 'enums')
+    );
+
+    console.log(`📚 Generated skill schemas: skills/adcp-signals/schemas/ (${signalsCount} files from ${version})`);
+    totalCount += signalsCount;
+  }
+
+  return totalCount;
+}
+
 async function main() {
   const version = getVersion();
   const majorVersion = getMajorVersion(version);
@@ -354,6 +476,9 @@ async function main() {
     const latestBundledDir = path.join(latestDir, 'bundled');
     await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
 
+    // Generate skill schemas from the release version
+    generateSkillSchemas(versionDir, version);
+
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
@@ -400,6 +525,9 @@ async function main() {
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+
+    // Generate skill schemas from latest
+    generateSkillSchemas(latestDir, 'latest');
 
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
