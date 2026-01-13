@@ -38,6 +38,16 @@
       "description": "Bid price for auction-based CPM pricing (required if using cpm-auction-option)",
       "minimum": 0
     },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },

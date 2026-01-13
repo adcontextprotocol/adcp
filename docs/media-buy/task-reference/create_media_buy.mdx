@@ -177,6 +177,8 @@ npx adcp \
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
 | `format_ids` | FormatID[] | Yes | Format IDs that will be used - must be supported by product |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
+| `impressions` | number | No | Impression goal for this package |
+| `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when `is_fixed` is false) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
