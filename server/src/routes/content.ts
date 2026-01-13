@@ -14,6 +14,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
+import { notifyPublishedPost } from '../notifications/slack.js';
 
 const logger = createLogger('content-routes');
 
@@ -248,7 +249,7 @@ export function createContentRouter(): Router {
 
       // Resolve the collection (working group)
       const committeeResult = await pool.query(
-        `SELECT id, accepts_public_submissions FROM working_groups WHERE slug = $1`,
+        `SELECT id, name, accepts_public_submissions, slack_channel_id FROM working_groups WHERE slug = $1`,
         [committeeSlug]
       );
 
@@ -259,8 +260,11 @@ export function createContentRouter(): Router {
         });
       }
 
-      const committeeId = committeeResult.rows[0].id as string;
-      const acceptsPublicSubmissions = committeeResult.rows[0].accepts_public_submissions;
+      const committee = committeeResult.rows[0];
+      const committeeId = committee.id as string;
+      const committeeName = committee.name as string;
+      const committeeSlackChannelId = committee.slack_channel_id as string | null;
+      const acceptsPublicSubmissions = committee.accepts_public_submissions;
 
       // Check if user can submit to this collection
       const userIsLead = await isCommitteeLead(committeeId, user.id);
@@ -351,6 +355,23 @@ export function createContentRouter(): Router {
         // Fire and forget - don't block the response
         notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
           logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
+        });
+      } else if (status === 'published') {
+        // Send Slack notification to the working group's channel
+        notifyPublishedPost({
+          slackChannelId: committeeSlackChannelId ?? undefined,
+          workingGroupName: committeeName,
+          workingGroupSlug: committeeSlug,
+          postTitle: title,
+          postSlug: perspective.slug,
+          authorName,
+          contentType: content_type,
+          excerpt: excerpt || undefined,
+          externalUrl: external_url || undefined,
+          category: category || undefined,
+          isMembersOnly: false, // Content proposed through unified system is public
+        }).catch(err => {
+          logger.warn({ err }, 'Failed to send Slack channel notification for proposed content');
         });
       }
 
@@ -490,9 +511,9 @@ export function createContentRouter(): Router {
       const { publish_immediately = true } = req.body;
       const pool = getPool();
 
-      // Get the content
+      // Get the content with working group details
       const contentResult = await pool.query(
-        `SELECT p.*, wg.slug as committee_slug
+        `SELECT p.*, wg.slug as committee_slug, wg.name as committee_name, wg.slack_channel_id
          FROM perspectives p
          LEFT JOIN working_groups wg ON wg.id = p.working_group_id
          WHERE p.id = $1`,
@@ -546,6 +567,25 @@ export function createContentRouter(): Router {
         newStatus,
         committeeSlug: content.committee_slug,
       }, 'Content approved');
+
+      // Send Slack notification when content is published
+      if (newStatus === 'published' && content.committee_slug) {
+        notifyPublishedPost({
+          slackChannelId: content.slack_channel_id ?? undefined,
+          workingGroupName: content.committee_name,
+          workingGroupSlug: content.committee_slug,
+          postTitle: content.title,
+          postSlug: content.slug,
+          authorName: content.author_name || 'Unknown',
+          contentType: content.content_type || 'article',
+          excerpt: content.excerpt || undefined,
+          externalUrl: content.external_url || undefined,
+          category: content.category || undefined,
+          isMembersOnly: content.is_members_only || false,
+        }).catch(err => {
+          logger.warn({ err }, 'Failed to send Slack channel notification for approved content');
+        });
+      }
 
       res.json({
         success: true,
