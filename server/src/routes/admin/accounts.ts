@@ -17,34 +17,62 @@ import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
+import {
+  MEMBER_FILTER_ALIASED,
+  NOT_MEMBER_ALIASED,
+  type OrgTier,
+} from "../../db/org-filters.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
 
 /**
- * Derive member status from subscription fields
+ * Derive organization tier from subscription and engagement data
+ * Uses the shared tier definitions from org-filters.ts
+ *
+ * Tiers (mutually exclusive, highest wins):
+ * - member: paying subscription (active, not canceled, amount > 0)
+ * - engaged: not paying, but has users with engagement
+ * - registered: not paying, no engaged users, but has users
+ * - prospect: no users at all (pure placeholder)
+ *
+ * For backward compatibility, if has_users/has_engaged_users are not provided,
+ * returns simplified "member" or "prospect" based on subscription only.
  */
-function deriveMemberStatus(org: {
+function deriveOrgTier(org: {
   subscription_status: string | null;
-  subscription_canceled_at: Date | null;
-}): "member" | "trial" | "lapsed" | "prospect" {
-  if (!org.subscription_status) {
-    return "prospect";
-  }
-
-  if (org.subscription_status === "active") {
+  subscription_canceled_at?: Date | null;
+  subscription_amount?: number | null;
+  has_users?: boolean;
+  has_engaged_users?: boolean;
+}): OrgTier {
+  // Member: paying subscription
+  if (
+    org.subscription_status === "active" &&
+    !org.subscription_canceled_at &&
+    org.subscription_amount &&
+    org.subscription_amount > 0
+  ) {
     return "member";
   }
 
-  if (org.subscription_status === "trialing") {
-    return "trial";
+  // If we have the engagement data, use full tier logic
+  if (org.has_engaged_users !== undefined || org.has_users !== undefined) {
+    // Engaged: has users with engagement
+    if (org.has_engaged_users) {
+      return "engaged";
+    }
+
+    // Registered: has users but no engagement
+    if (org.has_users) {
+      return "registered";
+    }
+
+    // Prospect: no users at all
+    return "prospect";
   }
 
-  // canceled, past_due, unpaid, etc. - check if they ever had an active subscription
-  if (org.subscription_canceled_at) {
-    return "lapsed";
-  }
-
+  // Backward compatibility: no engagement data, just return prospect for non-members
   return "prospect";
 }
 
@@ -182,14 +210,14 @@ export function setupAccountRoutes(
                 AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Hot prospects
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            WHERE (${NOT_MEMBER_ALIASED})
               AND COALESCE(o.engagement_score, 0) >= 50
               AND o.interest_level IN ('high', 'very_high')
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
@@ -201,7 +229,7 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Going cold
@@ -211,7 +239,7 @@ export function setupAccountRoutes(
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // My accounts
@@ -231,7 +259,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
               AND o.subscription_current_period_end > NOW()
@@ -241,7 +269,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
           `),
 
           // Disqualified
@@ -304,7 +332,7 @@ export function setupAccountRoutes(
         const org = orgResult.rows[0];
 
         // Derive member status from subscription
-        const memberStatus = deriveMemberStatus(org);
+        const memberStatus = deriveOrgTier(org);
         const isDisqualified = org.prospect_status === "disqualified";
 
         // Run parallel queries for related data (including members from local cache)
@@ -805,7 +833,7 @@ export function setupAccountRoutes(
               WHEN na.next_step_due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'due_soon'
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
               WHEN o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
-                AND o.subscription_status = 'active' THEN 'expiring_soon'
+                AND ${MEMBER_FILTER_ALIASED} THEN 'expiring_soon'
               WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
@@ -822,7 +850,7 @@ export function setupAccountRoutes(
               AND (
                 -- Non-members: show if they have action items
                 (
-                  (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+                  (${NOT_MEMBER_ALIASED})
                   AND (
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
@@ -837,7 +865,7 @@ export function setupAccountRoutes(
                 OR
                 -- Members: only show if they have a real problem
                 (
-                  o.subscription_status = 'active'
+                  ${MEMBER_FILTER_ALIASED}
                   AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
@@ -889,10 +917,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE (
-              o.subscription_status IS NULL
-              OR o.subscription_status NOT IN ('active', 'trialing')
-            )
+            WHERE (${NOT_MEMBER_ALIASED})
             AND (
               COALESCE(o.engagement_score, 0) >= 50
               OR o.interest_level IN ('high', 'very_high')
@@ -910,10 +935,7 @@ export function setupAccountRoutes(
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (
-                o.subscription_status IS NULL
-                OR o.subscription_status NOT IN ('active', 'trialing')
-              )
+              AND (${NOT_MEMBER_ALIASED})
           `;
           orderBy = ` ORDER BY o.last_activity_at DESC`;
           break;
@@ -933,7 +955,7 @@ export function setupAccountRoutes(
                 AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             ) latest_activity ON latest_activity.latest_activity_at IS NOT NULL
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `;
           orderBy = ` ORDER BY latest_activity.latest_activity_at DESC`;
           break;
@@ -943,7 +965,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
           `;
           orderBy = ` ORDER BY o.name ASC`;
           break;
@@ -953,7 +975,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
               AND o.subscription_current_period_end > NOW()
@@ -966,7 +988,7 @@ export function setupAccountRoutes(
           query = `
             ${selectFields}
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND COALESCE(o.engagement_score, 0) < 30
           `;
           orderBy = ` ORDER BY o.engagement_score ASC NULLS FIRST`;
@@ -997,7 +1019,7 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `;
           orderBy = ` ORDER BY o.created_at DESC`;
           break;
@@ -1175,7 +1197,7 @@ export function setupAccountRoutes(
 
       // Transform results
       const accounts = result.rows.map((row) => {
-        const memberStatus = deriveMemberStatus(row);
+        const memberStatus = deriveOrgTier(row);
         const engagementScore = row.engagement_score || 0;
         const stakeholders =
           stakeholdersMap.get(row.workos_organization_id) || [];
@@ -1287,7 +1309,7 @@ export function setupAccountRoutes(
               AND (
                 -- Non-members: show if they have action items
                 (
-                  (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+                  (${NOT_MEMBER_ALIASED})
                   AND (
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
@@ -1302,7 +1324,7 @@ export function setupAccountRoutes(
                 OR
                 -- Members: only show if they have a real problem (expiring soon)
                 (
-                  o.subscription_status = 'active'
+                  ${MEMBER_FILTER_ALIASED}
                   AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
@@ -1319,14 +1341,14 @@ export function setupAccountRoutes(
                 AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Hot prospects (engagement >= 50 OR high interest)
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+            WHERE (${NOT_MEMBER_ALIASED})
               AND (
                 COALESCE(o.engagement_score, 0) >= 50
                 OR o.interest_level IN ('high', 'very_high')
@@ -1340,7 +1362,7 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // Going cold
@@ -1350,7 +1372,7 @@ export function setupAccountRoutes(
             WHERE o.last_activity_at IS NOT NULL
               AND o.last_activity_at < NOW() - INTERVAL '30 days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'trialing'))
+              AND (${NOT_MEMBER_ALIASED})
           `),
 
           // My accounts
@@ -1370,7 +1392,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
               AND o.subscription_current_period_end > NOW()
@@ -1380,7 +1402,7 @@ export function setupAccountRoutes(
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.subscription_status = 'active'
+            WHERE ${MEMBER_FILTER_ALIASED}
           `),
 
           // Disqualified

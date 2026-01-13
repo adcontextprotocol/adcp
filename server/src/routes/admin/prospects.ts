@@ -10,6 +10,11 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { createProspect } from "../../services/prospect.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
+import {
+  MEMBER_FILTER_ALIASED,
+  NOT_MEMBER_ALIASED,
+  NOT_MEMBER,
+} from "../../db/org-filters.js";
 
 const logger = createLogger("admin-prospects");
 
@@ -94,8 +99,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
               FROM organizations o
               LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
               WHERE (
-                o.subscription_status IS NULL
-                OR o.subscription_status NOT IN ('active', 'trialing')
+                ${NOT_MEMBER_ALIASED}
                 OR o.subscription_canceled_at IS NOT NULL
               )
               AND COALESCE(o.engagement_score, 0) >= 30
@@ -124,8 +128,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
               FROM organizations o
               LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
               WHERE (
-                o.subscription_status IS NULL
-                OR o.subscription_status NOT IN ('active', 'trialing')
+                ${NOT_MEMBER_ALIASED}
                 OR o.subscription_canceled_at IS NOT NULL
               )
               AND (
@@ -142,7 +145,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
               ${selectFields}
               FROM organizations o
               LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
-              WHERE o.subscription_status = 'active'
+              WHERE ${MEMBER_FILTER_ALIASED}
                 AND o.subscription_current_period_end IS NOT NULL
                 AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
                 AND o.subscription_current_period_end > NOW()
@@ -156,7 +159,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
               ${selectFields}
               FROM organizations o
               LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
-              WHERE o.subscription_status = 'active'
+              WHERE ${MEMBER_FILTER_ALIASED}
             `;
             orderBy = ` ORDER BY o.last_activity_at ASC NULLS FIRST`;
             break;
@@ -749,11 +752,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           COALESCE(prospect_status, 'prospect') as prospect_status,
           COUNT(*) as count
         FROM organizations
-        WHERE (
-          subscription_status IS NULL
-          OR subscription_status NOT IN ('active', 'trialing')
-          OR subscription_canceled_at IS NOT NULL
-        )
+        WHERE ${NOT_MEMBER}
         GROUP BY COALESCE(prospect_status, 'prospect')
         ORDER BY
           CASE COALESCE(prospect_status, 'prospect')
