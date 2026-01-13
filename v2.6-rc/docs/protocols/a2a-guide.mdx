@@ -711,32 +711,51 @@ console.log('Examples:', getProductsSkill.examples);
       ]
     }
   ],
-  "extensions": {
-    "adcp": {
-      "adcp_version": "2.4.0",
-      "protocols_supported": ["media_buy"]
+  "extensions": [
+    {
+      "uri": "https://adcontextprotocol.org/extensions/adcp",
+      "description": "AdCP media buying protocol support",
+      "required": false,
+      "params": {
+        "adcp_version": "2.6.0",
+        "protocols_supported": ["media_buy"],
+        "extensions_supported": ["sustainability"]
+      }
     }
-  }
+  ]
 }
 ```
 
 ### AdCP Extension
 
-**Recommended**: Include the `extensions.adcp` field in your agent card to declare AdCP support programmatically.
+**Recommended**: Include the AdCP extension in your agent card's `extensions` array to declare AdCP support programmatically.
+
+The A2A protocol uses an `extensions` array where each extension has:
+- **`uri`**: Extension identifier (use `https://adcontextprotocol.org/extensions/adcp`)
+- **`description`**: Human-readable description of how you use AdCP
+- **`required`**: Whether clients must support this extension (typically `false` for AdCP)
+- **`params`**: AdCP-specific configuration (see schema below)
 
 ```javascript
 // Check if agent supports AdCP
 const agentCard = await fetch('https://sales.example.com/.well-known/agent.json')
   .then(r => r.json());
 
-if (agentCard.extensions?.adcp) {
-  console.log('AdCP Version:', agentCard.extensions.adcp.adcp_version);
-  console.log('Supported domains:', agentCard.extensions.adcp.protocols_supported);
+// Find the AdCP extension in the extensions array
+const adcpExt = agentCard.extensions?.find(
+  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp'
+);
+
+if (adcpExt) {
+  console.log('AdCP Version:', adcpExt.params.adcp_version);
+  console.log('Supported domains:', adcpExt.params.protocols_supported);
   // ["media_buy", "creative", "signals"]
+  console.log('Typed extensions:', adcpExt.params.extensions_supported);
+  // ["sustainability"]
 }
 ```
 
-**Extension Structure**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for complete specification.
+**Extension Params Schema**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for the complete `params` specification.
 
 **Benefits**:
 - Clients can discover AdCP capabilities without making test calls
