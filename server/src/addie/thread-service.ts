@@ -209,6 +209,7 @@ export interface ThreadListFilters {
   unreviewed_only?: boolean;
   has_feedback?: boolean;
   has_user_feedback?: boolean;
+  min_messages?: number;
   since?: Date;
   limit?: number;
   offset?: number;
@@ -545,6 +546,11 @@ export class ThreadService {
 
     if (filters.has_user_feedback) {
       conditions.push(`user_feedback_count > 0`);
+    }
+
+    if (filters.min_messages !== undefined && filters.min_messages > 0) {
+      conditions.push(`message_count >= $${paramIndex++}`);
+      params.push(filters.min_messages);
     }
 
     if (filters.since) {

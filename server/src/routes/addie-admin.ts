@@ -27,6 +27,15 @@ import {
   resolveSlackUserDisplayName,
   resolveSlackUserDisplayNames,
 } from "../slack/client.js";
+import {
+  listEscalations,
+  countEscalations,
+  getEscalation,
+  updateEscalationStatus,
+  getEscalationStats,
+  type EscalationStatus,
+  type EscalationCategory,
+} from "../db/escalation-db.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -364,13 +373,14 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const { channel, flagged_only, unreviewed_only, has_user_feedback, user_id, since, limit, offset } = req.query;
+      const { channel, flagged_only, unreviewed_only, has_user_feedback, min_messages, user_id, since, limit, offset } = req.query;
 
       const threads = await threadService.listThreads({
         channel: channel as ThreadChannel | undefined,
         flagged_only: flagged_only === "true",
         unreviewed_only: unreviewed_only === "true",
         has_user_feedback: has_user_feedback === "true",
+        min_messages: min_messages ? parseInt(min_messages as string, 10) : undefined,
         user_id: user_id as string | undefined,
         since: since ? new Date(since as string) : undefined,
         limit: limit ? parseInt(limit as string, 10) : 50,
@@ -2807,6 +2817,133 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // =========================================================================
+  // ESCALATION MANAGEMENT API (mounted at /api/admin/addie/escalations)
+  // =========================================================================
+
+  // GET /api/admin/addie/escalations - List escalations with optional filters
+  apiRouter.get("/escalations", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { status, category, limit, offset } = req.query;
+
+      const filters = {
+        status: status as EscalationStatus | undefined,
+        category: category as EscalationCategory | undefined,
+      };
+      const parsedLimit = limit ? parseInt(limit as string, 10) : 50;
+      const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+
+      const [escalations, totalCount, stats] = await Promise.all([
+        listEscalations({
+          ...filters,
+          limit: parsedLimit,
+          offset: parsedOffset,
+        }),
+        countEscalations(filters),
+        getEscalationStats(),
+      ]);
+
+      res.json({
+        escalations,
+        stats,
+        total: totalCount,
+        limit: parsedLimit,
+        offset: parsedOffset,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching escalations");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch escalations",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/escalations/:id - Get single escalation with thread context
+  apiRouter.get("/escalations/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const escalation = await getEscalation(id);
+      if (!escalation) {
+        return res.status(404).json({ error: "Not found", message: "Escalation not found" });
+      }
+
+      // If escalation has a thread, get thread context
+      let threadContext = null;
+      if (escalation.thread_id) {
+        const threadService = getThreadService();
+        const thread = await threadService.getThreadWithMessages(escalation.thread_id);
+        if (thread) {
+          threadContext = {
+            thread_id: thread.thread_id,
+            channel: thread.channel,
+            created_at: thread.created_at,
+            messages: thread.messages?.slice(-10), // Last 10 messages
+          };
+        }
+      }
+
+      res.json({
+        escalation,
+        thread: threadContext,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching escalation");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch escalation",
+      });
+    }
+  });
+
+  // PATCH /api/admin/addie/escalations/:id - Update escalation status
+  apiRouter.patch("/escalations/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const { status, notes } = req.body;
+      if (!status) {
+        return res.status(400).json({ error: "Bad request", message: "Status is required" });
+      }
+
+      const validStatuses: EscalationStatus[] = [
+        'open', 'acknowledged', 'in_progress', 'resolved', 'wont_do', 'expired'
+      ];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid status" });
+      }
+
+      // Get current user from session for resolved_by
+      const user = (req as unknown as { user?: { email?: string } }).user;
+      const resolvedBy = user?.email || 'admin';
+
+      const updated = await updateEscalationStatus(id, status, resolvedBy, notes);
+      if (!updated) {
+        return res.status(404).json({ error: "Not found", message: "Escalation not found" });
+      }
+
+      logger.info({ escalationId: id, status, resolvedBy }, "Escalation status updated");
+
+      res.json({
+        success: true,
+        escalation: updated,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error updating escalation");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to update escalation",
       });
     }
   });

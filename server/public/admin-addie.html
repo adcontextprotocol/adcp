@@ -1603,6 +1603,7 @@
             <label><input type="checkbox" id="threads-flagged-only"> Flagged only</label>
             <label><input type="checkbox" id="threads-unreviewed-only"> Unreviewed only</label>
             <label><input type="checkbox" id="threads-has-feedback"> Has user feedback</label>
+            <label><input type="checkbox" id="threads-multi-turn" checked> Multi-turn only</label>
             <button class="btn btn-secondary" onclick="loadThreads()">Refresh</button>
           </div>
         </div>
@@ -2439,6 +2440,7 @@
       const flaggedOnly = document.getElementById('threads-flagged-only').checked;
       const unreviewedOnly = document.getElementById('threads-unreviewed-only').checked;
       const hasUserFeedback = document.getElementById('threads-has-feedback').checked;
+      const multiTurnOnly = document.getElementById('threads-multi-turn').checked;
       const timeframe = document.getElementById('stats-timeframe').value;
 
       const params = new URLSearchParams();
@@ -2447,6 +2449,7 @@
       if (flaggedOnly) params.append('flagged_only', 'true');
       if (unreviewedOnly) params.append('unreviewed_only', 'true');
       if (hasUserFeedback) params.append('has_user_feedback', 'true');
+      if (multiTurnOnly) params.append('min_messages', '2');
 
       // Add timeframe filter to threads query
       if (timeframe !== 'all') {
@@ -4812,6 +4815,7 @@
     document.getElementById('threads-flagged-only').addEventListener('change', loadThreads);
     document.getElementById('threads-unreviewed-only').addEventListener('change', loadThreads);
     document.getElementById('threads-has-feedback').addEventListener('change', loadThreads);
+    document.getElementById('threads-multi-turn').addEventListener('change', loadThreads);
   </script>
 </body>
 </html>

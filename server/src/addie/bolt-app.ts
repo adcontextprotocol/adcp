@@ -55,6 +55,10 @@ import {
   BILLING_TOOLS,
   createBillingToolHandlers,
 } from './mcp/billing-tools.js';
+import {
+  ESCALATION_TOOLS,
+  createEscalationToolHandlers,
+} from './mcp/escalation-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
@@ -609,7 +613,8 @@ async function buildMessageWithMemberContext(
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  threadId?: string
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
@@ -622,6 +627,14 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: Billing tools enabled');
+
+  // Add escalation tools for all users
+  const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
+  allTools.push(...ESCALATION_TOOLS);
+  for (const [name, handler] of escalationHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: Escalation tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
@@ -936,7 +949,7 @@ async function handleUserMessage({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1361,7 +1374,7 @@ async function handleAppMention({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1825,7 +1838,7 @@ async function handleDirectMessage(
   });
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2109,7 +2122,7 @@ async function handleActiveThreadReply({
   });
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2490,7 +2503,7 @@ async function handleChannelMessage({
     );
 
     // Generate a response with the specified tools (includes admin tools if user is admin)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
     // Use precision model (Opus) for billing/financial queries
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
@@ -2954,7 +2967,7 @@ async function handleReactionAdded({
   );
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId);
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
