@@ -49,6 +49,10 @@ import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
 } from './mcp/meeting-tools.js';
+import {
+  ESCALATION_TOOLS,
+  createEscalationToolHandlers,
+} from './mcp/escalation-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -241,11 +245,19 @@ async function buildMessageWithMemberContext(
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  threadId?: string
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Add escalation tools (available to all users)
+  const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
+  allTools.push(...ESCALATION_TOOLS);
+  for (const [name, handler] of escalationHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
@@ -403,7 +415,7 @@ export async function handleAssistantMessage(
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -554,7 +566,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user);
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
