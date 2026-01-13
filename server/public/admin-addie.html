@@ -2814,16 +2814,24 @@
     // Mark thread as reviewed
     async function markThreadReviewed(threadId) {
       try {
-        await fetch(`/api/admin/addie/threads/${threadId}/review`, {
+        const response = await fetch(`/api/admin/addie/threads/${threadId}/review`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ notes: '' })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadThreads();
         loadStats();
+        // Refresh the thread detail view if it's currently open
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
+        }
       } catch (error) {
         console.error('Error marking reviewed:', error);
-        alert('Error marking thread as reviewed');
+        alert('Error marking thread as reviewed: ' + error.message);
       }
     }
 
@@ -2832,55 +2840,79 @@
       const reason = prompt('Reason for flagging (optional):');
       if (reason === null) return; // User cancelled
       try {
-        await fetch(`/api/admin/addie/threads/${threadId}/flag`, {
+        const response = await fetch(`/api/admin/addie/threads/${threadId}/flag`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadThreads();
         loadStats();
+        // Refresh the thread detail view if it's currently open
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
+        }
       } catch (error) {
         console.error('Error flagging thread:', error);
-        alert('Error flagging thread');
+        alert('Error flagging thread: ' + error.message);
       }
     }
 
     async function unflagThread(threadId) {
       try {
-        await fetch(`/api/admin/addie/threads/${threadId}/unflag`, { method: 'PUT' });
+        const response = await fetch(`/api/admin/addie/threads/${threadId}/unflag`, { method: 'PUT' });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadThreads();
         loadStats();
+        // Refresh the thread detail view if it's currently open
+        if (currentThreadData?.thread_id === threadId) {
+          await viewThread(threadId);
+        }
       } catch (error) {
         console.error('Error unflagging thread:', error);
-        alert('Error unflagging thread');
+        alert('Error unflagging thread: ' + error.message);
       }
     }
 
     // Approve/reject queue items
     async function approveItem(id) {
       try {
-        await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        const response = await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadQueue();
         loadStats();
       } catch (error) {
         console.error('Error approving item:', error);
-        alert('Error approving item');
+        alert('Error approving item: ' + error.message);
       }
     }
 
     async function rejectItem(id) {
       const reason = prompt('Reason for rejection (optional):');
       try {
-        await fetch(`/api/admin/addie/queue/${id}/reject`, {
+        const response = await fetch(`/api/admin/addie/queue/${id}/reject`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason })
         });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
         loadQueue();
         loadStats();
       } catch (error) {
         console.error('Error rejecting item:', error);
-        alert('Error rejecting item');
+        alert('Error rejecting item: ' + error.message);
       }
     }
 
@@ -2898,6 +2930,33 @@
       const original = el.textContent;
       el.textContent = 'Copied!';
       setTimeout(() => el.textContent = original, 1500);
+    }
+
+    function copyThreadLink(threadId, buttonEl) {
+      const url = `${window.location.origin}/admin/addie/?thread=${encodeURIComponent(threadId)}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const original = buttonEl.textContent;
+        buttonEl.textContent = 'Copied!';
+        setTimeout(() => buttonEl.textContent = original, 1500);
+      }).catch(() => {
+        buttonEl.textContent = 'Failed';
+        setTimeout(() => buttonEl.textContent = 'Copy Link', 1500);
+      });
+    }
+
+    function getSlackPermalink(externalId) {
+      // external_id format for Slack: "channel_id:thread_ts"
+      if (!externalId || !externalId.includes(':')) return null;
+      const [channelId, threadTs] = externalId.split(':');
+      if (!channelId || !threadTs) return null;
+      // Validate channelId matches expected Slack channel ID pattern
+      if (!/^[A-Z][A-Z0-9]{8,}$/.test(channelId)) return null;
+      // Validate threadTs is a valid timestamp format (digits.digits)
+      if (!/^\d+\.\d+$/.test(threadTs)) return null;
+      // Convert thread_ts to Slack's permalink format (remove the dot)
+      const tsForLink = threadTs.replace('.', '');
+      // Using the hardcoded workspace - this is the AAO Slack workspace
+      return `https://agenticads.slack.com/archives/${channelId}/p${tsForLink}`;
     }
 
     // Event listeners
@@ -3377,8 +3436,10 @@
                 ${data.message_count} messages • Started ${new Date(data.started_at).toLocaleString()}
               </span>
             </div>
-            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center;">
+            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
               <code style="font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-bg-muted); padding: 2px 6px; border-radius: var(--radius-sm); cursor: pointer;" data-thread-id="${escapeHtml(data.thread_id)}" onclick="copyThreadId(this)" title="Click to copy thread ID">${escapeHtml(data.thread_id)}</code>
+              <button class="btn btn-small btn-secondary" onclick="copyThreadLink('${escapeHtml(data.thread_id)}', this)" title="Copy shareable link to this thread">Copy Link</button>
+              ${(() => { const slackLink = data.channel === 'slack' && data.external_id ? getSlackPermalink(data.external_id) : null; return slackLink ? `<a href="${escapeHtml(slackLink)}" target="_blank" rel="noopener" class="btn btn-small btn-secondary" title="Open in Slack">Open in Slack</a>` : ''; })()}
               ${!data.reviewed ? `<button class="btn btn-small btn-primary" onclick="markThreadReviewed('${data.thread_id}')">Mark Reviewed</button>` : ''}
               ${!data.flagged ? `<button class="btn btn-small btn-secondary" onclick="flagThread('${data.thread_id}')">Flag</button>` : `<button class="btn btn-small btn-secondary" onclick="unflagThread('${data.thread_id}')">Unflag</button>`}
             </div>
@@ -4735,6 +4796,15 @@
     loadKnowledge();
     loadThreads();
     loadQueue();
+
+    // Check for thread parameter in URL and open that thread
+    const urlParams = new URLSearchParams(window.location.search);
+    const threadParam = urlParams.get('thread');
+    if (threadParam) {
+      // Switch to threads tab and open the thread
+      switchTab('threads');
+      viewThread(threadParam);
+    }
 
     // Event listeners for thread filters
     document.getElementById('stats-timeframe').addEventListener('change', loadThreads);

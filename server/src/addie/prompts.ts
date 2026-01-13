@@ -6,6 +6,12 @@ import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
 import { getCachedActiveGoals } from './insights-cache.js';
+import {
+  trimConversationHistory,
+  getConversationTokenLimit,
+  estimateTokens,
+  type MessageTurn,
+} from '../utils/token-limiter.js';
 
 const logger = createLogger('addie-prompts');
 
@@ -157,6 +163,28 @@ When users set up agents or publishers, walk through the full verification chain
 - list_committee_documents: List documents tracked by a committee
 - update_committee_document: Update a tracked document (leader only)
 - delete_committee_document: Remove a tracked document (leader only)
+
+**Events (available to admins and committee leads):**
+- create_event: Create an AAO event (meetup, webinar, summit, workshop, conference). Creates in both Luma (registration) and AAO website. Required: title, start_time, event_type. Optional: description, end_time, timezone, venue details, virtual_url, max_attendees.
+- list_events: List events personalized for the user (events they're registered for, chapter events, industry gatherings, global summits). Use include_past=true to show past events.
+- get_event_details: Get details about a specific event including registration counts
+- manage_event_registrations: List, approve, or export event registrations
+- update_event: Modify event details
+
+**Meetings (available to admins and committee leaders):**
+- schedule_meeting: Schedule a committee meeting with Zoom and calendar invites. Requires working_group_slug, title, and start_time (ISO format). Optional: description, agenda, duration_minutes, timezone, topic_slugs. Creates Zoom link and sends calendar invites to committee members.
+- list_upcoming_meetings: List upcoming meetings. Can filter by working_group_slug.
+- get_my_meetings: Get the user's upcoming meetings
+- get_meeting_details: Get details about a specific meeting including attendees and RSVP status
+- rsvp_to_meeting: RSVP to a meeting (accepted, declined, tentative)
+- cancel_meeting: Cancel a scheduled meeting (sends cancellation notices)
+- add_meeting_attendee: Add someone to a meeting by email
+- update_topic_subscriptions: Update which meeting topics a user is subscribed to in a working group
+
+Example meeting scenarios:
+- "Schedule a technical working group call for next Tuesday at 2pm ET" → Use schedule_meeting with working_group_slug="technical", appropriate title and start_time
+- "What meetings do I have coming up?" → Use get_my_meetings
+- "Set up a recurring weekly call for governance" → Note: Recurring meetings must be scheduled one at a time currently, or use Google Calendar's recurring feature directly
 
 **Member Profile:**
 - get_my_profile: Show user's profile
@@ -606,12 +634,32 @@ export interface ThreadContextEntry {
   text: string;
 }
 
+// Re-export MessageTurn from token-limiter for backwards compatibility
+export type { MessageTurn };
+
 /**
- * Message turn for Claude API
+ * Options for building message turns
  */
-export interface MessageTurn {
-  role: 'user' | 'assistant';
-  content: string;
+export interface BuildMessageTurnsOptions {
+  /** Maximum number of messages to include (default: 10, 0 = unlimited) */
+  maxMessages?: number;
+  /** Token limit for conversation history (default: calculated from model limit) */
+  tokenLimit?: number;
+  /** Model name for determining context limits */
+  model?: string;
+}
+
+/**
+ * Result of building message turns with metadata
+ */
+export interface BuildMessageTurnsResult {
+  messages: MessageTurn[];
+  /** Estimated token count of messages */
+  estimatedTokens: number;
+  /** Number of messages removed due to limits */
+  messagesRemoved: number;
+  /** Whether messages were trimmed to fit limits */
+  wasTrimmed: boolean;
 }
 
 /**
@@ -620,20 +668,41 @@ export interface MessageTurn {
  * This converts conversation history into alternating user/assistant messages
  * which Claude understands as actual conversation context (not just informational text).
  *
+ * Token-aware: Automatically trims older messages if conversation exceeds context limits.
+ *
  * @param userMessage - The current user message
  * @param threadContext - Previous messages in the thread
+ * @param options - Optional configuration for message limits
  * @returns Array of message turns suitable for Claude API
  */
 export function buildMessageTurns(
   userMessage: string,
-  threadContext?: ThreadContextEntry[]
+  threadContext?: ThreadContextEntry[],
+  options?: BuildMessageTurnsOptions
 ): MessageTurn[] {
-  const messages: MessageTurn[] = [];
+  const result = buildMessageTurnsWithMetadata(userMessage, threadContext, options);
+  return result.messages;
+}
+
+/**
+ * Build message turns with full metadata about trimming and token estimates.
+ * Use this when you need visibility into whether conversation was trimmed.
+ */
+export function buildMessageTurnsWithMetadata(
+  userMessage: string,
+  threadContext?: ThreadContextEntry[],
+  options?: BuildMessageTurnsOptions
+): BuildMessageTurnsResult {
+  const maxMessages = options?.maxMessages ?? 10;
+  const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model);
+
+  let messages: MessageTurn[] = [];
 
   if (threadContext && threadContext.length > 0) {
-    // Take last N messages to avoid context overflow
-    const MAX_CONTEXT_MESSAGES = 10;
-    const recentHistory = threadContext.slice(-MAX_CONTEXT_MESSAGES);
+    // First pass: apply message count limit if specified
+    let recentHistory = maxMessages > 0
+      ? threadContext.slice(-maxMessages)
+      : threadContext;
 
     // Convert each entry to proper message turn
     // The 'user' field is 'User' or 'Addie' from bolt-app.ts
@@ -664,8 +733,7 @@ export function buildMessageTurns(
       }
     }
 
-    messages.length = 0;
-    messages.push(...mergedMessages);
+    messages = mergedMessages;
   }
 
   // Add the current user message
@@ -676,5 +744,14 @@ export function buildMessageTurns(
     messages.push({ role: 'user', content: userMessage });
   }
 
-  return messages;
+  // Second pass: apply token limit trimming
+  // This removes oldest messages until we fit within the token budget
+  const trimResult = trimConversationHistory(messages, tokenLimit);
+
+  return {
+    messages: trimResult.messages,
+    estimatedTokens: trimResult.estimatedTokens,
+    messagesRemoved: trimResult.messagesRemoved,
+    wasTrimmed: trimResult.wasTrimmed,
+  };
 }

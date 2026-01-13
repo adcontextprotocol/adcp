@@ -563,6 +563,39 @@ export function createCommitteeRouters(): {
     }
   });
 
+  // GET /api/admin/working-groups/:id/interest - Get users who expressed interest in a committee
+  adminApiRouter.get('/:id/interest', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const workingGroup = await workingGroupDb.getWorkingGroupById(id);
+      if (!workingGroup) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: 'The specified working group does not exist'
+        });
+      }
+
+      const pool = getPool();
+      const result = await pool.query(
+        `SELECT ci.id, ci.workos_user_id, ci.user_email, ci.user_name, ci.user_org_name,
+                ci.interest_level, ci.created_at
+         FROM committee_interest ci
+         WHERE ci.working_group_id = $1
+         ORDER BY ci.created_at DESC`,
+        [id]
+      );
+
+      res.json({ interest: result.rows });
+    } catch (error) {
+      logger.error({ err: error }, 'List committee interest error:');
+      res.status(500).json({
+        error: 'Failed to list interest records',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // POST /api/admin/working-groups/:id/sync-from-slack - Sync members from Slack channel
   adminApiRouter.post('/:id/sync-from-slack', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -1055,6 +1088,54 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Check committee interest error');
       res.status(500).json({
         error: 'Failed to check interest',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // DELETE /api/working-groups/:slug/interest - Withdraw interest in a committee
+  publicApiRouter.delete('/:slug/interest', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const user = req.user!;
+      const pool = getPool();
+
+      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+
+      if (!group) {
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${slug}`,
+        });
+      }
+
+      const result = await pool.query(
+        `DELETE FROM committee_interest
+         WHERE working_group_id = $1 AND workos_user_id = $2
+         RETURNING id`,
+        [group.id, user.id]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({
+          error: 'No interest found',
+          message: 'You have not expressed interest in this committee',
+        });
+      }
+
+      logger.info(
+        { workingGroupId: group.id, userId: user.id },
+        'User withdrew interest in committee'
+      );
+
+      res.json({
+        success: true,
+        message: `You have withdrawn your interest in ${group.name}.`,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Withdraw committee interest error');
+      res.status(500).json({
+        error: 'Failed to withdraw interest',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -2466,6 +2547,31 @@ export function createCommitteeRouters(): {
       logger.error({ err: error }, 'Get user led committees error');
       res.status(500).json({
         error: 'Failed to get led committees',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/me/working-groups/interests - Get current user's council interest signups
+  userApiRouter.get('/interests', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const pool = getPool();
+
+      const result = await pool.query(
+        `SELECT ci.interest_level, ci.created_at, wg.name as committee_name, wg.slug, wg.committee_type
+         FROM committee_interest ci
+         JOIN working_groups wg ON wg.id = ci.working_group_id
+         WHERE ci.workos_user_id = $1
+         ORDER BY ci.created_at DESC`,
+        [user.id]
+      );
+
+      res.json(result.rows);
+    } catch (error) {
+      logger.error({ err: error }, 'Get user council interests error');
+      res.status(500).json({
+        error: 'Failed to get council interests',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

@@ -287,6 +287,7 @@ export interface OutreachStats {
   sent_today: number;
   sent_this_week: number;
   total_responded: number;
+  total_sent: number;
   response_rate: number;
   insights_gathered: number;
 }
@@ -711,6 +712,17 @@ export class InsightsDatabase {
   // ============== Outreach Variants ==============
 
   /**
+   * Convert PostgreSQL BigInt fields to JavaScript Number
+   */
+  private normalizeVariant(row: OutreachVariant): OutreachVariant {
+    return {
+      ...row,
+      id: Number(row.id),
+      weight: Number(row.weight),
+    };
+  }
+
+  /**
    * Create a new outreach variant
    */
   async createVariant(input: CreateVariantInput): Promise<OutreachVariant> {
@@ -728,7 +740,7 @@ export class InsightsDatabase {
         input.weight ?? 100,
       ]
     );
-    return result.rows[0];
+    return this.normalizeVariant(result.rows[0]);
   }
 
   /**
@@ -739,7 +751,7 @@ export class InsightsDatabase {
     const result = await query<OutreachVariant>(
       `SELECT * FROM outreach_variants ${whereClause} ORDER BY name`
     );
-    return result.rows;
+    return result.rows.map(row => this.normalizeVariant(row));
   }
 
   /**
@@ -750,7 +762,7 @@ export class InsightsDatabase {
       'SELECT * FROM outreach_variants WHERE id = $1',
       [id]
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? this.normalizeVariant(result.rows[0]) : null;
   }
 
   /**
@@ -784,7 +796,7 @@ export class InsightsDatabase {
       `UPDATE outreach_variants SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? this.normalizeVariant(result.rows[0]) : null;
   }
 
   /**
@@ -804,6 +816,7 @@ export class InsightsDatabase {
     );
     return result.rows.map(row => ({
       ...row,
+      variant_id: Number(row.variant_id),
       total_sent: Number(row.total_sent),
       total_responded: Number(row.total_responded),
       total_insights: Number(row.total_insights),
@@ -1019,6 +1032,22 @@ export class InsightsDatabase {
   }
 
   /**
+   * Link an outreach record to a conversation thread
+   * Called when a user responds to outreach and a thread is created
+   */
+  async linkOutreachToThread(outreachId: number, threadId: string): Promise<void> {
+    // Validate UUID format for data integrity
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(threadId)) {
+      throw new Error('Invalid thread ID format');
+    }
+    await query(
+      `UPDATE member_outreach SET thread_id = $2 WHERE id = $1`,
+      [outreachId, threadId]
+    );
+  }
+
+  /**
    * Check if a user should be contacted (respects refusals, rate limits, grace period)
    */
   async canContactUser(slackUserId: string): Promise<{
@@ -1210,6 +1239,7 @@ export class InsightsDatabase {
       sent_today: parseInt(row.sent_today, 10),
       sent_this_week: parseInt(row.sent_this_week, 10),
       total_responded: totalResponded,
+      total_sent: totalSent,
       response_rate: totalSent > 0 ? Math.round((100 * totalResponded) / totalSent) : 0,
       insights_gathered: parseInt(row.insights_gathered, 10),
     };

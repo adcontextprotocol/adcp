@@ -1012,6 +1012,26 @@ export function setupAccountRoutes(
           orderBy = ` ORDER BY o.updated_at DESC`;
           break;
 
+        case "most_users":
+          // Accounts with the most users (members + Slack-only)
+          query = `
+            ${selectFields},
+            (
+              COALESCE((SELECT COUNT(*) FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id), 0) +
+              COALESCE((SELECT COUNT(*) FROM slack_user_mappings sm
+                WHERE sm.pending_organization_id = o.workos_organization_id
+                AND sm.mapping_status = 'unmapped'
+                AND sm.workos_user_id IS NULL
+                AND sm.slack_is_bot = false
+                AND sm.slack_is_deleted = false), 0)
+            ) as computed_user_count
+            FROM organizations o
+            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+              AND o.is_personal = false
+          `;
+          orderBy = ` ORDER BY computed_user_count DESC, o.engagement_score DESC NULLS LAST`;
+          break;
+
         default:
           // All accounts (except disqualified)
           query = `
@@ -1054,7 +1074,7 @@ export function setupAccountRoutes(
       const orgIds = result.rows.map((r) => r.workos_organization_id);
 
       // Fetch related data in parallel
-      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts] =
+      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts] =
         await Promise.all([
           pool.query(
             `
@@ -1098,6 +1118,21 @@ export function setupAccountRoutes(
           `,
             [orgIds]
           ),
+
+          // Slack-only users (not linked to a WorkOS user but associated with org via pending_organization_id)
+          pool.query(
+            `
+            SELECT pending_organization_id as workos_organization_id, COUNT(*) as count
+            FROM slack_user_mappings
+            WHERE pending_organization_id = ANY($1)
+              AND mapping_status = 'unmapped'
+              AND workos_user_id IS NULL
+              AND slack_is_bot = false
+              AND slack_is_deleted = false
+            GROUP BY pending_organization_id
+          `,
+            [orgIds]
+          ),
         ]);
 
       // Build maps
@@ -1131,6 +1166,13 @@ export function setupAccountRoutes(
         ])
       );
 
+      const slackOnlyCountMap = new Map(
+        slackOnlyCounts.rows.map((r) => [
+          r.workos_organization_id,
+          parseInt(r.count),
+        ])
+      );
+
       // Transform results
       const accounts = result.rows.map((row) => {
         const memberStatus = deriveMemberStatus(row);
@@ -1153,9 +1195,12 @@ export function setupAccountRoutes(
           engagement_fires: scoreToFires(engagementScore),
           interest_level: row.interest_level,
 
-          // Counts
+          // Counts - user_count combines formal members + Slack-only users
           slack_user_count: slackCountMap.get(row.workos_organization_id) || 0,
           member_count: memberCountMap.get(row.workos_organization_id) || 0,
+          slack_only_count: slackOnlyCountMap.get(row.workos_organization_id) || 0,
+          user_count: (memberCountMap.get(row.workos_organization_id) || 0) +
+                      (slackOnlyCountMap.get(row.workos_organization_id) || 0),
 
           // Domains
           domain:

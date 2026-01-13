@@ -82,6 +82,7 @@ import {
   queueCommunityArticle,
 } from './services/community-articles.js';
 import { InsightsDatabase } from '../db/insights-db.js';
+import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -794,8 +795,9 @@ async function handleUserMessage({
   const inputValidation = sanitizeInput(messageText || '');
 
   // Check if this is a response to proactive outreach
+  const insightsDb = new InsightsDatabase();
+  let respondedOutreachId: number | null = null;
   try {
-    const insightsDb = new InsightsDatabase();
     const pendingOutreach = await insightsDb.getPendingOutreach(userId);
     if (pendingOutreach) {
       const analysis = await insightsDb.markOutreachRespondedWithAnalysis(
@@ -803,6 +805,7 @@ async function handleUserMessage({
         messageText || '',
         false
       );
+      respondedOutreachId = pendingOutreach.id;
       logger.info({
         userId,
         outreachId: pendingOutreach.id,
@@ -870,6 +873,16 @@ async function handleUserMessage({
     user_display_name: memberContext?.slack_user?.display_name || undefined,
     context: slackThreadContext,
   });
+
+  // Link outreach to thread if this was a response to outreach
+  if (respondedOutreachId) {
+    try {
+      await insightsDb.linkOutreachToThread(respondedOutreachId, thread.thread_id);
+      logger.debug({ outreachId: respondedOutreachId, threadId: thread.thread_id }, 'Addie Bolt: Linked outreach to thread (Assistant)');
+    } catch (err) {
+      logger.warn({ err, outreachId: respondedOutreachId }, 'Addie Bolt: Failed to link outreach to thread');
+    }
+  }
 
   // Fetch conversation history from database for context
   // This ensures Claude has context from previous turns in the DM thread
@@ -982,6 +995,13 @@ async function handleUserMessage({
             parameters: {},
             result: event.result,
           });
+        } else if (event.type === 'retry') {
+          // Show retry status to user
+          try {
+            await setStatus(`${event.reason}, retrying (${event.attempt}/${event.maxRetries})...`);
+          } catch {
+            // Ignore status update errors
+          }
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {
@@ -1025,8 +1045,17 @@ async function handleUserMessage({
     }
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing message');
+
+    // Provide user-friendly error message based on error type
+    let errorMessage: string;
+    if (isRetriesExhaustedError(error)) {
+      errorMessage = `${error.reason}. Please try again in a moment.`;
+    } else {
+      errorMessage = "I'm sorry, I encountered an error. Please try again.";
+    }
+
     response = {
-      text: "I'm sorry, I encountered an error. Please try again.",
+      text: errorMessage,
       tools_used: [],
       tool_executions: [],
       flagged: true,
@@ -1692,8 +1721,9 @@ async function handleDirectMessage(
 
   // Check if this is a response to proactive outreach
   // We do this early to track responses even if later processing fails
+  const insightsDb = new InsightsDatabase();
+  let respondedOutreachId: number | null = null;
   try {
-    const insightsDb = new InsightsDatabase();
     const pendingOutreach = await insightsDb.getPendingOutreach(userId);
     if (pendingOutreach) {
       // Mark the outreach as responded with full analysis
@@ -1702,6 +1732,7 @@ async function handleDirectMessage(
         messageText,
         false // insight_extracted - will be updated later if we extract insights
       );
+      respondedOutreachId = pendingOutreach.id;
       logger.info({
         userId,
         outreachId: pendingOutreach.id,
@@ -1735,6 +1766,16 @@ async function handleDirectMessage(
       channel_type: 'im',
     },
   });
+
+  // Link outreach to thread if this was a response to outreach
+  if (respondedOutreachId) {
+    try {
+      await insightsDb.linkOutreachToThread(respondedOutreachId, thread.thread_id);
+      logger.debug({ outreachId: respondedOutreachId, threadId: thread.thread_id }, 'Addie Bolt: Linked outreach to thread');
+    } catch (err) {
+      logger.warn({ err, outreachId: respondedOutreachId }, 'Addie Bolt: Failed to link outreach to thread');
+    }
+  }
 
   // Fetch conversation history from database for context
   const MAX_HISTORY_MESSAGES = 10;

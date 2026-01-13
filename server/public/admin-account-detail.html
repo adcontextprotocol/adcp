@@ -808,34 +808,34 @@
             </div>
           </div>
 
-          <!-- Members -->
+          <!-- Users (Members + Slack-only) -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">
-                Members <span id="memberCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
+                Users <span id="memberCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
               </h2>
               <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
             </div>
             <div class="collapsible-content collapsed" id="membersContent" style="margin-top: var(--space-4);">
-              <ul id="membersList" class="members-list">
-                <li class="empty-state">No members yet</li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- Pending Slack Users (only shown if there are any) -->
-          <div class="card" id="pendingSlackCard" style="display: none;">
-            <h2 class="collapsible" onclick="toggleSection(this)" style="margin-bottom: 0;">
-              Pending Slack Users
-              <span id="pendingSlackCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
-            </h2>
-            <div class="collapsible-content" id="pendingSlackContent" style="margin-top: var(--space-4);">
-              <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-3);">
-                These users have email addresses matching this account's domain but haven't signed up yet.
-              </p>
-              <ul id="pendingSlackList" class="members-list">
-                <li class="empty-state">No pending users</li>
-              </ul>
+              <!-- Website Members -->
+              <div id="membersSectionWrapper">
+                <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Website Members</h3>
+                <ul id="membersList" class="members-list">
+                  <li class="empty-state">No members yet</li>
+                </ul>
+              </div>
+              <!-- Slack-only Users -->
+              <div id="pendingSlackCard" style="display: none; margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-gray-200);">
+                <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">
+                  Slack Only <span id="pendingSlackCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
+                </h3>
+                <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-3);">
+                  Users in Slack with this account's domain who haven't signed up yet.
+                </p>
+                <ul id="pendingSlackList" class="members-list">
+                  <li class="empty-state">No pending users</li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -1532,9 +1532,16 @@
       // Account type badge
       renderAccountTypeBadge();
 
-      // Members
+      // Users (Members + Slack-only)
+      const memberCount = (a.members && a.members.length) || 0;
+      const slackOnlyCount = (a.pending_slack_users && a.pending_slack_users.length) || 0;
+      const totalUserCount = memberCount + slackOnlyCount;
+
+      // Set total user count in header
+      document.getElementById('memberCount').textContent = totalUserCount > 0 ? `(${totalUserCount})` : '';
+
+      // Website members
       if (a.members && a.members.length > 0) {
-        document.getElementById('memberCount').textContent = `(${a.members.length})`;
         // Show migrate button if there are members
         document.getElementById('migrateMembersBtn').style.display = 'inline-flex';
         let membersHtml = '';
@@ -1549,7 +1556,7 @@
         document.getElementById('membersList').innerHTML = membersHtml;
       }
 
-      // Pending Slack users (discovered via domain but not yet members)
+      // Slack-only users (discovered via domain but not yet members)
       if (a.pending_slack_users && a.pending_slack_users.length > 0) {
         document.getElementById('pendingSlackCard').style.display = 'block';
         document.getElementById('pendingSlackCount').textContent = `(${a.pending_slack_users.length})`;
