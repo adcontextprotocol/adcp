@@ -1705,6 +1705,103 @@ Returns: Search counts, impressions, clicks, introduction requests/sent, top sea
       },
     },
   },
+
+  // ============================================
+  // INSIGHT SYNTHESIS TOOLS
+  // ============================================
+  {
+    name: 'tag_insight',
+    description: `Tag valuable content as a core insight source for Addie's knowledge synthesis.
+
+USE THIS when an admin:
+- Shares expert content that should inform Addie's thinking (emails, articles, Q&As)
+- Identifies a conversation excerpt worth preserving
+- Wants to add external perspectives to Addie's core knowledge
+
+Tagged content gets periodically synthesized into compact rules that become part of Addie's reasoning.
+The content is NOT attributed - it becomes Addie's own beliefs.
+
+Example: Admin pastes an expert's Q&A about AdCP adoption → tag it with topic "adoption-philosophy" → synthesis job distills it into a knowledge rule.`,
+    usage_hints: 'Use when admin shares expert insights, valuable Q&As, or content that should shape Addie\'s thinking.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        content: {
+          type: 'string',
+          description: 'The content to tag as a core insight (full text)',
+        },
+        topic: {
+          type: 'string',
+          description: 'Topic category for grouping (e.g., "adoption-philosophy", "platform-strategy", "trust", "allocation"). Optional but helps with synthesis.',
+        },
+        author_name: {
+          type: 'string',
+          description: 'Who said/wrote this (for context during synthesis, not attribution). Optional.',
+        },
+        author_context: {
+          type: 'string',
+          description: 'Role/expertise context (e.g., "Triton Digital, audio expert"). Optional.',
+        },
+        notes: {
+          type: 'string',
+          description: 'Additional context about why this is valuable. Optional.',
+        },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'list_pending_insights',
+    description: `List insight sources that are pending synthesis.
+
+USE THIS when admin asks:
+- "What insights are waiting to be synthesized?"
+- "Show me tagged content"
+- "What's in the synthesis queue?"
+
+Returns pending insight sources grouped by topic, ready for synthesis.`,
+    usage_hints: 'Use to see what content is queued for synthesis into Addie\'s core knowledge.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        topic: {
+          type: 'string',
+          description: 'Filter by topic (optional)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 20)',
+        },
+      },
+    },
+  },
+  {
+    name: 'run_synthesis',
+    description: `Trigger insight synthesis to convert tagged sources into Addie's knowledge rules.
+
+USE THIS when admin says:
+- "Synthesize the pending insights"
+- "Update Addie's knowledge"
+- "Process the tagged content"
+
+This will:
+1. Gather pending insight sources (optionally filtered by topic)
+2. Use Claude to synthesize them into compact, coherent knowledge rules
+3. Preview how the rules would affect historical interactions
+4. Return proposed rules for admin approval
+
+After synthesis, admin must approve before rules are applied.`,
+    usage_hints: 'Use to process tagged insights into knowledge rules. Requires admin approval before applying.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        topic: {
+          type: 'string',
+          description: 'Synthesize only a specific topic (optional - defaults to all pending)',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -6383,6 +6480,201 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error getting member search analytics');
       return '❌ Failed to get member search analytics. Please try again.';
+    }
+  });
+
+  // ============================================
+  // INSIGHT SYNTHESIS HANDLERS
+  // ============================================
+
+  handlers.set('tag_insight', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const content = input.content as string;
+      if (!content || content.trim().length === 0) {
+        return '❌ Content is required. Please provide the text to tag as an insight.';
+      }
+
+      const topic = (input.topic as string) || undefined;
+      const authorName = (input.author_name as string) || undefined;
+      const authorContext = (input.author_context as string) || undefined;
+      const notes = (input.notes as string) || undefined;
+
+      const taggedBy = memberContext?.workos_user?.email || memberContext?.slack_user?.email || 'admin';
+
+      // Import AddieDatabase here to avoid circular deps
+      const { AddieDatabase } = await import('../../db/addie-db.js');
+      const addieDb = new AddieDatabase();
+
+      const source = await addieDb.createInsightSource({
+        source_type: 'external',
+        content: content.trim(),
+        topic,
+        author_name: authorName,
+        author_context: authorContext,
+        tagged_by: taggedBy,
+        notes,
+      });
+
+      logger.info({
+        sourceId: source.id,
+        topic,
+        taggedBy,
+        contentLength: content.length,
+      }, 'Insight source tagged via Addie tool');
+
+      let response = `✅ **Insight tagged successfully!**\n\n`;
+      response += `- **ID**: ${source.id}\n`;
+      if (topic) response += `- **Topic**: ${topic}\n`;
+      if (authorName) response += `- **Author**: ${authorName}`;
+      if (authorContext) response += ` (${authorContext})`;
+      if (authorName) response += `\n`;
+      response += `- **Content**: ${source.excerpt}\n`;
+      response += `- **Status**: Pending synthesis\n\n`;
+      response += `This content will be synthesized into Addie's core knowledge during the next synthesis run. `;
+      response += `Use \`run_synthesis\` to process pending insights, or wait for the scheduled run.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error tagging insight');
+      return '❌ Failed to tag insight. Please try again.';
+    }
+  });
+
+  handlers.set('list_pending_insights', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const topic = (input.topic as string) || undefined;
+      const limit = Math.min((input.limit as number) || 20, 50);
+
+      const { AddieDatabase } = await import('../../db/addie-db.js');
+      const addieDb = new AddieDatabase();
+
+      const sources = await addieDb.getPendingInsightSources(topic, limit);
+      const byTopic = await addieDb.getInsightSourcesByTopic();
+      const pendingCount = await addieDb.countPendingInsights();
+
+      if (sources.length === 0) {
+        return '📭 No pending insights found. Use `tag_insight` to add content for synthesis.';
+      }
+
+      let response = `## Pending Insights (${pendingCount} total)\n\n`;
+
+      // Summary by topic
+      if (byTopic.length > 0) {
+        response += `### By Topic\n`;
+        for (const t of byTopic) {
+          response += `- **${t.topic}**: ${t.source_count} source(s)\n`;
+        }
+        response += `\n`;
+      }
+
+      // List sources
+      response += `### Recent Sources\n`;
+      for (const source of sources) {
+        const date = new Date(source.tagged_at).toLocaleDateString();
+        response += `\n**${source.id}.** `;
+        if (source.topic) response += `[${source.topic}] `;
+        if (source.author_name) response += `*${source.author_name}* - `;
+        response += `${source.excerpt}\n`;
+        response += `   Tagged by ${source.tagged_by} on ${date}\n`;
+      }
+
+      response += `\n---\nUse \`run_synthesis\` to process these into knowledge rules.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing pending insights');
+      return '❌ Failed to list pending insights. Please try again.';
+    }
+  });
+
+  handlers.set('run_synthesis', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const topic = (input.topic as string) || undefined;
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+
+      if (!apiKey) {
+        return '❌ ANTHROPIC_API_KEY not configured. Cannot run synthesis.';
+      }
+
+      const { AddieDatabase } = await import('../../db/addie-db.js');
+      const { synthesizeInsights } = await import('../jobs/insight-synthesizer.js');
+      const addieDb = new AddieDatabase();
+
+      // Check if there are pending sources
+      const pendingCount = await addieDb.countPendingInsights(topic);
+      if (pendingCount === 0) {
+        return `📭 No pending insights${topic ? ` for topic "${topic}"` : ''}. Use \`tag_insight\` to add content first.`;
+      }
+
+      const createdBy = memberContext?.workos_user?.email || memberContext?.slack_user?.email || 'admin';
+
+      logger.info({
+        topic,
+        pendingCount,
+        createdBy,
+      }, 'Starting insight synthesis via Addie tool');
+
+      const result = await synthesizeInsights(addieDb, apiKey, {
+        topic,
+        maxSources: 50,
+        previewSampleSize: 20,
+        createdBy,
+      });
+
+      let response = `## Synthesis Complete\n\n`;
+      response += `**Run ID**: ${result.run.id}\n`;
+      response += `**Status**: ${result.run.status}\n`;
+      response += `**Sources processed**: ${result.run.sources_count}\n`;
+      response += `**Topics**: ${result.run.topics_included.join(', ') || 'general'}\n\n`;
+
+      // Proposed rules
+      if (result.proposedRules.length > 0) {
+        response += `### Proposed Rules (${result.proposedRules.length})\n\n`;
+        for (const rule of result.proposedRules) {
+          response += `**${rule.name}** (confidence: ${(rule.confidence * 100).toFixed(0)}%)\n`;
+          response += `> ${rule.content.substring(0, 200)}${rule.content.length > 200 ? '...' : ''}\n\n`;
+        }
+      }
+
+      // Preview results
+      if (result.preview) {
+        const { summary } = result.preview;
+        response += `### Impact Preview\n`;
+        response += `Tested against ${result.preview.predictions.length} historical interactions:\n`;
+        response += `- ✅ Likely improved: ${summary.likely_improved}\n`;
+        response += `- ➡️ Unchanged: ${summary.likely_unchanged}\n`;
+        response += `- ⚠️ Potentially worse: ${summary.likely_worse}\n`;
+        response += `- 📊 Average impact: ${(summary.avg_improvement * 100).toFixed(0)}%\n\n`;
+      }
+
+      // Gaps
+      if (result.gaps.length > 0) {
+        response += `### Gaps Identified\n`;
+        response += `Topics that need more source material:\n`;
+        for (const gap of result.gaps) {
+          response += `- ${gap}\n`;
+        }
+        response += `\n`;
+      }
+
+      response += `---\n`;
+      response += `**Next steps**: Review the proposed rules in the admin UI at \`/admin/addie\` and approve or reject the synthesis.\n`;
+      response += `Once approved, use the "Apply" button to add these rules to Addie's knowledge.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error running synthesis');
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Synthesis failed: ${message}`;
     }
   });
 
