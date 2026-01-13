@@ -3,8 +3,11 @@
  */
 
 import { logger } from '../logger.js';
+import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
+import type { SlackBlockMessage } from '../slack/types.js';
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
 interface SlackMessage {
   text: string;
@@ -379,5 +382,137 @@ export async function notifyWorkingGroupPost(data: {
         ],
       },
     ],
+  });
+}
+
+/**
+ * Send a notification to a working group's Slack channel about a published post.
+ * Uses the chapter bot to post directly to the channel.
+ */
+export async function notifyWorkingGroupSlackChannel(data: {
+  slackChannelId: string;
+  workingGroupName: string;
+  workingGroupSlug: string;
+  postTitle: string;
+  postSlug: string;
+  authorName: string;
+  contentType: 'article' | 'link';
+  excerpt?: string;
+  externalUrl?: string;
+  category?: string;
+}): Promise<boolean> {
+  if (!isSlackConfigured()) {
+    logger.debug('Slack not configured, skipping channel notification');
+    return false;
+  }
+
+  const emoji = data.contentType === 'link' ? '🔗' : '📝';
+  const headerText = data.contentType === 'link' ? 'New Link Shared' : 'New Post Published';
+  const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}#post-${data.postSlug}`;
+
+  // Build message blocks
+  const message: SlackBlockMessage = {
+    text: `${emoji} ${headerText} in ${data.workingGroupName}: ${data.postTitle}`,
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text' as const,
+          text: `${emoji} ${headerText}`,
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*<${postUrl}|${data.postTitle}>*${data.excerpt ? `\n${data.excerpt}` : ''}`,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Posted by ${data.authorName}${data.category ? ` • ${data.category}` : ''}`,
+        },
+      },
+      // Add external URL for link posts
+      ...(data.contentType === 'link' && data.externalUrl ? [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `🔗 ${data.externalUrl}`,
+        },
+      }] : []),
+    ],
+  };
+
+  try {
+    const result = await sendChannelMessage(data.slackChannelId, message);
+    if (result.ok) {
+      logger.info(
+        { channelId: data.slackChannelId, postSlug: data.postSlug },
+        'Sent working group post notification to Slack channel'
+      );
+      return true;
+    } else {
+      logger.warn(
+        { channelId: data.slackChannelId, error: result.error },
+        'Failed to send working group post notification'
+      );
+      return false;
+    }
+  } catch (error) {
+    logger.error({ error, channelId: data.slackChannelId }, 'Error sending Slack channel notification');
+    return false;
+  }
+}
+
+/**
+ * Notify a working group's Slack channel about a published post.
+ * Checks if the post is members-only (skips) and if the working group has a channel configured.
+ *
+ * @param slackChannelId - The Slack channel ID (required)
+ */
+export async function notifyPublishedPost(data: {
+  slackChannelId?: string;
+  workingGroupName: string;
+  workingGroupSlug: string;
+  postTitle: string;
+  postSlug: string;
+  authorName: string;
+  contentType: 'article' | 'link';
+  excerpt?: string;
+  externalUrl?: string;
+  category?: string;
+  isMembersOnly: boolean;
+}): Promise<void> {
+  // Skip members-only posts - don't share private content to channels
+  if (data.isMembersOnly) {
+    logger.debug({ postSlug: data.postSlug }, 'Skipping Slack notification for members-only post');
+    return;
+  }
+
+  // Skip if no channel ID provided
+  if (!data.slackChannelId) {
+    logger.debug(
+      { workingGroupSlug: data.workingGroupSlug },
+      'No Slack channel configured for working group, skipping notification'
+    );
+    return;
+  }
+
+  // Send notification (fire-and-forget, errors are logged internally)
+  await notifyWorkingGroupSlackChannel({
+    slackChannelId: data.slackChannelId,
+    workingGroupName: data.workingGroupName,
+    workingGroupSlug: data.workingGroupSlug,
+    postTitle: data.postTitle,
+    postSlug: data.postSlug,
+    authorName: data.authorName,
+    contentType: data.contentType,
+    excerpt: data.excerpt,
+    externalUrl: data.externalUrl,
+    category: data.category,
   });
 }

@@ -14,7 +14,7 @@ import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
-import { notifyWorkingGroupPost } from "../notifications/slack.js";
+import { notifyPublishedPost } from "../notifications/slack.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose } from "../slack/client.js";
@@ -1255,19 +1255,22 @@ export function createCommitteeRouters(): {
         ]
       );
 
-      if (!finalMembersOnly) {
-        notifyWorkingGroupPost({
-          workingGroupName: group.name,
-          workingGroupSlug: slug,
-          postTitle: title,
-          postSlug: post_slug,
-          authorName,
-          contentType: content_type || 'article',
-          category: category || undefined,
-        }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack notification for working group post');
-        });
-      }
+      // Send Slack notification to the working group's channel
+      notifyPublishedPost({
+        slackChannelId: group.slack_channel_id ?? undefined,
+        workingGroupName: group.name,
+        workingGroupSlug: slug,
+        postTitle: title,
+        postSlug: post_slug,
+        authorName,
+        contentType: content_type || 'article',
+        excerpt: excerpt || undefined,
+        externalUrl: external_url || undefined,
+        category: category || undefined,
+        isMembersOnly: finalMembersOnly,
+      }).catch(err => {
+        logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
+      });
 
       res.status(201).json({ post: result.rows[0] });
     } catch (error) {
@@ -1975,17 +1978,22 @@ export function createCommitteeRouters(): {
 
       const createdPost = result.rows[0];
 
+      // Send Slack notification to the working group's channel
       if (status === 'published') {
-        notifyWorkingGroupPost({
+        notifyPublishedPost({
+          slackChannelId: group.slack_channel_id ?? undefined,
           workingGroupName: group.name,
           workingGroupSlug: slug,
           postTitle: title,
           postSlug: post_slug,
           authorName: authorNameFinal,
           contentType: content_type || 'article',
+          excerpt: excerpt || undefined,
+          externalUrl: external_url || undefined,
           category: category || undefined,
+          isMembersOnly: is_members_only || false,
         }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
         });
       }
 
@@ -2099,17 +2107,22 @@ export function createCommitteeRouters(): {
 
       const updatedPost = result.rows[0];
 
+      // Send Slack notification when post transitions to published
       if (willBePublished && !wasPublished) {
-        notifyWorkingGroupPost({
+        notifyPublishedPost({
+          slackChannelId: group.slack_channel_id ?? undefined,
           workingGroupName: group.name,
           workingGroupSlug: slug,
           postTitle: updatedPost.title,
           postSlug: updatedPost.slug,
           authorName: updatedPost.author_name || 'Unknown',
           contentType: updatedPost.content_type || 'article',
+          excerpt: updatedPost.excerpt || undefined,
+          externalUrl: updatedPost.external_url || undefined,
           category: updatedPost.category || undefined,
+          isMembersOnly: updatedPost.is_members_only || false,
         }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
         });
       }
 
