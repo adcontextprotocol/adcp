@@ -165,16 +165,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        domain: {
-          type: 'string',
-          description:
-            'The domain to check (e.g., "example.com" or "https://example.com"). The protocol and path will be normalized.',
-        },
-        validate_cards: {
-          type: 'boolean',
-          description:
-            'Whether to also validate the agent cards for each authorized agent (default: false). This makes additional HTTP requests to each agent URL.',
-        },
+        domain: { type: 'string', description: 'Domain to check' },
+        validate_cards: { type: 'boolean', description: 'Also validate agent cards (default: false)' },
       },
       required: ['domain'],
     },
@@ -191,15 +183,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of groups to return (default 20, max 50)',
-        },
-        type: {
-          type: 'string',
-          enum: ['working_group', 'council', 'chapter', 'all'],
-          description: 'Filter by committee type. working_group=technical groups, council=industry verticals, chapter=regional groups, all=show all types (default)',
-        },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+        type: { type: 'string', enum: ['working_group', 'council', 'chapter', 'all'], description: 'Committee type filter' },
       },
       required: [],
     },
@@ -212,10 +197,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        slug: {
-          type: 'string',
-          description: 'The working group slug (e.g., "sustainability", "creative-formats")',
-        },
+        slug: { type: 'string', description: 'Working group slug' },
       },
       required: ['slug'],
     },
@@ -228,10 +210,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        slug: {
-          type: 'string',
-          description: 'The working group slug to join',
-        },
+        slug: { type: 'string', description: 'Group slug to join' },
       },
       required: ['slug'],
     },
@@ -259,15 +238,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        slug: {
-          type: 'string',
-          description: 'The council/committee slug (e.g., "retail-media-council")',
-        },
-        interest_level: {
-          type: 'string',
-          enum: ['participant', 'leader'],
-          description: 'Whether the user wants to be a participant or is willing to help lead the council (default: participant)',
-        },
+        slug: { type: 'string', description: 'Council slug' },
+        interest_level: { type: 'string', enum: ['participant', 'leader'], description: 'Interest level (default: participant)' },
       },
       required: ['slug'],
     },
@@ -280,10 +252,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        slug: {
-          type: 'string',
-          description: 'The council/committee slug to withdraw interest from',
-        },
+        slug: { type: 'string', description: 'Council slug' },
       },
       required: ['slug'],
     },
@@ -322,32 +291,12 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        headline: {
-          type: 'string',
-          description: 'Short headline/title (e.g., "VP of Product at Acme")',
-        },
-        bio: {
-          type: 'string',
-          description: 'Longer bio/description in markdown format',
-        },
-        focus_areas: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Areas of focus (e.g., ["sustainability", "CTV", "measurement"])',
-        },
-        website: {
-          type: 'string',
-          description: 'Website URL',
-        },
-        linkedin: {
-          type: 'string',
-          description: 'LinkedIn profile URL',
-        },
-        location: {
-          type: 'string',
-          description: 'Location (e.g., "New York, NY")',
-        },
+        headline: { type: 'string', description: 'Short headline/title' },
+        bio: { type: 'string', description: 'Bio in markdown' },
+        focus_areas: { type: 'array', items: { type: 'string' }, description: 'Areas of focus' },
+        website: { type: 'string', description: 'Website URL' },
+        linkedin: { type: 'string', description: 'LinkedIn URL' },
+        location: { type: 'string', description: 'Location' },
       },
       required: [],
     },
@@ -364,10 +313,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number to return (default 10)',
-        },
+        limit: { type: 'number', description: 'Max results (default 10)' },
       },
       required: [],
     },
@@ -380,27 +326,11 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        working_group_slug: {
-          type: 'string',
-          description: 'The working group to post in',
-        },
-        title: {
-          type: 'string',
-          description: 'Post title',
-        },
-        content: {
-          type: 'string',
-          description: 'Post content in markdown format',
-        },
-        post_type: {
-          type: 'string',
-          enum: ['article', 'link', 'discussion'],
-          description: 'Type of post (default: discussion)',
-        },
-        link_url: {
-          type: 'string',
-          description: 'URL for link posts',
-        },
+        working_group_slug: { type: 'string', description: 'Working group slug' },
+        title: { type: 'string', description: 'Post title' },
+        content: { type: 'string', description: 'Content in markdown' },
+        post_type: { type: 'string', enum: ['article', 'link', 'discussion'], description: 'Post type (default: discussion)' },
+        link_url: { type: 'string', description: 'URL for link posts' },
       },
       required: ['working_group_slug', 'title', 'content'],
     },
@@ -417,52 +347,18 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        title: {
-          type: 'string',
-          description: 'Content title',
-        },
-        content: {
-          type: 'string',
-          description: 'Article content in markdown format (required for article type)',
-        },
-        content_type: {
-          type: 'string',
-          enum: ['article', 'link'],
-          description: 'Type of content. article=original content, link=external link with commentary (default: article)',
-        },
-        external_url: {
-          type: 'string',
-          description: 'URL for link type content',
-        },
-        excerpt: {
-          type: 'string',
-          description: 'Short excerpt/summary (auto-generated from content if not provided)',
-        },
-        category: {
-          type: 'string',
-          description: 'Category for the content',
-        },
+        title: { type: 'string', description: 'Title' },
+        content: { type: 'string', description: 'Content in markdown' },
+        content_type: { type: 'string', enum: ['article', 'link'], description: 'Type (default: article)' },
+        external_url: { type: 'string', description: 'URL for link type' },
+        excerpt: { type: 'string', description: 'Short excerpt/summary' },
+        category: { type: 'string', description: 'Category' },
         collection: {
-          type: 'object',
-          description: 'Where to publish: personal (perspectives page) or committee (committee page)',
-          properties: {
-            type: {
-              type: 'string',
-              enum: ['personal', 'committee'],
-              description: 'Collection type',
-            },
-            committee_slug: {
-              type: 'string',
-              description: 'Committee slug (required if type is committee)',
-            },
-          },
+          type: 'object', description: 'Where to publish',
+          properties: { type: { type: 'string', enum: ['personal', 'committee'], description: 'Collection type' }, committee_slug: { type: 'string', description: 'Committee slug' } },
           required: ['type'],
         },
-        co_author_emails: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Email addresses of co-authors to add',
-        },
+        co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
       required: ['title', 'collection'],
     },
@@ -475,20 +371,9 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        status: {
-          type: 'string',
-          enum: ['draft', 'pending_review', 'published', 'archived', 'rejected', 'all'],
-          description: 'Filter by status (default: all)',
-        },
-        collection: {
-          type: 'string',
-          description: 'Filter by collection: "personal" or a committee slug',
-        },
-        relationship: {
-          type: 'string',
-          enum: ['author', 'proposer', 'owner'],
-          description: 'Filter by relationship type',
-        },
+        status: { type: 'string', enum: ['draft', 'pending_review', 'published', 'archived', 'rejected', 'all'], description: 'Filter by status' },
+        collection: { type: 'string', description: 'Filter by collection' },
+        relationship: { type: 'string', enum: ['author', 'proposer', 'owner'], description: 'Filter by relationship' },
       },
       required: [],
     },
@@ -501,10 +386,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'Filter to a specific committee',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug filter' },
       },
       required: [],
     },
@@ -517,14 +399,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        content_id: {
-          type: 'string',
-          description: 'The ID of the content to approve',
-        },
-        publish_immediately: {
-          type: 'boolean',
-          description: 'Whether to publish immediately (default: true) or save as draft',
-        },
+        content_id: { type: 'string', description: 'Content ID' },
+        publish_immediately: { type: 'boolean', description: 'Publish immediately (default: true)' },
       },
       required: ['content_id'],
     },
@@ -537,14 +413,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        content_id: {
-          type: 'string',
-          description: 'The ID of the content to reject',
-        },
-        reason: {
-          type: 'string',
-          description: 'Reason for rejection (required - helps the author understand and improve)',
-        },
+        content_id: { type: 'string', description: 'Content ID' },
+        reason: { type: 'string', description: 'Rejection reason' },
       },
       required: ['content_id', 'reason'],
     },
@@ -561,26 +431,11 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The committee/working group slug (e.g., "governance", "brand-standards-wg")',
-        },
-        title: {
-          type: 'string',
-          description: 'A title for the document',
-        },
-        document_url: {
-          type: 'string',
-          description: 'The Google Docs URL (must be docs.google.com, sheets.google.com, or drive.google.com)',
-        },
-        description: {
-          type: 'string',
-          description: 'Optional description of what the document is for',
-        },
-        is_featured: {
-          type: 'boolean',
-          description: 'Whether this is a featured/highlighted document (default: false)',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        title: { type: 'string', description: 'Document title' },
+        document_url: { type: 'string', description: 'Google Docs URL' },
+        description: { type: 'string', description: 'Description' },
+        is_featured: { type: 'boolean', description: 'Featured document (default: false)' },
       },
       required: ['committee_slug', 'title', 'document_url'],
     },
@@ -593,10 +448,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The committee/working group slug',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
       },
       required: ['committee_slug'],
     },
@@ -609,30 +461,12 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The committee/working group slug',
-        },
-        document_id: {
-          type: 'string',
-          description: 'The document ID to update (UUID)',
-        },
-        title: {
-          type: 'string',
-          description: 'New title for the document',
-        },
-        description: {
-          type: 'string',
-          description: 'New description for the document',
-        },
-        document_url: {
-          type: 'string',
-          description: 'New Google Docs URL (must be docs.google.com, sheets.google.com, or drive.google.com)',
-        },
-        is_featured: {
-          type: 'boolean',
-          description: 'Whether this is a featured/highlighted document',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        document_id: { type: 'string', description: 'Document ID' },
+        title: { type: 'string', description: 'New title' },
+        description: { type: 'string', description: 'New description' },
+        document_url: { type: 'string', description: 'New Google Docs URL' },
+        is_featured: { type: 'boolean', description: 'Featured document' },
       },
       required: ['committee_slug', 'document_id'],
     },
@@ -645,14 +479,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The committee/working group slug',
-        },
-        document_id: {
-          type: 'string',
-          description: 'The document ID to delete (UUID)',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        document_id: { type: 'string', description: 'Document ID' },
       },
       required: ['committee_slug', 'document_id'],
     },
@@ -684,10 +512,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to check (e.g., "https://sales.example.com")',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['agent_url'],
     },
@@ -695,19 +520,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'check_publisher_authorization',
     description:
-      'Check if a publisher domain has authorized a specific agent. Validates the publisher\'s adagents.json and confirms the agent is listed. Use this when users want to verify their publisher setup before testing integrations.',
+      'Check if a publisher domain has authorized a specific agent.',
     usage_hints: 'use for authorization verification, "is my agent authorized?"',
     input_schema: {
       type: 'object',
       properties: {
-        domain: {
-          type: 'string',
-          description: 'The publisher domain (e.g., "example.com")',
-        },
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to check authorization for',
-        },
+        domain: { type: 'string', description: 'Publisher domain' },
+        agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['domain', 'agent_url'],
     },
@@ -720,10 +539,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to inspect',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['agent_url'],
     },
@@ -736,72 +552,16 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to test (e.g., "https://sales.example.com" or "https://test-agent.adcontextprotocol.org")',
-        },
-        scenario: {
-          type: 'string',
-          enum: [
-            'health_check',
-            'discovery',
-            'create_media_buy',
-            'full_sales_flow',
-            'creative_sync',
-            'creative_inline',
-            'creative_reference',
-            'pricing_models',
-            'creative_flow',
-            'signals_flow',
-            'error_handling',
-            'validation',
-            'pricing_edge_cases',
-            'temporal_validation',
-            'behavior_analysis',
-            'response_consistency',
-          ],
-          description: 'Test scenario: health_check (agent responds), discovery (products/formats/properties), create_media_buy (discovery + create), full_sales_flow (create + update + delivery), creative_sync (sync_creatives flow), creative_inline (inline creatives in create_media_buy), creative_reference (reference existing creatives), pricing_models (analyze pricing options), creative_flow (creative agents), signals_flow (signals agents), error_handling (proper error responses), validation (invalid input rejection), pricing_edge_cases (auction vs fixed, min spend), temporal_validation (date ordering, format), behavior_analysis (auth requirements, brief relevance, filtering behavior), response_consistency (schema errors, pagination bugs, data mismatches)',
-        },
-        brief: {
-          type: 'string',
-          description: 'Optional custom brief for product discovery (default: generic tech brand brief)',
-        },
-        budget: {
-          type: 'number',
-          description: 'Budget for test media buy in dollars (default: 1000)',
-        },
-        dry_run: {
-          type: 'boolean',
-          description: 'Whether to run in dry-run mode (default: true). Set to false for real testing that creates actual media buys.',
-        },
-        channels: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific channels to test (e.g., ["display", "video", "ctv"]). If not specified, tests all channels the agent supports.',
-        },
-        pricing_models: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific pricing models to test (e.g., ["cpm", "cpcv"]). If not specified, uses first available.',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
+        scenario: { type: 'string', enum: ['health_check', 'discovery', 'create_media_buy', 'full_sales_flow', 'creative_sync', 'creative_inline', 'creative_reference', 'pricing_models', 'creative_flow', 'signals_flow', 'error_handling', 'validation', 'pricing_edge_cases', 'temporal_validation', 'behavior_analysis', 'response_consistency'], description: 'Test scenario' },
+        brief: { type: 'string', description: 'Custom brief' },
+        budget: { type: 'number', description: 'Budget in dollars (default: 1000)' },
+        dry_run: { type: 'boolean', description: 'Dry-run mode (default: true)' },
+        channels: { type: 'array', items: { type: 'string' }, description: 'Channels to test' },
+        pricing_models: { type: 'array', items: { type: 'string' }, description: 'Pricing models to test' },
         brand_manifest: {
-          type: 'object',
-          description: 'Brand manifest for the test advertiser. Can specify a well-known brand like {name: "Nike", url: "https://nike.com"} or a custom brand. If not specified, uses Nike as the default.',
-          properties: {
-            name: {
-              type: 'string',
-              description: 'Brand name (e.g., "Nike", "Coca-Cola", "Acme Corp")',
-            },
-            url: {
-              type: 'string',
-              format: 'uri',
-              description: 'Brand website URL',
-            },
-            tagline: {
-              type: 'string',
-              description: 'Brand tagline or slogan',
-            },
-          },
+          type: 'object', description: 'Brand manifest',
+          properties: { name: { type: 'string', description: 'Brand name' }, url: { type: 'string', format: 'uri', description: 'Brand URL' }, tagline: { type: 'string', description: 'Tagline' } },
           required: ['name'],
         },
       },
@@ -819,23 +579,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to save (e.g., "https://sales.example.com/mcp")',
-        },
-        agent_name: {
-          type: 'string',
-          description: 'Friendly name for the agent (e.g., "Production Sales Agent")',
-        },
-        auth_token: {
-          type: 'string',
-          description: 'Optional auth token to store securely. Will be encrypted and never shown again.',
-        },
-        protocol: {
-          type: 'string',
-          enum: ['mcp', 'a2a'],
-          description: 'Protocol type (default: mcp)',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
+        agent_name: { type: 'string', description: 'Agent name' },
+        auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
+        protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
       },
       required: ['agent_url'],
     },
@@ -859,10 +606,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL to remove',
-        },
+        agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['agent_url'],
     },
@@ -890,26 +634,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        title: {
-          type: 'string',
-          description: 'Issue title - clear and concise summary of the bug or feature request',
-        },
-        body: {
-          type: 'string',
-          description:
-            'Issue body in markdown format. CRITICAL: Never include customer names, emails, org IDs, or any PII - GitHub issues are public. Use generic placeholders like [Customer] or [Organization]. For bugs, ALWAYS include the exact error message. Include anonymized steps to reproduce.',
-        },
-        repo: {
-          type: 'string',
-          description:
-            'Repository name within adcontextprotocol org. Always use "adcp" - it contains the protocol, schemas, server, and docs. Default: "adcp"',
-        },
-        labels: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Optional labels to suggest (e.g., ["bug"], ["enhancement"], ["documentation"]). Common labels: bug, enhancement, documentation, good first issue',
-        },
+        title: { type: 'string', description: 'Issue title' },
+        body: { type: 'string', description: 'Issue body (no PII - GitHub is public)' },
+        repo: { type: 'string', description: 'Repo name (default: "adcp")' },
+        labels: { type: 'array', items: { type: 'string' }, description: 'Optional labels' },
       },
       required: ['title', 'body'],
     },
@@ -926,23 +654,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        url: {
-          type: 'string',
-          description: 'URL of the proposed news source (website or RSS feed URL)',
-        },
-        name: {
-          type: 'string',
-          description: 'Suggested name for the feed (e.g., "AdExchanger", "Marketing Week")',
-        },
-        reason: {
-          type: 'string',
-          description: 'Brief reason why this source is relevant to the community',
-        },
-        category: {
-          type: 'string',
-          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
-          description: 'Category that best fits this publication',
-        },
+        url: { type: 'string', description: 'Source URL' },
+        name: { type: 'string', description: 'Feed name' },
+        reason: { type: 'string', description: 'Why this source is relevant' },
+        category: { type: 'string', enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'], description: 'Category' },
       },
       required: ['url'],
     },
@@ -959,22 +674,9 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'What the user is looking for in natural language (e.g., "run a sales agent for me", "help implementing AdCP", "CTV advertising expertise", "managed services for publishers")',
-        },
-        offerings: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'],
-          },
-          description: 'Optional: filter by specific service offerings',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default 5, max 10)',
-        },
+        query: { type: 'string', description: 'Natural language search query' },
+        offerings: { type: 'array', items: { type: 'string', enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'] }, description: 'Filter by offerings' },
+        limit: { type: 'number', description: 'Max results (default 5)' },
       },
       required: ['query'],
     },
@@ -987,34 +689,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        member_slug: {
-          type: 'string',
-          description: 'The slug (URL identifier) of the member to be introduced to',
-        },
-        requester_name: {
-          type: 'string',
-          description: 'Full name of the person requesting the introduction',
-        },
-        requester_email: {
-          type: 'string',
-          description: 'Email address of the person requesting the introduction',
-        },
-        requester_company: {
-          type: 'string',
-          description: 'Company/organization of the person requesting the introduction (optional)',
-        },
-        message: {
-          type: 'string',
-          description: 'Brief message from the requester explaining what they\'re looking for or why they want to connect',
-        },
-        search_query: {
-          type: 'string',
-          description: 'The original search query the user used to find this member (if applicable)',
-        },
-        reasoning: {
-          type: 'string',
-          description: 'Addie\'s explanation of why this member is a good fit for what the requester is looking for. Be specific about matching capabilities.',
-        },
+        member_slug: { type: 'string', description: 'Member slug' },
+        requester_name: { type: 'string', description: 'Requester name' },
+        requester_email: { type: 'string', description: 'Requester email' },
+        requester_company: { type: 'string', description: 'Requester company' },
+        message: { type: 'string', description: 'Message to member' },
+        search_query: { type: 'string', description: 'Original search query' },
+        reasoning: { type: 'string', description: 'Why this member is a good fit' },
       },
       required: ['member_slug', 'requester_name', 'requester_email', 'message', 'reasoning'],
     },

@@ -624,6 +624,8 @@ export interface BuildMessageTurnsOptions {
   tokenLimit?: number;
   /** Model name for determining context limits */
   model?: string;
+  /** Number of tools being used (for more accurate token budget calculation) */
+  toolCount?: number;
 }
 
 /**
@@ -671,7 +673,8 @@ export function buildMessageTurnsWithMetadata(
   options?: BuildMessageTurnsOptions
 ): BuildMessageTurnsResult {
   const maxMessages = options?.maxMessages ?? 10;
-  const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model);
+  // Pass toolCount for more accurate token budget when available
+  const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model, options?.toolCount);
 
   let messages: MessageTurn[] = [];
 

@@ -303,22 +303,6 @@ export const ADMIN_TOOLS: AddieTool[] = [
   // BILLING & INVOICE TOOLS
   // ============================================
   {
-    name: 'lookup_organization',
-    description: `DEPRECATED: Use get_account instead for complete account view with lifecycle stage.
-This tool only searches Stripe data - it will fail for organizations that were created through the prospect flow.
-Use get_account for a unified view of all organizations.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        company_name: {
-          type: 'string',
-          description: 'The company name to search for (partial match supported)',
-        },
-      },
-      required: ['company_name'],
-    },
-  },
-  {
     name: 'list_pending_invoices',
     description: `List all organizations with pending (unpaid) invoices.
 Use this when an admin asks about outstanding invoices or payment status across organizations.
@@ -335,46 +319,13 @@ Returns a list of organizations with open or draft invoices.`,
   },
   {
     name: 'get_account',
-    description: `Get the complete account view for any organization - whether they're a prospect, member, or churned.
-
-This is the PRIMARY tool for looking up any company. It shows:
-- **Lifecycle stage**: prospect → contacted → responded → interested → negotiating → member (or declined/churned)
-- **Membership**: Subscription status, tier, renewal date
-- **Engagement**: Slack users, activity, working groups, dashboard logins
-- **Pipeline**: Contact info, notes, interest level, activities
-- **Enrichment**: Industry, revenue, employee count
-
-USE THIS for ANY question about a company:
-- "What's the status of [company]?"
-- "Is [company] a member?"
-- "Tell me about [company]"
-- "How engaged is [company]?"
-- "Who is our contact at [company]?"
-
-This replaces find_prospect and lookup_organization with a unified view.`,
-    usage_hints: 'Use this for ANY question about a specific organization. This gives you the complete account picture including lifecycle stage.',
+    description: 'Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.',
     input_schema: {
       type: 'object' as const,
       properties: {
         query: {
           type: 'string',
           description: 'Company name or domain to look up (e.g., "Mediaocean" or "mediaocean.com")',
-        },
-      },
-      required: ['query'],
-    },
-  },
-  // Alias for backwards compatibility
-  {
-    name: 'get_organization_details',
-    description: `Alias for get_account. Use get_account instead for the complete account lifecycle view.`,
-    usage_hints: 'Prefer get_account - this is kept for backwards compatibility.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Company name or domain to look up (e.g., "Boltive" or "boltive.com")',
         },
       },
       required: ['query'],
@@ -387,62 +338,21 @@ This replaces find_prospect and lookup_organization with a unified view.`,
   {
     name: 'add_prospect',
     description:
-      'Add a new prospect organization to track. Use this after find_prospect confirms the company does not exist. Capture as much info as possible: name, domain, contact details, and notes about their interest.',
-    usage_hints: 'Always use find_prospect first to check if company exists. Include champion info in notes (e.g., "Champion: Jane Doe, VP Sales").',
+      'Add a new prospect organization to track. Use get_account first to confirm the company does not exist. Capture as much info as possible: name, domain, contact details, and notes about their interest.',
+    usage_hints: 'Always use get_account first to check if company exists. Include champion info in notes (e.g., "Champion: Jane Doe, VP Sales").',
     input_schema: {
       type: 'object',
       properties: {
-        name: {
-          type: 'string',
-          description: 'Company name (e.g., "Boltive")',
-        },
-        company_type: {
-          type: 'string',
-          enum: COMPANY_TYPE_VALUES,
-          description: 'Type of company',
-        },
-        domain: {
-          type: 'string',
-          description: 'Company domain (e.g., "boltive.com"). Highly recommended for enrichment and deduplication.',
-        },
-        contact_name: {
-          type: 'string',
-          description: 'Primary contact/champion name (e.g., "Pamela Slea")',
-        },
-        contact_email: {
-          type: 'string',
-          description: 'Primary contact email',
-        },
-        contact_title: {
-          type: 'string',
-          description: 'Primary contact job title (e.g., "President", "VP Engineering")',
-        },
-        notes: {
-          type: 'string',
-          description: 'Notes about the prospect - include champion info, their interest areas, which working groups they want to join, etc.',
-        },
-        source: {
-          type: 'string',
-          description: 'How we found this prospect (e.g., "slack_conversation", "referral", "conference")',
-        },
+        name: { type: 'string', description: 'Company name' },
+        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Type of company' },
+        domain: { type: 'string', description: 'Company domain (for enrichment/dedup)' },
+        contact_name: { type: 'string', description: 'Primary contact name' },
+        contact_email: { type: 'string', description: 'Primary contact email' },
+        contact_title: { type: 'string', description: 'Primary contact job title' },
+        notes: { type: 'string', description: 'Notes about the prospect' },
+        source: { type: 'string', description: 'How we found this prospect' },
       },
       required: ['name'],
-    },
-  },
-  {
-    name: 'find_prospect',
-    description:
-      'DEPRECATED: Use get_account instead for complete account view with lifecycle stage. This tool only checks if a company exists before adding - use get_account to see full status including whether they are already a member.',
-    usage_hints: 'DEPRECATED: Prefer get_account for lookups. Only use this before add_prospect to check existence.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Search query - company name or domain (e.g., "Boltive" or "boltive.com")',
-        },
-      },
-      required: ['query'],
     },
   },
   {
@@ -452,41 +362,14 @@ This replaces find_prospect and lookup_organization with a unified view.`,
     input_schema: {
       type: 'object',
       properties: {
-        org_id: {
-          type: 'string',
-          description: 'Organization ID to update',
-        },
-        company_type: {
-          type: 'string',
-          enum: COMPANY_TYPE_VALUES,
-          description: 'Type of company',
-        },
-        status: {
-          type: 'string',
-          enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'],
-          description: 'Prospect status',
-        },
-        interest_level: {
-          type: 'string',
-          enum: ['low', 'medium', 'high', 'very_high'],
-          description: 'How interested is this prospect? Set based on signals: low=not interested, medium=lukewarm, high=actively engaged/excited, very_high=ready to move forward/committed resources',
-        },
-        contact_name: {
-          type: 'string',
-          description: 'Primary contact name',
-        },
-        contact_email: {
-          type: 'string',
-          description: 'Primary contact email',
-        },
-        notes: {
-          type: 'string',
-          description: 'Notes to append (will be added with timestamp)',
-        },
-        domain: {
-          type: 'string',
-          description: 'Company domain for enrichment',
-        },
+        org_id: { type: 'string', description: 'Organization ID' },
+        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Type of company' },
+        status: { type: 'string', enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'], description: 'Prospect status' },
+        interest_level: { type: 'string', enum: ['low', 'medium', 'high', 'very_high'], description: 'Interest level (low/medium/high/very_high)' },
+        contact_name: { type: 'string', description: 'Primary contact name' },
+        contact_email: { type: 'string', description: 'Primary contact email' },
+        notes: { type: 'string', description: 'Notes to append' },
+        domain: { type: 'string', description: 'Company domain' },
       },
       required: ['org_id'],
     },
@@ -498,18 +381,9 @@ This replaces find_prospect and lookup_organization with a unified view.`,
     input_schema: {
       type: 'object',
       properties: {
-        domain: {
-          type: 'string',
-          description: 'Company domain to research (e.g., "thetradedesk.com")',
-        },
-        company_name: {
-          type: 'string',
-          description: 'Company name to search for (used if domain not provided)',
-        },
-        org_id: {
-          type: 'string',
-          description: 'If provided, save enrichment data to this organization',
-        },
+        domain: { type: 'string', description: 'Company domain to research' },
+        company_name: { type: 'string', description: 'Company name (if domain not provided)' },
+        org_id: { type: 'string', description: 'Organization ID to save enrichment to' },
       },
       required: [],
     },
@@ -521,116 +395,36 @@ This replaces find_prospect and lookup_organization with a unified view.`,
     input_schema: {
       type: 'object',
       properties: {
-        status: {
-          type: 'string',
-          enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'],
-          description: 'Filter by status',
-        },
-        company_type: {
-          type: 'string',
-          enum: COMPANY_TYPE_VALUES,
-          description: 'Filter by company type',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number to return (default 10, max 50)',
-        },
-        sort: {
-          type: 'string',
-          enum: ['recent', 'name', 'activity'],
-          description: 'Sort order: recent (newest first), name (alphabetical), activity (most recent activity)',
-        },
+        status: { type: 'string', enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'], description: 'Filter by status' },
+        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Filter by company type' },
+        limit: { type: 'number', description: 'Max results (default 10)' },
+        sort: { type: 'string', enum: ['recent', 'name', 'activity'], description: 'Sort order' },
       },
       required: [],
     },
   },
   {
     name: 'send_payment_request',
-    description: `Send a payment link or invoice to a prospect. This is the ONE tool to use when you want to get someone to pay.
-
-USE THIS when an admin says things like:
-- "Send Joe Root at Permutive a membership link"
-- "Get a payment link for Boltive"
-- "Invoice The Trade Desk"
-- "Help [company] pay for membership"
-- "Give Acme a 20% discount and send them a payment link"
-- "Send a discounted link to the startup"
-- "Let's issue an invoice to Boltive" (use draft_invoice first, then send_invoice to confirm)
-
-This tool will:
-1. Find the company (or create it if it doesn't exist)
-2. Show you the users/contacts on file
-3. Apply a discount if requested (or use their existing discount)
-4. Generate a direct Stripe payment link OR send an invoice
-
-For payment links: Returns a direct Stripe checkout URL you can share with the prospect.
-For invoices: Use action="draft_invoice" FIRST to prepare and review, then action="send_invoice" to send.
-For discounts: Can create a new discount or auto-apply an existing org discount.
-
-IMPORTANT: For invoices, ALWAYS use the two-step process:
-1. First call with action="draft_invoice" to prepare and show the draft for admin review
-2. Then call with action="send_invoice" after admin confirms (or makes changes)`,
-    usage_hints: 'This is the primary tool for converting prospects to members. Use it whenever payment is discussed. For invoices, use draft_invoice first.',
+    description: 'Send payment link or invoice to prospect. Finds/creates company, applies discounts, generates Stripe checkout URL or invoice. For invoices: use draft_invoice first, then send_invoice.',
     input_schema: {
       type: 'object',
       properties: {
-        company_name: {
-          type: 'string',
-          description: 'Company name to search for or create',
-        },
-        domain: {
-          type: 'string',
-          description: 'Company domain (helps with lookup and creation)',
-        },
-        contact_name: {
-          type: 'string',
-          description: 'Contact person name (e.g., "Joe Root")',
-        },
-        contact_email: {
-          type: 'string',
-          description: 'Contact email address (required for invoice, optional for payment link)',
-        },
-        contact_title: {
-          type: 'string',
-          description: 'Contact job title',
-        },
-        action: {
-          type: 'string',
-          enum: ['payment_link', 'draft_invoice', 'send_invoice', 'lookup_only'],
-          description: 'What to do: payment_link (default), draft_invoice (prepare invoice for review), send_invoice (send after review), or lookup_only (just show info). For invoices, ALWAYS use draft_invoice first, then send_invoice to confirm.',
-        },
-        lookup_key: {
-          type: 'string',
-          description: 'Product lookup_key from find_membership_products (e.g., aao_membership_corporate_under5m). ALWAYS call find_membership_products first to get valid lookup keys. Do NOT use tier names like bronze/silver/gold.',
-        },
+        company_name: { type: 'string', description: 'Company name' },
+        domain: { type: 'string', description: 'Company domain' },
+        contact_name: { type: 'string', description: 'Contact person name' },
+        contact_email: { type: 'string', description: 'Contact email (required for invoice)' },
+        contact_title: { type: 'string', description: 'Contact job title' },
+        action: { type: 'string', enum: ['payment_link', 'draft_invoice', 'send_invoice', 'lookup_only'], description: 'Action type (default: payment_link)' },
+        lookup_key: { type: 'string', description: 'Product lookup_key from find_membership_products' },
         billing_address: {
           type: 'object',
-          description: 'Required for invoices - company billing address',
-          properties: {
-            line1: { type: 'string' },
-            line2: { type: 'string' },
-            city: { type: 'string' },
-            state: { type: 'string' },
-            postal_code: { type: 'string' },
-            country: { type: 'string', description: 'Two-letter country code (e.g., "US")' },
-          },
+          description: 'Billing address (required for invoices)',
+          properties: { line1: { type: 'string' }, line2: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, postal_code: { type: 'string' }, country: { type: 'string' } },
         },
-        discount_percent: {
-          type: 'number',
-          description: 'Apply a percentage discount (e.g., 20 = 20% off). Creates a Stripe coupon.',
-        },
-        discount_amount_dollars: {
-          type: 'number',
-          description: 'Apply a fixed dollar discount (e.g., 500 = $500 off). Creates a Stripe coupon.',
-        },
-        discount_reason: {
-          type: 'string',
-          description: 'Reason for the discount (e.g., "Startup discount", "Early adopter")',
-        },
-        use_existing_discount: {
-          type: 'boolean',
-          description: 'If the org already has a discount, use it (default: true)',
-        },
+        discount_percent: { type: 'number', description: 'Percentage discount' },
+        discount_amount_dollars: { type: 'number', description: 'Fixed dollar discount' },
+        discount_reason: { type: 'string', description: 'Reason for discount' },
+        use_existing_discount: { type: 'boolean', description: 'Use existing org discount (default: true)' },
       },
       required: ['company_name'],
     },
@@ -642,33 +436,12 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        keywords: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Keywords to search for (e.g., ["programmatic", "DSP", "ad tech"])',
-        },
-        industries: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Industry categories (e.g., ["Advertising", "Marketing", "Media"])',
-        },
-        min_employees: {
-          type: 'number',
-          description: 'Minimum employee count',
-        },
-        max_employees: {
-          type: 'number',
-          description: 'Maximum employee count',
-        },
-        countries: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Countries to include (e.g., ["United States", "United Kingdom"])',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum results (default 10)',
-        },
+        keywords: { type: 'array', items: { type: 'string' }, description: 'Keywords to search for' },
+        industries: { type: 'array', items: { type: 'string' }, description: 'Industry categories' },
+        min_employees: { type: 'number', description: 'Min employee count' },
+        max_employees: { type: 'number', description: 'Max employee count' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Countries to include' },
+        limit: { type: 'number', description: 'Max results (default 10)' },
       },
       required: [],
     },
@@ -684,19 +457,9 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'Search query - feed name, URL, or category (optional)',
-        },
-        status: {
-          type: 'string',
-          enum: ['all', 'active', 'inactive', 'errors'],
-          description: 'Filter by status: all, active, inactive, or errors (feeds with fetch errors)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default 10)',
-        },
+        query: { type: 'string', description: 'Search query' },
+        status: { type: 'string', enum: ['all', 'active', 'inactive', 'errors'], description: 'Filter by status' },
+        limit: { type: 'number', description: 'Max results (default 10)' },
       },
       required: [],
     },
@@ -708,19 +471,9 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        name: {
-          type: 'string',
-          description: 'Name for the feed (e.g., "AdExchanger", "Digiday")',
-        },
-        feed_url: {
-          type: 'string',
-          description: 'RSS feed URL (e.g., "https://www.adexchanger.com/feed/")',
-        },
-        category: {
-          type: 'string',
-          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'tech'],
-          description: 'Category for the feed',
-        },
+        name: { type: 'string', description: 'Feed name' },
+        feed_url: { type: 'string', description: 'RSS feed URL' },
+        category: { type: 'string', enum: ['ad-tech', 'advertising', 'marketing', 'media', 'tech'], description: 'Feed category' },
       },
       required: ['name', 'feed_url'],
     },
@@ -742,10 +495,7 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of proposals to return (default 20)',
-        },
+        limit: { type: 'number', description: 'Max results (default 20)' },
       },
       required: [],
     },
@@ -757,23 +507,10 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        proposal_id: {
-          type: 'number',
-          description: 'ID of the proposal to approve',
-        },
-        feed_name: {
-          type: 'string',
-          description: 'Name for the feed (e.g., "AdExchanger")',
-        },
-        feed_url: {
-          type: 'string',
-          description: 'RSS feed URL (may differ from the proposed URL)',
-        },
-        category: {
-          type: 'string',
-          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'],
-          description: 'Category for the feed',
-        },
+        proposal_id: { type: 'number', description: 'Proposal ID' },
+        feed_name: { type: 'string', description: 'Feed name' },
+        feed_url: { type: 'string', description: 'RSS feed URL' },
+        category: { type: 'string', enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'], description: 'Feed category' },
       },
       required: ['proposal_id', 'feed_name', 'feed_url'],
     },
@@ -785,14 +522,8 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        proposal_id: {
-          type: 'number',
-          description: 'ID of the proposal to reject',
-        },
-        reason: {
-          type: 'string',
-          description: 'Reason for rejection (optional)',
-        },
+        proposal_id: { type: 'number', description: 'Proposal ID' },
+        reason: { type: 'string', description: 'Rejection reason' },
       },
       required: ['proposal_id'],
     },
@@ -808,35 +539,13 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        slack_user_id: {
-          type: 'string',
-          description: 'Slack user ID of the media contact (e.g., "U0123456789")',
-        },
-        email: {
-          type: 'string',
-          description: 'Email address of the media contact',
-        },
-        name: {
-          type: 'string',
-          description: 'Full name of the media contact',
-        },
-        organization: {
-          type: 'string',
-          description: 'Media organization they work for (e.g., "TechCrunch", "AdExchanger")',
-        },
-        role: {
-          type: 'string',
-          description: 'Their role (e.g., "Reporter", "Editor", "Journalist")',
-        },
-        notes: {
-          type: 'string',
-          description: 'Additional notes about this contact',
-        },
-        handling_level: {
-          type: 'string',
-          enum: ['standard', 'careful', 'executive_only'],
-          description: 'How carefully to handle this contact: standard (deflect sensitive topics), careful (deflect more topics), executive_only (always escalate)',
-        },
+        slack_user_id: { type: 'string', description: 'Slack user ID' },
+        email: { type: 'string', description: 'Email address' },
+        name: { type: 'string', description: 'Full name' },
+        organization: { type: 'string', description: 'Media organization' },
+        role: { type: 'string', description: 'Role (Reporter/Editor/etc)' },
+        notes: { type: 'string', description: 'Additional notes' },
+        handling_level: { type: 'string', enum: ['standard', 'careful', 'executive_only'], description: 'Handling level' },
       },
       required: [],
     },
@@ -848,19 +557,9 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        unreviewed_only: {
-          type: 'boolean',
-          description: 'Only show conversations that haven\'t been reviewed yet (default: true)',
-        },
-        severity: {
-          type: 'string',
-          enum: ['high', 'medium', 'low'],
-          description: 'Filter by severity level',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 20)',
-        },
+        unreviewed_only: { type: 'boolean', description: 'Only unreviewed (default: true)' },
+        severity: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Filter by severity' },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
       },
       required: [],
     },
@@ -872,14 +571,8 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
     input_schema: {
       type: 'object',
       properties: {
-        flagged_id: {
-          type: 'number',
-          description: 'ID of the flagged conversation to review',
-        },
-        notes: {
-          type: 'string',
-          description: 'Notes about the review (e.g., "False positive - user was asking about child-safe ad practices for their company", "Escalated to Brian")',
-        },
+        flagged_id: { type: 'number', description: 'Flagged conversation ID' },
+        notes: { type: 'string', description: 'Review notes' },
       },
       required: ['flagged_id'],
     },
@@ -890,36 +583,16 @@ IMPORTANT: For invoices, ALWAYS use the two-step process:
   // ============================================
   {
     name: 'grant_discount',
-    description: `Grant a discount to an organization. Use this when an admin wants to give a company a special rate.
-You can grant either a percentage discount (e.g., 20% off) or a fixed dollar amount discount (e.g., $500 off).
-Optionally creates a Stripe coupon/promotion code they can use at checkout.`,
+    description: 'Grant a discount to an organization. Creates Stripe coupon/promo code.',
     input_schema: {
       type: 'object',
       properties: {
-        org_id: {
-          type: 'string',
-          description: 'Organization ID (workos_organization_id)',
-        },
-        org_name: {
-          type: 'string',
-          description: 'Company name (alternative to org_id - will search for the org)',
-        },
-        discount_percent: {
-          type: 'number',
-          description: 'Percentage off (e.g., 20 = 20% off). Use this OR discount_amount_dollars, not both.',
-        },
-        discount_amount_dollars: {
-          type: 'number',
-          description: 'Fixed dollar amount off (e.g., 500 = $500 off). Use this OR discount_percent, not both.',
-        },
-        reason: {
-          type: 'string',
-          description: 'Why this discount is being granted (e.g., "Startup discount", "Early adopter", "Nonprofit")',
-        },
-        create_promotion_code: {
-          type: 'boolean',
-          description: 'Create a Stripe promotion code the org can use at checkout (default: true)',
-        },
+        org_id: { type: 'string', description: 'Organization ID' },
+        org_name: { type: 'string', description: 'Company name (if no org_id)' },
+        discount_percent: { type: 'number', description: 'Percentage off' },
+        discount_amount_dollars: { type: 'number', description: 'Fixed dollar amount off' },
+        reason: { type: 'string', description: 'Discount reason' },
+        create_promotion_code: { type: 'boolean', description: 'Create Stripe promo code (default: true)' },
       },
       required: ['reason'],
     },
@@ -930,64 +603,35 @@ Optionally creates a Stripe coupon/promotion code they can use at checkout.`,
     input_schema: {
       type: 'object',
       properties: {
-        org_id: {
-          type: 'string',
-          description: 'Organization ID (workos_organization_id)',
-        },
-        org_name: {
-          type: 'string',
-          description: 'Company name (alternative to org_id - will search for the org)',
-        },
+        org_id: { type: 'string', description: 'Organization ID' },
+        org_name: { type: 'string', description: 'Company name (if no org_id)' },
       },
       required: [],
     },
   },
   {
     name: 'list_discounts',
-    description: 'List all organizations that currently have active discounts. Shows discount percentage/amount, reason, and who granted it.',
+    description: 'List organizations with active discounts.',
     input_schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 20)',
-        },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
       },
       required: [],
     },
   },
   {
     name: 'create_promotion_code',
-    description: `Create a standalone Stripe promotion code that anyone can use. Useful for marketing campaigns or special offers.
-The code will be usable at checkout for any customer.`,
+    description: 'Create a standalone Stripe promo code for marketing campaigns.',
     input_schema: {
       type: 'object',
       properties: {
-        code: {
-          type: 'string',
-          description: 'The code customers will enter at checkout (e.g., "LAUNCH2025", "EARLYBIRD"). Will be converted to uppercase.',
-        },
-        name: {
-          type: 'string',
-          description: 'Internal name for the coupon (e.g., "Launch 2025 Campaign")',
-        },
-        percent_off: {
-          type: 'number',
-          description: 'Percentage off (e.g., 20 = 20% off). Use this OR amount_off_dollars, not both.',
-        },
-        amount_off_dollars: {
-          type: 'number',
-          description: 'Fixed dollar amount off (e.g., 100 = $100 off). Use this OR percent_off, not both.',
-        },
-        duration: {
-          type: 'string',
-          enum: ['once', 'repeating', 'forever'],
-          description: 'How long the discount applies: once (first payment only), repeating (multiple months), forever (all payments). Default: once.',
-        },
-        max_redemptions: {
-          type: 'number',
-          description: 'Maximum number of times the code can be used (optional)',
-        },
+        code: { type: 'string', description: 'Checkout code (e.g., "LAUNCH2025")' },
+        name: { type: 'string', description: 'Internal coupon name' },
+        percent_off: { type: 'number', description: 'Percentage off' },
+        amount_off_dollars: { type: 'number', description: 'Fixed dollar amount off' },
+        duration: { type: 'string', enum: ['once', 'repeating', 'forever'], description: 'Duration (default: once)' },
+        max_redemptions: { type: 'number', description: 'Max uses' },
       },
       required: ['code'],
     },
@@ -998,34 +642,15 @@ The code will be usable at checkout for any customer.`,
   // ============================================
   {
     name: 'create_chapter',
-    description: `Create a new regional chapter with a Slack channel. Use this when a member wants to start a chapter in their city/region.
-
-This tool:
-1. Creates a working group with committee_type 'chapter'
-2. Creates a public Slack channel for the chapter
-3. Sets the founding member as the chapter leader
-
-Example: If someone in Austin says "I want to start a chapter", use this to create an Austin Chapter with a #austin-chapter Slack channel.`,
-    usage_hints: 'Use this when a member wants to start a chapter. Ask them what they want to call it first (e.g., "Austin Chapter" vs "Texas Chapter").',
+    description: 'Create a regional chapter with Slack channel. Sets founding member as chapter leader.',
+    usage_hints: 'Use when a member wants to start a chapter.',
     input_schema: {
       type: 'object',
       properties: {
-        name: {
-          type: 'string',
-          description: 'Chapter name (e.g., "Austin Chapter", "Bay Area Chapter")',
-        },
-        region: {
-          type: 'string',
-          description: 'Geographic region this chapter covers (e.g., "Austin", "Bay Area", "Southern California")',
-        },
-        founding_member_id: {
-          type: 'string',
-          description: 'WorkOS user ID of the founding member who will become chapter leader',
-        },
-        description: {
-          type: 'string',
-          description: 'Optional description for the chapter',
-        },
+        name: { type: 'string', description: 'Chapter name' },
+        region: { type: 'string', description: 'Geographic region' },
+        founding_member_id: { type: 'string', description: 'Founding member WorkOS user ID' },
+        description: { type: 'string', description: 'Chapter description' },
       },
       required: ['name', 'region'],
     },
@@ -1045,48 +670,18 @@ Example: If someone in Austin says "I want to start a chapter", use this to crea
   // ============================================
   {
     name: 'create_industry_gathering',
-    description: `Create a new industry gathering (temporary committee for conferences/trade shows like CES, Cannes Lions, etc).
-
-This tool:
-1. Creates a working group with committee_type 'industry_gathering'
-2. Creates a public Slack channel for coordination
-3. Sets the event dates and location for automatic archival
-
-Industry gatherings are temporary committees that auto-archive after the event ends.
-
-Example: For CES 2026, create an industry gathering with name "CES 2026", location "Las Vegas, NV", start date 2026-01-07, end date 2026-01-10.`,
-    usage_hints: 'Use this when a member or admin wants to coordinate around a major industry event. Ask for the event name, dates, and location.',
+    description: 'Create an industry gathering for conferences/trade shows. Auto-archives after event ends.',
+    usage_hints: 'Use for coordinating around major industry events.',
     input_schema: {
       type: 'object',
       properties: {
-        name: {
-          type: 'string',
-          description: 'Event/gathering name (e.g., "CES 2026", "Cannes Lions 2026")',
-        },
-        start_date: {
-          type: 'string',
-          description: 'Event start date in YYYY-MM-DD format',
-        },
-        end_date: {
-          type: 'string',
-          description: 'Event end date in YYYY-MM-DD format (optional if single-day event)',
-        },
-        location: {
-          type: 'string',
-          description: 'Event location (e.g., "Las Vegas, NV", "Cannes, France")',
-        },
-        website_url: {
-          type: 'string',
-          description: 'Official event website URL (optional)',
-        },
-        description: {
-          type: 'string',
-          description: 'Optional description for the gathering',
-        },
-        founding_member_id: {
-          type: 'string',
-          description: 'WorkOS user ID of the founding member who will become gathering leader',
-        },
+        name: { type: 'string', description: 'Event name' },
+        start_date: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
+        end_date: { type: 'string', description: 'End date (YYYY-MM-DD)' },
+        location: { type: 'string', description: 'Event location' },
+        website_url: { type: 'string', description: 'Event website URL' },
+        description: { type: 'string', description: 'Event description' },
+        founding_member_id: { type: 'string', description: 'Founding member WorkOS user ID' },
       },
       required: ['name', 'start_date', 'location'],
     },
@@ -1106,65 +701,37 @@ Example: For CES 2026, create an industry gathering with name "CES 2026", locati
   // ============================================
   {
     name: 'add_committee_leader',
-    description: `Add a user as a leader of a committee (working group, council, chapter, or industry gathering).
-Leaders have management access to their committee - they can create events, manage posts, and manage members.
-
-To find the user_id:
-1. Look up the user via Slack (use their Slack user ID to find their WorkOS user ID in the mapping)
-2. Or ask for their email and look up via get_organization_details
-
-To find the committee:
-1. Use list_working_groups, list_chapters, or list_industry_gatherings
-2. Use the committee's slug (e.g., "ces-2026", "technical-standards-wg")`,
-    usage_hints: 'Use when an admin wants to give someone committee management access. Get the user_id from Slack mapping or org details.',
+    description: 'Add a user as leader of a committee. Leaders can manage posts, events, and members.',
+    usage_hints: 'Get user_id from Slack mapping or org details.',
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The slug of the committee (e.g., "ces-2026", "creative-wg", "austin-chapter")',
-        },
-        user_id: {
-          type: 'string',
-          description: 'The WorkOS user ID of the person to make a leader',
-        },
-        user_email: {
-          type: 'string',
-          description: 'Optional: The user email (for confirmation/logging)',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        user_id: { type: 'string', description: 'WorkOS user ID' },
+        user_email: { type: 'string', description: 'User email (optional)' },
       },
       required: ['committee_slug', 'user_id'],
     },
   },
   {
     name: 'remove_committee_leader',
-    description: `Remove a user from the leadership of a committee.
-The user will lose management access but will remain a regular member.`,
+    description: 'Remove a user from committee leadership. User remains a regular member.',
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The slug of the committee',
-        },
-        user_id: {
-          type: 'string',
-          description: 'The WorkOS user ID of the leader to remove',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
+        user_id: { type: 'string', description: 'WorkOS user ID' },
       },
       required: ['committee_slug', 'user_id'],
     },
   },
   {
     name: 'list_committee_leaders',
-    description: `List all leaders of a specific committee. Shows their user IDs, names, and organizations.`,
+    description: 'List all leaders of a committee.',
     input_schema: {
       type: 'object',
       properties: {
-        committee_slug: {
-          type: 'string',
-          description: 'The slug of the committee to list leaders for',
-        },
+        committee_slug: { type: 'string', description: 'Committee slug' },
       },
       required: ['committee_slug'],
     },
@@ -1175,124 +742,53 @@ The user will lose management access but will remain a regular member.`,
   // ============================================
   {
     name: 'merge_organizations',
-    description: `Merge two duplicate organization records into one.
-Use this when you discover duplicate organizations (same company with multiple records).
-All data from the secondary organization will be moved to the primary, then the secondary will be deleted.
-
-IMPORTANT: This is a destructive operation that cannot be undone.
-
-Workflow:
-1. Use find_prospect or get_organization_details to identify both org IDs
-2. Call merge_organizations (defaults to preview=true) to see what will be merged
-3. Show the preview to the user and ask if they want to proceed
-4. If yes, call merge_organizations again with preview=false to execute
-
-CRITICAL: A preview does NOT execute the merge. You MUST call again with preview=false to actually merge.`,
-    usage_hints: 'Preview first, then execute with preview=false. The preview response will remind you to call again.',
+    description: 'Merge duplicate organization records. Destructive, cannot be undone. Preview first with preview=true.',
+    usage_hints: 'Preview first, then execute with preview=false.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        primary_org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID of the organization to KEEP (all data will be merged into this one)',
-        },
-        secondary_org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID of the organization to REMOVE (data will be moved from here)',
-        },
-        preview: {
-          type: 'boolean',
-          description: 'If true, show what would be merged without actually doing it (default: true for safety)',
-        },
+        primary_org_id: { type: 'string', description: 'Org ID to keep (data merged into)' },
+        secondary_org_id: { type: 'string', description: 'Org ID to remove (data moved from)' },
+        preview: { type: 'boolean', description: 'Show preview only (default: true)' },
       },
       required: ['primary_org_id', 'secondary_org_id'],
     },
   },
   {
     name: 'find_duplicate_orgs',
-    description: `Search for potential duplicate organizations by name or domain.
-Use this to discover organizations that might need to be merged.
-
-Returns organizations that share the same name (case-insensitive) or email domain.`,
+    description: 'Search for duplicate organizations by name or domain.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        search_type: {
-          type: 'string',
-          enum: ['name', 'domain', 'all'],
-          description: 'What to search for duplicates: name (same org name), domain (same email domain), or all (both)',
-        },
+        search_type: { type: 'string', enum: ['name', 'domain', 'all'], description: 'Search type' },
       },
       required: [],
     },
   },
   {
     name: 'check_domain_health',
-    description: `Check domain health across the system to find data quality issues.
-
-This tool identifies:
-1. **Orphan corporate domains** - Users with corporate email domains (not gmail, etc.) that have no matching organization
-2. **Unverified org domains** - Organizations with users but no verified domain mapping
-3. **Domain conflicts** - Multiple orgs claiming the same domain
-4. **Personal workspace corporate users** - Users with company emails in personal workspaces instead of company orgs
-
-The goal: Every corporate email domain should map to a known organization (member or prospect).`,
-    usage_hints: 'Use this for data quality audits. The results can guide follow-up actions like creating prospects or merging orgs.',
+    description: 'Check domain health for data quality issues: orphan domains, conflicts, misaligned users.',
+    usage_hints: 'Use for data quality audits.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        check_type: {
-          type: 'string',
-          enum: ['orphan_domains', 'unverified_domains', 'domain_conflicts', 'misaligned_users', 'all'],
-          description: 'What to check: orphan_domains (corporate emails without orgs), unverified_domains (orgs missing domain verification), domain_conflicts (multiple orgs per domain), misaligned_users (corporate users in personal workspaces), or all',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum results per category (default: 20)',
-        },
+        check_type: { type: 'string', enum: ['orphan_domains', 'unverified_domains', 'domain_conflicts', 'misaligned_users', 'all'], description: 'Check type' },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
       },
       required: [],
     },
   },
   {
     name: 'manage_organization_domains',
-    description: `Add, remove, or list verified domains for an organization.
-
-Use this tool to:
-- **List** all domains associated with an organization
-- **Add** a new domain to an organization (e.g., when a company has multiple email domains)
-- **Remove** a domain from an organization
-- **Set primary** - designate which domain is the primary one for the organization
-
-Domains are synced to WorkOS, which means:
-1. New users signing up with that email domain are auto-associated with the organization
-2. The domain is marked as verified for SSO eligibility
-3. Organization enrichment uses the primary domain for company lookups
-
-Note: Each domain can only belong to one organization. If a domain is already claimed by another org, the add operation will fail.
-
-The "primary domain" is a local concept used for enrichment and display - WorkOS treats all domains equally for user association.`,
-    usage_hints: 'Use "list" action first to see current domains. Add/remove sync to WorkOS; set_primary is local only.',
+    description: 'Add, remove, or list verified domains for an organization. Syncs to WorkOS.',
+    usage_hints: 'Use "list" first. Add/remove sync to WorkOS.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        action: {
-          type: 'string',
-          enum: ['list', 'add', 'remove', 'set_primary'],
-          description: 'The action to perform: list (show all domains), add (add a new domain), remove (delete a domain), set_primary (make a domain the primary one)',
-        },
-        organization_id: {
-          type: 'string',
-          description: 'The WorkOS organization ID. You can get this from lookup_organization or get_organization_details.',
-        },
-        domain: {
-          type: 'string',
-          description: 'The domain to add, remove, or set as primary (required for add/remove/set_primary actions). Example: "acme.com"',
-        },
-        set_as_primary: {
-          type: 'boolean',
-          description: 'When adding a domain, whether to set it as the primary domain (default: false)',
-        },
+        action: { type: 'string', enum: ['list', 'add', 'remove', 'set_primary'], description: 'Action' },
+        organization_id: { type: 'string', description: 'WorkOS organization ID' },
+        domain: { type: 'string', description: 'Domain name' },
+        set_as_primary: { type: 'boolean', description: 'Set as primary (default: false)' },
       },
       required: ['action', 'organization_id'],
     },
@@ -1303,259 +799,112 @@ The "primary domain" is a local concept used for enrichment and display - WorkOS
   // ============================================
   {
     name: 'my_engaged_prospects',
-    description: `List your most engaged prospects - organizations you own that have high engagement scores.
-
-USE THIS when an admin asks:
-- "Which of my prospects are most engaged?"
-- "Show me my hot prospects"
-- "What are my best prospects doing?"
-
-Returns prospects you own sorted by engagement score (highest first), with engagement reasons.
-Hot prospects have engagement_score >= 30.`,
-    usage_hints: 'Quick way to see which of your owned prospects are showing interest.',
+    description: 'List your most engaged prospects sorted by engagement score.',
+    usage_hints: 'See which of your owned prospects are showing interest.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 10)',
-        },
-        hot_only: {
-          type: 'boolean',
-          description: 'Only show hot prospects (engagement_score >= 30)',
-        },
+        limit: { type: 'number', description: 'Max results (default: 10)' },
+        hot_only: { type: 'boolean', description: 'Only hot prospects (score >= 30)' },
       },
       required: [],
     },
   },
   {
     name: 'my_followups_needed',
-    description: `List your prospects that need follow-up attention.
-
-USE THIS when an admin asks:
-- "Which prospects do I need to reach out to?"
-- "What follow-ups do I have?"
-- "Which of my prospects are stale?"
-
-Returns owned prospects that:
-- Have no activity logged in the past 14 days, OR
-- Have an overdue next_step_due_date
-
-Sorted by urgency (overdue first, then by days since last activity).`,
-    usage_hints: 'Great for daily check-ins to see what needs attention.',
+    description: 'List your prospects needing follow-up: stale or overdue.',
+    usage_hints: 'Daily check-ins to see what needs attention.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        days_stale: {
-          type: 'number',
-          description: 'Days without activity to consider stale (default: 14)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 10)',
-        },
+        days_stale: { type: 'number', description: 'Days stale threshold (default: 14)' },
+        limit: { type: 'number', description: 'Max results (default: 10)' },
       },
       required: [],
     },
   },
   {
     name: 'unassigned_prospects',
-    description: `List high-engagement prospects that have no owner assigned.
-
-USE THIS when an admin asks:
-- "What are the most interesting unassigned prospects?"
-- "Which prospects need an owner?"
-- "Show me unclaimed hot prospects"
-
-Returns non-member organizations with engagement but no owner in org_stakeholders.
-Great for finding opportunities to claim ownership.`,
-    usage_hints: 'Use this to find prospects worth claiming.',
+    description: 'List high-engagement prospects with no owner assigned.',
+    usage_hints: 'Find prospects worth claiming.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        min_engagement: {
-          type: 'number',
-          description: 'Minimum engagement score to include (default: 10)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 10)',
-        },
+        min_engagement: { type: 'number', description: 'Min engagement (default: 10)' },
+        limit: { type: 'number', description: 'Max results (default: 10)' },
       },
       required: [],
     },
   },
   {
     name: 'claim_prospect',
-    description: `Claim ownership of a prospect organization.
-
-USE THIS when an admin says:
-- "I'll take ownership of [company]"
-- "Assign me to [company]"
-- "Make me the owner of [company]"
-
-Adds you as the owner in org_stakeholders. If another owner exists, you can optionally replace them.`,
-    usage_hints: 'Use after finding unassigned prospects or when reassigning ownership.',
+    description: 'Claim ownership of a prospect organization.',
+    usage_hints: 'Use after finding unassigned prospects.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID to claim ownership of',
-        },
-        company_name: {
-          type: 'string',
-          description: 'Company name (used to look up org_id if not provided)',
-        },
-        replace_existing: {
-          type: 'boolean',
-          description: 'If true, replace existing owner. Otherwise fails if owner exists (default: false)',
-        },
-        notes: {
-          type: 'string',
-          description: 'Optional notes about why you are claiming this prospect',
-        },
+        org_id: { type: 'string', description: 'Organization ID' },
+        company_name: { type: 'string', description: 'Company name (if no org_id)' },
+        replace_existing: { type: 'boolean', description: 'Replace existing owner (default: false)' },
+        notes: { type: 'string', description: 'Notes' },
       },
       required: [],
     },
   },
   {
     name: 'suggest_prospects',
-    description: `Suggest companies to add to the prospect list.
-
-USE THIS when an admin asks:
-- "What companies should I add to the prospect list?"
-- "Find new prospects for me"
-- "Who should we be targeting?"
-
-This tool uses two approaches:
-1. **Unmapped domains**: Finds Slack/email domains that are actively engaged but not yet mapped to an organization (high-value - they're already in our ecosystem!)
-2. **Lusha search**: Searches Lusha's database for companies matching ad tech criteria
-
-Returns a combined list prioritizing unmapped domains (already engaged) over external prospects.`,
-    usage_hints: 'Great for expanding the prospect pipeline.',
+    description: 'Suggest companies to add to prospect list. Finds unmapped domains and Lusha matches.',
+    usage_hints: 'Expand prospect pipeline.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        include_lusha: {
-          type: 'boolean',
-          description: 'Include Lusha search results for external companies (default: true)',
-        },
-        lusha_keywords: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Keywords for Lusha search (default: ["programmatic", "DSP", "ad tech"])',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results per source (default: 10)',
-        },
+        include_lusha: { type: 'boolean', description: 'Include Lusha results (default: true)' },
+        lusha_keywords: { type: 'array', items: { type: 'string' }, description: 'Lusha search keywords' },
+        limit: { type: 'number', description: 'Max results per source (default: 10)' },
       },
       required: [],
     },
   },
   {
     name: 'set_reminder',
-    description: `Set a reminder/next step for a prospect.
-
-USE THIS when an admin says:
-- "Remind me to follow up with [company] next week"
-- "Set a reminder for [company] on Tuesday"
-- "I need to call [company] in 3 days"
-- "Schedule a follow-up with [company]"
-
-Creates an activity with a due date that will show up in my_upcoming_tasks and my_followups_needed.`,
-    usage_hints: 'Use when the admin wants to schedule a future follow-up.',
+    description: 'Set a reminder/next step for a prospect.',
+    usage_hints: 'Schedule a future follow-up.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        company_name: {
-          type: 'string',
-          description: 'Company name to set reminder for',
-        },
-        org_id: {
-          type: 'string',
-          description: 'Organization ID (alternative to company_name)',
-        },
-        reminder: {
-          type: 'string',
-          description: 'What needs to be done (e.g., "Follow up on membership interest", "Send pricing info")',
-        },
-        due_date: {
-          type: 'string',
-          description: 'When the reminder is due (e.g., "2024-01-15", "next Monday", "in 3 days")',
-        },
+        company_name: { type: 'string', description: 'Company name' },
+        org_id: { type: 'string', description: 'Organization ID' },
+        reminder: { type: 'string', description: 'What needs to be done' },
+        due_date: { type: 'string', description: 'Due date' },
       },
       required: ['reminder', 'due_date'],
     },
   },
   {
     name: 'my_upcoming_tasks',
-    description: `List your upcoming tasks and reminders for the next period.
-
-USE THIS when an admin asks:
-- "What's on my plate this week?"
-- "Show me my upcoming tasks"
-- "What do I have coming up?"
-- "What reminders do I have?"
-
-Unlike my_followups_needed (which shows overdue/stale), this shows FUTURE tasks you've scheduled.`,
-    usage_hints: 'Use for planning and seeing what you have scheduled.',
+    description: 'List upcoming tasks and reminders.',
+    usage_hints: 'Planning and scheduling.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        days_ahead: {
-          type: 'number',
-          description: 'How many days ahead to look (default: 7)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results (default: 20)',
-        },
+        days_ahead: { type: 'number', description: 'Days ahead (default: 7)' },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
       },
       required: [],
     },
   },
   {
     name: 'log_conversation',
-    description: `Log a conversation or interaction with a prospect/member.
-
-USE THIS when an admin says:
-- "I just talked to [person/company]"
-- "Had a call with [company] - they said..."
-- "Spoke with [person] about membership"
-- "DMd [person] and they're interested"
-- "Just got off a call with [company]"
-
-This logs the interaction, analyzes it for learnings, and automatically:
-- Updates any pending tasks (completes them if the interaction addressed them)
-- Creates new follow-up tasks if mentioned
-- Extracts and stores learnings about the contact/company`,
-    usage_hints: 'Use when admin reports having an interaction.',
+    description: 'Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.',
+    usage_hints: 'Use when admin reports an interaction.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        company_name: {
-          type: 'string',
-          description: 'Company name',
-        },
-        org_id: {
-          type: 'string',
-          description: 'Organization ID (alternative to company_name)',
-        },
-        contact_name: {
-          type: 'string',
-          description: 'Name of the person they spoke with (optional)',
-        },
-        channel: {
-          type: 'string',
-          enum: ['call', 'video', 'slack_dm', 'email', 'in_person', 'other'],
-          description: 'How the interaction happened',
-        },
-        summary: {
-          type: 'string',
-          description: 'Summary of what was discussed (from the admin)',
-        },
+        company_name: { type: 'string', description: 'Company name' },
+        org_id: { type: 'string', description: 'Organization ID' },
+        contact_name: { type: 'string', description: 'Contact name' },
+        channel: { type: 'string', enum: ['call', 'video', 'slack_dm', 'email', 'in_person', 'other'], description: 'Channel' },
+        summary: { type: 'string', description: 'Summary of discussion' },
       },
       required: ['summary'],
     },
@@ -1566,27 +915,13 @@ This logs the interaction, analyzes it for learnings, and automatically:
   // ============================================
   {
     name: 'get_insight_summary',
-    description: `Get a summary of what we've learned from members - collected insights and statistics.
-
-USE THIS when admin asks:
-- "What have we learned from members?"
-- "Show me the insights we've collected"
-- "How much do we know about our members?"
-- "Summarize member insights"
-
-Returns counts and examples of collected insights by type.`,
-    usage_hints: 'Use to see the value of insight collection efforts.',
+    description: 'Get summary of collected member insights and statistics.',
+    usage_hints: 'See value of insight collection.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        insight_type: {
-          type: 'string',
-          description: 'Filter to a specific insight type (e.g., "plans_2026", "challenges")',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum examples to show per type (default: 5)',
-        },
+        insight_type: { type: 'string', description: 'Filter by type' },
+        limit: { type: 'number', description: 'Max examples per type (default: 5)' },
       },
     },
   },
@@ -1596,24 +931,12 @@ Returns counts and examples of collected insights by type.`,
   // ============================================
   {
     name: 'get_member_search_analytics',
-    description: `Get analytics about member profile searches and introductions made through Addie.
-
-USE THIS when admin asks:
-- "How are member searches performing?"
-- "Show me introduction stats"
-- "What are people searching for?"
-- "Which members are getting the most visibility?"
-- "How many introductions have we made?"
-
-Returns: Search counts, impressions, clicks, introduction requests/sent, top search queries, top members by visibility, and recent introductions with full context.`,
-    usage_hints: 'Use this to monitor the member directory and introduction feature performance.',
+    description: 'Get analytics about member searches and introductions.',
+    usage_hints: 'Monitor directory and introduction performance.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        days: {
-          type: 'number',
-          description: 'Number of days to look back (default: 30, max: 365)',
-        },
+        days: { type: 'number', description: 'Days to look back (default: 30)' },
       },
     },
   },
@@ -1623,64 +946,25 @@ Returns: Search counts, impressions, clicks, introduction requests/sent, top sea
   // ============================================
   {
     name: 'list_organizations_by_users',
-    description: `List organizations ranked by total user count (website members + Slack-only users).
-
-USE THIS when admin asks:
-- "Which companies have the most users?"
-- "What companies have the most people active in AAO?"
-- "Show me organizations by user count"
-- "Who are our biggest accounts by headcount?"
-
-Returns a ranked list of organizations with:
-- Total user count (members + Slack-only)
-- Website member count
-- Slack-only user count (discovered via domain but not signed up)
-- 30-day Slack activity (messages, active users)
-- Member status (member, prospect, etc.)
-
-Can filter by member_status to see only members, prospects, etc.`,
-    usage_hints: 'Use this for ranking organizations by engagement/presence. Slack-only users are people discovered via email domain who are in the AAO Slack but haven\'t created a website account.',
+    description: 'List organizations ranked by user count (website + Slack-only).',
+    usage_hints: 'Rank orgs by engagement.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of results to return (default: 20)',
-        },
-        member_status: {
-          type: 'string',
-          enum: ['member', 'prospect', 'churned', 'all'],
-          description: 'Filter by member status (default: all)',
-        },
-        min_users: {
-          type: 'number',
-          description: 'Minimum total user count to include (default: 1)',
-        },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
+        member_status: { type: 'string', enum: ['member', 'prospect', 'churned', 'all'], description: 'Filter status' },
+        min_users: { type: 'number', description: 'Min users (default: 1)' },
       },
     },
   },
   {
     name: 'list_slack_users_by_org',
-    description: `List all Slack users associated with a specific organization.
-
-USE THIS when admin asks:
-- "Who from [company] is in our Slack?"
-- "Show me Scope3's Slack users"
-- "List people from [company] in the community"
-- "Who are the [company] team members?"
-
-Returns:
-- Website members with Slack accounts (mapped)
-- Slack-only users discovered via domain (not signed up yet)
-- Last activity date and engagement info for each user`,
-    usage_hints: 'Use this to see the specific people from a company in Slack, not just counts.',
+    description: 'List Slack users from a specific organization.',
+    usage_hints: 'See specific people from a company.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        query: {
-          type: 'string',
-          description: 'Company name or domain to look up',
-        },
+        query: { type: 'string', description: 'Company name or domain' },
       },
       required: ['query'],
     },
@@ -1691,94 +975,40 @@ Returns:
   // ============================================
   {
     name: 'tag_insight',
-    description: `Tag valuable content as a core insight source for Addie's knowledge synthesis.
-
-USE THIS when an admin:
-- Shares expert content that should inform Addie's thinking (emails, articles, Q&As)
-- Identifies a conversation excerpt worth preserving
-- Wants to add external perspectives to Addie's core knowledge
-
-Tagged content gets periodically synthesized into compact rules that become part of Addie's reasoning.
-The content is NOT attributed - it becomes Addie's own beliefs.
-
-Example: Admin pastes an expert's Q&A about AdCP adoption → tag it with topic "adoption-philosophy" → synthesis job distills it into a knowledge rule.`,
-    usage_hints: 'Use when admin shares expert insights, valuable Q&As, or content that should shape Addie\'s thinking.',
+    description: 'Tag content for Addie\'s knowledge synthesis.',
+    usage_hints: 'Use when admin shares expert insights.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        content: {
-          type: 'string',
-          description: 'The content to tag as a core insight (full text)',
-        },
-        topic: {
-          type: 'string',
-          description: 'Topic category for grouping (e.g., "adoption-philosophy", "platform-strategy", "trust", "allocation"). Optional but helps with synthesis.',
-        },
-        author_name: {
-          type: 'string',
-          description: 'Who said/wrote this (for context during synthesis, not attribution). Optional.',
-        },
-        author_context: {
-          type: 'string',
-          description: 'Role/expertise context (e.g., "Triton Digital, audio expert"). Optional.',
-        },
-        notes: {
-          type: 'string',
-          description: 'Additional context about why this is valuable. Optional.',
-        },
+        content: { type: 'string', description: 'Content to tag' },
+        topic: { type: 'string', description: 'Topic category' },
+        author_name: { type: 'string', description: 'Author name' },
+        author_context: { type: 'string', description: 'Author role/expertise' },
+        notes: { type: 'string', description: 'Additional context' },
       },
       required: ['content'],
     },
   },
   {
     name: 'list_pending_insights',
-    description: `List insight sources that are pending synthesis.
-
-USE THIS when admin asks:
-- "What insights are waiting to be synthesized?"
-- "Show me tagged content"
-- "What's in the synthesis queue?"
-
-Returns pending insight sources grouped by topic, ready for synthesis.`,
-    usage_hints: 'Use to see what content is queued for synthesis into Addie\'s core knowledge.',
+    description: 'List insights pending synthesis.',
+    usage_hints: 'See synthesis queue.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        topic: {
-          type: 'string',
-          description: 'Filter by topic (optional)',
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum results (default: 20)',
-        },
+        topic: { type: 'string', description: 'Filter by topic' },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
       },
     },
   },
   {
     name: 'run_synthesis',
-    description: `Trigger insight synthesis to convert tagged sources into Addie's knowledge rules.
-
-USE THIS when admin says:
-- "Synthesize the pending insights"
-- "Update Addie's knowledge"
-- "Process the tagged content"
-
-This will:
-1. Gather pending insight sources (optionally filtered by topic)
-2. Use Claude to synthesize them into compact, coherent knowledge rules
-3. Preview how the rules would affect historical interactions
-4. Return proposed rules for admin approval
-
-After synthesis, admin must approve before rules are applied.`,
-    usage_hints: 'Use to process tagged insights into knowledge rules. Requires admin approval before applying.',
+    description: 'Trigger insight synthesis to create knowledge rules. Requires admin approval.',
+    usage_hints: 'Process tagged insights into rules.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        topic: {
-          type: 'string',
-          description: 'Synthesize only a specific topic (optional - defaults to all pending)',
-        },
+        topic: { type: 'string', description: 'Synthesize specific topic (default: all)' },
       },
     },
   },
@@ -1858,85 +1088,6 @@ export function createAdminToolHandlers(
   // ============================================
   // BILLING & INVOICE HANDLERS
   // ============================================
-
-  // Lookup organization
-  handlers.set('lookup_organization', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
-
-    const companyName = input.company_name as string;
-
-    logger.info({ companyName }, 'Addie: Admin looking up organization');
-
-    try {
-      // Search for organizations matching the name
-      const orgs = await orgDb.searchOrganizations({
-        query: companyName,
-        limit: 5,
-      });
-
-      if (orgs.length === 0) {
-        return JSON.stringify({
-          success: false,
-          message: `No organizations found matching "${companyName}"`,
-        });
-      }
-
-      // Get detailed info for each matching org
-      const results = await Promise.all(
-        orgs.map(async (org) => {
-          const fullOrg = await orgDb.getOrganization(org.workos_organization_id);
-
-          if (!fullOrg) {
-            return {
-              name: org.name,
-              company_type: org.company_type,
-              error: 'Could not load full details',
-            };
-          }
-
-          // Get subscription info
-          const subscriptionInfo = await orgDb.getSubscriptionInfo(fullOrg.workos_organization_id);
-
-          // Get pending invoices if there's a Stripe customer
-          let pendingInvoices: PendingInvoice[] = [];
-          if (fullOrg.stripe_customer_id) {
-            pendingInvoices = await getPendingInvoices(fullOrg.stripe_customer_id);
-          }
-
-          return {
-            name: fullOrg.name,
-            company_type: fullOrg.company_type,
-            revenue_tier: fullOrg.revenue_tier,
-            membership_status: subscriptionInfo?.status || 'none',
-            subscription: subscriptionInfo?.status === 'active' ? {
-              product: subscriptionInfo.product_name,
-              renews: subscriptionInfo.current_period_end
-                ? new Date(subscriptionInfo.current_period_end * 1000).toLocaleDateString()
-                : 'Unknown',
-              cancel_at_period_end: subscriptionInfo.cancel_at_period_end,
-            } : null,
-            pending_invoices: pendingInvoices.map(formatPendingInvoice),
-            has_stripe_customer: !!fullOrg.stripe_customer_id,
-            agreement_signed: !!fullOrg.agreement_signed_at,
-            created: formatDate(fullOrg.created_at),
-          };
-        })
-      );
-
-      return JSON.stringify({
-        success: true,
-        organizations: results,
-        message: `Found ${results.length} organization(s) matching "${companyName}"`,
-      });
-    } catch (error) {
-      logger.error({ error, companyName }, 'Addie: Error looking up organization');
-      return JSON.stringify({
-        success: false,
-        error: 'Failed to look up organization. Please try again.',
-      });
-    }
-  });
 
   // List pending invoices across all customers (queries Stripe directly)
   handlers.set('list_pending_invoices', async (input) => {
@@ -2282,9 +1433,6 @@ export function createAdminToolHandlers(
   // Register get_account as the primary tool
   handlers.set('get_account', getAccountHandler);
 
-  // Register get_organization_details as an alias for backwards compatibility
-  handlers.set('get_organization_details', getAccountHandler);
-
   // ============================================
   // PROSPECT MANAGEMENT HANDLERS
   // ============================================
@@ -2357,59 +1505,6 @@ export function createAdminToolHandlers(
 
     if (domain && isLushaConfigured()) {
       response += `\n_Enriching company data in background..._`;
-    }
-
-    return response;
-  });
-
-  // Find prospect (DEPRECATED - use get_account instead)
-  handlers.set('find_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
-
-    const pool = getPool();
-    const query = input.query as string;
-    const searchPattern = `%${query}%`;
-
-    // Include subscription_status and invoice_requested_at for lifecycle stage computation
-    const result = await pool.query(
-      `SELECT workos_organization_id, name, company_type, email_domain,
-              prospect_status, prospect_source, prospect_contact_name,
-              subscription_status, invoice_requested_at,
-              enrichment_at, enrichment_industry, enrichment_revenue, enrichment_employee_count,
-              created_at, updated_at
-       FROM organizations
-       WHERE is_personal = false
-         AND (LOWER(name) LIKE LOWER($1) OR LOWER(email_domain) LIKE LOWER($1))
-       ORDER BY
-         CASE WHEN LOWER(name) = LOWER($2) THEN 0
-              WHEN LOWER(name) LIKE LOWER($3) THEN 1
-              ELSE 2 END,
-         updated_at DESC
-       LIMIT 10`,
-      [searchPattern, query, `${query}%`]
-    );
-
-    if (result.rows.length === 0) {
-      return `No organizations found matching "${query}". Would you like me to add them as a new prospect?`;
-    }
-
-    let response = `## Found ${result.rows.length} match${result.rows.length === 1 ? '' : 'es'} for "${query}"\n\n`;
-    response += `_Note: Use get_account for full details_\n\n`;
-
-    for (const org of result.rows) {
-      const lifecycleStage = computeLifecycleStage(org);
-      response += `### ${org.name}\n`;
-      response += `**ID:** ${org.workos_organization_id}\n`;
-      response += `**Lifecycle:** ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
-      response += `**Type:** ${org.company_type || 'Not set'}\n`;
-      if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
-      if (org.prospect_contact_name) response += `**Contact:** ${org.prospect_contact_name}\n`;
-      if (org.enrichment_industry) response += `**Industry:** ${org.enrichment_industry}\n`;
-      if (org.enrichment_employee_count) response += `**Employees:** ${org.enrichment_employee_count.toLocaleString()}\n`;
-      if (org.enrichment_revenue) response += `**Revenue:** $${(org.enrichment_revenue / 1000000).toFixed(1)}M\n`;
-      response += `**Created:** ${new Date(org.created_at).toLocaleDateString()}\n`;
-      response += `\n`;
     }
 
     return response;

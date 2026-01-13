@@ -8,12 +8,14 @@
 import { describe, it, expect } from '@jest/globals';
 import {
   estimateTokens,
+  estimateToolTokens,
   trimConversationHistory,
   getConversationTokenLimit,
   checkContextLimit,
   formatTokenCount,
   MODEL_CONTEXT_LIMITS,
   RESERVED_TOKENS,
+  TOKEN_BUFFERS,
   type MessageTurn,
 } from '../../server/src/utils/token-limiter.js';
 
@@ -44,6 +46,18 @@ describe('estimateTokens', () => {
   it('should round up token estimates', () => {
     // 10 chars / 3.5 = 2.857... should round up to 3
     expect(estimateTokens('1234567890')).toBe(3);
+  });
+});
+
+describe('estimateToolTokens', () => {
+  it('should estimate 300 tokens per tool', () => {
+    expect(estimateToolTokens(1)).toBe(300);
+    expect(estimateToolTokens(10)).toBe(3000);
+    expect(estimateToolTokens(100)).toBe(30000);
+  });
+
+  it('should return 0 for zero tools', () => {
+    expect(estimateToolTokens(0)).toBe(0);
   });
 });
 
@@ -177,6 +191,35 @@ describe('getConversationTokenLimit', () => {
   it('should use default for unknown models', () => {
     const limit = getConversationTokenLimit('unknown-model');
     expect(limit).toBe(MODEL_CONTEXT_LIMITS.default - RESERVED_TOKENS);
+  });
+
+  it('should use dynamic calculation when toolCount is provided', () => {
+    const toolCount = 50;
+    const limit = getConversationTokenLimit('claude-sonnet-4-20250514', toolCount);
+
+    // Expected: model limit - (system prompt + tool tokens + response buffer + safety margin)
+    const expectedToolTokens = estimateToolTokens(toolCount);
+    const expectedReserved = TOKEN_BUFFERS.systemPrompt + expectedToolTokens +
+      TOKEN_BUFFERS.responseBuffer + TOKEN_BUFFERS.safetyMargin;
+    const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-4-20250514'] - expectedReserved;
+
+    expect(limit).toBe(expectedLimit);
+  });
+
+  it('should give more conversation budget with fewer tools', () => {
+    const limitWithFewTools = getConversationTokenLimit('claude-sonnet-4-20250514', 10);
+    const limitWithManyTools = getConversationTokenLimit('claude-sonnet-4-20250514', 100);
+
+    // Fewer tools = more room for conversation
+    expect(limitWithFewTools).toBeGreaterThan(limitWithManyTools);
+  });
+
+  it('should differ from static buffer when toolCount provided', () => {
+    const staticLimit = getConversationTokenLimit('claude-sonnet-4-20250514');
+    const dynamicLimit = getConversationTokenLimit('claude-sonnet-4-20250514', 50);
+
+    // Dynamic calculation should differ from static RESERVED_TOKENS buffer
+    expect(dynamicLimit).not.toBe(staticLimit);
   });
 });
 
