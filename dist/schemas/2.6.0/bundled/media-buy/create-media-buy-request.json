@@ -104,6 +104,16 @@
             "description": "Bid price for auction-based CPM pricing (required if using cpm-auction-option)",
             "minimum": 0
           },
+          "impressions": {
+            "type": "number",
+            "description": "Impression goal for this package",
+            "minimum": 0
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+            "default": false
+          },
           "targeting_overlay": {
             "title": "Targeting Overlay",
             "description": "Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
@@ -2009,7 +2019,7 @@
   ],
   "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-07T19:56:54.826Z",
+    "generatedAt": "2026-01-13T23:32:36.215Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/core/property-list-ref.json",
+  "title": "Property List Reference",
+  "description": "Reference to an externally managed property list. Enables passing large property sets (50,000+) without embedding them in requests. The receiving agent fetches and caches the list independently.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the agent managing the property list"
+    },
+    "list_id": {
+      "type": "string",
+      "description": "Identifier for the property list within the agent",
+      "minLength": 1
+    },
+    "auth_token": {
+      "type": "string",
+      "description": "JWT or other authorization token for accessing the list. Optional if the list is public or caller has implicit access."
+    }
+  },
+  "required": ["agent_url", "list_id"],
+  "additionalProperties": false
+}

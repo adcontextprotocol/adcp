@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.6.0/property/list-property-features-response.json",
+  "title": "List Property Features Response",
+  "description": "Response payload for list_property_features task. Returns the features this governance agent can evaluate.",
+  "type": "object",
+  "properties": {
+    "features": {
+      "type": "array",
+      "description": "Features this agent can evaluate",
+      "items": {
+        "$ref": "/schemas/2.6.0/property/property-feature-definition.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/2.6.0/core/ext.json"
+    }
+  },
+  "required": ["features"],
+  "additionalProperties": false
+}

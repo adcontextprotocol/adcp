@@ -77,6 +77,11 @@
             "description": "Updated bid price for auction-based pricing options (only applies when pricing_option is auction-based)",
             "minimum": 0
           },
+          "impressions": {
+            "type": "number",
+            "description": "Updated impression goal for this package",
+            "minimum": 0
+          },
           "paused": {
             "type": "boolean",
             "description": "Pause/resume specific package (true = paused, false = active)"
@@ -1519,7 +1524,7 @@
   ],
   "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-01-07T19:56:54.840Z",
+    "generatedAt": "2026-01-13T23:32:36.225Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }
