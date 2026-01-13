@@ -530,7 +530,6 @@ async function initiateOutreach(candidate: OutreachCandidate): Promise<OutreachR
   const outreach = await insightsDb.recordOutreach({
     slack_user_id: candidate.slack_user_id,
     outreach_type: outreachType,
-    insight_goal_id: goal?.id,
     dm_channel_id: channelId,
     initial_message: message,
     variant_id: variant.id,

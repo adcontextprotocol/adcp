@@ -82,7 +82,6 @@ export interface MemberOutreach {
   id: number;
   slack_user_id: string;
   outreach_type: OutreachType;
-  insight_goal_id: number | null;
   thread_id: string | null;
   dm_channel_id: string | null;
   initial_message: string | null;
@@ -149,7 +148,6 @@ export interface CreateVariantInput {
 export interface CreateOutreachInput {
   slack_user_id: string;
   outreach_type: OutreachType;
-  insight_goal_id?: number;
   thread_id?: string;
   dm_channel_id?: string;
   initial_message?: string;
@@ -808,14 +806,13 @@ export class InsightsDatabase {
   async recordOutreach(input: CreateOutreachInput): Promise<MemberOutreach> {
     const result = await query<MemberOutreach>(
       `INSERT INTO member_outreach (
-        slack_user_id, outreach_type, insight_goal_id, thread_id, dm_channel_id,
+        slack_user_id, outreach_type, thread_id, dm_channel_id,
         initial_message, variant_id, tone, approach
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *`,
       [
         input.slack_user_id,
         input.outreach_type,
-        input.insight_goal_id || null,
         input.thread_id || null,
         input.dm_channel_id || null,
         input.initial_message || null,
