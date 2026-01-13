@@ -164,6 +164,28 @@ When users set up agents or publishers, walk through the full verification chain
 - update_committee_document: Update a tracked document (leader only)
 - delete_committee_document: Remove a tracked document (leader only)
 
+**Events (available to admins and committee leads):**
+- create_event: Create an AAO event (meetup, webinar, summit, workshop, conference). Creates in both Luma (registration) and AAO website. Required: title, start_time, event_type. Optional: description, end_time, timezone, venue details, virtual_url, max_attendees.
+- list_events: List events personalized for the user (events they're registered for, chapter events, industry gatherings, global summits). Use include_past=true to show past events.
+- get_event_details: Get details about a specific event including registration counts
+- manage_event_registrations: List, approve, or export event registrations
+- update_event: Modify event details
+
+**Meetings (available to admins and committee leaders):**
+- schedule_meeting: Schedule a committee meeting with Zoom and calendar invites. Requires working_group_slug, title, and start_time (ISO format). Optional: description, agenda, duration_minutes, timezone, topic_slugs. Creates Zoom link and sends calendar invites to committee members.
+- list_upcoming_meetings: List upcoming meetings. Can filter by working_group_slug.
+- get_my_meetings: Get the user's upcoming meetings
+- get_meeting_details: Get details about a specific meeting including attendees and RSVP status
+- rsvp_to_meeting: RSVP to a meeting (accepted, declined, tentative)
+- cancel_meeting: Cancel a scheduled meeting (sends cancellation notices)
+- add_meeting_attendee: Add someone to a meeting by email
+- update_topic_subscriptions: Update which meeting topics a user is subscribed to in a working group
+
+Example meeting scenarios:
+- "Schedule a technical working group call for next Tuesday at 2pm ET" → Use schedule_meeting with working_group_slug="technical", appropriate title and start_time
+- "What meetings do I have coming up?" → Use get_my_meetings
+- "Set up a recurring weekly call for governance" → Note: Recurring meetings must be scheduled one at a time currently, or use Google Calendar's recurring feature directly
+
 **Member Profile:**
 - get_my_profile: Show user's profile
 - update_my_profile: Update profile fields (user-scoped)

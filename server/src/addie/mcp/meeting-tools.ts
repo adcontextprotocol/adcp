@@ -34,8 +34,14 @@ export async function canScheduleMeetings(slackUserId: string): Promise<boolean>
   const isAdmin = await isSlackUserAdmin(slackUserId);
   if (isAdmin) return true;
 
-  // TODO: Check if user is a working group leader
-  // For now, only admins can schedule
+  // Check if user is a leader of any working group
+  // getCommitteesLedByUser handles both Slack user IDs and WorkOS user IDs
+  const ledGroups = await workingGroupDb.getCommitteesLedByUser(slackUserId);
+  if (ledGroups.length > 0) {
+    logger.debug({ slackUserId, groupCount: ledGroups.length }, 'User is a working group leader');
+    return true;
+  }
+
   return false;
 }
 
@@ -298,11 +304,11 @@ export function createMeetingToolHandlers(
     if (slackUserId) {
       const canSchedule = await canScheduleMeetings(slackUserId);
       if (!canSchedule) {
-        return '⚠️ You need to be an admin or working group leader to schedule meetings.';
+        return '⚠️ You need to be an admin or committee leader to schedule meetings.';
       }
     } else if (memberContext) {
       if (memberContext.org_membership?.role !== 'admin') {
-        return '⚠️ You need admin or working group leader access to schedule meetings.';
+        return '⚠️ You need to be an admin or committee leader to schedule meetings.';
       }
     }
     return null;
@@ -322,6 +328,26 @@ export function createMeetingToolHandlers(
     const workingGroup = await workingGroupDb.getWorkingGroupBySlug(workingGroupSlug);
     if (!workingGroup) {
       return `❌ Working group not found: "${workingGroupSlug}". Check the slug and try again.`;
+    }
+
+    // Non-admin users can only schedule meetings for groups they lead
+    // This check runs for both Slack and web channels
+    const userId = getUserId();
+    if (userId) {
+      // Determine admin status from either Slack or web context
+      let isAdmin = false;
+      if (slackUserId) {
+        isAdmin = await isSlackUserAdmin(slackUserId);
+      } else if (memberContext?.org_membership?.role === 'admin') {
+        isAdmin = true;
+      }
+
+      if (!isAdmin) {
+        const isGroupLeader = await workingGroupDb.isLeader(workingGroup.id, userId);
+        if (!isGroupLeader) {
+          return `⚠️ You can only schedule meetings for committees you lead. You're not a leader of "${workingGroup.name}".`;
+        }
+      }
     }
 
     // Parse start time
