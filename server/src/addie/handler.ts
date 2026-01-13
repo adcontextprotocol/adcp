@@ -48,6 +48,7 @@ import {
 import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
+  canScheduleMeetings,
 } from './mcp/meeting-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
@@ -269,8 +270,11 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Event tools enabled for this user');
+  }
 
-    // Add meeting tools (same permission as event tools)
+  // Add meeting tools if user can schedule meetings (admin or committee leader)
+  const canSchedule = slackUserId ? await canScheduleMeetings(slackUserId) : userIsAdmin;
+  if (canSchedule) {
     const meetingHandlers = createMeetingToolHandlers(memberContext, slackUserId);
     allTools.push(...MEETING_TOOLS);
     for (const [name, handler] of meetingHandlers) {
