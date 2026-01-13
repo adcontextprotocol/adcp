@@ -1237,6 +1237,22 @@
       Manage Addie's knowledge base, view interactions, and review pending actions.
     </p>
 
+    <!-- Config Version Banner -->
+    <div class="card" id="config-version-banner" style="display: flex; justify-content: space-between; align-items: center; background: var(--color-bg-muted); padding: var(--space-4) var(--space-5);">
+      <div>
+        <span style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Config Version:</span>
+        <span id="config-version-id" style="font-family: var(--font-mono); color: var(--color-brand);">-</span>
+        <span style="color: var(--color-text-secondary); margin-left: var(--space-2);">(<span id="config-rule-count">-</span> rules)</span>
+      </div>
+      <div style="display: flex; gap: var(--space-4); align-items: center;">
+        <span style="font-size: var(--text-sm); color: var(--color-text-secondary);">
+          <span id="config-message-count">-</span> messages |
+          <span id="config-rating">-</span> avg rating
+        </span>
+        <button onclick="showConfigHistory()" class="btn btn-secondary btn-sm">Version History</button>
+      </div>
+    </div>
+
     <!-- Stats row -->
     <div class="stats-row" id="stats-row">
       <div class="stat-card">
@@ -1265,6 +1281,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="rules">Rules</button>
       <button class="tab" data-tab="suggestions">Suggestions</button>
+      <button class="tab" data-tab="insights">Insights</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
       <button class="tab" data-tab="threads">Threads</button>
       <button class="tab" data-tab="evaluation">Evaluation</button>
@@ -1317,6 +1334,158 @@
           <div class="empty-state">
             <h3>Loading...</h3>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insights Tab -->
+    <div class="tab-content" id="tab-insights">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h2 style="margin: 0;">Insight Synthesis</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              Tag expert content to synthesize into Addie's core knowledge
+            </p>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-secondary" onclick="openPerspectiveTagModal()">Tag Perspective</button>
+            <button class="btn btn-secondary" onclick="openAddInsightModal()">Add Insight</button>
+            <button class="btn btn-primary" onclick="runInsightSynthesis()" id="run-synthesis-btn">Run Synthesis</button>
+          </div>
+        </div>
+
+        <!-- Insights by Topic -->
+        <div id="insights-by-topic" style="margin-bottom: var(--space-5);">
+          <h3 style="font-size: var(--text-lg); margin-bottom: var(--space-3);">Pending by Topic</h3>
+          <div class="stats-row" id="topic-stats">
+            <div class="empty-state" style="padding: var(--space-4);">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Pending Insights List -->
+        <div id="insights-list-container">
+          <h3 style="font-size: var(--text-lg); margin-bottom: var(--space-3);">Pending Insights</h3>
+          <div class="rules-list" id="insights-list">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Synthesis Runs -->
+        <div id="synthesis-runs-container" style="margin-top: var(--space-6);">
+          <h3 style="font-size: var(--text-lg); margin-bottom: var(--space-3);">Recent Synthesis Runs</h3>
+          <div class="rules-list" id="synthesis-runs-list">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Insight Modal -->
+    <div class="modal-overlay" id="add-insight-modal" style="display: none;">
+      <div class="modal" style="max-width: 700px;">
+        <h2>Add Insight Source</h2>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
+          Tag expert content for synthesis into Addie's core knowledge. This content will become part of how Addie thinks, not just what she can search.
+        </p>
+        <form id="add-insight-form">
+          <div class="form-group">
+            <label for="insight-content">Content *</label>
+            <textarea id="insight-content" name="content" rows="10" required
+              placeholder="Paste expert content here (emails, Q&As, articles, conversation excerpts...)"></textarea>
+          </div>
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+            <div class="form-group">
+              <label for="insight-topic">Topic</label>
+              <input type="text" id="insight-topic" name="topic"
+                placeholder="e.g., adoption-philosophy, trust, allocation">
+            </div>
+            <div class="form-group">
+              <label for="insight-author">Author Name</label>
+              <input type="text" id="insight-author" name="author_name"
+                placeholder="e.g., Ben Masse">
+            </div>
+          </div>
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+            <div class="form-group">
+              <label for="insight-author-context">Author Context</label>
+              <input type="text" id="insight-author-context" name="author_context"
+                placeholder="e.g., Triton Digital, audio expert">
+            </div>
+            <div class="form-group">
+              <label for="insight-notes">Notes</label>
+              <input type="text" id="insight-notes" name="notes"
+                placeholder="Why is this valuable?">
+            </div>
+          </div>
+          <div class="button-group">
+            <button type="button" class="btn btn-secondary" onclick="closeInsightModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add Insight</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tag Perspective Modal -->
+    <div class="modal-overlay" id="perspective-tag-modal" style="display: none;">
+      <div class="modal" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+        <h2>Tag Perspective as Insight Source</h2>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
+          Select a published perspective to tag for synthesis into Addie's core knowledge.
+        </p>
+        <div id="perspectives-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3);">
+          <div class="empty-state">Loading perspectives...</div>
+        </div>
+        <div class="form-group" style="margin-top: var(--space-4);">
+          <label for="perspective-topic">Topic Override (optional)</label>
+          <input type="text" id="perspective-topic" placeholder="Leave blank to use perspective's category">
+        </div>
+        <div class="button-group" style="margin-top: var(--space-4);">
+          <button type="button" class="btn btn-secondary" onclick="closePerspectiveTagModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Synthesis Review Modal -->
+    <div class="modal-overlay" id="synthesis-review-modal" style="display: none;">
+      <div class="modal" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+        <h2>Review Synthesis Run</h2>
+        <div id="synthesis-review-content">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="button-group" id="synthesis-review-actions" style="margin-top: var(--space-4);">
+          <button type="button" class="btn btn-secondary" onclick="closeSynthesisModal()">Close</button>
+          <button type="button" class="btn btn-secondary" onclick="rejectSynthesis()" id="reject-synthesis-btn">Reject</button>
+          <button type="button" class="btn btn-primary" onclick="approveSynthesis()" id="approve-synthesis-btn">Approve</button>
+          <button type="button" class="btn btn-success" onclick="applySynthesis()" id="apply-synthesis-btn" style="display: none;">Apply Rules</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config Version History Modal -->
+    <div class="modal-overlay" id="config-history-modal" style="display: none;">
+      <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <h2>Config Version History</h2>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
+          Each config version represents a unique combination of active rules. Performance metrics are tracked per version.
+        </p>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="border-bottom: var(--border-1) solid var(--color-gray-200);">
+              <th style="text-align: left; padding: var(--space-2);">Version</th>
+              <th style="text-align: left; padding: var(--space-2);">Created</th>
+              <th style="text-align: center; padding: var(--space-2);">Rules</th>
+              <th style="text-align: center; padding: var(--space-2);">Messages</th>
+              <th style="text-align: center; padding: var(--space-2);">Rating</th>
+              <th style="text-align: left; padding: var(--space-2);">Source</th>
+            </tr>
+          </thead>
+          <tbody id="config-history-list">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+        <div class="button-group" style="margin-top: var(--space-4);">
+          <button type="button" class="btn btn-secondary" onclick="closeConfigHistoryModal()">Close</button>
         </div>
       </div>
     </div>
@@ -1936,15 +2105,17 @@
     // Load stats
     async function loadStats() {
       try {
-        const [knowledgeRes, threadsRes, queueRes] = await Promise.all([
+        const [knowledgeRes, threadsRes, queueRes, configRes] = await Promise.all([
           fetch('/api/admin/addie/knowledge/categories'),
           fetch('/api/admin/addie/threads/stats'),
-          fetch('/api/admin/addie/queue/stats')
+          fetch('/api/admin/addie/queue/stats'),
+          fetch('/api/admin/addie/config/current')
         ]);
 
         const knowledge = await knowledgeRes.json();
         const threads = await threadsRes.json();
         const queue = await queueRes.json();
+        const config = await configRes.json();
 
         const totalKnowledge = knowledge.categories?.reduce((sum, c) => sum + c.count, 0) || 0;
         document.getElementById('stat-knowledge').textContent = totalKnowledge;
@@ -1952,9 +2123,68 @@
         document.getElementById('stat-messages').textContent = threads.messages_30d || 0;
         document.getElementById('stat-flagged').textContent = threads.flagged_threads || 0;
         document.getElementById('stat-pending').textContent = queue.pending || 0;
+
+        // Update config version banner
+        if (config.config_version) {
+          const cv = config.config_version;
+          document.getElementById('config-version-id').textContent = `v${cv.version_id}`;
+          document.getElementById('config-rule-count').textContent = cv.rule_count || 0;
+          document.getElementById('config-message-count').textContent = cv.message_count || 0;
+          document.getElementById('config-rating').textContent = cv.avg_rating
+            ? `${parseFloat(cv.avg_rating).toFixed(1)}/5`
+            : 'N/A';
+        }
       } catch (error) {
         console.error('Error loading stats:', error);
       }
+    }
+
+    // Config version history modal
+    async function showConfigHistory() {
+      const modal = document.getElementById('config-history-modal');
+      modal.style.display = 'flex';
+
+      try {
+        const res = await fetch('/api/admin/addie/config/history?limit=20');
+        const data = await res.json();
+
+        const listEl = document.getElementById('config-history-list');
+        if (!data.versions || data.versions.length === 0) {
+          listEl.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-4); color: var(--color-text-secondary);">No config versions found</td></tr>';
+          return;
+        }
+
+        listEl.innerHTML = data.versions.map(v => `
+          <tr style="border-bottom: var(--border-1) solid var(--color-gray-100);">
+            <td style="padding: var(--space-2);">
+              <span style="font-family: var(--font-mono); font-weight: var(--font-semibold);">v${v.version_id}</span>
+              <br>
+              <span style="font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);">${v.config_hash?.substring(0, 8) || '-'}</span>
+            </td>
+            <td style="padding: var(--space-2); font-size: var(--text-sm);">
+              ${new Date(v.created_at).toLocaleDateString()}<br>
+              <span style="color: var(--color-text-muted);">${new Date(v.created_at).toLocaleTimeString()}</span>
+            </td>
+            <td style="padding: var(--space-2); text-align: center;">${v.rule_count || 0}</td>
+            <td style="padding: var(--space-2); text-align: center;">${v.message_count || 0}</td>
+            <td style="padding: var(--space-2); text-align: center;">
+              ${v.avg_rating ? `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${parseFloat(v.avg_rating).toFixed(1)}</span>` : '-'}
+              ${v.positive_feedback || v.negative_feedback ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">+${v.positive_feedback || 0}/-${v.negative_feedback || 0}</span>` : ''}
+            </td>
+            <td style="padding: var(--space-2); font-size: var(--text-sm);">
+              ${v.source_synthesis_run_ids?.length ? `Synthesis #${v.source_synthesis_run_ids.join(', #')}` : 'Manual'}
+            </td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading config history:', error);
+        document.getElementById('config-history-list').innerHTML =
+          '<tr><td colspan="6" style="text-align: center; padding: var(--space-4); color: var(--color-error);">Error loading history</td></tr>';
+      }
+    }
+
+    function closeConfigHistoryModal() {
+      document.getElementById('config-history-modal').style.display = 'none';
     }
 
     // Load unified knowledge list (docs, curated resources, slack messages)
@@ -4048,10 +4278,521 @@
       }
     }
 
+    // =========================================================================
+    // INSIGHTS FUNCTIONS
+    // =========================================================================
+
+    let currentSynthesisRun = null;
+
+    async function loadInsights() {
+      try {
+        const response = await fetch('/api/admin/addie/insights');
+        const data = await response.json();
+
+        // Render topic stats
+        const topicStats = document.getElementById('topic-stats');
+        if (data.topics && data.topics.length > 0) {
+          topicStats.innerHTML = data.topics.map(topic => `
+            <div class="stat-card" style="cursor: pointer;" onclick="filterInsightsByTopic('${escapeHtml(topic)}')">
+              <div class="stat-value">${data.sources.filter(s => (s.topic || 'uncategorized') === topic).length}</div>
+              <div class="stat-label">${escapeHtml(topic)}</div>
+            </div>
+          `).join('') + `
+            <div class="stat-card" style="background: var(--color-brand); color: white;">
+              <div class="stat-value" style="color: white;">${data.pendingCount}</div>
+              <div class="stat-label" style="color: rgba(255,255,255,0.8);">Total Pending</div>
+            </div>
+          `;
+        } else {
+          topicStats.innerHTML = `
+            <div class="stat-card">
+              <div class="stat-value">0</div>
+              <div class="stat-label">No pending insights</div>
+            </div>
+          `;
+        }
+
+        // Render insights list
+        const list = document.getElementById('insights-list');
+        if (!data.sources || data.sources.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No pending insights</h3><p>Use "Add Insight" to tag expert content for synthesis.</p></div>';
+        } else {
+          list.innerHTML = data.sources.map(s => `
+            <div class="rule-item">
+              <div class="rule-header">
+                <div>
+                  ${s.topic ? `<span class="badge">${escapeHtml(s.topic)}</span>` : '<span class="badge" style="background: var(--color-gray-200);">uncategorized</span>'}
+                  ${s.author_name ? `<span style="margin-left: var(--space-2); color: var(--color-text-secondary);">by ${escapeHtml(s.author_name)}</span>` : ''}
+                </div>
+                <div style="display: flex; gap: var(--space-2); align-items: center;">
+                  <span style="font-size: var(--text-sm); color: var(--color-text-secondary);">${new Date(s.tagged_at).toLocaleDateString()}</span>
+                  <button class="btn btn-secondary btn-sm" onclick="archiveInsight(${s.id})">Archive</button>
+                </div>
+              </div>
+              <div class="rule-content" style="white-space: pre-wrap;">${escapeHtml(s.excerpt || s.content.substring(0, 300))}</div>
+              ${s.notes ? `<div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);"><em>Note: ${escapeHtml(s.notes)}</em></div>` : ''}
+            </div>
+          `).join('');
+        }
+
+        // Load synthesis runs
+        await loadSynthesisRuns();
+      } catch (error) {
+        console.error('Error loading insights:', error);
+        document.getElementById('insights-list').innerHTML = '<div class="empty-state"><h3>Error loading insights</h3></div>';
+      }
+    }
+
+    async function loadSynthesisRuns() {
+      try {
+        const response = await fetch('/api/admin/addie/synthesis?limit=10');
+        const data = await response.json();
+
+        const list = document.getElementById('synthesis-runs-list');
+        if (!data.runs || data.runs.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No synthesis runs yet</h3><p>Click "Run Synthesis" to process pending insights.</p></div>';
+          return;
+        }
+
+        list.innerHTML = data.runs.map(run => {
+          const statusColors = {
+            draft: 'var(--color-warning)',
+            approved: 'var(--color-success)',
+            applied: 'var(--color-brand)',
+            rejected: 'var(--color-danger)'
+          };
+          return `
+            <div class="rule-item" style="cursor: pointer;" onclick="viewSynthesisRun(${run.id})">
+              <div class="rule-header">
+                <div>
+                  <span class="badge" style="background: ${statusColors[run.status] || 'var(--color-gray-200)'}; color: white;">${run.status}</span>
+                  <span style="margin-left: var(--space-2);">${run.sources_count} sources → ${run.proposed_rules?.length || 0} rules</span>
+                </div>
+                <span style="font-size: var(--text-sm); color: var(--color-text-secondary);">${new Date(run.created_at).toLocaleString()}</span>
+              </div>
+              ${run.preview_summary ? `<div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);">${escapeHtml(run.preview_summary)}</div>` : ''}
+              ${run.topics_included?.length > 0 ? `<div style="margin-top: var(--space-2);">Topics: ${run.topics_included.map(t => `<span class="badge" style="margin-right: var(--space-1);">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error('Error loading synthesis runs:', error);
+      }
+    }
+
+    function openAddInsightModal() {
+      document.getElementById('add-insight-modal').style.display = 'flex';
+      document.getElementById('add-insight-form').reset();
+    }
+
+    function closeInsightModal() {
+      document.getElementById('add-insight-modal').style.display = 'none';
+    }
+
+    // Perspective tagging modal
+    async function openPerspectiveTagModal() {
+      const modal = document.getElementById('perspective-tag-modal');
+      modal.style.display = 'flex';
+      document.getElementById('perspective-topic').value = '';
+
+      const listEl = document.getElementById('perspectives-list');
+      listEl.innerHTML = '<div class="empty-state">Loading perspectives...</div>';
+
+      try {
+        const response = await fetch('/api/admin/addie/insights/perspectives');
+        const data = await response.json();
+
+        if (!data.perspectives || data.perspectives.length === 0) {
+          listEl.innerHTML = '<div class="empty-state">No published perspectives found</div>';
+          return;
+        }
+
+        listEl.innerHTML = data.perspectives.map(p => `
+          <div style="padding: var(--space-3); border-bottom: 1px solid var(--color-gray-100); ${p.already_tagged ? 'opacity: 0.5;' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-semibold);">${escapeHtml(p.title)}</div>
+                ${p.author_name ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary);">by ${escapeHtml(p.author_name)}</div>` : ''}
+                ${p.category ? `<span class="badge" style="margin-top: var(--space-1);">${escapeHtml(p.category)}</span>` : ''}
+                ${p.excerpt ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(p.excerpt.substring(0, 150))}...</div>` : ''}
+              </div>
+              <div>
+                ${p.already_tagged
+                  ? '<span style="font-size: var(--text-sm); color: var(--color-text-muted);">Already tagged</span>'
+                  : `<button class="btn btn-sm btn-primary" onclick="tagPerspective('${escapeHtml(p.id)}', '${escapeHtml(p.title)}')">Tag</button>`
+                }
+              </div>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading perspectives:', error);
+        listEl.innerHTML = '<div class="empty-state" style="color: var(--color-error);">Error loading perspectives</div>';
+      }
+    }
+
+    function closePerspectiveTagModal() {
+      document.getElementById('perspective-tag-modal').style.display = 'none';
+    }
+
+    async function tagPerspective(perspectiveId, title) {
+      const topicOverride = document.getElementById('perspective-topic').value.trim();
+
+      try {
+        const response = await fetch('/api/admin/addie/insights/from-perspective', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            perspectiveId,
+            topic: topicOverride || undefined
+          })
+        });
+
+        if (response.ok) {
+          alert(`Tagged: ${title}`);
+          closePerspectiveTagModal();
+          loadInsights();
+        } else {
+          const error = await response.json();
+          alert('Error: ' + (error.message || 'Failed to tag perspective'));
+        }
+      } catch (error) {
+        console.error('Error tagging perspective:', error);
+        alert('Error tagging perspective');
+      }
+    }
+
+    document.getElementById('add-insight-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+        source_type: 'external',
+        content: formData.get('content'),
+        topic: formData.get('topic') || undefined,
+        author_name: formData.get('author_name') || undefined,
+        author_context: formData.get('author_context') || undefined,
+        notes: formData.get('notes') || undefined
+      };
+
+      try {
+        const response = await fetch('/api/admin/addie/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+          closeInsightModal();
+          loadInsights();
+          alert('Insight added successfully!');
+        } else {
+          const error = await response.json();
+          alert('Error: ' + (error.message || 'Failed to add insight'));
+        }
+      } catch (error) {
+        console.error('Error adding insight:', error);
+        alert('Error adding insight');
+      }
+    });
+
+    async function archiveInsight(id) {
+      if (!confirm('Archive this insight? It will no longer be included in synthesis.')) return;
+
+      try {
+        const response = await fetch(`/api/admin/addie/insights/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+          loadInsights();
+        } else {
+          alert('Error archiving insight');
+        }
+      } catch (error) {
+        console.error('Error archiving insight:', error);
+        alert('Error archiving insight');
+      }
+    }
+
+    async function runInsightSynthesis() {
+      const btn = document.getElementById('run-synthesis-btn');
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+
+      try {
+        const response = await fetch('/api/admin/addie/synthesis/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          loadInsights();
+          viewSynthesisRun(data.run.id);
+        } else {
+          alert('Error: ' + (data.message || 'Synthesis failed'));
+        }
+      } catch (error) {
+        console.error('Error running synthesis:', error);
+        alert('Error running synthesis');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Synthesis';
+      }
+    }
+
+    async function viewSynthesisRun(id) {
+      try {
+        // Fetch synthesis run AND current rules in parallel
+        const [synthesisRes, rulesRes, configRes] = await Promise.all([
+          fetch(`/api/admin/addie/synthesis/${id}`),
+          fetch('/api/admin/addie/rules?active_only=true'),
+          fetch('/api/admin/addie/config/current')
+        ]);
+
+        const data = await synthesisRes.json();
+        const rulesData = await rulesRes.json();
+        const configData = await configRes.json();
+
+        currentSynthesisRun = data.run;
+        const currentRules = rulesData.rules || [];
+        const currentKnowledgeRules = currentRules.filter(r => r.rule_type === 'knowledge');
+        const configVersion = configData.config_version;
+
+        const content = document.getElementById('synthesis-review-content');
+        const run = data.run;
+
+        // Summary stats
+        let html = `
+          <div style="margin-bottom: var(--space-4);">
+            <div class="stats-row" style="grid-template-columns: repeat(4, 1fr);">
+              <div class="stat-card">
+                <div class="stat-value">${run.sources_count}</div>
+                <div class="stat-label">Sources</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${run.proposed_rules?.length || 0}</div>
+                <div class="stat-label">Rules Proposed</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${run.preview_results?.summary?.likely_improved || 0}</div>
+                <div class="stat-label">Likely Improved</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${run.preview_results?.summary?.likely_worse || 0}</div>
+                <div class="stat-label">Potentially Worse</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        if (run.preview_summary) {
+          html += `<div style="background: var(--color-gray-50); padding: var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-4);">
+            <strong>Preview Summary:</strong> ${escapeHtml(run.preview_summary)}
+          </div>`;
+        }
+
+        // SIDE BY SIDE COMPARISON
+        html += `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
+            <!-- Current State -->
+            <div>
+              <h3 style="margin-bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2);">
+                <span style="display: inline-block; width: 12px; height: 12px; background: var(--color-gray-400); border-radius: 50%;"></span>
+                Current Knowledge Rules
+                <span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-secondary);">
+                  (v${configVersion?.version_id || '?'})
+                </span>
+              </h3>
+              <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3);">
+                ${currentKnowledgeRules.length === 0
+                  ? '<p style="color: var(--color-text-secondary); text-align: center;">No knowledge rules yet</p>'
+                  : currentKnowledgeRules.map(rule => `
+                    <div style="margin-bottom: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-gray-100);">
+                      <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">${escapeHtml(rule.name)}</div>
+                      <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1); white-space: pre-wrap;">${escapeHtml(rule.content.substring(0, 300))}${rule.content.length > 300 ? '...' : ''}</div>
+                    </div>
+                  `).join('')
+                }
+              </div>
+              <div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                ${currentKnowledgeRules.length} knowledge rule${currentKnowledgeRules.length !== 1 ? 's' : ''} |
+                ${currentRules.length} total rules
+              </div>
+            </div>
+
+            <!-- After Synthesis -->
+            <div>
+              <h3 style="margin-bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2);">
+                <span style="display: inline-block; width: 12px; height: 12px; background: var(--color-success); border-radius: 50%;"></span>
+                After This Synthesis
+              </h3>
+              <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--color-success); border-radius: var(--radius-sm); padding: var(--space-3); background: var(--color-success-bg, rgba(16, 185, 129, 0.05));">
+                ${(run.proposed_rules || []).length === 0
+                  ? '<p style="color: var(--color-text-secondary); text-align: center;">No new rules proposed</p>'
+                  : `
+                    <div style="margin-bottom: var(--space-3); padding: var(--space-2); background: var(--color-success-bg, rgba(16, 185, 129, 0.1)); border-radius: var(--radius-sm);">
+                      <strong style="color: var(--color-success);">+ ${run.proposed_rules.length} NEW RULE${run.proposed_rules.length !== 1 ? 'S' : ''}</strong>
+                    </div>
+                    ${run.proposed_rules.map(rule => `
+                      <div style="margin-bottom: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-gray-100);">
+                        <div style="font-weight: var(--font-semibold); color: var(--color-success);">
+                          + ${escapeHtml(rule.name)}
+                          <span class="badge" style="margin-left: var(--space-2);">${Math.round(rule.confidence * 100)}%</span>
+                        </div>
+                        <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1); white-space: pre-wrap;">${escapeHtml(rule.content.substring(0, 300))}${rule.content.length > 300 ? '...' : ''}</div>
+                      </div>
+                    `).join('')}
+                  `
+                }
+              </div>
+              <div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary);">
+                ${currentKnowledgeRules.length + (run.proposed_rules?.length || 0)} knowledge rules after |
+                ${currentRules.length + (run.proposed_rules?.length || 0)} total rules
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Source Materials (collapsible)
+        if (data.sources && data.sources.length > 0) {
+          html += `
+            <details style="margin-top: var(--space-4);">
+              <summary style="cursor: pointer; font-weight: var(--font-semibold); color: var(--color-text-heading);">
+                Source Materials (${data.sources.length})
+              </summary>
+              <div style="margin-top: var(--space-3);">
+          `;
+          for (const source of data.sources.slice(0, 5)) {
+            html += `
+              <div style="border: 1px solid var(--color-gray-200); padding: var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
+                ${source.topic ? `<span class="badge">${escapeHtml(source.topic)}</span>` : ''}
+                ${source.author_name ? `<span style="margin-left: var(--space-2); color: var(--color-text-secondary);">by ${escapeHtml(source.author_name)}</span>` : ''}
+                <div style="margin-top: var(--space-2); font-size: var(--text-sm);">${escapeHtml(source.excerpt || source.content.substring(0, 200))}</div>
+              </div>
+            `;
+          }
+          if (data.sources.length > 5) {
+            html += `<p style="color: var(--color-text-secondary);">...and ${data.sources.length - 5} more sources</p>`;
+          }
+          html += `</div></details>`;
+        }
+
+        content.innerHTML = html;
+
+        // Update action buttons based on status
+        const approveBtn = document.getElementById('approve-synthesis-btn');
+        const rejectBtn = document.getElementById('reject-synthesis-btn');
+        const applyBtn = document.getElementById('apply-synthesis-btn');
+
+        if (run.status === 'draft') {
+          approveBtn.style.display = '';
+          rejectBtn.style.display = '';
+          applyBtn.style.display = 'none';
+        } else if (run.status === 'approved') {
+          approveBtn.style.display = 'none';
+          rejectBtn.style.display = 'none';
+          applyBtn.style.display = '';
+        } else {
+          approveBtn.style.display = 'none';
+          rejectBtn.style.display = 'none';
+          applyBtn.style.display = 'none';
+        }
+
+        document.getElementById('synthesis-review-modal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error loading synthesis run:', error);
+        alert('Error loading synthesis run');
+      }
+    }
+
+    function closeSynthesisModal() {
+      document.getElementById('synthesis-review-modal').style.display = 'none';
+      currentSynthesisRun = null;
+    }
+
+    async function approveSynthesis() {
+      if (!currentSynthesisRun) return;
+
+      try {
+        const response = await fetch(`/api/admin/addie/synthesis/${currentSynthesisRun.id}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'approved' })
+        });
+
+        if (response.ok) {
+          viewSynthesisRun(currentSynthesisRun.id);
+          loadInsights();
+        } else {
+          alert('Error approving synthesis');
+        }
+      } catch (error) {
+        console.error('Error approving synthesis:', error);
+        alert('Error approving synthesis');
+      }
+    }
+
+    async function rejectSynthesis() {
+      if (!currentSynthesisRun) return;
+      const notes = prompt('Reason for rejection (optional):');
+
+      try {
+        const response = await fetch(`/api/admin/addie/synthesis/${currentSynthesisRun.id}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'rejected', notes })
+        });
+
+        if (response.ok) {
+          closeSynthesisModal();
+          loadInsights();
+        } else {
+          alert('Error rejecting synthesis');
+        }
+      } catch (error) {
+        console.error('Error rejecting synthesis:', error);
+        alert('Error rejecting synthesis');
+      }
+    }
+
+    async function applySynthesis() {
+      if (!currentSynthesisRun) return;
+      if (!confirm('Apply these rules to Addie? This will create new knowledge rules.')) return;
+
+      try {
+        const response = await fetch(`/api/admin/addie/synthesis/${currentSynthesisRun.id}/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const versionMsg = data.configVersionId ? ` Addie is now on config version v${data.configVersionId}.` : '';
+          alert(`Success! ${data.rules.length} rules created.${versionMsg}`);
+          closeSynthesisModal();
+          loadInsights();
+          loadRules();
+          loadStats(); // Refresh config version banner
+        } else {
+          const error = await response.json();
+          alert('Error: ' + (error.message || 'Failed to apply synthesis'));
+        }
+      } catch (error) {
+        console.error('Error applying synthesis:', error);
+        alert('Error applying synthesis');
+      }
+    }
+
+    function filterInsightsByTopic(topic) {
+      // For now, just scroll to the insights list - could add filtering later
+      document.getElementById('insights-list-container').scrollIntoView({ behavior: 'smooth' });
+    }
+
     // Initial load
     loadStats();
     loadRules();
     loadSuggestions();
+    loadInsights();
     loadKnowledge();
     loadThreads();
     loadQueue();

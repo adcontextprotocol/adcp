@@ -9,7 +9,7 @@ import { Router } from "express";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
-import { AddieDatabase, type RuleType } from "../db/addie-db.js";
+import { AddieDatabase, type RuleType, type InsightSourceType } from "../db/addie-db.js";
 import { query } from "../db/client.js";
 import { analyzeInteractions, previewRuleChange } from "../addie/jobs/rule-analyzer.js";
 import { invalidateAddieRulesCache } from "../addie/handler.js";
@@ -22,6 +22,7 @@ import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
+import { synthesizeInsights, applySynthesis } from "../addie/jobs/insight-synthesizer.js";
 import {
   resolveSlackUserDisplayName,
   resolveSlackUserDisplayNames,
@@ -1058,6 +1059,39 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to reject queue item",
+      });
+    }
+  });
+
+  // =========================================================================
+  // CONFIG VERSION API (mounted at /api/admin/addie/config)
+  // =========================================================================
+
+  // GET /api/admin/addie/config/current - Get current config version info
+  apiRouter.get("/config/current", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const configVersion = await addieDb.getCurrentConfigVersion();
+      res.json({ config_version: configVersion });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching current config version");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch config version",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/config/history - Get config version history
+  apiRouter.get("/config/history", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const history = await addieDb.getConfigVersionHistory(limit);
+      res.json({ versions: history });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching config version history");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch config history",
       });
     }
   });
@@ -2334,6 +2368,445 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unable to get status",
+      });
+    }
+  });
+
+  // =========================================================================
+  // INSIGHT SYNTHESIS API (mounted at /api/admin/addie/insights)
+  // =========================================================================
+
+  // GET /api/admin/addie/insights - List insight sources
+  apiRouter.get("/insights", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const topic = req.query.topic as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+
+      const sources = await addieDb.listInsightSources({
+        status: status as 'pending' | 'synthesized' | 'archived' | undefined,
+        topic,
+        limit,
+        offset,
+      });
+
+      const topics = await addieDb.getInsightTopics();
+      const pendingCount = await addieDb.countPendingInsights();
+
+      res.json({
+        success: true,
+        sources,
+        topics,
+        pendingCount,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error listing insight sources");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/insights/by-topic - Get sources grouped by topic
+  apiRouter.get("/insights/by-topic", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const byTopic = await addieDb.getInsightSourcesByTopic();
+      res.json({
+        success: true,
+        topics: byTopic,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error getting insights by topic");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/insights - Create a new insight source (tag content)
+  apiRouter.post("/insights", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { source_type, source_ref, content, topic, author_name, author_context, notes } = req.body;
+
+      if (!source_type || !content) {
+        return res.status(400).json({
+          error: "Bad request",
+          message: "source_type and content are required",
+        });
+      }
+
+      const validTypes: InsightSourceType[] = ['conversation', 'perspective', 'doc', 'slack', 'external'];
+      if (!validTypes.includes(source_type)) {
+        return res.status(400).json({
+          error: "Bad request",
+          message: `Invalid source_type. Must be one of: ${validTypes.join(', ')}`,
+        });
+      }
+
+      const userEmail = req.user?.email || 'admin';
+
+      const source = await addieDb.createInsightSource({
+        source_type,
+        source_ref,
+        content,
+        topic,
+        author_name,
+        author_context,
+        tagged_by: userEmail,
+        notes,
+      });
+
+      logger.info({ sourceId: source.id, topic, taggedBy: userEmail }, "Insight source created");
+
+      res.json({
+        success: true,
+        source,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error creating insight source");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/insights/:id - Get a specific insight source
+  apiRouter.get("/insights/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const source = await addieDb.getInsightSource(id);
+      if (!source) {
+        return res.status(404).json({ error: "Not found", message: "Insight source not found" });
+      }
+
+      res.json({ success: true, source });
+    } catch (error) {
+      logger.error({ err: error }, "Error getting insight source");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // DELETE /api/admin/addie/insights/:id - Archive an insight source
+  apiRouter.delete("/insights/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const source = await addieDb.archiveInsightSource(id);
+      if (!source) {
+        return res.status(404).json({ error: "Not found", message: "Insight source not found" });
+      }
+
+      res.json({ success: true, source });
+    } catch (error) {
+      logger.error({ err: error }, "Error archiving insight source");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/insights/from-perspective - Tag a perspective as insight source
+  apiRouter.post("/insights/from-perspective", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { perspectiveId, topic, notes } = req.body;
+
+      if (!perspectiveId) {
+        return res.status(400).json({
+          error: "Bad request",
+          message: "perspectiveId is required",
+        });
+      }
+
+      // Fetch the perspective
+      const perspectiveResult = await query<{
+        id: string;
+        title: string;
+        content: string;
+        body: string;
+        excerpt: string;
+        author_name: string;
+        category: string;
+      }>(
+        `SELECT id, title, content, body, excerpt, author_name, category
+         FROM perspectives
+         WHERE id = $1`,
+        [perspectiveId]
+      );
+
+      if (perspectiveResult.rows.length === 0) {
+        return res.status(404).json({
+          error: "Not found",
+          message: "Perspective not found",
+        });
+      }
+
+      const perspective = perspectiveResult.rows[0];
+      const contentToUse = perspective.body || perspective.content || perspective.excerpt;
+
+      if (!contentToUse) {
+        return res.status(400).json({
+          error: "Bad request",
+          message: "Perspective has no content to tag",
+        });
+      }
+
+      const userEmail = req.user?.email || 'admin';
+
+      const source = await addieDb.createInsightSource({
+        source_type: 'perspective',
+        source_ref: perspectiveId,
+        content: contentToUse,
+        topic: topic || perspective.category || undefined,
+        author_name: perspective.author_name || undefined,
+        author_context: perspective.title,
+        tagged_by: userEmail,
+        notes: notes || `Tagged from perspective: ${perspective.title}`,
+      });
+
+      logger.info({
+        sourceId: source.id,
+        perspectiveId,
+        title: perspective.title,
+      }, "Perspective tagged as insight source");
+
+      res.json({ success: true, source });
+    } catch (error) {
+      logger.error({ err: error }, "Error tagging perspective as insight");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/insights/perspectives - List perspectives available for tagging
+  apiRouter.get("/insights/perspectives", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      // Get perspectives that haven't been tagged yet
+      const result = await query<{
+        id: string;
+        title: string;
+        category: string;
+        author_name: string;
+        excerpt: string;
+        published_at: Date;
+        already_tagged: boolean;
+      }>(
+        `SELECT
+           p.id,
+           p.title,
+           p.category,
+           p.author_name,
+           p.excerpt,
+           p.published_at,
+           EXISTS (
+             SELECT 1 FROM addie_insight_sources ais
+             WHERE ais.source_type = 'perspective'
+             AND ais.source_ref = p.id::text
+             AND ais.status != 'archived'
+           ) as already_tagged
+         FROM perspectives p
+         WHERE p.status = 'published'
+         ORDER BY p.published_at DESC
+         LIMIT 50`
+      );
+
+      res.json({
+        success: true,
+        perspectives: result.rows,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error listing perspectives for tagging");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // =========================================================================
+  // SYNTHESIS RUNS API (mounted at /api/admin/addie/synthesis)
+  // =========================================================================
+
+  // GET /api/admin/addie/synthesis - List synthesis runs
+  apiRouter.get("/synthesis", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const status = req.query.status as 'draft' | 'approved' | 'applied' | 'rejected' | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+
+      const runs = await addieDb.listSynthesisRuns({ status, limit });
+
+      res.json({
+        success: true,
+        runs,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error listing synthesis runs");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/synthesis/run - Trigger a new synthesis
+  apiRouter.post("/synthesis/run", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          error: "Configuration error",
+          message: "ANTHROPIC_API_KEY not configured",
+        });
+      }
+
+      const { topic, maxSources, previewSampleSize } = req.body;
+      const userEmail = req.user?.email || 'admin';
+
+      const result = await synthesizeInsights(addieDb, apiKey, {
+        topic,
+        maxSources: maxSources || 50,
+        previewSampleSize: previewSampleSize || 20,
+        createdBy: userEmail,
+      });
+
+      logger.info({
+        runId: result.run.id,
+        rulesProposed: result.proposedRules.length,
+        gaps: result.gaps,
+      }, "Synthesis run completed");
+
+      res.json({
+        success: true,
+        run: result.run,
+        proposedRules: result.proposedRules,
+        preview: result.preview,
+        gaps: result.gaps,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error running synthesis");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/synthesis/:id - Get a specific synthesis run
+  apiRouter.get("/synthesis/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const run = await addieDb.getSynthesisRun(id);
+      if (!run) {
+        return res.status(404).json({ error: "Not found", message: "Synthesis run not found" });
+      }
+
+      // Also get the source documents for context
+      const sources = await addieDb.listInsightSources({
+        status: undefined, // Get all statuses
+        limit: 100,
+      });
+      const runSources = sources.filter(s => run.source_ids.includes(s.id));
+
+      res.json({
+        success: true,
+        run,
+        sources: runSources,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error getting synthesis run");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/synthesis/:id/review - Approve or reject a synthesis
+  apiRouter.post("/synthesis/:id/review", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const { status, notes } = req.body;
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          error: "Bad request",
+          message: "status must be 'approved' or 'rejected'",
+        });
+      }
+
+      const userEmail = req.user?.email || 'admin';
+
+      const run = await addieDb.reviewSynthesisRun(id, status, userEmail, notes);
+      if (!run) {
+        return res.status(404).json({ error: "Not found", message: "Synthesis run not found" });
+      }
+
+      logger.info({ runId: id, status, reviewedBy: userEmail }, "Synthesis run reviewed");
+
+      res.json({ success: true, run });
+    } catch (error) {
+      logger.error({ err: error }, "Error reviewing synthesis run");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/synthesis/:id/apply - Apply an approved synthesis
+  apiRouter.post("/synthesis/:id/apply", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseNumericId(req.params.id);
+      if (!id) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
+      }
+
+      const result = await applySynthesis(addieDb, id);
+
+      // Invalidate rules cache so Addie picks up new rules
+      invalidateAddieRulesCache();
+
+      logger.info({
+        runId: id,
+        rulesCreated: result.rules.length,
+        ruleIds: result.rules.map(r => r.id),
+        configVersionId: result.configVersionId,
+      }, "Synthesis applied");
+
+      res.json({
+        success: true,
+        run: result.run,
+        rules: result.rules,
+        configVersionId: result.configVersionId,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error applying synthesis");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
