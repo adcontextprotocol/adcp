@@ -505,14 +505,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   // AGENT TESTING & COMPLIANCE
   // ============================================
   {
-    name: 'check_agent_health',
+    name: 'probe_adcp_agent',
     description:
-      'Check if an AdCP agent is online and responding. Tests the agent\'s endpoint and returns health status, response time, and available tools. Use this when users want to verify their agent is working before adding it to their profile or authorizing it.',
-    usage_hints: 'use for "is my agent working?", "test my agent endpoint"',
+      'Check if an AdCP agent is online and discover its capabilities. Always validates connectivity first, then retrieves available tools and operations. Use this as the primary tool for investigating agents - it combines health checking with capability discovery.',
+    usage_hints: 'use for "is this agent working?", "what can this agent do?", "check my agent", "probe agent", "test connectivity"',
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: { type: 'string', description: 'Agent URL' },
+        agent_url: { type: 'string', description: 'The agent URL to probe' },
       },
       required: ['agent_url'],
     },
@@ -529,19 +529,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL' },
       },
       required: ['domain', 'agent_url'],
-    },
-  },
-  {
-    name: 'get_agent_capabilities',
-    description:
-      'Get detailed capabilities of an AdCP agent including available tools and supported operations. Use this to help users understand what an agent can do before using it.',
-    usage_hints: 'use for "what can this agent do?", inspecting agent tools',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: { type: 'string', description: 'Agent URL' },
-      },
-      required: ['agent_url'],
     },
   },
   {
@@ -1889,74 +1876,106 @@ export function createMemberToolHandlers(
   // ============================================
   // AGENT TESTING & COMPLIANCE
   // ============================================
-  handlers.set('check_agent_health', async (input) => {
+  handlers.set('probe_adcp_agent', async (input) => {
     const agentUrl = input.agent_url as string;
 
-    // Use the validate-cards endpoint which checks agent card + health
-    const result = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
+    // Step 1: Health check (always do this first)
+    const healthResult = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
       agent_urls: [agentUrl],
     });
 
-    if (!result.ok) {
-      return `Failed to check agent health: ${result.error}`;
+    if (!healthResult.ok) {
+      return `## Agent Probe Failed\n\nUnable to probe agent at ${agentUrl}.\n\n**Error:** ${healthResult.error || 'Unknown error occurred while checking agent health.'}`;
     }
 
-    const data = result.data as {
+    const healthData = healthResult.data as {
       agent_cards: Array<{
         agent_url: string;
         valid: boolean;
-        errors: string[];
+        errors?: string[];
         status_code?: number;
         response_time_ms?: number;
-        card_data?: {
-          name?: string;
-          description?: string;
-          protocol?: string;
-        };
+        card_data?: { name?: string; description?: string; protocol?: string };
         card_endpoint?: string;
       }>;
     };
 
-    if (!data.agent_cards || data.agent_cards.length === 0) {
-      return `No response received for agent ${agentUrl}`;
-    }
+    const card = healthData?.agent_cards?.[0];
+    const isHealthy = card?.valid === true;
 
-    const card = data.agent_cards[0];
-    let response = `## Agent Health Check: ${agentUrl}\n\n`;
+    // Step 2: Try capability discovery
+    const encodedUrl = encodeURIComponent(agentUrl);
+    const capResult = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
+    const capData = capResult.data as {
+      agents: Array<{
+        name: string;
+        url: string;
+        type: string;
+        protocol: string;
+        description?: string;
+        capabilities?: {
+          tools_count: number;
+          tools: Array<{ name: string; description?: string }>;
+          standard_operations?: string[];
+        };
+      }>;
+    };
+    const agent = capData?.agents?.[0];
 
-    if (card.valid) {
-      response += `**Status:** ✅ Online and responding\n`;
+    // Step 3: Format unified response
+    let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+
+    // Health section
+    response += `### Connectivity\n`;
+    if (isHealthy) {
+      response += `**Status:** ✅ Online\n`;
       if (card.response_time_ms) {
         response += `**Response Time:** ${card.response_time_ms}ms\n`;
-      }
-      if (card.card_data?.name) {
-        response += `**Name:** ${card.card_data.name}\n`;
-      }
-      if (card.card_data?.description) {
-        response += `**Description:** ${card.card_data.description}\n`;
       }
       if (card.card_data?.protocol) {
         response += `**Protocol:** ${card.card_data.protocol}\n`;
       }
-      if (card.card_endpoint) {
-        response += `**Card Endpoint:** ${card.card_endpoint}\n`;
-      }
-      response += `\n✅ This agent is properly configured and ready to use.`;
     } else {
-      response += `**Status:** ❌ Not responding or invalid\n`;
-      if (card.status_code) {
+      response += `**Status:** ❌ Unreachable\n`;
+      if ((card?.errors?.length ?? 0) > 0) {
+        response += `**Error:** ${card?.errors?.[0]}\n`;
+      } else if (card?.status_code) {
         response += `**HTTP Status:** ${card.status_code}\n`;
       }
-      if (card.errors.length > 0) {
-        response += `\n### Errors\n`;
-        card.errors.forEach((err) => {
-          response += `- ${err}\n`;
-        });
+    }
+
+    // Capabilities section
+    response += `\n### Capabilities\n`;
+    if (agent?.capabilities?.tools && agent.capabilities.tools.length > 0) {
+      if (!isHealthy) {
+        response += `> ⚠️ **Warning:** Agent is currently unreachable. Showing cached capabilities.\n\n`;
       }
-      response += `\n⚠️ This agent needs to be fixed before it can be used. Common issues:\n`;
-      response += `- Agent endpoint not reachable\n`;
-      response += `- Missing or invalid agent card at /.well-known/agent.json\n`;
-      response += `- HTTPS not configured\n`;
+      response += `**Tools Available:** ${agent.capabilities.tools_count}\n\n`;
+      agent.capabilities.tools.forEach((tool) => {
+        response += `- **${tool.name}**`;
+        if (tool.description) {
+          response += `: ${tool.description}`;
+        }
+        response += `\n`;
+      });
+
+      if (agent.capabilities.standard_operations && agent.capabilities.standard_operations.length > 0) {
+        response += `\n**Standard Operations:** ${agent.capabilities.standard_operations.join(', ')}\n`;
+      }
+    } else if (!isHealthy) {
+      response += `No cached capabilities available. Agent must be online to discover tools.\n`;
+    } else {
+      response += `Agent is online but capabilities could not be discovered. It may not be in the public registry.\n`;
+    }
+
+    // Summary
+    response += `\n---\n`;
+    if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
+      response += `✅ Agent is healthy and ready to use. Try \`test_adcp_agent\` to run a full workflow test.`;
+    } else if (isHealthy) {
+      response += `✅ Agent is responding but not in the registry. You can still use \`call_adcp_agent\` to execute tasks directly.`;
+    } else {
+      response += `❌ Agent is not responding. Check the URL and ensure the agent is running.`;
     }
 
     return response;
@@ -2004,81 +2023,6 @@ export function createMemberToolHandlers(
       response += `1. The publisher needs to add this agent to their adagents.json file\n`;
       response += `2. The file should be at: https://${data.domain}/.well-known/adagents.json\n`;
       response += `3. Use validate_adagents to check the publisher's current configuration\n`;
-    }
-
-    return response;
-  });
-
-  handlers.set('get_agent_capabilities', async (input) => {
-    const agentUrl = input.agent_url as string;
-
-    // URL encode the agent URL for the path
-    const encodedUrl = encodeURIComponent(agentUrl);
-    const result = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
-
-    if (!result.ok) {
-      return `Failed to get agent capabilities: ${result.error}`;
-    }
-
-    const data = result.data as {
-      agents: Array<{
-        name: string;
-        url: string;
-        type: string;
-        protocol: string;
-        description?: string;
-        capabilities?: {
-          tools_count: number;
-          tools: Array<{
-            name: string;
-            description?: string;
-          }>;
-          standard_operations?: string[];
-        };
-      }>;
-    };
-
-    if (!data.agents || data.agents.length === 0) {
-      // Try direct capabilities endpoint if not in registry
-      const directResult = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
-        agent_urls: [agentUrl],
-      });
-
-      if (!directResult.ok) {
-        return `Agent not found in registry and couldn't fetch directly. The agent may not be publicly registered. Try check_agent_health first to verify the agent is online.`;
-      }
-
-      return `Agent ${agentUrl} is not in the public registry. Use check_agent_health to verify it's online, then check its documentation for available capabilities.`;
-    }
-
-    const agent = data.agents[0];
-    let response = `## Agent Capabilities: ${agent.name || agentUrl}\n\n`;
-    response += `**URL:** ${agent.url}\n`;
-    response += `**Type:** ${agent.type}\n`;
-    response += `**Protocol:** ${agent.protocol}\n`;
-    if (agent.description) {
-      response += `**Description:** ${agent.description}\n`;
-    }
-
-    if (agent.capabilities) {
-      response += `\n### Available Tools (${agent.capabilities.tools_count})\n`;
-      if (agent.capabilities.tools && agent.capabilities.tools.length > 0) {
-        agent.capabilities.tools.forEach((tool) => {
-          response += `\n**${tool.name}**\n`;
-          if (tool.description) {
-            response += `${tool.description}\n`;
-          }
-        });
-      }
-
-      if (agent.capabilities.standard_operations && agent.capabilities.standard_operations.length > 0) {
-        response += `\n### Standard AdCP Operations\n`;
-        agent.capabilities.standard_operations.forEach((op) => {
-          response += `- ${op}\n`;
-        });
-      }
-    } else {
-      response += `\n_Capabilities not available. The agent may need to be contacted directly to discover its tools._\n`;
     }
 
     return response;
