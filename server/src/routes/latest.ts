@@ -9,6 +9,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { createLogger } from "../logger.js";
+import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import {
@@ -103,7 +104,7 @@ export function createLatestRouter(): {
   // =========================================================================
 
   // Landing page showing all sections
-  pageRouter.get("/latest", (req, res) => {
+  pageRouter.get("/latest", optionalAuth, (req, res) => {
     serveHtmlWithConfig(req, res, "latest/index.html").catch((err) => {
       logger.error({ err }, "Error serving latest landing page");
       res.status(500).send("Internal server error");
@@ -111,7 +112,7 @@ export function createLatestRouter(): {
   });
 
   // Section detail page
-  pageRouter.get("/latest/:slug", (req, res) => {
+  pageRouter.get("/latest/:slug", optionalAuth, (req, res) => {
     serveHtmlWithConfig(req, res, "latest/section.html").catch((err) => {
       logger.error({ err }, "Error serving latest section page");
       res.status(500).send("Internal server error");

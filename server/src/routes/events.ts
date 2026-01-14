@@ -9,7 +9,7 @@
 import { Router, type Request, type Response } from "express";
 import { parse as parseCsvLib } from "csv-parse/sync";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
@@ -146,7 +146,7 @@ export function createEventsRouter(): {
   // =========================================================================
 
   // Public events listing page
-  pageRouter.get("/events", (req, res, next) => {
+  pageRouter.get("/events", optionalAuth, (req, res, next) => {
     // Skip if this is the admin route (handled above)
     if (req.baseUrl === "/admin") {
       return next();
@@ -158,7 +158,7 @@ export function createEventsRouter(): {
   });
 
   // Public event detail page
-  pageRouter.get("/events/:slug", (req, res) => {
+  pageRouter.get("/events/:slug", optionalAuth, (req, res) => {
     serveHtmlWithConfig(req, res, "event-detail.html").catch((err) => {
       logger.error({ err }, "Error serving event detail page");
       res.status(500).send("Internal server error");
