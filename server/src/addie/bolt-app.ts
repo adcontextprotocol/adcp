@@ -59,6 +59,11 @@ import {
   ESCALATION_TOOLS,
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
+import {
+  MEETING_TOOLS,
+  createMeetingToolHandlers,
+  canScheduleMeetings,
+} from './mcp/meeting-tools.js';
 import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
@@ -87,12 +92,18 @@ import {
 } from './services/community-articles.js';
 import { InsightsDatabase } from '../db/insights-db.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
+import { WorkingGroupDatabase } from '../db/working-group-db.js';
 
 /**
  * Slack's built-in system bot user ID.
  * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
+
+/**
+ * Shared database instance for working group lookups
+ */
+const workingGroupDb = new WorkingGroupDatabase();
 
 /**
  * Slack attachment type for forwarded messages
@@ -268,6 +279,7 @@ let claudeClient: AddieClaudeClient | null = null;
 
 /**
  * Fetch channel info and build a partial ThreadContext with channel details
+ * Also looks up any associated working group for the channel
  */
 async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
   const context: Partial<ThreadContext> = {
@@ -287,6 +299,19 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
     }
   } catch (error) {
     logger.debug({ error, channelId }, 'Could not fetch channel info');
+  }
+
+  // Look up if this channel is associated with a working group
+  try {
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlackChannelId(channelId);
+    if (workingGroup) {
+      context.viewing_channel_working_group_slug = workingGroup.slug;
+      context.viewing_channel_working_group_name = workingGroup.name;
+      context.viewing_channel_working_group_id = workingGroup.id;
+      logger.debug({ channelId, workingGroupSlug: workingGroup.slug }, 'Channel associated with working group');
+    }
+  } catch (error) {
+    logger.debug({ error, channelId }, 'Could not look up working group for channel');
   }
 
   return context;
@@ -576,6 +601,11 @@ async function buildMessageWithMemberContext(
       if (threadContext.viewing_channel_topic) {
         channelLines.push(`Channel topic: ${threadContext.viewing_channel_topic}`);
       }
+      // Include working group association if this channel belongs to one
+      if (threadContext.viewing_channel_working_group_name && threadContext.viewing_channel_working_group_slug) {
+        channelLines.push(`**Working Group:** ${threadContext.viewing_channel_working_group_name} (slug: "${threadContext.viewing_channel_working_group_slug}")`);
+        channelLines.push(`When scheduling meetings for this channel, use working_group_slug="${threadContext.viewing_channel_working_group_slug}" by default.`);
+      }
       channelContextText = channelLines.join('\n');
     }
 
@@ -610,11 +640,13 @@ async function buildMessageWithMemberContext(
  * Create user-scoped tools based on member context and permissions
  * Admin users also get access to admin tools
  * Event creators (admin or committee leads) get access to event tools
+ * Meeting schedulers (admin or committee leaders) get access to meeting tools
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string,
-  threadId?: string
+  threadId?: string,
+  threadContext?: ThreadContext | null
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext);
   const allTools = [...MEMBER_TOOLS];
@@ -658,6 +690,18 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie Bolt: Event tools enabled for this user');
+  }
+
+  // Add meeting tools if user can schedule meetings (admin or committee leader)
+  const canSchedule = slackUserId ? await canScheduleMeetings(slackUserId) : userIsAdmin;
+  if (canSchedule) {
+    // Pass thread context to meeting tools so they can auto-detect working group from channel
+    const meetingHandlers = createMeetingToolHandlers(memberContext, slackUserId, threadContext);
+    allTools.push(...MEETING_TOOLS);
+    for (const [name, handler] of meetingHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Meeting tools enabled for this user');
   }
 
   // Override bookmark_resource handler with user-scoped version (for attribution)
@@ -948,8 +992,8 @@ async function handleUserMessage({
     flag_reason: inputValidation.reason || undefined,
   });
 
-  // Create user-scoped tools (includes admin tools if user is admin)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+  // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, slackThreadContext);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1373,8 +1417,8 @@ async function handleAppMention({
     flag_reason: inputValidation.reason || undefined,
   });
 
-  // Create user-scoped tools (includes admin tools if user is admin)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+  // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, mentionChannelContext);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1982,6 +2026,14 @@ async function handleActiveThreadReply({
   // Sanitize input
   const inputValidation = sanitizeInput(messageText);
 
+  // Fetch channel context (includes working group if channel is linked to one)
+  let channelContext: ThreadContext | undefined;
+  try {
+    channelContext = await buildChannelContext(channelId);
+  } catch (error) {
+    logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context for active thread reply');
+  }
+
   // Build thread context from the messages already fetched (avoid duplicate API call)
   const MAX_THREAD_CONTEXT_MESSAGES = 25;
   let threadContext = '';
@@ -2121,8 +2173,8 @@ async function handleActiveThreadReply({
     flag_reason: inputValidation.reason || undefined,
   });
 
-  // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+  // Create user-scoped tools (pass channel context for working group auto-detection)
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2386,6 +2438,14 @@ async function handleChannelMessage({
   }
 
   try {
+    // Fetch channel context (includes working group if channel is linked to one)
+    let channelContext: ThreadContext | undefined;
+    try {
+      channelContext = await buildChannelContext(channelId);
+    } catch (error) {
+      logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context');
+    }
+
     // Fetch member context and insights in parallel (both are independent)
     // Insights use a cache with 5-minute TTL to reduce DB load
     const [memberContext, memberInsights] = await Promise.all([
@@ -2502,8 +2562,8 @@ async function handleChannelMessage({
       messageText
     );
 
-    // Generate a response with the specified tools (includes admin tools if user is admin)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+    // Generate a response with the specified tools (includes admin tools if user is admin, meeting tools with channel context)
+    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
     // Use precision model (Opus) for billing/financial queries
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
@@ -2960,14 +3020,22 @@ async function handleReactionAdded({
     content_sanitized: userInput,
   });
 
+  // Fetch channel context (includes working group if channel is linked to one)
+  let channelContext: ThreadContext | undefined;
+  try {
+    channelContext = await buildChannelContext(itemChannel);
+  } catch (error) {
+    logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
+  }
+
   // Get member context
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     reactingUserId,
     userInput
   );
 
-  // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id);
+  // Create user-scoped tools (pass channel context for working group auto-detection)
+  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
