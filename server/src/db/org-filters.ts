@@ -20,7 +20,7 @@
 /** Organization has an active, non-canceled subscription */
 export const MEMBER_FILTER = `subscription_status = 'active' AND subscription_canceled_at IS NULL`;
 
-/** Organization has at least one user (site account or Slack user by domain) */
+/** Organization has at least one user (site account or Slack user) */
 export const HAS_USER = `(
   EXISTS (
     SELECT 1 FROM organization_memberships om
@@ -28,7 +28,14 @@ export const HAS_USER = `(
   )
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
+    WHERE sm.pending_organization_id = organizations.workos_organization_id
+      AND sm.slack_is_bot = false
+      AND sm.slack_is_deleted = false
+  )
+  OR EXISTS (
+    SELECT 1 FROM slack_user_mappings sm
     WHERE organizations.email_domain IS NOT NULL
+      AND sm.pending_organization_id IS NULL
       AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(organizations.email_domain)
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
@@ -46,7 +53,16 @@ export const HAS_ENGAGED_USER = `(
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
     JOIN slack_activity_daily sad ON sad.slack_user_id = sm.slack_user_id
+    WHERE sm.pending_organization_id = organizations.workos_organization_id
+      AND sm.slack_is_bot = false
+      AND sm.slack_is_deleted = false
+      AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'
+  )
+  OR EXISTS (
+    SELECT 1 FROM slack_user_mappings sm
+    JOIN slack_activity_daily sad ON sad.slack_user_id = sm.slack_user_id
     WHERE organizations.email_domain IS NOT NULL
+      AND sm.pending_organization_id IS NULL
       AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(organizations.email_domain)
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
@@ -70,7 +86,7 @@ export const NOT_MEMBER = `NOT (${MEMBER_FILTER})`;
 /** Organization has an active, non-canceled subscription (aliased) */
 export const MEMBER_FILTER_ALIASED = `o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL`;
 
-/** Organization has at least one user (site account or Slack user by domain) (aliased) */
+/** Organization has at least one user (site account or Slack user) (aliased) */
 export const HAS_USER_ALIASED = `(
   EXISTS (
     SELECT 1 FROM organization_memberships om
@@ -78,7 +94,14 @@ export const HAS_USER_ALIASED = `(
   )
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
+    WHERE sm.pending_organization_id = o.workos_organization_id
+      AND sm.slack_is_bot = false
+      AND sm.slack_is_deleted = false
+  )
+  OR EXISTS (
+    SELECT 1 FROM slack_user_mappings sm
     WHERE o.email_domain IS NOT NULL
+      AND sm.pending_organization_id IS NULL
       AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(o.email_domain)
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
@@ -96,7 +119,16 @@ export const HAS_ENGAGED_USER_ALIASED = `(
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
     JOIN slack_activity_daily sad ON sad.slack_user_id = sm.slack_user_id
+    WHERE sm.pending_organization_id = o.workos_organization_id
+      AND sm.slack_is_bot = false
+      AND sm.slack_is_deleted = false
+      AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'
+  )
+  OR EXISTS (
+    SELECT 1 FROM slack_user_mappings sm
+    JOIN slack_activity_daily sad ON sad.slack_user_id = sm.slack_user_id
     WHERE o.email_domain IS NOT NULL
+      AND sm.pending_organization_id IS NULL
       AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(o.email_domain)
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
