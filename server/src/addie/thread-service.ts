@@ -28,6 +28,10 @@ export interface ThreadContext {
   viewing_channel_name?: string;
   viewing_channel_description?: string;
   viewing_channel_topic?: string;
+  // Working group associated with the viewing channel (if any)
+  viewing_channel_working_group_slug?: string;
+  viewing_channel_working_group_name?: string;
+  viewing_channel_working_group_id?: string;
   team_id?: string;
   enterprise_id?: string;
 

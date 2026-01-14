@@ -13,6 +13,8 @@
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import type { ThreadContext } from '../thread-service.js';
+import type { RecurrenceRule, CreateMeetingSeriesInput } from '../../types.js';
 import { isSlackUserAdmin } from './admin-tools.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -70,6 +72,42 @@ function formatTime(date: Date, timezone = 'America/New_York'): string {
 }
 
 /**
+ * Format recurrence rule for display
+ */
+function formatRecurrence(rule: RecurrenceRule): string {
+  const dayNames: Record<string, string> = {
+    MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday',
+    FR: 'Friday', SA: 'Saturday', SU: 'Sunday',
+  };
+
+  const interval = rule.interval || 1;
+  let result = '';
+
+  switch (rule.freq) {
+    case 'daily':
+      result = interval === 1 ? 'Daily' : `Every ${interval} days`;
+      break;
+    case 'weekly':
+      if (rule.byDay && rule.byDay.length > 0) {
+        const days = rule.byDay.map(d => dayNames[d] || d).join(', ');
+        result = interval === 1 ? `Weekly on ${days}` : `Every ${interval} weeks on ${days}`;
+      } else {
+        result = interval === 1 ? 'Weekly' : `Every ${interval} weeks`;
+      }
+      break;
+    case 'monthly':
+      result = interval === 1 ? 'Monthly' : `Every ${interval} months`;
+      break;
+  }
+
+  if (rule.count) {
+    result += ` (${rule.count} occurrences)`;
+  }
+
+  return result;
+}
+
+/**
  * Parse natural language date/time
  * Handles formats like "next Tuesday at 3pm ET", "January 15 at 2pm PT"
  */
@@ -110,19 +148,24 @@ export const MEETING_TOOLS: AddieTool[] = [
     description: `Schedule a new working group meeting. Use this when someone asks to schedule a meeting, call, or discussion.
 The meeting will be created with a Zoom link and calendar invites will be sent to working group members.
 
-Required: working_group_slug, title, start_time (ISO format)
-Optional: description, agenda, duration_minutes, timezone, topic_slugs
+If the user is in a channel associated with a working group, you can omit working_group_slug and it will be inferred from the channel context.
+
+For recurring meetings, use the recurrence parameter with freq, interval, count, and byDay.
+
+Required: title, start_time (ISO format)
+Optional: working_group_slug (auto-detected from channel), description, agenda, duration_minutes, timezone, topic_slugs, recurrence
 
 Example prompts this handles:
 - "Schedule a technical working group call for next Tuesday at 2pm ET"
 - "Set up a bylaws subcommittee meeting for Jan 15 at 3pm PT"
-- "Can you schedule a creative specs discussion for the creative WG?"`,
+- "Schedule weekly governance calls every Thursday at 3pm for the next 8 weeks"
+- "Create a recurring creative WG meeting every other Tuesday at 2pm"`,
     input_schema: {
       type: 'object' as const,
       properties: {
         working_group_slug: {
           type: 'string',
-          description: 'Slug of the working group (e.g., "technical", "governance", "creative")',
+          description: 'Slug of the working group (e.g., "technical", "governance", "creative"). Optional if channel is associated with a working group.',
         },
         title: {
           type: 'string',
@@ -153,8 +196,33 @@ Example prompts this handles:
           items: { type: 'string' },
           description: 'Topic tags for this meeting (only members subscribed to these topics will be invited)',
         },
+        recurrence: {
+          type: 'object',
+          description: 'Recurrence rule for recurring meetings. Omit for one-time meetings.',
+          properties: {
+            freq: {
+              type: 'string',
+              enum: ['daily', 'weekly', 'monthly'],
+              description: 'Frequency: daily, weekly, or monthly',
+            },
+            interval: {
+              type: 'number',
+              description: 'Repeat every N periods (e.g., 2 for every other week). Default: 1',
+            },
+            by_day: {
+              type: 'array',
+              items: { type: 'string', enum: ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] },
+              description: 'Days of the week for weekly meetings (e.g., ["TU", "TH"] for Tuesdays and Thursdays)',
+            },
+            count: {
+              type: 'number',
+              description: 'Total number of meetings to create (e.g., 8 for 8 weeks of meetings)',
+            },
+          },
+          required: ['freq'],
+        },
       },
-      required: ['working_group_slug', 'title', 'start_time'],
+      required: ['title', 'start_time'],
     },
   },
   {
@@ -290,13 +358,19 @@ Example prompts this handles:
  */
 export function createMeetingToolHandlers(
   memberContext?: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  threadContext?: ThreadContext | null
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
   // Helper to get user ID
   const getUserId = (): string | undefined => {
     return memberContext?.workos_user?.workos_user_id || slackUserId;
+  };
+
+  // Helper to get working group slug from channel context
+  const getChannelWorkingGroupSlug = (): string | undefined => {
+    return threadContext?.viewing_channel_working_group_slug;
   };
 
   // Helper to check scheduling permission
@@ -319,10 +393,20 @@ export function createMeetingToolHandlers(
     const permCheck = await checkSchedulePermission();
     if (permCheck) return permCheck;
 
-    const workingGroupSlug = input.working_group_slug as string;
+    // Get working group slug - prefer explicit, fall back to channel context
+    let workingGroupSlug = input.working_group_slug as string | undefined;
+    if (!workingGroupSlug) {
+      workingGroupSlug = getChannelWorkingGroupSlug();
+      if (!workingGroupSlug) {
+        return `❌ No working group specified and this channel isn't associated with a working group. Please provide a working_group_slug (e.g., "technical", "governance", "creative").`;
+      }
+      logger.debug({ workingGroupSlug }, 'Using working group from channel context');
+    }
+
     const title = input.title as string;
     const startTimeStr = input.start_time as string;
     const timezone = (input.timezone as string) || 'America/New_York';
+    const recurrenceInput = input.recurrence as { freq: string; interval?: number; by_day?: string[]; count?: number } | undefined;
 
     // Find working group
     const workingGroup = await workingGroupDb.getWorkingGroupBySlug(workingGroupSlug);
@@ -361,6 +445,102 @@ export function createMeetingToolHandlers(
       return `❌ Meeting time must be in the future.`;
     }
 
+    const durationMinutes = (input.duration_minutes as number) || 60;
+
+    // Handle recurring vs one-time meetings
+    if (recurrenceInput) {
+      // Validate recurrence input
+      const validFreqs = ['daily', 'weekly', 'monthly'];
+      if (!validFreqs.includes(recurrenceInput.freq)) {
+        return `❌ Invalid recurrence frequency: "${recurrenceInput.freq}". Must be daily, weekly, or monthly.`;
+      }
+
+      if (recurrenceInput.interval !== undefined && (recurrenceInput.interval < 1 || recurrenceInput.interval > 52)) {
+        return `❌ Invalid interval: ${recurrenceInput.interval}. Must be between 1 and 52.`;
+      }
+
+      if (recurrenceInput.count !== undefined && (recurrenceInput.count < 1 || recurrenceInput.count > 52)) {
+        return `❌ Invalid count: ${recurrenceInput.count}. Must be between 1 and 52.`;
+      }
+
+      const validDays = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+      if (recurrenceInput.by_day) {
+        const invalidDays = recurrenceInput.by_day.filter(d => !validDays.includes(d));
+        if (invalidDays.length > 0) {
+          return `❌ Invalid day(s): ${invalidDays.join(', ')}. Must be MO, TU, WE, TH, FR, SA, or SU.`;
+        }
+      }
+
+      // Create a recurring meeting series
+      try {
+        const recurrenceRule: RecurrenceRule = {
+          freq: recurrenceInput.freq as 'daily' | 'weekly' | 'monthly',
+          interval: recurrenceInput.interval || 1,
+          byDay: recurrenceInput.by_day,
+          count: recurrenceInput.count,
+        };
+
+        // Extract time from start_time for default_start_time
+        const defaultStartTime = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}:00`;
+
+        // Create the meeting series
+        const seriesInput: CreateMeetingSeriesInput = {
+          working_group_id: workingGroup.id,
+          title,
+          description: input.description as string | undefined,
+          topic_slugs: input.topic_slugs as string[] | undefined,
+          recurrence_rule: recurrenceRule,
+          default_start_time: defaultStartTime,
+          duration_minutes: durationMinutes,
+          timezone,
+          created_by_user_id: getUserId(),
+        };
+
+        const series = await meetingsDb.createSeries(seriesInput);
+        logger.info({ seriesId: series.id, workingGroupSlug, recurrence: recurrenceRule }, 'Meeting series created');
+
+        // Generate the first batch of meetings
+        const meetingsToGenerate = recurrenceInput.count || 4;
+        const meetings = await meetingService.generateMeetingsFromSeries(series.id, Math.min(meetingsToGenerate, 8));
+
+        // Build response
+        let response = `✅ Created recurring meeting series: **${title}**\n\n`;
+        response += `**Working Group:** ${workingGroup.name}\n`;
+        response += `**Recurrence:** ${formatRecurrence(recurrenceRule)}\n`;
+        response += `**Duration:** ${durationMinutes} minutes\n\n`;
+
+        if (meetings.length > 0) {
+          response += `**Scheduled ${meetings.length} meeting${meetings.length > 1 ? 's' : ''}:**\n`;
+          for (const meeting of meetings.slice(0, 5)) {
+            response += `• ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, timezone)}`;
+            if (meeting.zoom_join_url) {
+              response += ` - [Zoom](${meeting.zoom_join_url})`;
+            }
+            response += '\n';
+          }
+          if (meetings.length > 5) {
+            response += `• _...and ${meetings.length - 5} more_\n`;
+          }
+        }
+
+        response += `\n📧 Calendar invites have been sent to working group members.`;
+
+        logger.info({
+          seriesId: series.id,
+          workingGroupSlug,
+          meetingsCreated: meetings.length,
+          scheduledBy: getUserId(),
+        }, 'Recurring meeting series scheduled via Addie');
+
+        return response;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        logger.error({ err: error }, 'Failed to create recurring meeting series via Addie');
+        return `❌ Failed to create recurring meetings: ${msg}`;
+      }
+    }
+
+    // One-time meeting
     try {
       const result = await meetingService.scheduleMeeting({
         workingGroupId: workingGroup.id,
@@ -369,7 +549,7 @@ export function createMeetingToolHandlers(
         agenda: input.agenda as string | undefined,
         topicSlugs: input.topic_slugs as string[] | undefined,
         startTime,
-        durationMinutes: (input.duration_minutes as number) || 60,
+        durationMinutes,
         timezone,
         createdByUserId: getUserId(),
       });
@@ -377,7 +557,7 @@ export function createMeetingToolHandlers(
       let response = `✅ Scheduled: **${title}**\n\n`;
       response += `**Working Group:** ${workingGroup.name}\n`;
       response += `**When:** ${formatDate(startTime)} at ${formatTime(startTime, timezone)}\n`;
-      response += `**Duration:** ${(input.duration_minutes as number) || 60} minutes\n`;
+      response += `**Duration:** ${durationMinutes} minutes\n`;
 
       if (result.meeting.zoom_join_url) {
         response += `**Zoom:** ${result.meeting.zoom_join_url}\n`;
