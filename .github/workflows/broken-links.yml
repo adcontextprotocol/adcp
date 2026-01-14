@@ -32,6 +32,9 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
+    - name: Exclude versioned docs from broken links check
+      run: rm -rf v2.6-rc
+
     - name: Check for broken links in docs (v2.5)
       run: npx mintlify@latest broken-links
 
