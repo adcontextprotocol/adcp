@@ -7017,7 +7017,7 @@ Disallow: /api/admin/
       this.feedFetcherInitialTimeoutId = null;
       try {
         const result = await processFeedsToFetch();
-        if (result.feedsProcessed > 0) {
+        if (result.newPerspectives > 0 || result.errors > 0) {
           logger.info(result, 'Industry monitor: fetched RSS feeds');
         }
       } catch (err) {
@@ -7028,7 +7028,7 @@ Disallow: /api/admin/
     this.feedFetcherIntervalId = setInterval(async () => {
       try {
         const result = await processFeedsToFetch();
-        if (result.feedsProcessed > 0) {
+        if (result.newPerspectives > 0 || result.errors > 0) {
           logger.info(result, 'Industry monitor: fetched RSS feeds');
         }
       } catch (err) {

@@ -355,7 +355,7 @@ export async function runGoalFollowUpJob(options: {
   skipFollowUps?: boolean;
   skipReconciliation?: boolean;
 } = {}): Promise<FollowUpJobResult> {
-  logger.info({ options }, 'Running goal follow-up job');
+  logger.debug({ options }, 'Running goal follow-up job');
 
   let followUpsSent = 0;
   let followUpsSkipped = 0;
@@ -365,7 +365,7 @@ export async function runGoalFollowUpJob(options: {
   // Part 1: Send follow-up messages
   if (!options.skipFollowUps) {
     const pendingFollowUps = await getGoalsNeedingFollowUp();
-    logger.info({ count: pendingFollowUps.length }, 'Found goals needing follow-up');
+    logger.debug({ count: pendingFollowUps.length }, 'Found goals needing follow-up');
 
     for (const pending of pendingFollowUps) {
       if (options.dryRun) {
@@ -393,7 +393,7 @@ export async function runGoalFollowUpJob(options: {
   // Part 2: Reconcile goal outcomes
   if (!options.skipReconciliation) {
     const goalsToReconcile = await getGoalsToReconcile();
-    logger.info({ count: goalsToReconcile.length }, 'Found goals to reconcile');
+    logger.debug({ count: goalsToReconcile.length }, 'Found goals to reconcile');
 
     for (const goal of goalsToReconcile) {
       if (options.dryRun) {
@@ -414,7 +414,9 @@ export async function runGoalFollowUpJob(options: {
     }
   }
 
-  logger.info({
+  // Only log at info level if work was done
+  const logLevel = (followUpsSent > 0 || goalsReconciled > 0) ? 'info' : 'debug';
+  logger[logLevel]({
     followUpsSent,
     followUpsSkipped,
     goalsReconciled,
