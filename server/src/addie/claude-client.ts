@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
-import { ADDIE_SYSTEM_PROMPT, buildMessageTurnsWithMetadata } from './prompts.js';
+import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
@@ -205,8 +205,14 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Get the system prompt, either from database rules or fallback to hardcoded
-   * Caches the prompt for CACHE_TTL_MS to avoid database hits on every message
+   * Get the system prompt from database rules, with tool reference always appended.
+   *
+   * Architecture:
+   * - Database rules (addie_rules) contain behavioral guidelines (editable without deploys)
+   * - Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied to code)
+   * - Fallback prompt used only when database is unavailable
+   *
+   * Caches the prompt for CACHE_TTL_MS to avoid database hits on every message.
    */
   private async getSystemPrompt(): Promise<{ prompt: string; ruleIds: number[]; rulesSnapshot: RuleSnapshot[] }> {
     const now = Date.now();
@@ -225,7 +231,9 @@ export class AddieClaudeClient {
 
       // If we have rules from the database, build prompt from them
       if (rules.length > 0) {
-        const prompt = await this.addieDb.buildSystemPrompt();
+        const basePrompt = await this.addieDb.buildSystemPrompt();
+        // Always append tool reference - tools are defined in code, not DB
+        const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
         const ruleIds = rules.map(r => r.id);
         const rulesSnapshot = rules.map(r => this.ruleToSnapshot(r));
 
@@ -241,8 +249,9 @@ export class AddieClaudeClient {
       logger.warn({ error }, 'Addie: Failed to load rules from database, using fallback prompt');
     }
 
-    // Fallback to hardcoded prompt if database unavailable or empty
-    return { prompt: ADDIE_SYSTEM_PROMPT, ruleIds: [], rulesSnapshot: [] };
+    // Fallback: minimal prompt + tool reference (database unavailable or empty)
+    const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+    return { prompt: fallbackPrompt, ruleIds: [], rulesSnapshot: [] };
   }
 
   /**
