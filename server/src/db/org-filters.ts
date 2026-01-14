@@ -34,11 +34,17 @@ export const HAS_USER = `(
   )
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
-    WHERE organizations.email_domain IS NOT NULL
-      AND sm.pending_organization_id IS NULL
-      AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(organizations.email_domain)
+    WHERE sm.pending_organization_id IS NULL
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
+      AND (
+        (organizations.email_domain IS NOT NULL AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(organizations.email_domain))
+        OR EXISTS (
+          SELECT 1 FROM organization_domains od
+          WHERE od.workos_organization_id = organizations.workos_organization_id
+            AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+        )
+      )
   )
 )`;
 
@@ -61,12 +67,18 @@ export const HAS_ENGAGED_USER = `(
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
     JOIN slack_activity_daily sad ON sad.slack_user_id = sm.slack_user_id
-    WHERE organizations.email_domain IS NOT NULL
-      AND sm.pending_organization_id IS NULL
-      AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(organizations.email_domain)
+    WHERE sm.pending_organization_id IS NULL
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
       AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'
+      AND (
+        (organizations.email_domain IS NOT NULL AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(organizations.email_domain))
+        OR EXISTS (
+          SELECT 1 FROM organization_domains od
+          WHERE od.workos_organization_id = organizations.workos_organization_id
+            AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+        )
+      )
   )
 )`;
 
@@ -100,11 +112,17 @@ export const HAS_USER_ALIASED = `(
   )
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
-    WHERE o.email_domain IS NOT NULL
-      AND sm.pending_organization_id IS NULL
-      AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(o.email_domain)
+    WHERE sm.pending_organization_id IS NULL
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
+      AND (
+        (o.email_domain IS NOT NULL AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(o.email_domain))
+        OR EXISTS (
+          SELECT 1 FROM organization_domains od
+          WHERE od.workos_organization_id = o.workos_organization_id
+            AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+        )
+      )
   )
 )`;
 
@@ -127,12 +145,18 @@ export const HAS_ENGAGED_USER_ALIASED = `(
   OR EXISTS (
     SELECT 1 FROM slack_user_mappings sm
     JOIN slack_activity_daily sad ON sad.slack_user_id = sm.slack_user_id
-    WHERE o.email_domain IS NOT NULL
-      AND sm.pending_organization_id IS NULL
-      AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(o.email_domain)
+    WHERE sm.pending_organization_id IS NULL
       AND sm.slack_is_bot = false
       AND sm.slack_is_deleted = false
       AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'
+      AND (
+        (o.email_domain IS NOT NULL AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(o.email_domain))
+        OR EXISTS (
+          SELECT 1 FROM organization_domains od
+          WHERE od.workos_organization_id = o.workos_organization_id
+            AND LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+        )
+      )
   )
 )`;
 
