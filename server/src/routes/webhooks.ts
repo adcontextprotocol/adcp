@@ -1314,6 +1314,16 @@ export function createWebhooksRouter(): Router {
           return res.status(401).json({ error: 'Missing signature headers' });
         }
 
+        // Validate timestamp is recent (within 5 minutes) to prevent replay attacks
+        const requestTime = parseInt(timestamp, 10) * 1000; // Zoom sends seconds
+        const currentTime = Date.now();
+        const fiveMinutesMs = 5 * 60 * 1000;
+
+        if (isNaN(requestTime) || Math.abs(currentTime - requestTime) > fiveMinutesMs) {
+          logger.warn({ timestamp, currentTime }, 'Zoom webhook timestamp too old or invalid');
+          return res.status(401).json({ error: 'Timestamp expired' });
+        }
+
         if (!verifyZoomSignature(rawBody, signature, timestamp)) {
           logger.warn('Zoom webhook signature verification failed');
           return res.status(401).json({ error: 'Invalid signature' });
@@ -1326,8 +1336,10 @@ export function createWebhooksRouter(): Router {
           case 'recording.completed':
           case 'recording.transcript_completed': {
             const meetingUuid = body.payload?.object?.uuid;
-            if (meetingUuid) {
+            if (meetingUuid && typeof meetingUuid === 'string' && meetingUuid.length < 256) {
               await handleRecordingCompleted(meetingUuid);
+            } else if (meetingUuid) {
+              logger.warn({ meetingUuidType: typeof meetingUuid }, 'Invalid meetingUuid format');
             }
             break;
           }
