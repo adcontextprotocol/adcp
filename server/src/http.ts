@@ -3090,6 +3090,7 @@ export class HTTPServer {
         // This populates subscription_amount, subscription_interval, subscription_current_period_end
         let subscriptionsSynced = 0;
         let subscriptionsFailed = 0;
+        let customersSkipped = 0; // Deleted or missing customers
         if (stripe) {
           for (const [customerId, workosOrgId] of customerOrgMap) {
             try {
@@ -3099,6 +3100,7 @@ export class HTTPServer {
               });
 
               if ('deleted' in customer && customer.deleted) {
+                customersSkipped++;
                 continue;
               }
 
@@ -3155,8 +3157,15 @@ export class HTTPServer {
               subscriptionsSynced++;
               logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
             } catch (subError) {
-              subscriptionsFailed++;
-              logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              // Handle Stripe "resource_missing" errors (deleted customers) gracefully
+              // Use Stripe's error type for better type safety
+              if (subError instanceof Stripe.errors.StripeInvalidRequestError && subError.code === 'resource_missing') {
+                customersSkipped++;
+                logger.debug({ customerId, workosOrgId }, 'Skipped missing/deleted Stripe customer');
+              } else {
+                subscriptionsFailed++;
+                logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              }
               // Continue with other customers
             }
           }
@@ -3168,6 +3177,7 @@ export class HTTPServer {
           processed: imported,
           subscriptionsSynced,
           subscriptionsFailed,
+          customersSkipped,
         }, 'Revenue backfill completed');
 
         res.json({
@@ -3178,6 +3188,7 @@ export class HTTPServer {
           processed: imported,
           subscriptions_synced: subscriptionsSynced,
           subscriptions_failed: subscriptionsFailed,
+          customers_skipped: customersSkipped,
         });
       } catch (error) {
         logger.error({ err: error }, 'Error during revenue backfill');

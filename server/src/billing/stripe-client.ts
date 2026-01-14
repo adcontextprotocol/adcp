@@ -637,9 +637,10 @@ export async function fetchAllPaidInvoices(
                 const productObj = await stripe.products.retrieve(product);
                 cachedProduct = { id: productObj.id, name: productObj.name };
                 productCache.set(product, cachedProduct);
-              } catch {
+              } catch (productFetchError) {
+                // Log the failure so we can diagnose why product names are missing
+                logger.warn({ productId: product, invoiceId: invoice.id, err: productFetchError }, 'Failed to fetch product for invoice');
                 // Use description as fallback, don't cache failures
-                // Leave cachedProduct as undefined to use fallback below
               }
             }
             productName = cachedProduct?.name || primaryLine.description || null;
@@ -649,6 +650,28 @@ export async function fetchAllPaidInvoices(
             // Cache the expanded product object
             productCache.set(product.id, { id: product.id, name: product.name });
           }
+        } else {
+          // Log when there's no price on the line item
+          logger.warn({ invoiceId: invoice.id, lineItemId: primaryLine.id }, 'Invoice line item has no price');
+        }
+      } else {
+        // Log when invoice has no line items
+        logger.warn({ invoiceId: invoice.id }, 'Invoice has no line items');
+      }
+
+      // Try additional fallbacks for product name
+      if (!productName) {
+        // Try invoice description (for manually created invoices)
+        if (invoice.description) {
+          productName = invoice.description;
+        }
+        // Try subscription metadata product_name (if set during checkout)
+        else if (typeof invoice.subscription === 'object' && invoice.subscription?.metadata?.product_name) {
+          productName = invoice.subscription.metadata.product_name;
+        }
+        // Log if we still couldn't get a product name for a paid invoice
+        else if (invoice.amount_paid > 0) {
+          logger.warn({ invoiceId: invoice.id, productId, hasDescription: !!primaryLine?.description }, 'Invoice has no product name after all fallbacks');
         }
       }
 
