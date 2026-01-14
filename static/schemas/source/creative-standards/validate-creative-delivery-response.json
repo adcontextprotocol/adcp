@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-standards/validate-creative-delivery-response.json",
+  "title": "Validate Creative Delivery Response",
+  "description": "Response payload with per-creative feature results and summary statistics",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "description": "Summary counts across all creatives",
+          "properties": {
+            "total_creatives": { "type": "integer" },
+            "passed_creatives": { "type": "integer" },
+            "failed_creatives": { "type": "integer" },
+            "error_creatives": { "type": "integer" },
+            "total_features": { "type": "integer" },
+            "passed_features": { "type": "integer" },
+            "failed_features": { "type": "integer" }
+          },
+          "required": ["total_creatives", "passed_creatives", "failed_creatives"]
+        },
+        "results": {
+          "type": "array",
+          "description": "Per-creative evaluation results",
+          "items": {
+            "type": "object",
+            "properties": {
+              "creative_id": {
+                "type": "string",
+                "description": "Which creative was evaluated"
+              },
+              "features": {
+                "type": "array",
+                "description": "Feature results for this creative",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "feature_id": { "type": "string" },
+                    "status": {
+                      "type": "string",
+                      "enum": ["passed", "failed", "warning", "unevaluated"]
+                    },
+                    "value": {},
+                    "message": { "type": "string" },
+                    "suggestion": { "type": "string" }
+                  },
+                  "required": ["feature_id", "status"]
+                }
+              }
+            },
+            "required": ["creative_id", "features"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["summary", "results"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "summary": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

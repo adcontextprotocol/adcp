@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-standards/check-creative-request.json",
+  "title": "Check Creative Request",
+  "description": "Request parameters for evaluating a creative asset against brand guidelines",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Standards configuration to evaluate against"
+    },
+    "creative": {
+      "type": "object",
+      "description": "Creative asset to evaluate",
+      "properties": {
+        "creative_id": {
+          "type": "string",
+          "description": "Identifier for the creative"
+        },
+        "format_id": {
+          "$ref": "/schemas/core/format-id.json",
+          "description": "Creative format specification"
+        },
+        "assets": {
+          "type": "array",
+          "description": "Asset files to evaluate",
+          "items": {
+            "type": "object",
+            "properties": {
+              "asset_id": {
+                "type": "string",
+                "description": "Identifier for this asset"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to fetch the asset"
+              },
+              "content_type": {
+                "type": "string",
+                "description": "MIME type of the asset"
+              }
+            },
+            "required": ["url"]
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Text content and metadata for evaluation",
+          "properties": {
+            "headline": { "type": "string" },
+            "subheadline": { "type": "string" },
+            "tagline": { "type": "string" },
+            "cta_text": { "type": "string" },
+            "legal_text": { "type": "string" }
+          },
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": ["assets"]
+    },
+    "feature_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Specific features to check (defaults to all)"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["standards_id", "creative"]
+}

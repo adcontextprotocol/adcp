@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-standards/get-creative-standards-request.json",
+  "title": "Get Creative Standards Request",
+  "description": "Request parameters for retrieving creative execution guidelines",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Identifier for the standards configuration to retrieve"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["standards_id"]
+}
