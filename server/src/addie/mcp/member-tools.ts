@@ -776,8 +776,7 @@ async function callApi(
       'Content-Type': 'application/json',
     };
 
-    // Add user context for authentication
-    // The API will validate this against the session
+    // Add user context headers (for logging/tracking)
     if (memberContext?.workos_user?.workos_user_id) {
       headers['X-Addie-User-Id'] = memberContext.workos_user.workos_user_id;
     }
@@ -1324,37 +1323,35 @@ export function createMemberToolHandlers(
       return 'committee_slug is required when targeting a committee collection.';
     }
 
-    // Build request body
-    const body: Record<string, unknown> = {
-      title,
-      content: contentBody,
-      content_type: contentType,
-      external_url: externalUrl,
-      excerpt,
-      category,
-      collection,
-    };
+    // Call the content service directly (bypasses HTTP auth)
+    // Dynamic import to avoid pulling in auth.ts at module load time
+    const { proposeContentForUser } = await import('../../routes/content.js');
+    const result = await proposeContentForUser(
+      {
+        id: memberContext.workos_user.workos_user_id,
+        email: memberContext.workos_user.email,
+      },
+      {
+        title,
+        content: contentBody,
+        content_type: contentType as 'article' | 'link',
+        external_url: externalUrl,
+        excerpt,
+        category,
+        collection: { committee_slug: collection.committee_slug },
+      }
+    );
 
-    // Handle co-authors by looking up user IDs from emails
-    if (coAuthorEmails && coAuthorEmails.length > 0) {
-      // For now, co-authors are added via a separate call after content creation
-      // We'll note them in the response
-    }
-
-    const result = await callApi('POST', '/api/content/propose', memberContext, body);
-
-    if (!result.ok) {
-      if (result.status === 404) {
+    if (!result.success) {
+      if (result.error?.includes('No collection found')) {
         return `Committee "${collection.committee_slug}" not found. Use list_working_groups to see available committees.`;
       }
       return `Failed to create content: ${result.error}`;
     }
 
-    const data = result.data as { id: string; slug: string; status: string; message: string };
-
-    let response = `## Content ${data.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
+    let response = `## Content ${result.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
     response += `**Title:** ${title}\n`;
-    response += `**Status:** ${data.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
+    response += `**Status:** ${result.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
 
     if (collection.committee_slug === 'editorial') {
       response += `**Collection:** Perspectives\n`;
@@ -1362,7 +1359,7 @@ export function createMemberToolHandlers(
       response += `**Collection:** ${collection.committee_slug}\n`;
     }
 
-    if (data.status === 'published') {
+    if (result.status === 'published') {
       if (collection.committee_slug === 'editorial') {
         response += `\n**View:** https://agenticadvertising.org/latest/research\n`;
         response += `_Your perspective is now live in The Latest > Research section._\n`;
@@ -1378,7 +1375,7 @@ export function createMemberToolHandlers(
     }
 
     if (coAuthorEmails && coAuthorEmails.length > 0) {
-      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${data.id}`;
+      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${result.id}`;
     }
 
     return response;
