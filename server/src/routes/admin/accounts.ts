@@ -42,17 +42,11 @@ const logger = createLogger("admin-accounts");
 function deriveOrgTier(org: {
   subscription_status: string | null;
   subscription_canceled_at?: Date | null;
-  subscription_amount?: number | null;
   has_users?: boolean;
   has_engaged_users?: boolean;
 }): OrgTier {
-  // Member: paying subscription
-  if (
-    org.subscription_status === "active" &&
-    !org.subscription_canceled_at &&
-    org.subscription_amount &&
-    org.subscription_amount > 0
-  ) {
+  // Member: active, non-canceled subscription (includes comped members)
+  if (org.subscription_status === "active" && !org.subscription_canceled_at) {
     return "member";
   }
 
