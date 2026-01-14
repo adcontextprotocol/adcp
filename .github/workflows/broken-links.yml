@@ -37,11 +37,11 @@ jobs:
 
     - name: Check for broken links in docs (v2.5)
       run: |
-        # Temporarily hide v2.6-rc docs which have WIP governance links
+        # Temporarily remove v2.6-rc docs which have WIP governance links
         # These will be fixed when governance section is complete
-        mv v2.6-rc v2.6-rc.hidden || true
+        rm -rf v2.6-rc
         npx mintlify@latest broken-links
-        mv v2.6-rc.hidden v2.6-rc || true
+        git checkout v2.6-rc
 
     - name: Check README links
       run: npx markdown-link-check README.md --config .markdown-link-check.json
