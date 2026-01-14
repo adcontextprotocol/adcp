@@ -435,11 +435,13 @@ export class HTTPServer {
       // - Stripe webhooks: need raw body for webhook signature verification
       // - Resend inbound webhooks: need raw body for Svix signature verification
       // - WorkOS webhooks: need raw body for WorkOS signature verification
+      // - Zoom webhooks: need raw body for Zoom signature verification
       // - Slack routes: need raw body for Slack signature verification
       //   (both JSON for events and URL-encoded for commands)
       if (req.path === '/api/webhooks/stripe' ||
           req.path === '/api/webhooks/resend-inbound' ||
           req.path === '/api/webhooks/workos' ||
+          req.path === '/api/webhooks/zoom' ||
           req.path.startsWith('/api/slack/')) {
         next();
       } else {
