@@ -292,13 +292,17 @@ Example prompts this handles:
   },
   {
     name: 'list_upcoming_meetings',
-    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar.`,
+    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Use my_working_groups_only to filter to committees the user is a member of.`,
     input_schema: {
       type: 'object' as const,
       properties: {
         working_group_slug: {
           type: 'string',
           description: 'Filter by working group slug',
+        },
+        my_working_groups_only: {
+          type: 'boolean',
+          description: 'If true, only show meetings for working groups the user is a member of',
         },
         limit: {
           type: 'number',
@@ -655,10 +659,13 @@ export function createMeetingToolHandlers(
   // List upcoming meetings
   handlers.set('list_upcoming_meetings', async (input) => {
     const workingGroupSlug = input.working_group_slug as string | undefined;
+    const myWorkingGroupsOnly = input.my_working_groups_only as boolean | undefined;
     const limit = Math.min((input.limit as number) || 10, 20);
 
     let workingGroupId: string | undefined;
+    let workingGroupIds: string[] | undefined;
     let groupName: string | undefined;
+    let filterDescription: string | undefined;
 
     if (workingGroupSlug) {
       const group = await workingGroupDb.getWorkingGroupBySlug(workingGroupSlug);
@@ -667,10 +674,22 @@ export function createMeetingToolHandlers(
       }
       workingGroupId = group.id;
       groupName = group.name;
+    } else if (myWorkingGroupsOnly) {
+      const userId = getUserId();
+      if (!userId) {
+        return '❌ Unable to identify you. Please make sure you\'re logged in.';
+      }
+      const userGroups = await workingGroupDb.getWorkingGroupsForUser(userId);
+      if (userGroups.length === 0) {
+        return 'You are not a member of any working groups or committees.';
+      }
+      workingGroupIds = userGroups.map(g => g.id);
+      filterDescription = 'your committees';
     }
 
     const meetings = await meetingsDb.listMeetings({
       working_group_id: workingGroupId,
+      working_group_ids: workingGroupIds,
       upcoming_only: true,
       limit,
     });
@@ -678,11 +697,13 @@ export function createMeetingToolHandlers(
     if (meetings.length === 0) {
       let msg = 'No upcoming meetings';
       if (groupName) msg += ` for ${groupName}`;
+      else if (filterDescription) msg += ` for ${filterDescription}`;
       return msg + '.';
     }
 
     let response = `## Upcoming Meetings`;
     if (groupName) response += ` - ${groupName}`;
+    else if (filterDescription) response += ` - ${filterDescription}`;
     response += `\n\n`;
 
     for (const meeting of meetings) {
