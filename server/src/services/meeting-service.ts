@@ -33,17 +33,17 @@ const ZOOM_HOST_EMAIL = process.env.ZOOM_HOST_EMAIL || 'addie@agenticadvertising
 
 /**
  * Format a Date as ISO string WITHOUT the Z suffix.
- * This is needed for Zoom API which interprets times with Z as UTC,
- * but times without Z in the specified timezone parameter.
+ * This is needed for both Zoom and Google Calendar APIs which interpret
+ * times with Z as UTC, but times without Z in the specified timezone parameter.
  *
- * When Claude sends "2026-01-15T11:00:00" for 11 AM ET, JavaScript parses it
- * as 11:00 UTC (server local time). By stripping the Z suffix, we tell Zoom
- * to interpret "2026-01-15T11:00:00" in the timezone we specify (America/New_York),
- * resulting in the correct 11:00 AM ET meeting time.
+ * When Claude sends "2026-01-15T13:00:00" for 1 PM, JavaScript parses it
+ * as 13:00 server local time (UTC on Fly.io). By stripping the Z suffix,
+ * we tell the APIs to interpret "2026-01-15T13:00:00" in the timezone we
+ * specify (America/New_York), resulting in the correct 1 PM ET meeting time.
  */
-function formatDateForZoom(date: Date): string {
-  // toISOString() returns "2026-01-15T11:00:00.000Z"
-  // We strip the milliseconds and Z to get "2026-01-15T11:00:00"
+function formatDateWithoutZ(date: Date): string {
+  // toISOString() returns "2026-01-15T13:00:00.000Z"
+  // We strip the milliseconds and Z to get "2026-01-15T13:00:00"
   return date.toISOString().replace(/\.\d{3}Z$/, '');
 }
 
@@ -103,7 +103,7 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
       zoomMeeting = await zoom.createMeeting(ZOOM_HOST_EMAIL, {
         topic: `${workingGroup.name}: ${options.title}`,
         // Format without Z suffix so Zoom interprets in the specified timezone
-        start_time: formatDateForZoom(options.startTime),
+        start_time: formatDateWithoutZ(options.startTime),
         duration: durationMinutes,
         timezone,
         agenda: options.agenda || options.description,
@@ -172,15 +172,16 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
         }));
 
       // Build calendar event
+      // Use formatDateWithoutZ so Google interprets in the specified timezone
       const eventInput: calendar.CreateCalendarEventInput = {
         summary: `${workingGroup.name}: ${options.title}`,
         description: buildCalendarDescription(options.description, options.agenda, zoomMeeting),
         start: {
-          dateTime: options.startTime.toISOString(),
+          dateTime: formatDateWithoutZ(options.startTime),
           timeZone: timezone,
         },
         end: {
-          dateTime: endTime.toISOString(),
+          dateTime: formatDateWithoutZ(endTime),
           timeZone: timezone,
         },
         attendees: attendeeEmails,
