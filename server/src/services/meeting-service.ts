@@ -49,6 +49,8 @@ export interface ScheduleMeetingOptions {
   createZoomMeeting?: boolean;
   sendCalendarInvites?: boolean;
   announceInSlack?: boolean;
+  // Control who gets invited: 'all_members', 'topic_subscribers', or 'none' (opt-in)
+  inviteMode?: 'all_members' | 'topic_subscribers' | 'none';
 }
 
 export interface ScheduleMeetingResult {
@@ -135,13 +137,22 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
     meeting.zoom_passcode = zoomMeeting.password;
   }
 
-  // Invite working group members to the meeting
-  const invitedCount = await meetingsDb.addAttendeesFromGroup(
-    meeting.id,
-    options.workingGroupId,
-    options.topicSlugs
-  );
-  logger.info({ meetingId: meeting.id, invitedCount }, 'Invited members to meeting');
+  // Invite working group members to the meeting based on inviteMode
+  let invitedCount = 0;
+  const inviteMode = options.inviteMode || 'all_members';
+
+  if (inviteMode !== 'none') {
+    // 'all_members' passes undefined topicSlugs, 'topic_subscribers' passes the actual topics
+    const topicFilter = inviteMode === 'topic_subscribers' ? options.topicSlugs : undefined;
+    invitedCount = await meetingsDb.addAttendeesFromGroup(
+      meeting.id,
+      options.workingGroupId,
+      topicFilter
+    );
+    logger.info({ meetingId: meeting.id, invitedCount, inviteMode }, 'Invited members to meeting');
+  } else {
+    logger.info({ meetingId: meeting.id, inviteMode }, 'Skipped invites - opt-in mode');
+  }
 
   // Create Google Calendar event with invites
   let calendarEvent: calendar.CalendarEvent | undefined;
