@@ -1277,6 +1277,14 @@ export function createWebhooksRouter(): Router {
         const body = req.body;
         const rawBody = (req as Request & { rawBody: string }).rawBody;
 
+        // Log incoming request immediately for debugging
+        logger.info({
+          event: body?.event,
+          hasSignature: !!req.headers['x-zm-signature'],
+          hasTimestamp: !!req.headers['x-zm-request-timestamp'],
+          bodyLength: rawBody?.length,
+        }, 'Received Zoom webhook request');
+
         // Handle URL validation challenge from Zoom
         // https://developers.zoom.us/docs/api/rest/webhook-reference/#validate-your-webhook-endpoint
         if (body.event === 'endpoint.url_validation') {
