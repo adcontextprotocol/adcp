@@ -321,7 +321,7 @@ async function reconcileGoal(goal: ReconcilableGoal): Promise<boolean> {
       );
     }
 
-    logger.info({
+    logger.debug({
       slackUserId: goal.slack_user_id,
       goalId: goal.goal_id,
       goalName: goal.goal_name,
@@ -355,7 +355,7 @@ export async function runGoalFollowUpJob(options: {
   skipFollowUps?: boolean;
   skipReconciliation?: boolean;
 } = {}): Promise<FollowUpJobResult> {
-  logger.info({ options }, 'Running goal follow-up job');
+  logger.debug({ options }, 'Running goal follow-up job');
 
   let followUpsSent = 0;
   let followUpsSkipped = 0;
@@ -365,7 +365,9 @@ export async function runGoalFollowUpJob(options: {
   // Part 1: Send follow-up messages
   if (!options.skipFollowUps) {
     const pendingFollowUps = await getGoalsNeedingFollowUp();
-    logger.info({ count: pendingFollowUps.length }, 'Found goals needing follow-up');
+    if (pendingFollowUps.length > 0) {
+      logger.info({ count: pendingFollowUps.length }, 'Found goals needing follow-up');
+    }
 
     for (const pending of pendingFollowUps) {
       if (options.dryRun) {
@@ -393,7 +395,9 @@ export async function runGoalFollowUpJob(options: {
   // Part 2: Reconcile goal outcomes
   if (!options.skipReconciliation) {
     const goalsToReconcile = await getGoalsToReconcile();
-    logger.info({ count: goalsToReconcile.length }, 'Found goals to reconcile');
+    if (goalsToReconcile.length > 0) {
+      logger.debug({ count: goalsToReconcile.length }, 'Found goals to reconcile');
+    }
 
     for (const goal of goalsToReconcile) {
       if (options.dryRun) {
@@ -414,12 +418,14 @@ export async function runGoalFollowUpJob(options: {
     }
   }
 
-  logger.info({
-    followUpsSent,
-    followUpsSkipped,
-    goalsReconciled,
-    goalsStillPending,
-  }, 'Goal follow-up job completed');
+  if (followUpsSent > 0 || goalsReconciled > 0) {
+    logger.info({
+      followUpsSent,
+      followUpsSkipped,
+      goalsReconciled,
+      goalsStillPending,
+    }, 'Goal follow-up job completed');
+  }
 
   return {
     followUpsSent,
