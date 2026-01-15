@@ -1,4 +1,4 @@
--- Migration: 169_slack_activity_index.sql
+-- Migration: 170_slack_activity_index.sql
 -- Add index on last_slack_activity_at for HAS_ENGAGED_USER filter performance
 --
 -- The org-filters.ts HAS_ENGAGED_USER filter uses this column in a date range
