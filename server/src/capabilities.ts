@@ -1,5 +1,8 @@
 import type { Agent } from "./types.js";
 import { FormatsService } from "./formats.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger('capabilities');
 
 export interface ToolCapability {
   name: string;
@@ -113,7 +116,7 @@ export class CapabilityDiscovery {
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
-      console.log(`MCP discovery for ${url}: found ${agentInfo.tools.length} tools`);
+      logger.debug({ url, toolCount: agentInfo.tools.length }, 'MCP discovery completed');
 
       return agentInfo.tools.map((tool: any) => ({
         name: tool.name,
@@ -122,7 +125,7 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
-      console.error(`MCP discovery failed for ${url}:`, error.message);
+      logger.warn({ url, error: error.message }, 'MCP discovery failed');
       return [];
     }
   }
@@ -140,7 +143,7 @@ export class CapabilityDiscovery {
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
-      console.log(`A2A discovery for ${url}: found ${agentInfo.tools.length} tools`);
+      logger.debug({ url, toolCount: agentInfo.tools.length }, 'A2A discovery completed');
 
       return agentInfo.tools.map((tool: any) => ({
         name: tool.name,
@@ -149,7 +152,7 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
-      console.error(`A2A discovery failed for ${url}:`, error.message);
+      logger.warn({ url, error: error.message }, 'A2A discovery failed');
       return [];
     }
   }
@@ -177,9 +180,8 @@ export class CapabilityDiscovery {
       try {
         const formatsProfile = await this.formatsService.getFormatsForAgent(agent);
         formats = formatsProfile.formats.map(f => f.name);
-      } catch (error) {
-        // If format discovery fails, continue with empty array
-        console.error(`Format discovery failed for ${agent.url}:`, error);
+      } catch (error: any) {
+        logger.warn({ url: agent.url, error: error.message }, 'Format discovery failed');
       }
     }
 

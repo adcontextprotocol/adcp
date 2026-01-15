@@ -86,10 +86,7 @@ class JobScheduler {
     // Run after a delay on startup
     job.initialTimeoutId = setTimeout(async () => {
       try {
-        const result = await runOutreachScheduler({ limit: 5 });
-        if (result.sent > 0) {
-          logger.info(result, 'Proactive outreach: initial run completed');
-        }
+        await runOutreachScheduler({ limit: 5 });
       } catch (err) {
         logger.error({ err }, 'Proactive outreach: initial run failed');
       }
@@ -98,10 +95,7 @@ class JobScheduler {
     // Then run periodically
     job.intervalId = setInterval(async () => {
       try {
-        const result = await runOutreachScheduler({ limit: 5 });
-        if (result.sent > 0) {
-          logger.info(result, 'Proactive outreach: job completed');
-        }
+        await runOutreachScheduler({ limit: 5 });
       } catch (err) {
         logger.error({ err }, 'Proactive outreach: job failed');
       }

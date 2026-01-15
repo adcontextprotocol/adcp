@@ -90,7 +90,7 @@ export class OutboundPlanner {
     const quickMatch = this.quickMatch(available, ctx);
     if (quickMatch) {
       quickMatch.decision_method = 'rule_match';
-      logger.info({
+      logger.debug({
         slack_user_id: ctx.user.slack_user_id,
         goal: quickMatch.goal.name,
         reason: quickMatch.reason,
@@ -101,7 +101,7 @@ export class OutboundPlanner {
 
     // STAGE 4: LLM-based selection among candidates (nuanced)
     const llmResult = await this.llmSelect(available, ctx, startTime);
-    logger.info({
+    logger.debug({
       slack_user_id: ctx.user.slack_user_id,
       goal: llmResult.goal.name,
       reason: llmResult.reason,
