@@ -1674,10 +1674,10 @@
         const response = await fetch(`/api/meetings?working_group_id=${currentGroup.id}`);
         if (!response.ok) return;
 
-        const meetings = await response.json();
-        // Filter to only upcoming meetings
+        const data = await response.json();
+        // API returns { meetings: [...] } - filter to scheduled upcoming meetings
         const now = new Date();
-        const upcoming = meetings.filter(m => new Date(m.start_time) > now && m.status === 'scheduled');
+        const upcoming = (data.meetings || []).filter(m => new Date(m.start_time) > now && m.status === 'scheduled');
 
         const meetingsSection = document.getElementById('meetingsSection');
         const meetingsList = document.getElementById('meetingsList');
