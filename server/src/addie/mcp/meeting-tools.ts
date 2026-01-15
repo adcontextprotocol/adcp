@@ -179,8 +179,10 @@ If the user is in a channel associated with a working group, you can omit workin
 
 For recurring meetings, use the recurrence parameter with freq, interval, count, and byDay.
 
-Required: title, start_time (ISO format)
+Required: title, start_time (ISO format without timezone suffix - use timezone parameter for that)
 Optional: working_group_slug (auto-detected from channel), description, agenda, duration_minutes, timezone, topic_slugs, recurrence
+
+IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z suffix. For example, if user says "2pm ET", use "2026-01-15T14:00:00" (not "2026-01-15T14:00:00Z"). The timezone parameter (default: America/New_York) specifies what timezone the start_time is in.
 
 Example prompts this handles:
 - "Schedule a technical working group call for next Tuesday at 2pm ET"
@@ -208,7 +210,7 @@ Example prompts this handles:
         },
         start_time: {
           type: 'string',
-          description: 'Start time in ISO 8601 format (e.g., "2026-01-15T14:00:00")',
+          description: 'Start time in ISO 8601 format WITHOUT timezone suffix. The time should be in the timezone specified by the timezone parameter (default ET). Example: "2026-01-15T14:00:00" for 2pm. Do NOT add "Z" or timezone offsets - the timezone parameter handles that.',
         },
         duration_minutes: {
           type: 'number',
