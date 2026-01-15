@@ -20,10 +20,16 @@ export interface BillingChannelSetting {
   channel_name: string | null;
 }
 
+export interface EscalationChannelSetting {
+  channel_id: string | null;
+  channel_name: string | null;
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
   BILLING_SLACK_CHANNEL: 'billing_slack_channel',
+  ESCALATION_SLACK_CHANNEL: 'escalation_slack_channel',
 } as const;
 
 // ============== Generic Operations ==============
@@ -86,6 +92,31 @@ export async function setBillingChannel(
 ): Promise<void> {
   await setSetting<BillingChannelSetting>(
     SETTING_KEYS.BILLING_SLACK_CHANNEL,
+    { channel_id: channelId, channel_name: channelName },
+    updatedBy
+  );
+}
+
+// ============== Escalation Channel Operations ==============
+
+/**
+ * Get the configured escalation notification Slack channel
+ */
+export async function getEscalationChannel(): Promise<EscalationChannelSetting> {
+  const result = await getSetting<EscalationChannelSetting>(SETTING_KEYS.ESCALATION_SLACK_CHANNEL);
+  return result ?? { channel_id: null, channel_name: null };
+}
+
+/**
+ * Set the escalation notification Slack channel
+ */
+export async function setEscalationChannel(
+  channelId: string | null,
+  channelName: string | null,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<EscalationChannelSetting>(
+    SETTING_KEYS.ESCALATION_SLACK_CHANNEL,
     { channel_id: channelId, channel_name: channelName },
     updatedBy
   );
