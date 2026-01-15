@@ -1077,6 +1077,27 @@ export function createOrganizationsRouter(): Router {
       // Use trimmed name for consistency
       const trimmedName = organization_name.trim();
 
+      // Check if an org with this domain already exists BEFORE creating
+      if (verifiedDomain) {
+        const pool = getPool();
+        const existingOrgResult = await pool.query(
+          `SELECT o.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE LOWER(od.domain) = LOWER($1)`,
+          [verifiedDomain]
+        );
+
+        if (existingOrgResult.rows.length > 0) {
+          return res.status(409).json({
+            error: 'Organization exists',
+            message: `An organization for ${verifiedDomain} already exists: "${existingOrgResult.rows[0].name}". Please search for it and request to join instead of creating a new one.`,
+            existing_org_id: existingOrgResult.rows[0].workos_organization_id,
+            existing_org_name: existingOrgResult.rows[0].name,
+          });
+        }
+      }
+
       logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier, verifiedDomain }, 'Creating WorkOS organization');
 
       let workosOrgId: string;

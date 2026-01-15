@@ -193,13 +193,33 @@ export function setupDomainRoutes(
           return res.status(500).json({ error: "WorkOS not configured" });
         }
 
+        const pool = getPool();
+        const normalizedDomain = domain.toLowerCase().trim();
+
+        // Check if domain already has an organization
+        const existingResult = await pool.query(
+          `SELECT od.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE LOWER(od.domain) = $1`,
+          [normalizedDomain]
+        );
+
+        if (existingResult.rows.length > 0) {
+          return res.status(409).json({
+            error: "Domain already claimed",
+            message: `Domain ${domain} already belongs to organization "${existingResult.rows[0].name}"`,
+            existing_org_id: existingResult.rows[0].workos_organization_id,
+          });
+        }
+
         // Get the users from this domain for context
         const domainData = await slackDb.getUnmappedDomains({
           excludeFreeEmailProviders: false,
           minUsers: 1,
         });
         const domainInfo = domainData.find(
-          (d) => d.domain.toLowerCase() === domain.toLowerCase()
+          (d) => d.domain.toLowerCase() === normalizedDomain
         );
 
         if (!domainInfo) {
@@ -229,7 +249,6 @@ export function setupDomainRoutes(
         );
 
         // Create local record
-        const pool = getPool();
         const slackUserNames = domainInfo.users
           .map((u) => u.slack_real_name || u.slack_display_name)
           .filter(Boolean)
@@ -640,16 +659,34 @@ export function setupDomainRoutes(
         }
 
         const pool = getPool();
+        const normalizedDomain = domain.toLowerCase().trim();
+
+        // Check if domain already has an organization
+        const existingResult = await pool.query(
+          `SELECT od.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE LOWER(od.domain) = $1`,
+          [normalizedDomain]
+        );
+
+        if (existingResult.rows.length > 0) {
+          return res.status(409).json({
+            error: "Domain already claimed",
+            message: `Domain ${domain} already belongs to organization "${existingResult.rows[0].name}"`,
+            existing_org_id: existingResult.rows[0].workos_organization_id,
+          });
+        }
 
         // Get the contacts from this domain for context
         const contactsResult = await pool.query(
           `SELECT email, display_name, email_count, last_seen_at
            FROM email_contacts
            WHERE mapping_status = 'unmapped'
-             AND LOWER(domain) = LOWER($1)
+             AND LOWER(domain) = $1
            ORDER BY email_count DESC
            LIMIT 10`,
-          [domain]
+          [normalizedDomain]
         );
 
         if (contactsResult.rows.length === 0) {
