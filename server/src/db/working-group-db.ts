@@ -511,6 +511,19 @@ export class WorkingGroupDatabase {
   }
 
   /**
+   * Get all working group IDs a user is a member of
+   */
+  async getWorkingGroupIdsByUser(userId: string): Promise<string[]> {
+    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
+    const result = await query<{ working_group_id: string }>(
+      `SELECT working_group_id FROM working_group_memberships
+       WHERE workos_user_id = $1 AND status = 'active'`,
+      [canonicalUserId]
+    );
+    return result.rows.map(r => r.working_group_id);
+  }
+
+  /**
    * Get all memberships for a working group
    */
   async getMembershipsByWorkingGroup(workingGroupId: string): Promise<WorkingGroupMembership[]> {

@@ -38,6 +38,7 @@ import {
 // which is populated by channel history indexing.
 import { AddieDatabase } from '../../db/addie-db.js';
 import { queueWebSearchResult } from '../services/content-curator.js';
+import { findChannelWithAccess, getAccessiblePrivateChannelIds } from '../../slack/client.js';
 
 const addieDb = new AddieDatabase();
 
@@ -473,8 +474,9 @@ function extractSmartExcerpt(content: string, query: string, maxLength: number =
 
 /**
  * Tool handlers
+ * @param slackUserId - Optional Slack user ID for access control on private channels
  */
-export function createKnowledgeToolHandlers(): Map<
+export function createKnowledgeToolHandlers(slackUserId?: string): Map<
   string,
   (input: Record<string, unknown>) => Promise<string>
 > {
@@ -643,8 +645,27 @@ ${excerpt}`;
     const limit = Math.min((input.limit as number) || 10, 25);
 
     try {
-      // Search local database with optional channel filter
-      const localResults = await addieDb.searchSlackMessages(searchQuery, { limit, channel });
+      // Check access if searching a specific channel and we have user context
+      if (channel && slackUserId) {
+        const accessResult = await findChannelWithAccess(channel, slackUserId);
+        if (accessResult && !accessResult.hasAccess) {
+          return `Cannot search #${accessResult.channel.name}: ${accessResult.reason || 'Access denied'}.\n\nPrivate channel messages are only accessible to channel members.`;
+        }
+      }
+
+      // Get accessible private channel IDs for access filtering
+      // This ensures search results don't leak private channel content
+      let accessiblePrivateChannelIds: string[] | undefined;
+      if (slackUserId) {
+        accessiblePrivateChannelIds = await getAccessiblePrivateChannelIds(slackUserId);
+      }
+
+      // Search local database with optional channel filter and access control
+      const localResults = await addieDb.searchSlackMessages(searchQuery, {
+        limit,
+        channel,
+        accessiblePrivateChannelIds,
+      });
 
       if (localResults.length > 0) {
         const formatted = localResults
@@ -682,6 +703,21 @@ ${excerpt}`;
     const limit = input.limit as number | undefined;
 
     try {
+      // Check access if we have user context
+      if (slackUserId) {
+        const accessResult = await findChannelWithAccess(channel, slackUserId);
+        if (accessResult && !accessResult.hasAccess) {
+          return `Cannot access #${accessResult.channel.name}: ${accessResult.reason || 'Access denied'}.\n\nPrivate channel activity is only accessible to channel members.`;
+        }
+        // If it's a private channel and not indexed, inform the user
+        if (accessResult && accessResult.channel.is_private) {
+          const messages = await addieDb.getChannelActivity(channel, { days, limit });
+          if (messages.length === 0) {
+            return `No indexed activity found for private channel #${accessResult.channel.name}.\n\nPrivate channels are indexed but may not have historical data. Recent messages should appear after they are sent.`;
+          }
+        }
+      }
+
       const messages = await addieDb.getChannelActivity(channel, { days, limit });
 
       if (messages.length === 0) {
