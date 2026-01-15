@@ -72,6 +72,33 @@ function formatTime(date: Date, timezone = 'America/New_York'): string {
 }
 
 /**
+ * Get the current time as an ISO string in a specific timezone (for comparison).
+ * Returns format like "2026-01-15T09:30:00"
+ */
+function getNowInTimezone(timezone: string): string {
+  // 'sv-SE' locale gives us ISO-like format: "2026-01-15 09:30:00"
+  return new Date().toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
+}
+
+/**
+ * Check if a datetime string (without timezone) represents a future time
+ * in the specified timezone.
+ */
+function isFutureTimeInTimezone(isoString: string, timezone: string): boolean {
+  // If the string has timezone info, convert to the target timezone for comparison
+  if (/Z|[+-]\d{2}:\d{2}$/.test(isoString)) {
+    const date = new Date(isoString);
+    const dateInTz = date.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
+    return dateInTz > getNowInTimezone(timezone);
+  }
+
+  // No timezone info - treat the string as already being in the target timezone
+  // Just compare strings directly (ISO format is lexicographically sortable)
+  const normalizedInput = isoString.substring(0, 19); // Take just "YYYY-MM-DDTHH:MM:SS"
+  return normalizedInput > getNowInTimezone(timezone);
+}
+
+/**
  * Format recurrence rule for display
  */
 function formatRecurrence(rule: RecurrenceRule): string {
@@ -440,9 +467,10 @@ export function createMeetingToolHandlers(
       return `❌ Invalid start time format. Please use ISO 8601 format (e.g., "2026-01-15T14:00:00").`;
     }
 
-    // Check if meeting is in the future
-    if (startTime <= new Date()) {
-      return `❌ Meeting time must be in the future.`;
+    // Check if meeting is in the future (comparing in the specified timezone)
+    if (!isFutureTimeInTimezone(startTimeStr, timezone)) {
+      const nowInTz = getNowInTimezone(timezone);
+      return `❌ Meeting time must be in the future. Current time in ${timezone}: ${formatTime(new Date(), timezone)}`;
     }
 
     const durationMinutes = (input.duration_minutes as number) || 60;
