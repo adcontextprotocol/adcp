@@ -396,6 +396,7 @@
       <div id="detailsContent"></div>
       <div class="modal-buttons">
         <button type="button" class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
+        <button type="button" class="btn btn-primary" id="editMeetingBtn" onclick="editMeeting()">Edit</button>
         <button type="button" class="btn btn-danger" id="cancelMeetingBtn" onclick="cancelMeeting()">Cancel Meeting</button>
       </div>
     </div>
@@ -633,56 +634,112 @@
       document.getElementById('meetingModal').style.display = 'flex';
     }
 
-    function closeModal() {
-      document.getElementById('meetingModal').style.display = 'none';
+    // Edit existing meeting
+    function editMeeting() {
+      if (!viewingMeeting) return;
+
+      const m = viewingMeeting;
+      const date = new Date(m.start_time);
+      const tz = m.timezone || 'America/New_York';
+
+      // Format date/time in the meeting's timezone for editing
+      const dateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+      const timeFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+      const formattedDate = dateFormatter.format(date); // YYYY-MM-DD format
+      const formattedTime = timeFormatter.format(date).replace(/^24:/, '00:'); // HH:MM format
+
+      document.getElementById('modalTitle').textContent = 'Edit Meeting';
+      document.getElementById('meetingId').value = m.id;
+      document.getElementById('workingGroupId').value = m.working_group_id;
+      document.getElementById('title').value = m.title;
+      document.getElementById('meetingDate').value = formattedDate;
+      document.getElementById('meetingTime').value = formattedTime;
+      document.getElementById('timezone').value = tz;
+      document.getElementById('description').value = m.description || m.agenda || '';
+
+      // Calculate duration from start_time and end_time
+      if (m.end_time) {
+        const endDate = new Date(m.end_time);
+        const durationMs = endDate.getTime() - date.getTime();
+        document.getElementById('duration').value = Math.round(durationMs / 60000);
+      } else {
+        document.getElementById('duration').value = 60;
+      }
+
+      // Hide invite mode for edits (can't change invites after creation)
+      document.getElementById('inviteMode').parentElement.style.display = 'none';
+
+      document.getElementById('saveBtn').textContent = 'Save Changes';
+      closeDetailsModal();
+      document.getElementById('meetingModal').style.display = 'flex';
     }
 
-    // Save meeting
+    function closeModal() {
+      document.getElementById('meetingModal').style.display = 'none';
+      // Reset invite mode visibility
+      document.getElementById('inviteMode').parentElement.style.display = 'block';
+      document.getElementById('saveBtn').textContent = 'Schedule';
+    }
+
+    // Save meeting (create or update)
     async function saveMeeting(event) {
       event.preventDefault();
+
+      const meetingId = document.getElementById('meetingId').value;
+      const isUpdate = !!meetingId;
 
       const date = document.getElementById('meetingDate').value;
       const time = document.getElementById('meetingTime').value;
       const timezone = document.getElementById('timezone').value;
+      const durationMinutes = parseInt(document.getElementById('duration').value) || 60;
 
       // Construct ISO datetime
       const startTime = new Date(`${date}T${time}`);
+      const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
 
       const data = {
-        working_group_id: document.getElementById('workingGroupId').value,
         title: document.getElementById('title').value.trim(),
         description: document.getElementById('description').value.trim() || null,
         start_time: startTime.toISOString(),
-        duration_minutes: parseInt(document.getElementById('duration').value) || 60,
+        end_time: endTime.toISOString(),
         timezone: timezone,
-        invite_mode: document.getElementById('inviteMode').value,
       };
+
+      // Only include these fields for new meetings
+      if (!isUpdate) {
+        data.working_group_id = document.getElementById('workingGroupId').value;
+        data.duration_minutes = durationMinutes;
+        data.invite_mode = document.getElementById('inviteMode').value;
+      }
 
       const saveBtn = document.getElementById('saveBtn');
       saveBtn.disabled = true;
-      saveBtn.textContent = 'Scheduling...';
+      saveBtn.textContent = isUpdate ? 'Saving...' : 'Scheduling...';
 
       try {
-        const response = await fetch('/api/admin/meetings', {
-          method: 'POST',
+        const url = isUpdate ? `/api/admin/meetings/${meetingId}` : '/api/admin/meetings';
+        const method = isUpdate ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method: method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.message || 'Failed to schedule meeting');
+          throw new Error(error.message || `Failed to ${isUpdate ? 'update' : 'schedule'} meeting`);
         }
 
         closeModal();
         loadMeetings();
       } catch (error) {
-        console.error('Error scheduling meeting:', error);
-        alert('Failed to schedule meeting: ' + error.message);
+        console.error(`Error ${isUpdate ? 'updating' : 'scheduling'} meeting:`, error);
+        alert(`Failed to ${isUpdate ? 'update' : 'schedule'} meeting: ` + error.message);
       }
 
       saveBtn.disabled = false;
-      saveBtn.textContent = 'Schedule';
+      saveBtn.textContent = isUpdate ? 'Save Changes' : 'Schedule';
     }
 
     // View meeting details
@@ -731,7 +788,10 @@
           </div>
         `;
 
-        document.getElementById('cancelMeetingBtn').style.display = m.status === 'scheduled' ? 'block' : 'none';
+        // Only show Edit and Cancel buttons for scheduled meetings
+        const isScheduled = m.status === 'scheduled';
+        document.getElementById('editMeetingBtn').style.display = isScheduled ? 'inline-block' : 'none';
+        document.getElementById('cancelMeetingBtn').style.display = isScheduled ? 'inline-block' : 'none';
         document.getElementById('detailsModal').style.display = 'flex';
       } catch (error) {
         console.error('Error loading meeting:', error);
