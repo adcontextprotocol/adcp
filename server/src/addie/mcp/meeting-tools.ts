@@ -259,7 +259,12 @@ Example prompts this handles:
         topic_slugs: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Topic tags for this meeting (only members subscribed to these topics will be invited)',
+          description: 'Topic tags for this meeting (used with invite_mode: topic_subscribers)',
+        },
+        invite_mode: {
+          type: 'string',
+          enum: ['all_members', 'topic_subscribers', 'none'],
+          description: 'Who to invite: all_members (default - invite everyone in the working group), topic_subscribers (only those subscribed to the topics), or none (opt-in - create meeting but let people join themselves)',
         },
         recurrence: {
           type: 'object',
@@ -613,6 +618,8 @@ export function createMeetingToolHandlers(
     }
 
     // One-time meeting
+    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'none' | undefined;
+
     try {
       const result = await meetingService.scheduleMeeting({
         workingGroupId: workingGroup.id,
@@ -624,6 +631,7 @@ export function createMeetingToolHandlers(
         durationMinutes,
         timezone,
         createdByUserId: getUserId(),
+        inviteMode,
       });
 
       let response = `✅ Scheduled: **${title}**\n\n`;
@@ -638,8 +646,12 @@ export function createMeetingToolHandlers(
       if (result.errors.length > 0) {
         response += `\n⚠️ Some integrations had issues:\n`;
         response += result.errors.map(e => `• ${e}`).join('\n');
+      } else if (inviteMode === 'none') {
+        response += `\n📋 Meeting created as **opt-in** - no invites sent. Members can join using the Zoom link.`;
+      } else if (inviteMode === 'topic_subscribers') {
+        response += `\n📧 Calendar invites sent to topic subscribers.`;
       } else {
-        response += `\n📧 Calendar invites have been sent to working group members.`;
+        response += `\n📧 Calendar invites sent to working group members.`;
       }
 
       logger.info({
