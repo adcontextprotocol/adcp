@@ -31,6 +31,22 @@ const logger = createLogger('meeting-service');
 // Host email for Zoom meetings
 const ZOOM_HOST_EMAIL = process.env.ZOOM_HOST_EMAIL || 'addie@agenticadvertising.org';
 
+/**
+ * Format a Date as ISO string WITHOUT the Z suffix.
+ * This is needed for Zoom API which interprets times with Z as UTC,
+ * but times without Z in the specified timezone parameter.
+ *
+ * When Claude sends "2026-01-15T11:00:00" for 11 AM ET, JavaScript parses it
+ * as 11:00 UTC (server local time). By stripping the Z suffix, we tell Zoom
+ * to interpret "2026-01-15T11:00:00" in the timezone we specify (America/New_York),
+ * resulting in the correct 11:00 AM ET meeting time.
+ */
+function formatDateForZoom(date: Date): string {
+  // toISOString() returns "2026-01-15T11:00:00.000Z"
+  // We strip the milliseconds and Z to get "2026-01-15T11:00:00"
+  return date.toISOString().replace(/\.\d{3}Z$/, '');
+}
+
 const meetingsDb = new MeetingsDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 
@@ -86,7 +102,8 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
     try {
       zoomMeeting = await zoom.createMeeting(ZOOM_HOST_EMAIL, {
         topic: `${workingGroup.name}: ${options.title}`,
-        start_time: options.startTime.toISOString(),
+        // Format without Z suffix so Zoom interprets in the specified timezone
+        start_time: formatDateForZoom(options.startTime),
         duration: durationMinutes,
         timezone,
         agenda: options.agenda || options.description,
