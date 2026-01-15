@@ -1239,13 +1239,13 @@ export function createMemberToolHandlers(
     }
 
     let response = `## Recent Perspectives\n\n`;
-    response += `_View all at: https://agenticadvertising.org/latest/research_\n\n`;
+    response += `_View all at: https://agenticadvertising.org/latest/perspectives_\n\n`;
     perspectives.forEach((p) => {
       response += `### ${p.title}\n`;
       response += `**By:** ${p.author_name} | **Published:** ${new Date(p.published_at).toLocaleDateString()}\n`;
       if (p.excerpt) response += `${p.excerpt}\n`;
       // Link content points to external URL, articles would be internal
-      const readMoreUrl = p.external_url || `https://agenticadvertising.org/latest/research`;
+      const readMoreUrl = p.external_url || `https://agenticadvertising.org/latest/perspectives`;
       response += `**Read more:** ${readMoreUrl}\n\n`;
     });
 
@@ -1361,14 +1361,14 @@ export function createMemberToolHandlers(
 
     if (result.status === 'published') {
       if (collection.committee_slug === 'editorial') {
-        response += `\n**View:** https://agenticadvertising.org/latest/research\n`;
-        response += `_Your perspective is now live in The Latest > Research section._\n`;
+        response += `\n**View:** https://agenticadvertising.org/latest/perspectives\n`;
+        response += `_Your perspective is now live in The Latest > Perspectives section._\n`;
       } else {
         response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
       }
     } else {
       if (collection.committee_slug === 'editorial') {
-        response += `\n_Your perspective has been submitted for review. Once approved, it will appear in The Latest > Research section._\n`;
+        response += `\n_Your perspective has been submitted for review. Once approved, it will appear in The Latest > Perspectives section._\n`;
       } else {
         response += `\n_Your content has been submitted for review. A committee lead will review it and you'll be notified when it's approved._\n`;
       }

@@ -21,8 +21,8 @@ import { query } from "../db/client.js";
 
 const logger = createLogger("latest-routes");
 
-// Research section pulls from perspectives table, not addie_knowledge
-const RESEARCH_SECTION_SLUG = "research";
+// Perspectives section pulls from perspectives table, not addie_knowledge
+const PERSPECTIVES_SECTION_SLUG = "perspectives";
 
 /**
  * Get the count of published research perspectives from the Editorial working group.
@@ -111,6 +111,11 @@ export function createLatestRouter(): {
     });
   });
 
+  // Legacy redirect from /latest/research to /latest/perspectives
+  pageRouter.get("/latest/research", (req, res) => {
+    res.redirect(301, "/latest/perspectives");
+  });
+
   // Section detail page
   pageRouter.get("/latest/:slug", optionalAuth, (req, res) => {
     serveHtmlWithConfig(req, res, "latest/section.html").catch((err) => {
@@ -137,7 +142,7 @@ export function createLatestRouter(): {
           let articleCount: number;
 
           // Research section pulls from perspectives table
-          if (channel.website_slug === RESEARCH_SECTION_SLUG) {
+          if (channel.website_slug === PERSPECTIVES_SECTION_SLUG) {
             articleCount = await getResearchArticleCount();
           } else {
             // Other sections pull from addie_knowledge
@@ -187,7 +192,7 @@ export function createLatestRouter(): {
       let articleCount: number;
 
       // Research section pulls from perspectives table
-      if (slug === RESEARCH_SECTION_SLUG) {
+      if (slug === PERSPECTIVES_SECTION_SLUG) {
         articleCount = await getResearchArticleCount();
       } else {
         // Other sections pull from addie_knowledge
@@ -239,7 +244,7 @@ export function createLatestRouter(): {
       }
 
       // Research section: published perspectives from the Editorial working group
-      if (slug === RESEARCH_SECTION_SLUG) {
+      if (slug === PERSPECTIVES_SECTION_SLUG) {
         const result = await query<PerspectiveArticle>(
           `SELECT
              p.id::text as id,
