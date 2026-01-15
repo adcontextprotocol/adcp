@@ -292,7 +292,7 @@ Example prompts this handles:
   },
   {
     name: 'list_upcoming_meetings',
-    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Use my_working_groups_only to filter to committees the user is a member of.`,
+    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Use my_committees_only to filter to committees the user is a member of.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -300,9 +300,9 @@ Example prompts this handles:
           type: 'string',
           description: 'Filter by working group slug',
         },
-        my_working_groups_only: {
+        my_committees_only: {
           type: 'boolean',
-          description: 'If true, only show meetings for working groups the user is a member of',
+          description: 'If true, only show meetings for committees the user is a member of',
         },
         limit: {
           type: 'number',
@@ -659,7 +659,7 @@ export function createMeetingToolHandlers(
   // List upcoming meetings
   handlers.set('list_upcoming_meetings', async (input) => {
     const workingGroupSlug = input.working_group_slug as string | undefined;
-    const myWorkingGroupsOnly = input.my_working_groups_only as boolean | undefined;
+    const myCommitteesOnly = input.my_committees_only as boolean | undefined;
     const limit = Math.min((input.limit as number) || 10, 20);
 
     let workingGroupId: string | undefined;
@@ -674,14 +674,14 @@ export function createMeetingToolHandlers(
       }
       workingGroupId = group.id;
       groupName = group.name;
-    } else if (myWorkingGroupsOnly) {
+    } else if (myCommitteesOnly) {
       const userId = getUserId();
       if (!userId) {
         return '❌ Unable to identify you. Please make sure you\'re logged in.';
       }
       const userGroups = await workingGroupDb.getWorkingGroupsForUser(userId);
       if (userGroups.length === 0) {
-        return 'You are not a member of any working groups or committees.';
+        return 'You are not a member of any committees.';
       }
       workingGroupIds = userGroups.map(g => g.id);
       filterDescription = 'your committees';
