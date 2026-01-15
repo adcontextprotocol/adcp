@@ -202,6 +202,17 @@ export class MeetingsDatabase {
   }
 
   /**
+   * Get meeting by Zoom meeting ID
+   */
+  async getMeetingByZoomId(zoomMeetingId: string): Promise<Meeting | null> {
+    const result = await query<Meeting>(
+      'SELECT * FROM meetings WHERE zoom_meeting_id = $1',
+      [zoomMeetingId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
    * Get meeting with working group info
    */
   async getMeetingWithGroup(id: string): Promise<MeetingWithGroup | null> {

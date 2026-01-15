@@ -13,6 +13,10 @@ import { MeetingsDatabase } from '../db/meetings-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import * as zoom from '../integrations/zoom.js';
 import * as calendar from '../integrations/google-calendar.js';
+import {
+  notifyMeetingStarted,
+  notifyMeetingEnded,
+} from '../notifications/slack.js';
 import type {
   CreateMeetingInput,
   UpdateMeetingInput,
@@ -163,6 +167,8 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
           timeZone: timezone,
         },
         attendees: attendeeEmails,
+        // Set location to Zoom join URL so it appears in calendar invite
+        location: zoomMeeting?.join_url,
       };
 
       // Add Zoom link as conference data
@@ -291,31 +297,51 @@ export async function addAttendeesToMeeting(
 
 /**
  * Handle Zoom recording completed webhook
- * Stores transcript and generates summary
+ * Stores transcript and fetches Zoom AI Companion summary
  */
-export async function handleRecordingCompleted(meetingUuid: string): Promise<void> {
-  logger.info({ meetingUuid }, 'Processing recording completed');
+export async function handleRecordingCompleted(meetingUuid: string, zoomMeetingId?: string): Promise<void> {
+  logger.info({ meetingUuid, zoomMeetingId }, 'Processing recording completed');
 
-  // Find meeting in database by Zoom meeting ID
-  // Note: We store the numeric ID, but webhooks use UUID
-  // For now, we'd need to query by zoom_meeting_id
+  // Find meeting in database - try zoom_meeting_id first (numeric ID), fall back to UUID lookup
+  let meeting: Meeting | null = null;
+  if (zoomMeetingId) {
+    meeting = await meetingsDb.getMeetingByZoomId(zoomMeetingId);
+  }
 
-  // Get transcript
-  const transcriptText = await zoom.getTranscriptText(meetingUuid);
-  if (!transcriptText) {
-    logger.info({ meetingUuid }, 'No transcript available');
+  if (!meeting) {
+    logger.warn({ meetingUuid, zoomMeetingId }, 'Meeting not found in database - transcript will not be stored');
     return;
   }
 
-  // Parse VTT to plain text
-  const plainText = zoom.parseVttToText(transcriptText);
+  // Get transcript
+  const transcriptText = await zoom.getTranscriptText(meetingUuid);
+  if (transcriptText) {
+    // Parse VTT to plain text and store
+    const plainText = zoom.parseVttToText(transcriptText);
+    logger.info({ meetingId: meeting.id, transcriptLength: plainText.length }, 'Transcript retrieved');
 
-  // TODO: Find the meeting in our database by zoom_meeting_id
-  // TODO: Store transcript_text
-  // TODO: Generate AI summary using Claude
-  // TODO: Store summary
+    await meetingsDb.updateMeeting(meeting.id, {
+      transcript_text: plainText,
+    });
+  } else {
+    logger.info({ meetingUuid, meetingId: meeting.id }, 'No transcript available');
+  }
 
-  logger.info({ meetingUuid, transcriptLength: plainText.length }, 'Transcript processed');
+  // Fetch Zoom AI Companion meeting summary
+  try {
+    const zoomSummary = await zoom.getMeetingSummary(meetingUuid);
+    if (zoomSummary) {
+      const summary = zoom.formatMeetingSummaryAsMarkdown(zoomSummary);
+      await meetingsDb.updateMeeting(meeting.id, { summary });
+      logger.info({ meetingId: meeting.id }, 'Zoom AI Companion summary stored');
+    } else {
+      logger.info({ meetingId: meeting.id }, 'No Zoom AI Companion summary available');
+    }
+  } catch (error) {
+    logger.error({ err: error, meetingId: meeting.id }, 'Failed to fetch Zoom meeting summary');
+  }
+
+  logger.info({ meetingUuid, meetingId: meeting.id }, 'Recording processing completed');
 }
 
 /**
@@ -495,4 +521,86 @@ function getNextOccurrence(from: Date, rule: RecurrenceRule): Date {
   }
 
   return next;
+}
+
+/**
+ * Handle Zoom meeting started webhook
+ * Updates meeting status and sends Slack notification
+ */
+export async function handleMeetingStarted(zoomMeetingId: string): Promise<void> {
+  logger.info({ zoomMeetingId }, 'Processing meeting started');
+
+  const meeting = await meetingsDb.getMeetingByZoomId(zoomMeetingId);
+  if (!meeting) {
+    logger.warn({ zoomMeetingId }, 'Meeting not found in database - skipping started notification');
+    return;
+  }
+
+  // Update meeting status
+  await meetingsDb.updateMeeting(meeting.id, { status: 'in_progress' });
+
+  // Get working group for Slack channel
+  const workingGroup = await workingGroupDb.getWorkingGroupById(meeting.working_group_id);
+  if (!workingGroup) {
+    logger.warn({ meetingId: meeting.id }, 'Working group not found - skipping Slack notification');
+    return;
+  }
+
+  // Send Slack notification if channel is configured
+  if (workingGroup.slack_channel_id) {
+    await notifyMeetingStarted({
+      slackChannelId: workingGroup.slack_channel_id,
+      meetingTitle: meeting.title,
+      workingGroupName: workingGroup.name,
+      zoomJoinUrl: meeting.zoom_join_url,
+    });
+  }
+
+  logger.info({ meetingId: meeting.id, zoomMeetingId }, 'Meeting started processed');
+}
+
+/**
+ * Handle Zoom meeting ended webhook
+ * Updates meeting status and sends Slack notification
+ */
+export async function handleMeetingEnded(zoomMeetingId: string): Promise<void> {
+  logger.info({ zoomMeetingId }, 'Processing meeting ended');
+
+  const meeting = await meetingsDb.getMeetingByZoomId(zoomMeetingId);
+  if (!meeting) {
+    logger.warn({ zoomMeetingId }, 'Meeting not found in database - skipping ended notification');
+    return;
+  }
+
+  // Calculate duration if we have start time
+  let durationMinutes: number | undefined;
+  if (meeting.start_time) {
+    const now = new Date();
+    durationMinutes = Math.round((now.getTime() - meeting.start_time.getTime()) / 60000);
+  }
+
+  // Update meeting status
+  await meetingsDb.updateMeeting(meeting.id, {
+    status: 'completed',
+    end_time: new Date(),
+  });
+
+  // Get working group for Slack channel
+  const workingGroup = await workingGroupDb.getWorkingGroupById(meeting.working_group_id);
+  if (!workingGroup) {
+    logger.warn({ meetingId: meeting.id }, 'Working group not found - skipping Slack notification');
+    return;
+  }
+
+  // Send Slack notification if channel is configured
+  if (workingGroup.slack_channel_id) {
+    await notifyMeetingEnded({
+      slackChannelId: workingGroup.slack_channel_id,
+      meetingTitle: meeting.title,
+      workingGroupName: workingGroup.name,
+      durationMinutes,
+    });
+  }
+
+  logger.info({ meetingId: meeting.id, zoomMeetingId, durationMinutes }, 'Meeting ended processed');
 }
