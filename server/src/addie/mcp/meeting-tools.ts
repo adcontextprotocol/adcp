@@ -81,6 +81,42 @@ function getNowInTimezone(timezone: string): string {
 }
 
 /**
+ * Parse a datetime string (without timezone) as if it were in the specified timezone.
+ * Returns a Date object representing the correct UTC moment.
+ *
+ * For example, "2026-01-15T13:00:00" with timezone "America/New_York" returns
+ * a Date representing 18:00 UTC (since 1 PM ET = 6 PM UTC in January).
+ */
+function parseDateInTimezone(isoString: string, timezone: string): Date {
+  // Remove any existing timezone suffix
+  const cleanString = isoString.replace(/Z|[+-]\d{2}(:\d{2})?$/, '').substring(0, 19);
+
+  // Parse the components from the string
+  const [datePart, timePart] = cleanString.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const timeParts = timePart.split(':');
+  const hour = parseInt(timeParts[0], 10);
+  const minute = parseInt(timeParts[1] || '0', 10);
+  const second = parseInt(timeParts[2] || '0', 10);
+
+  // Create a reference date in the target timezone to find the offset
+  // We use a trick: create UTC date, format it in target TZ, compare to find offset
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+
+  // Format this UTC time in both UTC and target timezone
+  const utcFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: 'UTC' }).replace(' ', 'T');
+  const tzFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
+
+  // Parse both to find the offset in milliseconds
+  const utcMs = new Date(utcFormatted + 'Z').getTime();
+  const tzMs = new Date(tzFormatted + 'Z').getTime();
+  const offsetMs = tzMs - utcMs;
+
+  // Adjust our UTC guess by the offset to get the correct UTC time
+  return new Date(utcGuess.getTime() - offsetMs);
+}
+
+/**
  * Check if a datetime string (without timezone) represents a future time
  * in the specified timezone.
  */
@@ -463,8 +499,10 @@ export function createMeetingToolHandlers(
       }
     }
 
-    // Parse start time
-    const startTime = new Date(startTimeStr);
+    // Parse start time in the specified timezone
+    // This ensures "2026-01-15T13:00:00" with timezone "America/New_York"
+    // creates a Date representing 1 PM ET (18:00 UTC), not 1 PM UTC
+    const startTime = parseDateInTimezone(startTimeStr, timezone);
     if (isNaN(startTime.getTime())) {
       return `❌ Invalid start time format. Please use ISO 8601 format (e.g., "2026-01-15T14:00:00").`;
     }
