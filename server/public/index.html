@@ -409,6 +409,92 @@
       gap: 1.5rem;
     }
   }
+
+  /* Latest Posts Section */
+  .latestPostsSection_AdCP {
+    padding: 4rem 0;
+    background: var(--ifm-color-emphasis-50, #f9fafb);
+  }
+  .latestPostsHeader_AdCP {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  .latestPostsHeader_AdCP .sectionTitle_Ut5p {
+    margin-bottom: 0;
+  }
+  .viewAllLink_AdCP {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--color-brand, #1a36b4);
+    text-decoration: none;
+  }
+  .viewAllLink_AdCP:hover {
+    text-decoration: underline;
+  }
+  .latestPostsGrid_AdCP {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+  .latestPostCard_AdCP {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    display: flex;
+    flex-direction: column;
+  }
+  .latestPostCard_AdCP:hover {
+    border-color: var(--color-brand, #1a36b4);
+    box-shadow: 0 4px 16px rgba(26, 54, 180, 0.1);
+    transform: translateY(-2px);
+  }
+  .latestPostMeta_AdCP {
+    font-size: 0.8rem;
+    color: var(--ifm-color-emphasis-600);
+    margin-bottom: 0.75rem;
+  }
+  .latestPostTitle_AdCP {
+    font-size: 1.1rem;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 0.75rem;
+    color: var(--ifm-heading-color);
+  }
+  .latestPostTitle_AdCP a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .latestPostTitle_AdCP a:hover {
+    color: var(--color-brand, #1a36b4);
+  }
+  .latestPostExcerpt_AdCP {
+    font-size: 0.9rem;
+    color: var(--ifm-color-emphasis-700);
+    line-height: 1.6;
+    flex-grow: 1;
+  }
+  .latestPostsLoading_AdCP,
+  .latestPostsEmpty_AdCP {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+    color: var(--ifm-color-emphasis-600);
+  }
+  @media (max-width: 900px) {
+    .latestPostsGrid_AdCP {
+      grid-template-columns: 1fr;
+    }
+    .latestPostsHeader_AdCP {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+  }
 </style>
 
 </head>
@@ -696,6 +782,23 @@
         </div>
       </section>
 
+      <!-- Latest Posts Section -->
+      <section class="latestPostsSection_AdCP">
+        <div class="container">
+          <div class="row">
+            <div class="col col--10 col--offset-1">
+              <div class="latestPostsHeader_AdCP">
+                <h2 class="sectionTitle_Ut5p">The Latest</h2>
+                <a href="/latest/perspectives" class="viewAllLink_AdCP">View all perspectives</a>
+              </div>
+              <div id="latestPostsGrid" class="latestPostsGrid_AdCP">
+                <div class="latestPostsLoading_AdCP">Loading...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Community Section -->
       <section class="communitySection_a2u4">
         <div class="container">
@@ -717,5 +820,51 @@
 </div>
 <!-- Shared Footer -->
 <div id="adcp-footer"></div>
+
+<script>
+  // Load latest posts for homepage
+  async function loadLatestPosts() {
+    const grid = document.getElementById('latestPostsGrid');
+    try {
+      const response = await fetch('/api/latest/sections/perspectives/articles?limit=3');
+      if (!response.ok) throw new Error('Failed to load posts');
+
+      const data = await response.json();
+
+      if (!data.articles || data.articles.length === 0) {
+        grid.innerHTML = '<div class="latestPostsEmpty_AdCP">No posts yet.</div>';
+        return;
+      }
+
+      grid.innerHTML = data.articles.map(article => {
+        const date = article.published_at
+          ? new Date(article.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const excerpt = article.summary
+          ? (article.summary.length > 120 ? article.summary.substring(0, 120) + '...' : article.summary)
+          : '';
+        const author = article.author_name ? ` by ${escapeHtml(article.author_name)}` : '';
+
+        return '<div class="latestPostCard_AdCP">' +
+          '<div class="latestPostMeta_AdCP">' + escapeHtml(date) + escapeHtml(author) + '</div>' +
+          '<h3 class="latestPostTitle_AdCP"><a href="' + escapeHtml(article.source_url) + '">' + escapeHtml(article.title) + '</a></h3>' +
+          (excerpt ? '<p class="latestPostExcerpt_AdCP">' + escapeHtml(excerpt) + '</p>' : '') +
+        '</div>';
+      }).join('');
+    } catch (error) {
+      console.error('Error loading latest posts:', error);
+      grid.innerHTML = '';
+    }
+  }
+
+  function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  loadLatestPosts();
+</script>
 </body>
 </html>

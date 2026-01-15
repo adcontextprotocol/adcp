@@ -1601,18 +1601,22 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'governance.html');
     });
 
-    // Legacy redirects to The Latest section
+    // Perspectives index redirects to perspectives section
     this.app.get("/perspectives", (req, res) => {
-      res.redirect(301, "/latest/research");
+      res.redirect(301, "/latest/perspectives");
     });
-    this.app.get("/perspectives/:slug", (req, res) => {
-      res.redirect(301, "/latest/research");
+
+    // Perspectives detail page - serves article content
+    this.app.get("/perspectives/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'perspectives/article.html');
     });
+
+    // Legacy redirects
     this.app.get("/insights", (req, res) => {
-      res.redirect(301, "/latest/research");
+      res.redirect(301, "/latest/perspectives");
     });
     this.app.get("/insights/:slug", (req, res) => {
-      res.redirect(301, "/latest/research");
+      res.redirect(301, "/latest/perspectives");
     });
 
     // Events section
