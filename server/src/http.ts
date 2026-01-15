@@ -7152,10 +7152,7 @@ Disallow: /api/admin/
     // Run after a delay on startup
     setTimeout(async () => {
       try {
-        const result = await runGoalFollowUpJob();
-        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
-          logger.info(result, 'Goal follow-up: initial run completed');
-        }
+        await runGoalFollowUpJob();
       } catch (err) {
         logger.error({ err }, 'Goal follow-up: initial run failed');
       }
@@ -7182,10 +7179,7 @@ Disallow: /api/admin/
           return;
         }
 
-        const result = await runGoalFollowUpJob();
-        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
-          logger.info(result, 'Goal follow-up: job completed');
-        }
+        await runGoalFollowUpJob();
       } catch (err) {
         logger.error({ err }, 'Goal follow-up: job failed');
       }
