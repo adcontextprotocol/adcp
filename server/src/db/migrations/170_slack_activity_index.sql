@@ -5,6 +5,8 @@
 -- comparison to identify organizations with recent Slack activity. Without an
 -- index, this query scans all slack_user_mappings rows.
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_slack_user_mappings_last_activity
+-- Note: Not using CONCURRENTLY because migrations run in transactions
+-- This table is small enough that the brief lock is acceptable
+CREATE INDEX IF NOT EXISTS idx_slack_user_mappings_last_activity
   ON slack_user_mappings(last_slack_activity_at)
   WHERE last_slack_activity_at IS NOT NULL;
