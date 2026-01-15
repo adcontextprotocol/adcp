@@ -17,6 +17,7 @@ export interface User {
   country?: string;
   location_source?: string;
   location_updated_at?: Date;
+  timezone?: string;
   primary_slack_user_id?: string;
   primary_organization_id?: string;
   created_at: Date;
@@ -118,6 +119,59 @@ export class UsersDatabase {
        WHERE city IS NOT NULL OR country IS NOT NULL
        GROUP BY city, country
        ORDER BY count DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get user's timezone
+   */
+  async getUserTimezone(workosUserId: string): Promise<string | null> {
+    const result = await query<{ timezone: string }>(
+      `SELECT timezone FROM users WHERE workos_user_id = $1`,
+      [workosUserId]
+    );
+    return result.rows[0]?.timezone || null;
+  }
+
+  /**
+   * Update user's timezone
+   */
+  async updateUserTimezone(workosUserId: string, timezone: string): Promise<User | null> {
+    const result = await query<User>(
+      `UPDATE users
+       SET timezone = $2,
+           updated_at = NOW()
+       WHERE workos_user_id = $1
+       RETURNING *`,
+      [workosUserId, timezone]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find users by timezone
+   */
+  async findUsersByTimezone(timezone: string): Promise<User[]> {
+    const result = await query<User>(
+      `SELECT * FROM users
+       WHERE timezone = $1
+       ORDER BY engagement_score DESC`,
+      [timezone]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get users without timezone set (useful for prompting them to set it)
+   */
+  async findUsersWithoutTimezone(limit = 100): Promise<User[]> {
+    const result = await query<User>(
+      `SELECT * FROM users
+       WHERE timezone IS NULL
+       ORDER BY engagement_score DESC
+       LIMIT $1`,
+      [limit]
     );
     return result.rows;
   }
