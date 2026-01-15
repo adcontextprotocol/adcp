@@ -330,6 +330,104 @@ export function parseVttToText(vttContent: string): string {
 }
 
 /**
+ * Zoom AI Companion meeting summary response
+ */
+export interface ZoomMeetingSummary {
+  meeting_host_id: string;
+  meeting_host_email: string;
+  meeting_uuid: string;
+  meeting_id: number;
+  meeting_topic: string;
+  meeting_start_time: string;
+  meeting_end_time: string;
+  summary_start_time: string;
+  summary_end_time: string;
+  summary_overview: string;
+  summary_details: Array<{
+    summary_title?: string;
+    summary_content?: string;
+  }>;
+  next_steps?: string[];
+  edited_summary?: {
+    summary_overview?: string;
+    summary_details?: Array<{
+      summary_title?: string;
+      summary_content?: string;
+    }>;
+    next_steps?: string[];
+  };
+}
+
+/**
+ * Get meeting summary from Zoom AI Companion
+ * Requires Meeting Summary with AI Companion feature enabled
+ */
+export async function getMeetingSummary(meetingId: string | number): Promise<ZoomMeetingSummary | null> {
+  try {
+    // Double-encode UUID if it contains slashes (Zoom API quirk)
+    const encodedId = String(meetingId).includes('/')
+      ? encodeURIComponent(encodeURIComponent(String(meetingId)))
+      : String(meetingId);
+
+    const summary = await zoomRequest<ZoomMeetingSummary>(
+      'GET',
+      `/meetings/${encodedId}/meeting_summary`
+    );
+
+    logger.info({ meetingId, hasSummary: !!summary.summary_overview }, 'Retrieved Zoom meeting summary');
+    return summary;
+  } catch (error) {
+    // 404 means no summary available (meeting hasn't ended, AI Companion not enabled, etc.)
+    if (error instanceof Error && error.message.includes('404')) {
+      logger.info({ meetingId }, 'No Zoom meeting summary available');
+      return null;
+    }
+    logger.error({ err: error, meetingId }, 'Error getting Zoom meeting summary');
+    return null;
+  }
+}
+
+/**
+ * Format Zoom meeting summary to markdown
+ */
+export function formatMeetingSummaryAsMarkdown(summary: ZoomMeetingSummary): string {
+  const parts: string[] = [];
+
+  // Use edited summary if available, otherwise use original
+  const overview = summary.edited_summary?.summary_overview || summary.summary_overview;
+  const details = summary.edited_summary?.summary_details || summary.summary_details;
+  const nextSteps = summary.edited_summary?.next_steps || summary.next_steps;
+
+  if (overview) {
+    parts.push('## Overview');
+    parts.push(overview);
+    parts.push('');
+  }
+
+  if (details && details.length > 0) {
+    for (const detail of details) {
+      if (detail.summary_title) {
+        parts.push(`## ${detail.summary_title}`);
+      }
+      if (detail.summary_content) {
+        parts.push(detail.summary_content);
+      }
+      parts.push('');
+    }
+  }
+
+  if (nextSteps && nextSteps.length > 0) {
+    parts.push('## Next Steps');
+    for (const step of nextSteps) {
+      parts.push(`- ${step}`);
+    }
+    parts.push('');
+  }
+
+  return parts.join('\n').trim();
+}
+
+/**
  * Zoom webhook event types we handle
  */
 export type ZoomWebhookEventType =
