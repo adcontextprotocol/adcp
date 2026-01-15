@@ -996,6 +996,7 @@ export interface UpdateMeetingInput {
 
 export interface ListMeetingsOptions {
   working_group_id?: string;
+  working_group_ids?: string[]; // Filter by multiple working groups
   series_id?: string;
   status?: MeetingStatus;
   topic_slugs?: string[];

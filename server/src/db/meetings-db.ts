@@ -312,6 +312,9 @@ export class MeetingsDatabase {
     if (options.working_group_id) {
       conditions.push(`m.working_group_id = $${paramIndex++}`);
       params.push(options.working_group_id);
+    } else if (options.working_group_ids && options.working_group_ids.length > 0) {
+      conditions.push(`m.working_group_id = ANY($${paramIndex++})`);
+      params.push(options.working_group_ids);
     }
 
     if (options.series_id) {
