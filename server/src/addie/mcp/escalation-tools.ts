@@ -17,7 +17,7 @@ import {
 } from '../../db/escalation-db.js';
 import { getThreadService } from '../thread-service.js';
 import { sendChannelMessage } from '../../slack/client.js';
-import { getActiveChannels } from '../../db/notification-channels-db.js';
+import { getEscalationChannel } from '../../db/system-settings-db.js';
 import { AddieDatabase } from '../../db/addie-db.js';
 
 const logger = createLogger('addie-escalation-tools');
@@ -112,15 +112,11 @@ DO NOT use for:
 ];
 
 /**
- * Find the escalation notification channel
+ * Get the configured escalation notification channel from system settings
  */
 async function getEscalationChannelId(): Promise<string | null> {
-  const channels = await getActiveChannels();
-  // Look for a channel named "Addie Escalations" or similar
-  const escalationChannel = channels.find(
-    (c) => c.name.toLowerCase().includes('escalation') || c.name.toLowerCase().includes('addie-admin')
-  );
-  return escalationChannel?.slack_channel_id || null;
+  const setting = await getEscalationChannel();
+  return setting.channel_id;
 }
 
 /**

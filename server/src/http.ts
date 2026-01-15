@@ -3527,6 +3527,10 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-settings.html');
     });
 
+    this.app.get('/admin/escalations', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
+    });
+
     // Registry API endpoints (consolidated agents, publishers, lookups)
     this.setupRegistryRoutes();
   }

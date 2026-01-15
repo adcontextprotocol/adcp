@@ -192,6 +192,32 @@
           </div>
         </div>
 
+        <!-- Escalation Channel Setting -->
+        <div class="setting-section">
+          <h3>Escalation Notifications Channel</h3>
+          <p>
+            Choose which Slack channel receives escalation notifications when Addie cannot fulfill a request.
+            This allows admins to be notified when users need human assistance.
+          </p>
+
+          <div class="current-value" id="currentEscalationChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="escalationChannel">Select Channel</label>
+              <select id="escalationChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Select a channel where admins can see and respond to escalations. <a href="/admin/escalations">View escalations</a></small>
+            </div>
+            <button class="btn btn-primary" id="saveEscalationBtn" onclick="saveEscalationChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -214,6 +240,7 @@
 
         currentSettings = await response.json();
         updateCurrentChannelDisplay();
+        updateCurrentEscalationChannelDisplay();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -229,7 +256,8 @@
 
     // Load Slack channels for picker
     async function loadSlackChannels() {
-      const select = document.getElementById('billingChannel');
+      const billingSelect = document.getElementById('billingChannel');
+      const escalationSelect = document.getElementById('escalationChannel');
 
       try {
         const response = await fetch('/api/admin/settings/slack-channels');
@@ -241,24 +269,34 @@
         const data = await response.json();
         slackChannels = data.channels;
 
-        // Build options
-        let html = '<option value="">-- No channel (disabled) --</option>';
+        // Build options for both dropdowns
+        let billingHtml = '<option value="">-- No channel (disabled) --</option>';
+        let escalationHtml = '<option value="">-- No channel (disabled) --</option>';
+
         if (slackChannels.length === 0) {
-          html = '<option value="">No private channels found - invite Addie first</option>';
-          select.innerHTML = html;
-          showStatusMessage('Addie is not in any private channels. Invite @Addie to your billing channel and refresh.', 'error');
+          const emptyOption = '<option value="">No private channels found - invite Addie first</option>';
+          billingSelect.innerHTML = emptyOption;
+          escalationSelect.innerHTML = emptyOption;
+          showStatusMessage('Addie is not in any private channels. Invite @Addie to your channels and refresh.', 'error');
         } else {
           slackChannels.forEach(ch => {
-            const selected = currentSettings?.billing_channel?.channel_id === ch.id ? 'selected' : '';
-            html += `<option value="${ch.id}" ${selected}>#${escapeHtml(ch.name)}</option>`;
+            const billingSelected = currentSettings?.billing_channel?.channel_id === ch.id ? 'selected' : '';
+            const escalationSelected = currentSettings?.escalation_channel?.channel_id === ch.id ? 'selected' : '';
+            billingHtml += `<option value="${ch.id}" ${billingSelected}>#${escapeHtml(ch.name)}</option>`;
+            escalationHtml += `<option value="${ch.id}" ${escalationSelected}>#${escapeHtml(ch.name)}</option>`;
           });
-          select.innerHTML = html;
-          select.disabled = false;
+          billingSelect.innerHTML = billingHtml;
+          billingSelect.disabled = false;
           document.getElementById('saveBtn').disabled = false;
+
+          escalationSelect.innerHTML = escalationHtml;
+          escalationSelect.disabled = false;
+          document.getElementById('saveEscalationBtn').disabled = false;
         }
       } catch (error) {
         console.error('Error loading Slack channels:', error);
-        select.innerHTML = '<option value="">Error loading channels</option>';
+        billingSelect.innerHTML = '<option value="">Error loading channels</option>';
+        escalationSelect.innerHTML = '<option value="">Error loading channels</option>';
         showStatusMessage('Failed to load Slack channels: ' + error.message, 'error');
       }
     }
@@ -274,6 +312,20 @@
       } else {
         el.className = 'current-value not-set';
         el.innerHTML = '<strong>Current:</strong> Not configured (notifications disabled)';
+      }
+    }
+
+    // Update the current escalation channel display
+    function updateCurrentEscalationChannelDisplay() {
+      const el = document.getElementById('currentEscalationChannel');
+      const channel = currentSettings?.escalation_channel;
+
+      if (channel?.channel_id && channel?.channel_name) {
+        el.className = 'current-value';
+        el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
+      } else {
+        el.className = 'current-value not-set';
+        el.innerHTML = '<strong>Current:</strong> Not configured (escalation notifications disabled)';
       }
     }
 
@@ -320,6 +372,55 @@
         }, 2000);
       } catch (error) {
         console.error('Error saving billing channel:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    // Save escalation channel
+    async function saveEscalationChannel() {
+      const select = document.getElementById('escalationChannel');
+      const saveBtn = document.getElementById('saveEscalationBtn');
+      const channelId = select.value || null;
+
+      // Find channel name
+      let channelName = null;
+      if (channelId) {
+        const channel = slackChannels.find(c => c.id === channelId);
+        channelName = channel?.name || null;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/settings/escalation-channel', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel_id: channelId, channel_name: channelName }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        const data = await response.json();
+        currentSettings.escalation_channel = data.escalation_channel;
+        updateCurrentEscalationChannelDisplay();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage('Escalation channel updated successfully', 'success');
+
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving escalation channel:', error);
         showStatusMessage('Failed to save: ' + error.message, 'error');
         saveBtn.textContent = 'Save';
         saveBtn.disabled = false;
