@@ -492,7 +492,7 @@ export class AdAgentsManager {
   }
 
   /**
-   * Validates a single agent's card endpoint
+   * Validates a single agent's card endpoint (supports both A2A and MCP protocols)
    */
   private async validateSingleAgentCard(agentUrl: string): Promise<AgentCardValidationResult> {
     const result: AgentCardValidationResult = {
@@ -501,73 +501,139 @@ export class AdAgentsManager {
       errors: []
     };
 
-    try {
-      const startTime = Date.now();
-      
-      // Try to fetch agent card (A2A standard and root fallback)
-      const cardEndpoints = [
-        `${agentUrl}/.well-known/agent-card.json`, // A2A protocol standard
-        agentUrl // Sometimes the main URL returns the card
-      ];
+    const startTime = Date.now();
 
-      let cardFound = false;
-      
-      for (const endpoint of cardEndpoints) {
-        try {
-          const response = await axios.get(endpoint, {
-            timeout: 3000, // Keep short for responsive UX
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'AdCP-Testing-Framework/1.0'
-            },
-            validateStatus: () => true
-          });
+    // Try A2A first (agent-card.json endpoints)
+    const a2aResult = await this.tryA2AValidation(agentUrl, startTime);
+    if (a2aResult.valid) {
+      return a2aResult;
+    }
 
-          result.response_time_ms = Date.now() - startTime;
-          result.status_code = response.status;
+    // If A2A failed, try MCP protocol
+    const mcpResult = await this.tryMCPValidation(agentUrl, startTime);
+    if (mcpResult.valid) {
+      return mcpResult;
+    }
 
-          if (response.status === 200) {
-            result.card_data = response.data;
-            result.card_endpoint = endpoint;
-            cardFound = true;
-            
-            // Check content-type header
-            const contentType = response.headers['content-type'] || '';
-            const isJsonContentType = contentType.includes('application/json');
-            
-            // Basic validation of card structure
-            if (typeof response.data === 'object' && response.data !== null) {
-              if (!isJsonContentType) {
-                result.errors.push(`Endpoint returned JSON data but with content-type: ${contentType}. Should be application/json`);
-                result.valid = false;
-              } else {
-                result.valid = true;
-              }
+    // Both failed - return combined errors
+    result.response_time_ms = Date.now() - startTime;
+    result.errors = [
+      'Agent not reachable via A2A or MCP protocols',
+      ...a2aResult.errors.map(e => `A2A: ${e}`),
+      ...mcpResult.errors.map(e => `MCP: ${e}`)
+    ];
+
+    return result;
+  }
+
+  /**
+   * Try A2A protocol validation (agent-card.json)
+   */
+  private async tryA2AValidation(agentUrl: string, startTime: number): Promise<AgentCardValidationResult> {
+    const result: AgentCardValidationResult = {
+      agent_url: agentUrl,
+      valid: false,
+      errors: []
+    };
+
+    // Try to fetch agent card (A2A standard and root fallback)
+    const cardEndpoints = [
+      `${agentUrl}/.well-known/agent-card.json`, // A2A protocol standard
+      agentUrl // Sometimes the main URL returns the card
+    ];
+
+    for (const endpoint of cardEndpoints) {
+      try {
+        const response = await axios.get(endpoint, {
+          timeout: 3000, // Keep short for responsive UX
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'AdCP-Testing-Framework/1.0'
+          },
+          validateStatus: () => true
+        });
+
+        result.response_time_ms = Date.now() - startTime;
+        result.status_code = response.status;
+
+        if (response.status === 200) {
+          result.card_data = response.data;
+          result.card_endpoint = endpoint;
+
+          // Check content-type header
+          const contentType = response.headers['content-type'] || '';
+          const isJsonContentType = contentType.includes('application/json');
+
+          // Basic validation of card structure
+          if (typeof response.data === 'object' && response.data !== null) {
+            if (!isJsonContentType) {
+              result.errors.push(`Endpoint returned JSON data but with content-type: ${contentType}. Should be application/json`);
+              result.valid = false;
             } else {
-              if (contentType.includes('text/html')) {
-                result.errors.push('Agent card endpoint returned HTML instead of JSON. This appears to be a website, not an agent card endpoint.');
-              } else {
-                result.errors.push(`Agent card is not a valid JSON object (content-type: ${contentType})`);
-              }
+              result.valid = true;
             }
-            break;
+          } else {
+            if (contentType.includes('text/html')) {
+              result.errors.push('Agent card endpoint returned HTML instead of JSON. This appears to be a website, not an agent card endpoint.');
+            } else {
+              result.errors.push(`Agent card is not a valid JSON object (content-type: ${contentType})`);
+            }
           }
-        } catch (endpointError) {
-          // Try next endpoint
-          continue;
+          return result;
         }
+      } catch (endpointError) {
+        // Try next endpoint
+        continue;
       }
+    }
 
-      if (!cardFound) {
-        result.errors.push('No agent card found at /.well-known/agent-card.json or root URL');
-      }
+    result.errors.push('No agent card found at /.well-known/agent-card.json or root URL');
+    return result;
+  }
 
+  /**
+   * Try MCP protocol validation (streamable HTTP)
+   */
+  private async tryMCPValidation(agentUrl: string, startTime: number): Promise<AgentCardValidationResult> {
+    const result: AgentCardValidationResult = {
+      agent_url: agentUrl,
+      valid: false,
+      errors: []
+    };
+
+    const MCP_TIMEOUT_MS = 5000; // Match timeout used in health.ts
+
+    try {
+      const { AdCPClient } = await import('@adcp/client');
+      const multiClient = new AdCPClient([{
+        id: 'health-check',
+        name: 'Health Checker',
+        agent_uri: agentUrl,
+        protocol: 'mcp',
+      }]);
+      const client = multiClient.agent('health-check');
+
+      // Add timeout to prevent hanging on slow/unresponsive agents
+      const agentInfo = await Promise.race([
+        client.getAgentInfo(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('MCP connection timed out')), MCP_TIMEOUT_MS)
+        ),
+      ]);
+
+      result.response_time_ms = Date.now() - startTime;
+      result.valid = true;
+      result.card_endpoint = agentUrl;
+      result.card_data = {
+        name: agentInfo.name,
+        protocol: 'mcp',
+        tools: agentInfo.tools?.map(t => t.name) || [],
+        tools_count: agentInfo.tools?.length || 0,
+      };
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        result.errors.push(`Network error: ${error.message}`);
-      } else {
-        result.errors.push('Unknown error occurred while validating agent card');
-      }
+      result.response_time_ms = Date.now() - startTime;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      result.errors.push(`MCP connection failed: ${message}`);
     }
 
     return result;
