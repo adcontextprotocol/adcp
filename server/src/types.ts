@@ -323,6 +323,7 @@ export type LocationSource = 'manual' | 'outreach' | 'inferred';
 export interface UserLocation {
   city?: string;
   country?: string;
+  timezone?: string;
   location_source?: LocationSource;
   location_updated_at?: Date;
 }

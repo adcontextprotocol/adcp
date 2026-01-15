@@ -13,7 +13,11 @@ import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { ModelConfig } from '../config/models.js';
 import { verifyWebhookSignature as verifyZoomSignature } from '../integrations/zoom.js';
-import { handleRecordingCompleted } from '../services/meeting-service.js';
+import {
+  handleRecordingCompleted,
+  handleMeetingStarted,
+  handleMeetingEnded,
+} from '../services/meeting-service.js';
 import {
   getFeedByEmailSlug,
   createEmailPerspective,
@@ -1344,21 +1348,31 @@ export function createWebhooksRouter(): Router {
           case 'recording.completed':
           case 'recording.transcript_completed': {
             const meetingUuid = body.payload?.object?.uuid;
+            const meetingId = body.payload?.object?.id;
             if (meetingUuid && typeof meetingUuid === 'string' && meetingUuid.length < 256) {
-              await handleRecordingCompleted(meetingUuid);
+              // Pass both UUID and numeric ID - we store the numeric ID in our DB
+              await handleRecordingCompleted(meetingUuid, meetingId?.toString());
             } else if (meetingUuid) {
               logger.warn({ meetingUuidType: typeof meetingUuid }, 'Invalid meetingUuid format');
             }
             break;
           }
 
-          case 'meeting.started':
-            logger.info({ meetingId: body.payload?.object?.id }, 'Meeting started');
+          case 'meeting.started': {
+            const startedMeetingId = body.payload?.object?.id;
+            if (startedMeetingId) {
+              await handleMeetingStarted(startedMeetingId.toString());
+            }
             break;
+          }
 
-          case 'meeting.ended':
-            logger.info({ meetingId: body.payload?.object?.id }, 'Meeting ended');
+          case 'meeting.ended': {
+            const endedMeetingId = body.payload?.object?.id;
+            if (endedMeetingId) {
+              await handleMeetingEnded(endedMeetingId.toString());
+            }
             break;
+          }
 
           default:
             logger.debug({ event: body.event }, 'Unhandled Zoom webhook event');

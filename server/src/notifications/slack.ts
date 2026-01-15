@@ -516,3 +516,138 @@ export async function notifyPublishedPost(data: {
     category: data.category,
   });
 }
+
+/**
+ * Notify a working group's Slack channel when a meeting starts
+ */
+export async function notifyMeetingStarted(data: {
+  slackChannelId: string;
+  meetingTitle: string;
+  workingGroupName: string;
+  zoomJoinUrl?: string;
+}): Promise<boolean> {
+  if (!isSlackConfigured()) {
+    logger.debug('Slack not configured, skipping meeting started notification');
+    return false;
+  }
+
+  const message: SlackBlockMessage = {
+    text: `📹 Meeting starting now: ${data.meetingTitle}`,
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text' as const,
+          text: '📹 Meeting Starting Now',
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*${data.meetingTitle}*\n${data.workingGroupName}`,
+        },
+      },
+      ...(data.zoomJoinUrl ? [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `<${data.zoomJoinUrl}|Join Zoom Meeting>`,
+        },
+      }] : []),
+    ],
+  };
+
+  try {
+    const result = await sendChannelMessage(data.slackChannelId, message);
+    if (result.ok) {
+      logger.info(
+        { channelId: data.slackChannelId, meetingTitle: data.meetingTitle },
+        'Sent meeting started notification to Slack channel'
+      );
+      return true;
+    } else {
+      logger.warn(
+        { channelId: data.slackChannelId, error: result.error },
+        'Failed to send meeting started notification'
+      );
+      return false;
+    }
+  } catch (error) {
+    logger.error({ error, channelId: data.slackChannelId }, 'Error sending meeting started notification');
+    return false;
+  }
+}
+
+/**
+ * Notify a working group's Slack channel when a meeting ends
+ */
+export async function notifyMeetingEnded(data: {
+  slackChannelId: string;
+  meetingTitle: string;
+  workingGroupName: string;
+  durationMinutes?: number;
+}): Promise<boolean> {
+  if (!isSlackConfigured()) {
+    logger.debug('Slack not configured, skipping meeting ended notification');
+    return false;
+  }
+
+  const durationText = data.durationMinutes
+    ? `Duration: ${Math.floor(data.durationMinutes / 60)}h ${data.durationMinutes % 60}m`
+    : '';
+
+  const message: SlackBlockMessage = {
+    text: `✅ Meeting ended: ${data.meetingTitle}`,
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text' as const,
+          text: '✅ Meeting Ended',
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*${data.meetingTitle}*\n${data.workingGroupName}${durationText ? `\n${durationText}` : ''}`,
+        },
+      },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: {
+              type: 'mrkdwn' as const,
+              text: 'Recording and transcript will be available soon.',
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  try {
+    const result = await sendChannelMessage(data.slackChannelId, message);
+    if (result.ok) {
+      logger.info(
+        { channelId: data.slackChannelId, meetingTitle: data.meetingTitle },
+        'Sent meeting ended notification to Slack channel'
+      );
+      return true;
+    } else {
+      logger.warn(
+        { channelId: data.slackChannelId, error: result.error },
+        'Failed to send meeting ended notification'
+      );
+      return false;
+    }
+  } catch (error) {
+    logger.error({ error, channelId: data.slackChannelId }, 'Error sending meeting ended notification');
+    return false;
+  }
+}
