@@ -560,12 +560,14 @@ export class MeetingsDatabase {
 
     if (topicSlugs && topicSlugs.length > 0) {
       // Invite only members subscribed to these topics
+      // Join with users table to get email (working_group_memberships.user_email is often NULL)
       memberQuery = `
         SELECT
           wgm.workos_user_id,
-          wgm.user_email as email,
-          wgm.user_name as name
+          COALESCE(u.email, wgm.user_email) as email,
+          COALESCE(u.first_name || ' ' || u.last_name, wgm.user_name) as name
         FROM working_group_memberships wgm
+        LEFT JOIN users u ON u.workos_user_id = wgm.workos_user_id
         LEFT JOIN working_group_topic_subscriptions wgts
           ON wgts.working_group_id = wgm.working_group_id
           AND wgts.workos_user_id = wgm.workos_user_id
@@ -576,13 +578,15 @@ export class MeetingsDatabase {
       memberParams = [workingGroupId, topicSlugs];
     } else {
       // Invite all members
+      // Join with users table to get email (working_group_memberships.user_email is often NULL)
       memberQuery = `
         SELECT
-          workos_user_id,
-          user_email as email,
-          user_name as name
-        FROM working_group_memberships
-        WHERE working_group_id = $1 AND status = 'active'
+          wgm.workos_user_id,
+          COALESCE(u.email, wgm.user_email) as email,
+          COALESCE(u.first_name || ' ' || u.last_name, wgm.user_name) as name
+        FROM working_group_memberships wgm
+        LEFT JOIN users u ON u.workos_user_id = wgm.workos_user_id
+        WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
       `;
       memberParams = [workingGroupId];
     }
