@@ -31,22 +31,6 @@ const logger = createLogger('meeting-service');
 // Host email for Zoom meetings
 const ZOOM_HOST_EMAIL = process.env.ZOOM_HOST_EMAIL || 'addie@agenticadvertising.org';
 
-/**
- * Format a Date as ISO string WITHOUT the Z suffix.
- * This is needed for both Zoom and Google Calendar APIs which interpret
- * times with Z as UTC, but times without Z in the specified timezone parameter.
- *
- * When Claude sends "2026-01-15T13:00:00" for 1 PM, JavaScript parses it
- * as 13:00 server local time (UTC on Fly.io). By stripping the Z suffix,
- * we tell the APIs to interpret "2026-01-15T13:00:00" in the timezone we
- * specify (America/New_York), resulting in the correct 1 PM ET meeting time.
- */
-function formatDateWithoutZ(date: Date): string {
-  // toISOString() returns "2026-01-15T13:00:00.000Z"
-  // We strip the milliseconds and Z to get "2026-01-15T13:00:00"
-  return date.toISOString().replace(/\.\d{3}Z$/, '');
-}
-
 const meetingsDb = new MeetingsDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 
@@ -102,8 +86,9 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
     try {
       zoomMeeting = await zoom.createMeeting(ZOOM_HOST_EMAIL, {
         topic: `${workingGroup.name}: ${options.title}`,
-        // Format without Z suffix so Zoom interprets in the specified timezone
-        start_time: formatDateWithoutZ(options.startTime),
+        // The Date object is already in UTC (parsed in target timezone by meeting-tools)
+        // Zoom interprets Z suffix as UTC and uses timezone param for display
+        start_time: options.startTime.toISOString(),
         duration: durationMinutes,
         timezone,
         agenda: options.agenda || options.description,
@@ -172,16 +157,17 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
         }));
 
       // Build calendar event
-      // Use formatDateWithoutZ so Google interprets in the specified timezone
+      // The Date object is already in UTC (parsed in target timezone by meeting-tools)
+      // Google Calendar interprets ISO 8601 with Z as UTC
       const eventInput: calendar.CreateCalendarEventInput = {
         summary: `${workingGroup.name}: ${options.title}`,
         description: buildCalendarDescription(options.description, options.agenda, zoomMeeting),
         start: {
-          dateTime: formatDateWithoutZ(options.startTime),
+          dateTime: options.startTime.toISOString(),
           timeZone: timezone,
         },
         end: {
-          dateTime: formatDateWithoutZ(endTime),
+          dateTime: endTime.toISOString(),
           timeZone: timezone,
         },
         attendees: attendeeEmails,
