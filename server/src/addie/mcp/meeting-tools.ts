@@ -385,6 +385,48 @@ Example prompts this handles:
     },
   },
   {
+    name: 'update_meeting',
+    description: `Update an existing meeting's details. Use this when someone wants to change the time, title, description, or agenda of a scheduled meeting.
+
+This will update the meeting in the database, Zoom (if configured), and Google Calendar.
+
+IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z suffix (same as schedule_meeting).`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        meeting_id: {
+          type: 'string',
+          description: 'Meeting ID (UUID or Zoom meeting ID)',
+        },
+        title: {
+          type: 'string',
+          description: 'New meeting title',
+        },
+        description: {
+          type: 'string',
+          description: 'New meeting description',
+        },
+        agenda: {
+          type: 'string',
+          description: 'New meeting agenda (markdown supported)',
+        },
+        start_time: {
+          type: 'string',
+          description: 'New start time in ISO 8601 format WITHOUT timezone suffix (e.g., "2026-01-15T14:00:00" for 2pm). Use timezone parameter to specify the timezone.',
+        },
+        duration_minutes: {
+          type: 'number',
+          description: 'New duration in minutes',
+        },
+        timezone: {
+          type: 'string',
+          description: 'Timezone for start_time (default: America/New_York)',
+        },
+      },
+      required: ['meeting_id'],
+    },
+  },
+  {
     name: 'add_meeting_attendee',
     description: `Add someone to a meeting. Use this when someone asks to add a specific person to a scheduled meeting.`,
     input_schema: {
@@ -926,6 +968,165 @@ export function createMeetingToolHandlers(
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       return `❌ Failed to cancel meeting: ${msg}`;
+    }
+  });
+
+  // Update meeting
+  handlers.set('update_meeting', async (input) => {
+    const permCheck = await checkSchedulePermission();
+    if (permCheck) return permCheck;
+
+    const meetingId = input.meeting_id as string;
+
+    // Try to find by our UUID first, then by Zoom meeting ID
+    let meeting = await meetingsDb.getMeetingById(meetingId);
+    if (!meeting) {
+      meeting = await meetingsDb.getMeetingByZoomId(meetingId);
+    }
+    if (!meeting) {
+      return `❌ Meeting not found: "${meetingId}". Use list_upcoming_meetings to find the correct meeting ID.`;
+    }
+
+    if (meeting.status === 'cancelled') {
+      return `❌ Cannot update a cancelled meeting.`;
+    }
+
+    // Build updates object
+    const updates: Record<string, unknown> = {};
+    const changes: string[] = [];
+
+    if (input.title) {
+      updates.title = input.title as string;
+      changes.push(`Title → "${input.title}"`);
+    }
+
+    if (input.description !== undefined) {
+      updates.description = input.description as string;
+      changes.push('Description updated');
+    }
+
+    if (input.agenda !== undefined) {
+      updates.agenda = input.agenda as string;
+      changes.push('Agenda updated');
+    }
+
+    // Handle time updates
+    const startTimeStr = input.start_time as string | undefined;
+    const durationMinutes = input.duration_minutes as number | undefined;
+    const timezone = (input.timezone as string) || meeting.timezone || 'America/New_York';
+
+    // Calculate current duration from start_time and end_time
+    const currentDuration = meeting.start_time && meeting.end_time
+      ? Math.round((meeting.end_time.getTime() - meeting.start_time.getTime()) / 60000)
+      : 60;
+
+    if (startTimeStr) {
+      const startTime = parseDateInTimezone(startTimeStr, timezone);
+      if (isNaN(startTime.getTime())) {
+        return `❌ Invalid start time format. Please use ISO 8601 format (e.g., "2026-01-15T14:00:00").`;
+      }
+      updates.start_time = startTime;
+      updates.timezone = timezone;
+
+      const duration = durationMinutes || currentDuration;
+      updates.end_time = new Date(startTime.getTime() + duration * 60 * 1000);
+
+      changes.push(`Time → ${formatDate(startTime)} at ${formatTime(startTime, timezone)}`);
+    } else if (durationMinutes && meeting.start_time) {
+      // Just updating duration, keep existing start time
+      updates.end_time = new Date(meeting.start_time.getTime() + durationMinutes * 60 * 1000);
+      changes.push(`Duration → ${durationMinutes} minutes`);
+    }
+
+    if (changes.length === 0) {
+      return `No changes specified. You can update: title, description, agenda, start_time, duration_minutes, timezone.`;
+    }
+
+    try {
+      // Update in database
+      const updatedMeeting = await meetingsDb.updateMeeting(meeting.id, updates);
+      if (!updatedMeeting) {
+        return `❌ Failed to update meeting in database.`;
+      }
+
+      const errors: string[] = [];
+
+      // Update Zoom meeting if time changed and Zoom meeting exists
+      if (updates.start_time && meeting.zoom_meeting_id && zoom.isZoomConfigured()) {
+        try {
+          const startTime = updates.start_time as Date;
+          await zoom.updateMeeting(meeting.zoom_meeting_id, {
+            start_time: startTime.toISOString(),
+            duration: durationMinutes || currentDuration,
+            timezone,
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          errors.push(`Zoom update failed: ${msg}`);
+          logger.error({ err: error, meetingId: meeting.id }, 'Failed to update Zoom meeting');
+        }
+      }
+
+      // Update Google Calendar event if it exists
+      if (meeting.google_calendar_event_id && calendar.isGoogleCalendarConfigured()) {
+        try {
+          const startTime = (updates.start_time as Date) || meeting.start_time;
+          const title = (updates.title as string) || meeting.title;
+
+          // Calculate end time - use updated value, or compute from start + duration
+          let endTime = updates.end_time as Date | undefined;
+          if (!endTime) {
+            if (meeting.end_time) {
+              endTime = meeting.end_time;
+            } else {
+              // Fallback: compute from start time + current duration
+              endTime = new Date(startTime.getTime() + currentDuration * 60 * 1000);
+            }
+          }
+
+          // Get working group for calendar event summary
+          const workingGroup = await workingGroupDb.getWorkingGroupById(meeting.working_group_id);
+          const summary = workingGroup ? `${workingGroup.name}: ${title}` : title;
+
+          await calendar.updateEvent(meeting.google_calendar_event_id, {
+            summary,
+            description: (updates.description as string) || meeting.description || undefined,
+            start: {
+              dateTime: startTime.toISOString(),
+              timeZone: timezone,
+            },
+            end: {
+              dateTime: endTime.toISOString(),
+              timeZone: timezone,
+            },
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          errors.push(`Calendar update failed: ${msg}`);
+          logger.error({ err: error, meetingId: meeting.id }, 'Failed to update calendar event');
+        }
+      }
+
+      let response = `✅ Updated: **${updatedMeeting.title}**\n\n`;
+      response += `**Changes:**\n${changes.map(c => `• ${c}`).join('\n')}\n`;
+
+      if (errors.length > 0) {
+        response += `\n⚠️ Some integrations had issues:\n${errors.map(e => `• ${e}`).join('\n')}`;
+      } else if (meeting.google_calendar_event_id) {
+        response += `\n📧 Calendar invites have been updated.`;
+      }
+
+      logger.info({
+        meetingId: meeting.id,
+        changes,
+        updatedBy: getUserId(),
+      }, 'Meeting updated via Addie');
+
+      return response;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ err: error, meetingId: meeting.id }, 'Failed to update meeting via Addie');
+      return `❌ Failed to update meeting: ${msg}`;
     }
   });
 
