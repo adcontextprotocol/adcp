@@ -649,6 +649,7 @@ export function createMeetingToolHandlers(
 
     for (const meeting of meetings) {
       response += `📅 **${meeting.title}**\n`;
+      response += `   ID: ${meeting.id}\n`;
       response += `   ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, meeting.timezone)}\n`;
       if (!groupName) {
         response += `   Group: ${meeting.working_group_name}\n`;
@@ -707,14 +708,22 @@ export function createMeetingToolHandlers(
 
   // Get meeting details
   handlers.set('get_meeting_details', async (input) => {
-    const meetingId = input.meeting_id as string;
+    const inputId = input.meeting_id as string;
 
-    const meeting = await meetingsDb.getMeetingWithGroup(meetingId);
+    // Try to find by our UUID first, then by Zoom meeting ID
+    let meeting = await meetingsDb.getMeetingWithGroup(inputId);
     if (!meeting) {
-      return `❌ Meeting not found: "${meetingId}"`;
+      // Maybe it's a Zoom meeting ID - look that up first
+      const meetingByZoom = await meetingsDb.getMeetingByZoomId(inputId);
+      if (meetingByZoom) {
+        meeting = await meetingsDb.getMeetingWithGroup(meetingByZoom.id);
+      }
+    }
+    if (!meeting) {
+      return `❌ Meeting not found: "${inputId}". Use list_upcoming_meetings to find the correct meeting ID.`;
     }
 
-    const attendees = await meetingsDb.getAttendeesForMeeting(meetingId);
+    const attendees = await meetingsDb.getAttendeesForMeeting(meeting.id);
     const accepted = attendees.filter(a => a.rsvp_status === 'accepted');
     const declined = attendees.filter(a => a.rsvp_status === 'declined');
     const pending = attendees.filter(a => a.rsvp_status === 'pending');
@@ -759,21 +768,25 @@ export function createMeetingToolHandlers(
       return '❌ Unable to identify you. Please make sure you\'re logged in.';
     }
 
-    const meetingId = input.meeting_id as string;
+    const inputId = input.meeting_id as string;
     const response = input.response as 'accepted' | 'declined' | 'tentative';
     const note = input.note as string | undefined;
 
-    const meeting = await meetingsDb.getMeetingById(meetingId);
+    // Try to find by our UUID first, then by Zoom meeting ID
+    let meeting = await meetingsDb.getMeetingById(inputId);
     if (!meeting) {
-      return `❌ Meeting not found: "${meetingId}"`;
+      meeting = await meetingsDb.getMeetingByZoomId(inputId);
+    }
+    if (!meeting) {
+      return `❌ Meeting not found: "${inputId}". Use list_upcoming_meetings to find the correct meeting ID.`;
     }
 
     // Check if user is already an attendee
-    let attendee = await meetingsDb.getAttendee(meetingId, userId);
+    let attendee = await meetingsDb.getAttendee(meeting.id, userId);
 
     if (attendee) {
       // Update existing RSVP
-      attendee = await meetingsDb.updateAttendee(meetingId, userId, {
+      attendee = await meetingsDb.updateAttendee(meeting.id, userId, {
         rsvp_status: response,
         rsvp_note: note,
       });
@@ -785,7 +798,7 @@ export function createMeetingToolHandlers(
         : userEmail;
 
       attendee = await meetingsDb.addAttendee({
-        meeting_id: meetingId,
+        meeting_id: meeting.id,
         workos_user_id: userId,
         email: userEmail,
         name: userName,
@@ -810,9 +823,14 @@ export function createMeetingToolHandlers(
 
     const meetingId = input.meeting_id as string;
 
-    const meeting = await meetingsDb.getMeetingById(meetingId);
+    // Try to find by our UUID first, then by Zoom meeting ID
+    let meeting = await meetingsDb.getMeetingById(meetingId);
     if (!meeting) {
-      return `❌ Meeting not found: "${meetingId}"`;
+      // Maybe it's a Zoom meeting ID instead of our UUID
+      meeting = await meetingsDb.getMeetingByZoomId(meetingId);
+    }
+    if (!meeting) {
+      return `❌ Meeting not found: "${meetingId}". Use list_upcoming_meetings to find the correct meeting ID.`;
     }
 
     if (meeting.status === 'cancelled') {
@@ -820,7 +838,8 @@ export function createMeetingToolHandlers(
     }
 
     try {
-      const result = await meetingService.cancelMeeting(meetingId);
+      // Use meeting.id (our UUID) not the input meetingId (might be Zoom ID)
+      const result = await meetingService.cancelMeeting(meeting.id);
 
       let response = `✅ Cancelled: **${meeting.title}**\n`;
       response += `Cancellation notices have been sent to attendees.`;
@@ -830,7 +849,7 @@ export function createMeetingToolHandlers(
         response += result.errors.map(e => `• ${e}`).join('\n');
       }
 
-      logger.info({ meetingId, cancelledBy: getUserId() }, 'Meeting cancelled via Addie');
+      logger.info({ meetingId: meeting.id, cancelledBy: getUserId() }, 'Meeting cancelled via Addie');
 
       return response;
     } catch (error) {
@@ -844,17 +863,22 @@ export function createMeetingToolHandlers(
     const permCheck = await checkSchedulePermission();
     if (permCheck) return permCheck;
 
-    const meetingId = input.meeting_id as string;
+    const inputId = input.meeting_id as string;
     const email = input.email as string;
     const name = input.name as string | undefined;
 
-    const meeting = await meetingsDb.getMeetingById(meetingId);
+    // Try to find by our UUID first, then by Zoom meeting ID
+    let meeting = await meetingsDb.getMeetingById(inputId);
     if (!meeting) {
-      return `❌ Meeting not found: "${meetingId}"`;
+      meeting = await meetingsDb.getMeetingByZoomId(inputId);
+    }
+    if (!meeting) {
+      return `❌ Meeting not found: "${inputId}". Use list_upcoming_meetings to find the correct meeting ID.`;
     }
 
     try {
-      const result = await meetingService.addAttendeesToMeeting(meetingId, [
+      // Use meeting.id (our UUID) not the inputId (might be Zoom ID)
+      const result = await meetingService.addAttendeesToMeeting(meeting.id, [
         { email, name },
       ]);
 
