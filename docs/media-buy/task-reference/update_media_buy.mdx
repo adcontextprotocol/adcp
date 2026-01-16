@@ -149,7 +149,7 @@ asyncio.run(create_and_pause_campaign())
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
-| `creatives` | CreativeAsset[] | No | Upload and assign new creative assets inline |
+| `creatives` | CreativeAsset[] | No | Upload and assign new creative assets inline (`creative_id` must not already exist in library) |
 | `creative_assignments` | CreativeAssignment[] | No | Update creative rotation weights and placement targeting |
 
 *Either `media_buy_id` OR `buyer_ref` is required (not both)
@@ -548,6 +548,7 @@ Common errors and resolutions:
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
 | `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_ids`, or update via `sync_creatives` |
 
 Example error response:
 
@@ -678,6 +679,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing creatives, use `creative_ids` in the Package Update object.
 
 ## Next Steps
 
