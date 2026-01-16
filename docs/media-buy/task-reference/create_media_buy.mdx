@@ -182,8 +182,8 @@ npx adcp \
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when `is_fixed` is false) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
-| `creative_ids` | string[] | No | Existing library creative IDs to assign |
-| `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign |
+| `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
+| `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
 
 ## Response
 
@@ -550,6 +550,7 @@ Common errors and resolutions:
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 
 Example error response:
 
@@ -1025,6 +1026,7 @@ For complete async handling patterns, see [Task Management](/docs/protocols/task
 - AXE segments enable advanced audience targeting
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
 
 ## Policy Compliance
 
