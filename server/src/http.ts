@@ -6958,17 +6958,17 @@ Disallow: /api/admin/
         // Process manually queued resources
         const result = await processPendingResources({ limit: 5 });
         if (result.processed > 0) {
-          logger.info(result, 'Content curator: processed pending resources');
+          logger.debug(result, 'Content curator: processed pending resources');
         }
         // Process RSS perspectives
         const rssResult = await processRssPerspectives({ limit: 5 });
         if (rssResult.processed > 0) {
-          logger.info(rssResult, 'Content curator: processed RSS perspectives');
+          logger.debug(rssResult, 'Content curator: processed RSS perspectives');
         }
         // Process community articles
         const communityResult = await processCommunityArticles({ limit: 5 });
         if (communityResult.processed > 0) {
-          logger.info(communityResult, 'Content curator: processed community articles');
+          logger.debug(communityResult, 'Content curator: processed community articles');
         }
         // Send replies to processed community articles
         const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
@@ -6976,7 +6976,7 @@ Disallow: /api/admin/
           return result.ok;
         });
         if (replyResult.sent > 0) {
-          logger.info(replyResult, 'Content curator: sent community article replies');
+          logger.debug(replyResult, 'Content curator: sent community article replies');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: initial processing failed');
@@ -6989,17 +6989,17 @@ Disallow: /api/admin/
         // Process manually queued resources
         const result = await processPendingResources({ limit: 5 });
         if (result.processed > 0) {
-          logger.info(result, 'Content curator: processed pending resources');
+          logger.debug(result, 'Content curator: processed pending resources');
         }
         // Process RSS perspectives
         const rssResult = await processRssPerspectives({ limit: 5 });
         if (rssResult.processed > 0) {
-          logger.info(rssResult, 'Content curator: processed RSS perspectives');
+          logger.debug(rssResult, 'Content curator: processed RSS perspectives');
         }
         // Process community articles
         const communityResult = await processCommunityArticles({ limit: 5 });
         if (communityResult.processed > 0) {
-          logger.info(communityResult, 'Content curator: processed community articles');
+          logger.debug(communityResult, 'Content curator: processed community articles');
         }
         // Send replies to processed community articles
         const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
@@ -7007,7 +7007,7 @@ Disallow: /api/admin/
           return result.ok;
         });
         if (replyResult.sent > 0) {
-          logger.info(replyResult, 'Content curator: sent community article replies');
+          logger.debug(replyResult, 'Content curator: sent community article replies');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: periodic processing failed');
@@ -7033,7 +7033,7 @@ Disallow: /api/admin/
       try {
         const result = await processFeedsToFetch();
         if (result.feedsProcessed > 0) {
-          logger.info(result, 'Industry monitor: fetched RSS feeds');
+          logger.debug(result, 'Industry monitor: fetched RSS feeds');
         }
       } catch (err) {
         logger.error({ err }, 'Industry monitor: initial feed fetch failed');
@@ -7044,7 +7044,7 @@ Disallow: /api/admin/
       try {
         const result = await processFeedsToFetch();
         if (result.feedsProcessed > 0) {
-          logger.info(result, 'Industry monitor: fetched RSS feeds');
+          logger.debug(result, 'Industry monitor: fetched RSS feeds');
         }
       } catch (err) {
         logger.error({ err }, 'Industry monitor: periodic feed fetch failed');
