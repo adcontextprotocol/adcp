@@ -463,7 +463,8 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load meetings');
 
-        meetings = await response.json();
+        const data = await response.json();
+        meetings = data.meetings || [];
         renderMeetings();
 
         document.getElementById('loading').style.display = 'none';
@@ -479,15 +480,20 @@
     async function loadSeries() {
       try {
         const groupId = document.getElementById('groupFilter').value;
-        let url = '/api/admin/meetings/series';
-        if (groupId) {
-          url += `?working_group_id=${groupId}`;
+
+        // Series endpoint requires a working group filter
+        if (!groupId) {
+          series = [];
+          renderSeries();
+          return;
         }
 
+        const url = `/api/admin/meetings/series?working_group_id=${groupId}`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load series');
 
-        series = await response.json();
+        const data = await response.json();
+        series = data.series || [];
         renderSeries();
       } catch (error) {
         console.error('Error loading series:', error);
@@ -748,7 +754,8 @@
         const response = await fetch(`/api/admin/meetings/${id}`);
         if (!response.ok) throw new Error('Failed to load meeting');
 
-        viewingMeeting = await response.json();
+        const data = await response.json();
+        viewingMeeting = { ...data.meeting, attendees: data.attendees };
         const m = viewingMeeting;
         const group = workingGroups.find(g => g.id === m.working_group_id);
         const date = new Date(m.start_time);
