@@ -53,18 +53,7 @@
       "type": "array",
       "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's available_metrics.",
       "items": {
-        "type": "string",
-        "enum": [
-          "impressions",
-          "spend",
-          "clicks",
-          "ctr",
-          "video_completions",
-          "completion_rate",
-          "conversions",
-          "viewability",
-          "engagement_rate"
-        ]
+        "$ref": "/schemas/enums/available-metric.json"
       },
       "uniqueItems": true
     }

@@ -570,7 +570,7 @@ Common errors and resolutions:
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
 | `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
-| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_ids`, or update via `sync_creatives` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 
 Example error response:
 
@@ -711,7 +711,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 After updating a media buy:
 
 1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
-2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative_ids changed
+2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative assignments changed
 3. **Monitor Performance**: Track impact of changes on campaign metrics
 4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
 
