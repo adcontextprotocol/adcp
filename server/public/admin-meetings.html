@@ -852,6 +852,12 @@
     async function init() {
       await loadWorkingGroups();
       await loadMeetings();
+
+      // Auto-open schedule modal if requested via URL
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'schedule') {
+        showCreateModal();
+      }
     }
 
     init();

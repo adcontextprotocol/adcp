@@ -788,6 +788,7 @@
             <div class="group-actions">
               <button class="btn btn-secondary btn-small" onclick="window.open('/working-groups/${group.slug}', '_blank')">View</button>
               <button class="btn btn-secondary btn-small" onclick="window.location.href='/admin/meetings?group=${group.id}'">Meetings</button>
+              <button class="btn btn-secondary btn-small" onclick="window.location.href='/admin/meetings?group=${group.id}&action=schedule'">Schedule</button>
               <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Manage</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${group.id}', '${escapeHtml(group.name).replace(/'/g, "\\'")}')">Delete</button>
             </div>
