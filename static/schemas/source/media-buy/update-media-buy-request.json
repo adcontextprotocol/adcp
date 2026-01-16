@@ -64,27 +64,20 @@
           "targeting_overlay": {
             "$ref": "/schemas/core/targeting.json"
           },
-          "creative_ids": {
+          "creative_assignments": {
             "type": "array",
-            "description": "Update creative assignments (references existing library creatives)",
+            "description": "Replace creative assignments for this package with optional weights and placement targeting. Uses replacement semantics - omit to leave assignments unchanged.",
             "items": {
-              "type": "string"
+              "$ref": "/schemas/core/creative-assignment.json"
             }
           },
           "creatives": {
             "type": "array",
-            "description": "Full creative objects to upload and assign to this package (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives.",
+            "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
             "items": {
               "$ref": "/schemas/core/creative-asset.json"
             },
             "maxItems": 100
-          },
-          "creative_assignments": {
-            "type": "array",
-            "description": "Full creative assignment objects with weights and placement targeting (alternative to creative_ids - provides granular control over weights and placement targeting). Uses replacement semantics like creative_ids.",
-            "items": {
-              "$ref": "/schemas/core/creative-assignment.json"
-            }
           }
         },
         "oneOf": [
