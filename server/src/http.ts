@@ -6933,6 +6933,9 @@ Disallow: /api/admin/
     // Start account enrichment job
     jobScheduler.startEnrichment();
 
+    // Start setup nudges job (reminds members about missing logos, taglines, pending requests)
+    jobScheduler.startSetupNudges();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
