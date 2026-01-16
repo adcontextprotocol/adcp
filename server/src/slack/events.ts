@@ -407,9 +407,25 @@ export async function handleMessage(event: SlackMessageEvent): Promise<void> {
       },
     });
 
-    // Index public channel messages for Addie's local search
-    // Skip DMs (im) and private channels - only index public messages
-    if (event.channel_type === 'channel' && event.text && event.text.length > 20) {
+    // Index channel messages for Addie's local search
+    // Public channels: always index
+    // Private channels (group): only index if linked to a working group (for fast local access checks)
+    const isPublicChannel = event.channel_type === 'channel';
+    const isPrivateChannel = event.channel_type === 'group';
+
+    let shouldIndex = false;
+    if (isPublicChannel) {
+      shouldIndex = true;
+    } else if (isPrivateChannel) {
+      // Only index private channels that have a working group (enables fast local access checks)
+      const workingGroup = await workingGroupDb.getWorkingGroupBySlackChannelId(event.channel);
+      shouldIndex = !!workingGroup;
+      if (!shouldIndex) {
+        logger.debug({ channelId: event.channel }, 'Skipping private channel without working group');
+      }
+    }
+
+    if (shouldIndex && event.text && event.text.length > 20) {
       await indexMessageForSearch(event);
 
       // Queue for passive note extraction (async, rate-limited)
