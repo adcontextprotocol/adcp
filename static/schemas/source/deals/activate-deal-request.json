@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/activate-deal-request.json",
+  "title": "Activate Deal Request",
+  "description": "Request parameters for activating a deal on a specific destination platform",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "The unique identifier for the deal to activate"
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Target destination platform(s) for activation. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["deal_id", "destinations"],
+  "additionalProperties": false
+}
