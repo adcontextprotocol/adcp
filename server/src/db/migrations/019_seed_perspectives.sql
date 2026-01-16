@@ -130,8 +130,33 @@ The Interactive Advertising Bureau (IAB) Tech Lab develops and maintains technic
 - **VAST** - Video ad serving template for video advertising
 - **Open Measurement** - Viewability and verification measurement
 - **ads.txt / sellers.json** - Supply chain transparency
+- **ARTF (Agentic RTB Framework)** - Enables custom algorithms to run as containerized services within DSPs and SSPs
 
-When an AI agent executes a media buy through AdCP, the underlying transaction often flows through OpenRTB-compatible systems. Agentic protocols provide the AI-native interface; traditional protocols handle the execution.
+When an AI agent executes a media buy through AdCP, the underlying transaction often flows through OpenRTB-compatible systems or header bidding wrappers. Agentic protocols provide the AI-native interface; traditional protocols handle the execution.
+
+### Prebid.org
+
+Prebid.org is an independent organization maintaining open-source header bidding solutions. While OpenRTB defines how programmatic systems communicate, many publishers use Prebid''s header bidding wrappers to orchestrate unified auctions.
+
+**Key projects:**
+
+- **Prebid.js** - Client-side header bidding wrapper for web
+- **Prebid Server** - Server-side header bidding solution
+- **Prebid Mobile** - Header bidding for mobile apps
+
+### How These Standards Relate
+
+Understanding where each standard operates helps clarify their complementary roles:
+
+| Layer | Standard | What It Does |
+|-------|----------|--------------|
+| **Agent Communication** | AAIF (MCP, A2A) | How agents discover each other and exchange messages |
+| **Transaction Protocol** | AdCP | How buyer and seller agents negotiate and execute media buys |
+| **Platform Infrastructure** | ARTF | How custom algorithms (identity, fraud, segmentation) run within ad platforms |
+| **Bidding Protocol** | OpenRTB | How bid requests and responses flow between programmatic systems |
+| **Header Bidding** | Prebid | How publishers run unified auctions across demand sources |
+
+ARTF and AdCP address different problems: ARTF enables service providers to deploy platform-independent algorithms *within* DSPs and SSPs for real-time bidstream processing. AdCP enables agents to communicate *between* platforms to discover inventory and execute transactions. A media buy negotiated via AdCP might ultimately flow through platforms running ARTF-containerized services for identity resolution or fraud detection.
 
 ## Get Involved
 
@@ -142,11 +167,13 @@ The agentic protocol landscape is being built in the open. Whether you''re inter
 - **[Agentic Commerce Protocol](https://www.agenticcommerce.dev/)** - Open standard for AI-powered commerce transactions
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** - Protocol for connecting AI assistants to external tools and data sources
 - **[IAB Tech Lab](https://iabtechlab.com/)** - Develops technical standards for digital advertising
+- **[ARTF Specification](https://iabtechlab.com/standards/artf/)** - Agentic RTB Framework for containerized platform services
+- **[Prebid.org](https://prebid.org/)** - Open-source header bidding solutions
 - **[AdCP Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA)** - Join the conversation with developers building the agentic advertising ecosystem',
   'published',
   '2025-12-01 00:00:00+00',
   1,
-  ARRAY['ecosystem', 'protocols', 'standards', 'AAIF', 'MCP', 'A2A']
+  ARRAY['ecosystem', 'protocols', 'standards', 'AAIF', 'MCP', 'A2A', 'ARTF', 'IAB', 'Prebid']
 ) ON CONFLICT (slug) DO NOTHING;
 
 -- 2. AgenticAdvertising.org Launches (Press Release)
