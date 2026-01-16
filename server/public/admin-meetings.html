@@ -857,6 +857,12 @@
       const params = new URLSearchParams(window.location.search);
       if (params.get('action') === 'schedule') {
         showCreateModal();
+        // Clear the action param to prevent re-triggering on refresh
+        params.delete('action');
+        const newUrl = params.toString()
+          ? `${window.location.pathname}?${params.toString()}`
+          : window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
       }
     }
 
