@@ -52,7 +52,7 @@ export async function buildAlerts(memberContext: MemberContext): Promise<AlertSe
     }
   }
 
-  // 3. Incomplete profile (members only)
+  // 3. Incomplete profile - missing tagline (members only)
   if (memberContext.is_member && !memberContext.member_profile?.tagline) {
     alerts.push({
       id: 'incomplete-profile',
@@ -64,7 +64,32 @@ export async function buildAlerts(memberContext: MemberContext): Promise<AlertSe
     });
   }
 
-  // 4. Upcoming renewal (within 30 days)
+  // 4. Missing logo (members only)
+  if (memberContext.is_member && !memberContext.member_profile?.logo_url) {
+    alerts.push({
+      id: 'missing-logo',
+      severity: 'info',
+      title: 'Add Your Company Logo',
+      message: 'Upload a logo to appear on the member directory and homepage',
+      actionLabel: 'Add Logo',
+      actionUrl: 'https://agenticadvertising.org/dashboard-settings',
+    });
+  }
+
+  // 5. Pending join requests (admins only)
+  if (memberContext.pending_join_requests_count && memberContext.pending_join_requests_count > 0) {
+    const count = memberContext.pending_join_requests_count;
+    alerts.push({
+      id: 'pending-join-requests',
+      severity: 'warning',
+      title: `${count} Pending Join Request${count > 1 ? 's' : ''}`,
+      message: `${count} ${count > 1 ? 'people are' : 'person is'} waiting to join your team`,
+      actionLabel: 'Review Requests',
+      actionUrl: 'https://agenticadvertising.org/dashboard#team',
+    });
+  }
+
+  // 6. Upcoming renewal (within 30 days)
   if (memberContext.subscription?.current_period_end) {
     const daysUntilRenewal = Math.floor(
       (memberContext.subscription.current_period_end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
