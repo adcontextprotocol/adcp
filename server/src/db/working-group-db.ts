@@ -97,8 +97,8 @@ export class WorkingGroupDatabase {
         name, slug, description, slack_channel_url, slack_channel_id,
         is_private, status, display_order, committee_type, region,
         linked_event_id, event_start_date, event_end_date, event_location, auto_archive_after_event,
-        logo_url, website_url
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        logo_url, website_url, topics
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *`,
       [
         input.name,
@@ -118,6 +118,7 @@ export class WorkingGroupDatabase {
         input.auto_archive_after_event ?? true,
         input.logo_url || null,
         input.website_url || null,
+        input.topics ? JSON.stringify(input.topics) : '[]',
       ]
     );
 
@@ -201,6 +202,8 @@ export class WorkingGroupDatabase {
     for (const [key, value] of Object.entries(updates)) {
       // Handle leaders separately
       if (key === 'leader_user_ids') continue;
+      // Handle topics separately (JSONB)
+      if (key === 'topics') continue;
 
       const columnName = COLUMN_MAP[key];
       if (!columnName) {
@@ -208,6 +211,12 @@ export class WorkingGroupDatabase {
       }
       setClauses.push(`${columnName} = $${paramIndex++}`);
       params.push(value);
+    }
+
+    // Handle topics (JSONB column)
+    if (updates.topics !== undefined) {
+      setClauses.push(`topics = $${paramIndex++}`);
+      params.push(JSON.stringify(updates.topics));
     }
 
     // Update working group fields if any

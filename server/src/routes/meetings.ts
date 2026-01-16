@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
 import { MeetingsDatabase } from "../db/meetings-db.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
+import { getChannelMembers } from "../slack/client.js";
 import type { WorkingGroupTopic, MeetingStatus } from "../types.js";
 
 // UUID validation helper
@@ -121,6 +122,7 @@ export function createMeetingRouters(): {
         duration_minutes,
         timezone,
         invite_mode,
+        invite_slack_channel_id,
       } = req.body;
 
       if (!working_group_id || !title) {
@@ -156,6 +158,7 @@ export function createMeetingRouters(): {
         duration_minutes,
         timezone,
         invite_mode,
+        invite_slack_channel_id,
         created_by_user_id: user.id,
       });
 
@@ -279,6 +282,8 @@ export function createMeetingRouters(): {
         end_time,
         timezone,
         status,
+        invite_mode,
+        invite_slack_channel_id,
       } = req.body;
 
       if (!working_group_id || !title || !start_time) {
@@ -311,6 +316,14 @@ export function createMeetingRouters(): {
         });
       }
 
+      // Validate slack_channel mode requires channel ID
+      if (invite_mode === 'slack_channel' && !invite_slack_channel_id) {
+        return res.status(400).json({
+          error: 'Missing Slack channel ID',
+          message: 'invite_slack_channel_id is required when invite_mode is "slack_channel"',
+        });
+      }
+
       const meeting = await meetingsDb.createMeeting({
         series_id,
         working_group_id,
@@ -325,7 +338,21 @@ export function createMeetingRouters(): {
         created_by_user_id: user.id,
       });
 
-      res.status(201).json(meeting);
+      // Handle invite mode
+      let invitedCount = 0;
+      if (invite_mode === 'slack_channel' && invite_slack_channel_id) {
+        const channelMembers = await getChannelMembers(invite_slack_channel_id);
+        invitedCount = await meetingsDb.addAttendeesFromSlackChannel(meeting.id, channelMembers);
+        logger.info({ meetingId: meeting.id, invitedCount, invite_mode, channelId: invite_slack_channel_id }, 'Invited Slack channel members');
+      } else if (invite_mode === 'all_members') {
+        invitedCount = await meetingsDb.addAttendeesFromGroup(meeting.id, working_group_id);
+        logger.info({ meetingId: meeting.id, invitedCount, invite_mode }, 'Invited all group members');
+      } else if (invite_mode === 'topic_subscribers' && topic_slugs?.length > 0) {
+        invitedCount = await meetingsDb.addAttendeesFromGroup(meeting.id, working_group_id, topic_slugs);
+        logger.info({ meetingId: meeting.id, invitedCount, invite_mode }, 'Invited topic subscribers');
+      }
+
+      res.status(201).json({ ...meeting, invited_count: invitedCount });
     } catch (error) {
       logger.error({ err: error }, 'Create meeting error');
       res.status(500).json({
@@ -472,6 +499,66 @@ export function createMeetingRouters(): {
       logger.error({ err: error }, 'Invite group to meeting error');
       res.status(500).json({
         error: 'Failed to invite group',
+        message: 'An internal error occurred',
+      });
+    }
+  });
+
+  // POST /api/admin/meetings/:id/invite-channel - Invite Slack channel members
+  adminApiRouter.post('/:id/invite-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { slack_channel_id } = req.body;
+
+      if (!isValidUuid(id)) {
+        return res.status(400).json({
+          error: 'Invalid meeting ID',
+          message: 'Meeting ID must be a valid UUID',
+        });
+      }
+
+      if (!slack_channel_id) {
+        return res.status(400).json({
+          error: 'Missing required field',
+          message: 'slack_channel_id is required',
+        });
+      }
+
+      const meeting = await meetingsDb.getMeetingById(id);
+      if (!meeting) {
+        return res.status(404).json({
+          error: 'Meeting not found',
+          message: 'No meeting found with the specified ID',
+        });
+      }
+
+      // Validate that the Slack channel is associated with the working group
+      const workingGroup = await workingGroupDb.getWorkingGroupById(meeting.working_group_id);
+      if (workingGroup) {
+        const validChannels = [
+          workingGroup.slack_channel_id,
+          ...(workingGroup.topics?.map(t => t.slack_channel_id) || []),
+        ].filter(Boolean);
+
+        if (!validChannels.includes(slack_channel_id)) {
+          return res.status(400).json({
+            error: 'Invalid Slack channel',
+            message: 'The specified Slack channel is not associated with this working group',
+          });
+        }
+      }
+
+      // Get channel members from Slack
+      const channelMembers = await getChannelMembers(slack_channel_id);
+
+      // Add attendees from the Slack channel
+      const count = await meetingsDb.addAttendeesFromSlackChannel(id, channelMembers);
+
+      res.json({ success: true, invited_count: count, channel_member_count: channelMembers.length });
+    } catch (error) {
+      logger.error({ err: error }, 'Invite Slack channel to meeting error');
+      res.status(500).json({
+        error: 'Failed to invite channel members',
         message: 'An internal error occurred',
       });
     }
