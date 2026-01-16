@@ -127,6 +127,7 @@
                 "pages": [
                   "docs/governance/content-standards/index",
                   "docs/governance/content-standards/artifacts",
+                  "docs/governance/content-standards/implementation-guide",
                   {
                     "group": "Tasks",
                     "pages": [
