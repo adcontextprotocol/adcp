@@ -166,7 +166,7 @@ asyncio.run(create_and_pause_campaign())
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
-| `creative_ids` | string[] | Replace assigned creatives |
+| `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 
 *Either `package_id` OR `buyer_ref` is required for each package update
 
@@ -372,7 +372,7 @@ asyncio.run(update_targeting())
 
 ### Replace Creatives
 
-Swap out creative assets for a package:
+Swap out creative assignments for a package:
 
 <CodeGroup>
 
@@ -384,7 +384,10 @@ const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
     buyer_ref: 'ctv_package',
-    creative_ids: ['creative_video_v2', 'creative_display_v2']
+    creative_assignments: [
+      { creative_id: 'creative_video_v2' },
+      { creative_id: 'creative_display_v2', weight: 60 }
+    ]
   }]
 });
 
@@ -415,7 +418,10 @@ async def replace_creatives():
             packages=[
                 {
                     'buyer_ref': 'ctv_package',
-                    'creative_ids': ['creative_video_v2', 'creative_display_v2']
+                    'creative_assignments': [
+                        {'creative_id': 'creative_video_v2'},
+                        {'creative_id': 'creative_display_v2', 'weight': 60}
+                    ]
                 }
             ]
         )
@@ -597,13 +603,16 @@ Only specified fields are updated - omitted fields remain unchanged:
 }
 ```
 
-**Array replacement**: When updating arrays (like `creative_ids`), provide the complete new array:
+**Array replacement**: When updating arrays (like `creative_assignments`), provide the complete new array:
 
 ```json
 {
   "packages": [{
     "buyer_ref": "ctv_package",
-    "creative_ids": ["creative_video_v2", "creative_display_v2"]
+    "creative_assignments": [
+      { "creative_id": "creative_video_v2" },
+      { "creative_id": "creative_display_v2", "weight": 60 }
+    ]
   }]
 }
 ```
@@ -679,7 +688,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing creatives, use `creative_ids` in the Package Update object.
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
 
 ## Next Steps
 
