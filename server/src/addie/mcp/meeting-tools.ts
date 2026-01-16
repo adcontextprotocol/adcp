@@ -263,8 +263,12 @@ Example prompts this handles:
         },
         invite_mode: {
           type: 'string',
-          enum: ['all_members', 'topic_subscribers', 'none'],
-          description: 'Who to invite: all_members (default - invite everyone in the working group), topic_subscribers (only those subscribed to the topics), or none (opt-in - create meeting but let people join themselves)',
+          enum: ['all_members', 'topic_subscribers', 'slack_channel', 'none'],
+          description: 'Who to invite: all_members (default - invite everyone in the working group), topic_subscribers (only those subscribed to the topics), slack_channel (invite members of a specific Slack channel - requires invite_slack_channel_id), or none (opt-in - create meeting but let people join themselves)',
+        },
+        invite_slack_channel_id: {
+          type: 'string',
+          description: 'Slack channel ID to invite members from (required when invite_mode is slack_channel). Can be found in the channel URL or settings.',
         },
         recurrence: {
           type: 'object',
@@ -467,6 +471,42 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
       required: ['working_group_slug', 'topic_slugs'],
     },
   },
+  {
+    name: 'manage_committee_topics',
+    description: `Manage topics for a working group/committee. Topics help organize meetings and filter invitations. Each topic can optionally have its own Slack channel for subgroup discussions. Use action='list' to see current topics, action='add' to create a new topic, action='update' to modify an existing topic, or action='remove' to delete a topic.`,
+    usage_hints: 'use when someone wants to add a topic to a working group, update topic channels, or see what topics exist',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        working_group_slug: {
+          type: 'string',
+          description: 'Working group slug (e.g., "technical", "governance")',
+        },
+        action: {
+          type: 'string',
+          enum: ['list', 'add', 'update', 'remove'],
+          description: 'Action to perform: list (show topics), add (create new), update (modify), remove (delete)',
+        },
+        topic_slug: {
+          type: 'string',
+          description: 'Topic slug for add/update/remove actions',
+        },
+        topic_name: {
+          type: 'string',
+          description: 'Display name for the topic (required for add, optional for update)',
+        },
+        topic_description: {
+          type: 'string',
+          description: 'Optional description of what this topic covers',
+        },
+        slack_channel_id: {
+          type: 'string',
+          description: 'Optional Slack channel ID for this topic (e.g., C09HEERCY8P). Members of this channel can be invited to topic meetings.',
+        },
+      },
+      required: ['working_group_slug', 'action'],
+    },
+  },
 ];
 
 /**
@@ -660,7 +700,13 @@ export function createMeetingToolHandlers(
     }
 
     // One-time meeting
-    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'none' | undefined;
+    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'slack_channel' | 'none' | undefined;
+    const inviteSlackChannelId = input.invite_slack_channel_id as string | undefined;
+
+    // Validate slack_channel mode has a channel ID
+    if (inviteMode === 'slack_channel' && !inviteSlackChannelId) {
+      return `❌ When using invite_mode='slack_channel', you must also provide invite_slack_channel_id.`;
+    }
 
     try {
       const result = await meetingService.scheduleMeeting({
@@ -674,6 +720,7 @@ export function createMeetingToolHandlers(
         timezone,
         createdByUserId: getUserId(),
         inviteMode,
+        inviteSlackChannelId,
       });
 
       let response = `✅ Scheduled: **${title}**\n\n`;
@@ -690,6 +737,8 @@ export function createMeetingToolHandlers(
         response += result.errors.map(e => `• ${e}`).join('\n');
       } else if (inviteMode === 'none') {
         response += `\n📋 Meeting created as **opt-in** - no invites sent. Members can join using the Zoom link.`;
+      } else if (inviteMode === 'slack_channel') {
+        response += `\n📧 Calendar invites sent to Slack channel members.`;
       } else if (inviteMode === 'topic_subscribers') {
         response += `\n📧 Calendar invites sent to topic subscribers.`;
       } else {
@@ -1209,6 +1258,120 @@ export function createMeetingToolHandlers(
     }
 
     return `✅ Updated topic subscriptions for ${workingGroup.name}:\n${validTopics.map(t => `• ${t}`).join('\n')}\n\nYou'll receive meeting invites for these topics.`;
+  });
+
+  // Manage committee topics (add, update, remove, list)
+  handlers.set('manage_committee_topics', async (input) => {
+    const permCheck = await checkSchedulePermission();
+    if (permCheck) return permCheck;
+
+    const workingGroupSlug = input.working_group_slug as string;
+    const action = input.action as 'list' | 'add' | 'update' | 'remove';
+
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlug(workingGroupSlug);
+    if (!workingGroup) {
+      return `❌ Working group not found: "${workingGroupSlug}"`;
+    }
+
+    const currentTopics = workingGroup.topics || [];
+
+    // List topics
+    if (action === 'list') {
+      if (currentTopics.length === 0) {
+        return `📋 **${workingGroup.name}** has no topics configured yet.\n\nUse action='add' to create a topic for organizing meetings and invitations.`;
+      }
+
+      let response = `📋 **Topics for ${workingGroup.name}:**\n\n`;
+      for (const topic of currentTopics) {
+        response += `**${topic.name}** (\`${topic.slug}\`)\n`;
+        if (topic.description) {
+          response += `  ${topic.description}\n`;
+        }
+        if (topic.slack_channel_id) {
+          response += `  📢 Slack channel: ${topic.slack_channel_id}\n`;
+        }
+        response += '\n';
+      }
+      return response.trim();
+    }
+
+    // All other actions require topic_slug
+    const topicSlug = input.topic_slug as string | undefined;
+    if (!topicSlug) {
+      return `❌ topic_slug is required for action='${action}'`;
+    }
+
+    // Validate topic slug format (lowercase letters, numbers, hyphens only)
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(topicSlug)) {
+      return `❌ Invalid topic slug "${topicSlug}". Slugs must be lowercase letters, numbers, and hyphens only (e.g., "my-topic-1").`;
+    }
+
+    // Add topic
+    if (action === 'add') {
+      const topicName = input.topic_name as string | undefined;
+      if (!topicName) {
+        return `❌ topic_name is required when adding a new topic`;
+      }
+
+      // Check for duplicate slug
+      if (currentTopics.some(t => t.slug === topicSlug)) {
+        return `❌ A topic with slug "${topicSlug}" already exists in ${workingGroup.name}`;
+      }
+
+      const newTopic = {
+        slug: topicSlug,
+        name: topicName,
+        description: input.topic_description as string | undefined,
+        slack_channel_id: input.slack_channel_id as string | undefined,
+      };
+
+      const updatedTopics = [...currentTopics, newTopic];
+      await workingGroupDb.updateWorkingGroup(workingGroup.id, { topics: updatedTopics });
+
+      let response = `✅ Added topic **${topicName}** (\`${topicSlug}\`) to ${workingGroup.name}`;
+      if (newTopic.slack_channel_id) {
+        response += `\n📢 Linked Slack channel: ${newTopic.slack_channel_id}`;
+      }
+      return response;
+    }
+
+    // Find existing topic for update/remove
+    const existingIndex = currentTopics.findIndex(t => t.slug === topicSlug);
+    if (existingIndex === -1) {
+      return `❌ Topic "${topicSlug}" not found in ${workingGroup.name}`;
+    }
+
+    // Update topic
+    if (action === 'update') {
+      const existing = currentTopics[existingIndex];
+      const updatedTopic = {
+        ...existing,
+        name: (input.topic_name as string | undefined) || existing.name,
+        description: input.topic_description !== undefined ? (input.topic_description as string | undefined) : existing.description,
+        slack_channel_id: input.slack_channel_id !== undefined ? (input.slack_channel_id as string | undefined) : existing.slack_channel_id,
+      };
+
+      const updatedTopics = [...currentTopics];
+      updatedTopics[existingIndex] = updatedTopic;
+      await workingGroupDb.updateWorkingGroup(workingGroup.id, { topics: updatedTopics });
+
+      let response = `✅ Updated topic **${updatedTopic.name}** (\`${topicSlug}\`) in ${workingGroup.name}`;
+      if (updatedTopic.slack_channel_id) {
+        response += `\n📢 Linked Slack channel: ${updatedTopic.slack_channel_id}`;
+      }
+      return response;
+    }
+
+    // Remove topic
+    if (action === 'remove') {
+      const removedTopic = currentTopics[existingIndex];
+      const updatedTopics = currentTopics.filter((_, i) => i !== existingIndex);
+      await workingGroupDb.updateWorkingGroup(workingGroup.id, { topics: updatedTopics });
+
+      return `✅ Removed topic **${removedTopic.name}** (\`${topicSlug}\`) from ${workingGroup.name}`;
+    }
+
+    return `❌ Unknown action: ${action}`;
   });
 
   return handlers;

@@ -317,7 +317,7 @@
 
         <div class="form-group">
           <label>Working Group *</label>
-          <select id="workingGroupId" required>
+          <select id="workingGroupId" required onchange="onWorkingGroupChange()">
             <option value="">Select a committee...</option>
           </select>
         </div>
@@ -365,9 +365,10 @@
 
         <div class="form-group">
           <label>Who to Invite</label>
-          <select id="inviteMode">
+          <select id="inviteMode" onchange="updateInviteModeVisibility()">
             <option value="all_members">All group members</option>
             <option value="topic_subscribers">Only topic subscribers</option>
+            <option value="slack_channel">Slack channel members</option>
             <option value="manual">Manual selection</option>
           </select>
           <small>Members will receive a calendar invite via email</small>
@@ -378,6 +379,16 @@
             <label>Topics</label>
             <div id="topicsList"></div>
             <small>Select which topic subscribers to invite</small>
+          </div>
+        </div>
+
+        <div id="slackChannelSection" style="display: none;">
+          <div class="form-group">
+            <label>Slack Channel</label>
+            <select id="inviteSlackChannelId">
+              <option value="">Select a channel...</option>
+            </select>
+            <small>Invite members from this Slack channel</small>
           </div>
         </div>
 
@@ -716,6 +727,14 @@
         data.working_group_id = document.getElementById('workingGroupId').value;
         data.duration_minutes = durationMinutes;
         data.invite_mode = document.getElementById('inviteMode').value;
+        // Include Slack channel ID if that invite mode is selected
+        if (data.invite_mode === 'slack_channel') {
+          data.invite_slack_channel_id = document.getElementById('inviteSlackChannelId').value;
+          if (!data.invite_slack_channel_id) {
+            alert('Please select a Slack channel');
+            return;
+          }
+        }
       }
 
       const saveBtn = document.getElementById('saveBtn');
@@ -833,6 +852,90 @@
       if (!viewingMeeting) return;
       await confirmCancel(viewingMeeting.id, viewingMeeting.title);
       closeDetailsModal();
+    }
+
+    // Handle working group selection change
+    function onWorkingGroupChange() {
+      const inviteMode = document.getElementById('inviteMode').value;
+      // Reload channels if in slack_channel mode
+      if (inviteMode === 'slack_channel') {
+        const groupId = document.getElementById('workingGroupId').value;
+        if (groupId) {
+          loadSlackChannelsForGroup(groupId);
+        }
+      }
+    }
+
+    // Toggle visibility of invite mode-specific sections
+    function updateInviteModeVisibility() {
+      const inviteMode = document.getElementById('inviteMode').value;
+      const topicsSection = document.getElementById('topicsSection');
+      const slackChannelSection = document.getElementById('slackChannelSection');
+
+      // Show topics section only for topic_subscribers mode
+      topicsSection.style.display = inviteMode === 'topic_subscribers' ? 'block' : 'none';
+
+      // Show Slack channel section only for slack_channel mode
+      slackChannelSection.style.display = inviteMode === 'slack_channel' ? 'block' : 'none';
+
+      // Load channels if switching to slack_channel mode
+      if (inviteMode === 'slack_channel') {
+        const groupId = document.getElementById('workingGroupId').value;
+        if (groupId) {
+          loadSlackChannelsForGroup(groupId);
+        }
+      }
+    }
+
+    // Load available Slack channels for a working group (group channel + topic channels)
+    async function loadSlackChannelsForGroup(groupId) {
+      const channelSelect = document.getElementById('inviteSlackChannelId');
+      channelSelect.innerHTML = '<option value="">Loading...</option>';
+
+      try {
+        // Find the working group
+        const group = workingGroups.find(g => g.id === groupId);
+        if (!group) {
+          channelSelect.innerHTML = '<option value="">No group selected</option>';
+          return;
+        }
+
+        // Build list of available channels
+        const channels = [];
+
+        // Add the main working group channel if it has one
+        if (group.slack_channel_id) {
+          channels.push({
+            id: group.slack_channel_id,
+            name: `${group.name} (main channel)`,
+          });
+        }
+
+        // Add any topic channels
+        if (group.topics && group.topics.length > 0) {
+          for (const topic of group.topics) {
+            if (topic.slack_channel_id) {
+              channels.push({
+                id: topic.slack_channel_id,
+                name: `${topic.name} (topic)`,
+              });
+            }
+          }
+        }
+
+        if (channels.length === 0) {
+          channelSelect.innerHTML = '<option value="">No Slack channels configured for this group</option>';
+          return;
+        }
+
+        channelSelect.innerHTML = '<option value="">Select a channel...</option>';
+        channels.forEach(c => {
+          channelSelect.innerHTML += `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`;
+        });
+      } catch (error) {
+        console.error('Error loading channels:', error);
+        channelSelect.innerHTML = '<option value="">Error loading channels</option>';
+      }
     }
 
     // Escape helpers

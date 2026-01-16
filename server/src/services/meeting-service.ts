@@ -17,6 +17,7 @@ import {
   notifyMeetingStarted,
   notifyMeetingEnded,
 } from '../notifications/slack.js';
+import { getChannelMembers } from '../slack/client.js';
 import type {
   CreateMeetingInput,
   UpdateMeetingInput,
@@ -49,8 +50,10 @@ export interface ScheduleMeetingOptions {
   createZoomMeeting?: boolean;
   sendCalendarInvites?: boolean;
   announceInSlack?: boolean;
-  // Control who gets invited: 'all_members', 'topic_subscribers', or 'none' (opt-in)
-  inviteMode?: 'all_members' | 'topic_subscribers' | 'none';
+  // Control who gets invited: 'all_members', 'topic_subscribers', 'slack_channel', or 'none' (opt-in)
+  inviteMode?: 'all_members' | 'topic_subscribers' | 'slack_channel' | 'none';
+  // Slack channel ID for invite_mode='slack_channel'
+  inviteSlackChannelId?: string;
 }
 
 export interface ScheduleMeetingResult {
@@ -137,11 +140,21 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
     meeting.zoom_passcode = zoomMeeting.password;
   }
 
-  // Invite working group members to the meeting based on inviteMode
+  // Invite members to the meeting based on inviteMode
   let invitedCount = 0;
   const inviteMode = options.inviteMode || 'all_members';
 
-  if (inviteMode !== 'none') {
+  if (inviteMode === 'slack_channel' && options.inviteSlackChannelId) {
+    // Invite members from a Slack channel
+    try {
+      const channelMembers = await getChannelMembers(options.inviteSlackChannelId);
+      invitedCount = await meetingsDb.addAttendeesFromSlackChannel(meeting.id, channelMembers);
+      logger.info({ meetingId: meeting.id, invitedCount, inviteMode, channelId: options.inviteSlackChannelId }, 'Invited Slack channel members to meeting');
+    } catch (error) {
+      logger.error({ error, channelId: options.inviteSlackChannelId, meetingId: meeting.id }, 'Failed to fetch Slack channel members');
+      errors.push(`Failed to invite Slack channel members: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  } else if (inviteMode !== 'none') {
     // 'all_members' passes undefined topicSlugs, 'topic_subscribers' passes the actual topics
     const topicFilter = inviteMode === 'topic_subscribers' ? options.topicSlugs : undefined;
     invitedCount = await meetingsDb.addAttendeesFromGroup(

@@ -372,6 +372,7 @@ export interface WorkingGroupTopic {
   slug: string;
   name: string;
   description?: string;
+  slack_channel_id?: string;
 }
 
 export interface WorkingGroup {
@@ -433,6 +434,7 @@ export interface CreateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
@@ -454,6 +456,7 @@ export interface UpdateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
@@ -857,7 +860,7 @@ export interface EventSponsorDisplay {
 
 export type MeetingStatus = 'draft' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 export type MeetingSeriesStatus = 'active' | 'paused' | 'archived';
-export type MeetingInviteMode = 'all_members' | 'topic_subscribers' | 'manual';
+export type MeetingInviteMode = 'all_members' | 'topic_subscribers' | 'slack_channel' | 'manual';
 export type RsvpStatus = 'pending' | 'accepted' | 'declined' | 'tentative';
 export type MeetingInviteSource = 'auto' | 'manual' | 'request';
 
@@ -891,6 +894,7 @@ export interface MeetingSeries {
   google_calendar_id?: string;
   google_event_series_id?: string;
   invite_mode: MeetingInviteMode;
+  invite_slack_channel_id?: string;
   status: MeetingSeriesStatus;
   created_by_user_id?: string;
   created_at: Date;
@@ -907,6 +911,7 @@ export interface CreateMeetingSeriesInput {
   duration_minutes?: number;
   timezone?: string;
   invite_mode?: MeetingInviteMode;
+  invite_slack_channel_id?: string;
   created_by_user_id?: string;
 }
 
@@ -924,6 +929,7 @@ export interface UpdateMeetingSeriesInput {
   google_calendar_id?: string;
   google_event_series_id?: string;
   invite_mode?: MeetingInviteMode;
+  invite_slack_channel_id?: string;
   status?: MeetingSeriesStatus;
 }
 
