@@ -149,10 +149,24 @@ asyncio.run(create_and_pause_campaign())
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
-| `creatives` | CreativeAsset[] | No | Upload and assign new creative assets inline |
-| `creative_assignments` | CreativeAssignment[] | No | Update creative rotation weights and placement targeting |
+| `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
+| `push_notification_config` | object | No | Webhook for async operation notifications |
 
 *Either `media_buy_id` OR `buyer_ref` is required (not both)
+
+### Reporting Webhook Object
+
+Configure automated delivery reporting for this media buy:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | Webhook endpoint URL |
+| `authentication` | object | Yes | Auth config with `schemes` and `credentials` |
+| `reporting_frequency` | string | Yes | `hourly`, `daily`, or `monthly` |
+| `requested_metrics` | string[] | No | Specific metrics to include (defaults to all) |
+| `token` | string | No | Client token for validation (min 16 chars) |
+
+**Note**: `reporting_webhook` configures ongoing campaign reporting. `push_notification_config` is for async operation notifications (e.g., "notify me when this update completes").
 
 ### Package Update Object
 
@@ -166,7 +180,9 @@ asyncio.run(create_and_pause_campaign())
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
-| `creative_ids` | string[] | Replace assigned creatives |
+| `creative_ids` | string[] | Replace assigned creatives (by library ID) |
+| `creatives` | CreativeAsset[] | Upload and assign new creatives inline |
+| `creative_assignments` | CreativeAssignment[] | Assignments with weights and placement targeting |
 
 *Either `package_id` OR `buyer_ref` is required for each package update
 
@@ -513,6 +529,7 @@ asyncio.run(update_multiple_packages())
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
 - Campaign status (active/paused)
+- Reporting webhook configuration (URL, frequency, metrics)
 
 ❌ **Cannot update:**
 - Media buy ID

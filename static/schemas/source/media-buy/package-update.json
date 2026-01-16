@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/package-update.json",
+  "title": "Package Update",
+  "description": "Package update configuration for update_media_buy. Identifies package by package_id or buyer_ref and specifies fields to modify. Fields not present are left unchanged. Note: product_id, format_ids, and pricing_option_id cannot be changed after creation.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Publisher's ID of package to update"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference for the package to update"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Updated budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Updated bid price for auction-based pricing options (only applies when pricing_option is auction-based)",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Updated impression goal for this package",
+      "minimum": 0
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause/resume specific package (true = paused, false = active)"
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/core/targeting.json"
+    },
+    "creative_ids": {
+      "type": "array",
+      "description": "Update creative assignments (references existing library creatives)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Full creative objects to upload and assign to this package (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives.",
+      "items": {
+        "$ref": "/schemas/core/creative-asset.json"
+      },
+      "maxItems": 100
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Full creative assignment objects with weights and placement targeting (alternative to creative_ids - provides granular control over weights and placement targeting). Uses replacement semantics like creative_ids.",
+      "items": {
+        "$ref": "/schemas/core/creative-assignment.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "package_id"
+      ]
+    },
+    {
+      "required": [
+        "buyer_ref"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

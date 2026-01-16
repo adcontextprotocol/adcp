@@ -29,82 +29,88 @@
       "type": "array",
       "description": "Package-specific updates",
       "items": {
-        "type": "object",
-        "properties": {
-          "package_id": {
-            "type": "string",
-            "description": "Publisher's ID of package to update"
-          },
-          "buyer_ref": {
-            "type": "string",
-            "description": "Buyer's reference for the package to update"
-          },
-          "budget": {
-            "type": "number",
-            "description": "Updated budget allocation for this package in the currency specified by the pricing option",
-            "minimum": 0
-          },
-          "pacing": {
-            "$ref": "/schemas/enums/pacing.json"
-          },
-          "bid_price": {
-            "type": "number",
-            "description": "Updated bid price for auction-based pricing options (only applies when pricing_option is auction-based)",
-            "minimum": 0
-          },
-          "impressions": {
-            "type": "number",
-            "description": "Updated impression goal for this package",
-            "minimum": 0
-          },
-          "paused": {
-            "type": "boolean",
-            "description": "Pause/resume specific package (true = paused, false = active)"
-          },
-          "targeting_overlay": {
-            "$ref": "/schemas/core/targeting.json"
-          },
-          "creative_ids": {
-            "type": "array",
-            "description": "Update creative assignments (references existing library creatives)",
-            "items": {
-              "type": "string"
-            }
-          },
-          "creatives": {
-            "type": "array",
-            "description": "Full creative objects to upload and assign to this package (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives.",
-            "items": {
-              "$ref": "/schemas/core/creative-asset.json"
-            },
-            "maxItems": 100
-          },
-          "creative_assignments": {
-            "type": "array",
-            "description": "Full creative assignment objects with weights and placement targeting (alternative to creative_ids - provides granular control over weights and placement targeting). Uses replacement semantics like creative_ids.",
-            "items": {
-              "$ref": "/schemas/core/creative-assignment.json"
-            }
-          }
-        },
-        "oneOf": [
-          {
-            "required": [
-              "package_id"
-            ]
-          },
-          {
-            "required": [
-              "buyer_ref"
-            ]
-          }
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/media-buy/package-update.json"
       }
+    },
+    "reporting_webhook": {
+      "$comment": "Fields url, token, and authentication mirror push-notification-config.json. Inlined here because allOf + additionalProperties:false doesn't work in JSON Schema (additionalProperties can't see $ref properties). See CLAUDE.md 'Avoiding allOf with additionalProperties'.",
+      "type": "object",
+      "description": "Optional webhook configuration for automated reporting delivery. Updates the reporting configuration for this media buy. Combines push_notification_config structure with reporting-specific fields.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook endpoint URL for reporting notifications"
+        },
+        "token": {
+          "type": "string",
+          "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+          "minLength": 16
+        },
+        "authentication": {
+          "type": "object",
+          "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+              "items": {
+                "$ref": "/schemas/enums/auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "reporting_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily",
+            "monthly"
+          ],
+          "description": "Frequency for automated reporting delivery. Must be supported by all products in the media buy."
+        },
+        "requested_metrics": {
+          "type": "array",
+          "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's available_metrics.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "impressions",
+              "spend",
+              "clicks",
+              "ctr",
+              "video_completions",
+              "completion_rate",
+              "conversions",
+              "viewability",
+              "engagement_rate"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "reporting_frequency"
+      ],
+      "additionalProperties": true
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time."
+      "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

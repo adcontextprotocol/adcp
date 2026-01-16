@@ -403,6 +403,10 @@
         "package-request": {
           "$ref": "/schemas/media-buy/package-request.json",
           "description": "Package configuration for media buy creation - used within create_media_buy request"
+        },
+        "package-update": {
+          "$ref": "/schemas/media-buy/package-update.json",
+          "description": "Package update configuration for update_media_buy - identifies package and specifies fields to modify"
         }
       },
       "tasks": {
