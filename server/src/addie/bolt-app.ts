@@ -709,6 +709,19 @@ async function createUserScopedTools(
     allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
   }
 
+  // Override Slack search handlers with user-scoped versions (for private channel access control)
+  if (slackUserId) {
+    const userScopedKnowledgeHandlers = createKnowledgeToolHandlers(slackUserId);
+    const searchSlackHandler = userScopedKnowledgeHandlers.get('search_slack');
+    const getChannelActivityHandler = userScopedKnowledgeHandlers.get('get_channel_activity');
+    if (searchSlackHandler) {
+      allHandlers.set('search_slack', searchSlackHandler);
+    }
+    if (getChannelActivityHandler) {
+      allHandlers.set('get_channel_activity', getChannelActivityHandler);
+    }
+  }
+
   return {
     tools: {
       tools: allTools,
