@@ -634,8 +634,10 @@ export async function runOutreachScheduler(options: {
     }
   }
 
-  if (sent > 0 || errors > 0) {
-    logger.info({ sent, skipped, errors }, 'Outreach scheduler completed');
+  if (errors > 0) {
+    logger.info({ sent, skipped, errors }, 'Outreach scheduler completed with errors');
+  } else if (sent > 0) {
+    logger.debug({ sent, skipped, errors }, 'Outreach scheduler completed');
   }
   return { processed: candidates.length, sent, skipped, errors };
 }
