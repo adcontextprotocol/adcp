@@ -342,7 +342,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'propose_content',
     description:
-      'Create content for the website (perspectives, committee posts). Content can be for personal perspectives or committee collections. Committee leads and admins can publish directly; others submit for review. Supports co-authors.',
+      'Create content for the website. Content is published to a committee (working group, council, or chapter). Default is "editorial" which is the site-wide Perspectives section. Committee leads and admins can publish directly; others submit for review.',
     usage_hints: 'use for "write a perspective", "post to the sustainability group", "create an article", "share my thoughts on X"',
     input_schema: {
       type: 'object',
@@ -352,15 +352,11 @@ export const MEMBER_TOOLS: AddieTool[] = [
         content_type: { type: 'string', enum: ['article', 'link'], description: 'Type (default: article)' },
         external_url: { type: 'string', description: 'URL for link type' },
         excerpt: { type: 'string', description: 'Short excerpt/summary' },
-        category: { type: 'string', description: 'Category' },
-        collection: {
-          type: 'object', description: 'Where to publish',
-          properties: { type: { type: 'string', enum: ['personal', 'committee'], description: 'Collection type' }, committee_slug: { type: 'string', description: 'Committee slug' } },
-          required: ['type'],
-        },
+        category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem)' },
+        committee_slug: { type: 'string', description: 'Target committee slug (default: editorial for Perspectives). Use list_working_groups to see options.' },
         co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
-      required: ['title', 'collection'],
+      required: ['title'],
     },
   },
   {
@@ -1304,13 +1300,20 @@ export function createMemberToolHandlers(
     const externalUrl = input.external_url as string | undefined;
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
-    const inputCollection = input.collection as { type: string; committee_slug?: string } | undefined;
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
 
-    // Default to editorial collection for personal/perspectives content
-    const collection = inputCollection?.type === 'personal' || !inputCollection
-      ? { type: 'committee', committee_slug: 'editorial' }
-      : inputCollection;
+    // Support both new format (committee_slug) and legacy format (collection.committee_slug)
+    const legacyCollection = input.collection as { type?: string; committee_slug?: string } | undefined;
+
+    // Validate legacy format: if type='committee', require committee_slug
+    if (legacyCollection?.type === 'committee' && !legacyCollection.committee_slug) {
+      return 'committee_slug is required when using collection.type="committee". Specify the committee or omit collection to default to editorial (Perspectives).';
+    }
+
+    const committeeSlug = (input.committee_slug as string) ||
+      legacyCollection?.committee_slug ||
+      (legacyCollection?.type === 'personal' ? 'editorial' : null) ||
+      'editorial';
 
     // Validate requirements
     if (contentType === 'article' && !contentBody) {
@@ -1318,9 +1321,6 @@ export function createMemberToolHandlers(
     }
     if (contentType === 'link' && !externalUrl) {
       return 'A URL is required for link type content. Please provide the external_url.';
-    }
-    if (collection.type === 'committee' && !collection.committee_slug) {
-      return 'committee_slug is required when targeting a committee collection.';
     }
 
     // Call the content service directly (bypasses HTTP auth)
@@ -1338,13 +1338,13 @@ export function createMemberToolHandlers(
         external_url: externalUrl,
         excerpt,
         category,
-        collection: { committee_slug: collection.committee_slug },
+        collection: { committee_slug: committeeSlug },
       }
     );
 
     if (!result.success) {
       if (result.error?.includes('No collection found')) {
-        return `Committee "${collection.committee_slug}" not found. Use list_working_groups to see available committees.`;
+        return `Committee "${committeeSlug}" not found. Use list_working_groups to see available committees.`;
       }
       return `Failed to create content: ${result.error}`;
     }
@@ -1353,21 +1353,21 @@ export function createMemberToolHandlers(
     response += `**Title:** ${title}\n`;
     response += `**Status:** ${result.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
 
-    if (collection.committee_slug === 'editorial') {
+    if (committeeSlug === 'editorial') {
       response += `**Collection:** Perspectives\n`;
     } else {
-      response += `**Collection:** ${collection.committee_slug}\n`;
+      response += `**Collection:** ${committeeSlug}\n`;
     }
 
     if (result.status === 'published') {
-      if (collection.committee_slug === 'editorial') {
+      if (committeeSlug === 'editorial') {
         response += `\n**View:** https://agenticadvertising.org/latest/perspectives\n`;
         response += `_Your perspective is now live in The Latest > Perspectives section._\n`;
       } else {
-        response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
+        response += `\n**View:** https://agenticadvertising.org/committees/${committeeSlug}\n`;
       }
     } else {
-      if (collection.committee_slug === 'editorial') {
+      if (committeeSlug === 'editorial') {
         response += `\n_Your perspective has been submitted for review. Once approved, it will appear in The Latest > Perspectives section._\n`;
       } else {
         response += `\n_Your content has been submitted for review. A committee lead will review it and you'll be notified when it's approved._\n`;
