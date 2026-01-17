@@ -30,15 +30,15 @@ Buyers pass their standards via reference:
 
 When you receive this:
 - Fetch the standards from the buyer's agent (cache aggressively - these don't change often)
-- Validate you can support the requested features via `list_content_features`
+- The standards document tells you exactly what to enforce - no need to call back
 - Store the association between the media buy and the standards
 
 **2. Build your evaluation capability**
 
-The standards document contains:
+The standards document contains everything you need:
 - Rules (what categories to allow/block)
 - Calibration examples (how to interpret edge cases)
-- Feature requirements (what signals matter to this buyer)
+- Required features (what signals this buyer cares about)
 
 Use this to train or configure your content evaluation system. This could be:
 - An LLM with the rules as system prompt
@@ -105,13 +105,13 @@ Return your evaluation for each:
 
 ### Implementation Checklist
 
+- [ ] Implement `list_content_features` so buyers can discover your capabilities before creating standards
 - [ ] Parse `content_standards_ref` in `get_products` and `create_media_buy`
 - [ ] Fetch and cache standards documents from buyer agents
-- [ ] Implement `list_content_features` to advertise your capabilities
-- [ ] Build content evaluation against buyer rules
+- [ ] Build content evaluation against the rules in the standards document
 - [ ] Implement `calibrate_content` for alignment dialogue
 - [ ] Implement `validate_content_delivery` for post-delivery audit
-- [ ] Return `get_media_buy_artifacts` so buyers can retrieve content for their own validation
+- [ ] Implement `get_media_buy_artifacts` so buyers can retrieve content for their own validation
 
 ---
 
@@ -130,7 +130,24 @@ Brand → Buyer Agent → Sales Agent (Publisher)
             (hosted by buyer)
 ```
 
-**1. Host the brand's standards**
+**1. Discover publisher capabilities**
+
+Before creating standards, call `list_content_features` on each publisher to understand what they can evaluate:
+
+```json
+// Response from publisher
+{
+  "features": [
+    { "id": "garm_brand_safety", "name": "GARM Brand Safety Categories" },
+    { "id": "sentiment", "name": "Content Sentiment Analysis" },
+    { "id": "competitive_separation", "name": "Competitor Blocking" }
+  ]
+}
+```
+
+Use this to build standards that reference features the publisher actually supports.
+
+**2. Host the brand's standards**
 
 Create and store content standards for each brand:
 
@@ -156,7 +173,7 @@ Create and store content standards for each brand:
 
 Expose these via your agent's API so publishers can fetch them.
 
-**2. Pass standards references when buying**
+**3. Pass standards references when buying**
 
 When creating media buys, include the reference:
 
@@ -171,7 +188,7 @@ When creating media buys, include the reference:
 }
 ```
 
-**3. Orchestrate calibration**
+**4. Orchestrate calibration**
 
 Before campaigns launch, run calibration with each publisher:
 
@@ -194,7 +211,7 @@ for publisher in campaign.publishers:
         resolve_calibration(publisher, standards, discrepancies)
 ```
 
-**4. Validate delivery**
+**5. Validate delivery**
 
 After campaign delivery:
 
@@ -212,7 +229,7 @@ for artifact in artifacts:
     compare_with_publisher(our_result, publisher_result)
 ```
 
-**5. Report discrepancies**
+**6. Report discrepancies**
 
 Surface any misalignment to the brand:
 - Publisher marked suitable, you disagree → potential brand safety incident
@@ -220,6 +237,7 @@ Surface any misalignment to the brand:
 
 ### Implementation Checklist
 
+- [ ] Call `list_content_features` to discover publisher capabilities
 - [ ] Store and serve content standards documents
 - [ ] Include `content_standards_ref` in media buy requests
 - [ ] Implement calibration orchestration workflow
