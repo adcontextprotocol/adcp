@@ -70,10 +70,10 @@ The protocol doesn't prescribe your implementation - just that you honor the sta
 
 **4. Participate in calibration**
 
-If the buyer initiates `calibrate_content`, engage in the dialogue:
+Before campaigns launch, calibrate your interpretation against the buyer's governance agent. You send sample artifacts, they tell you how they would rate them:
 
 ```json
-// Buyer sends examples for evaluation
+// You send examples from your inventory
 {
   "standards_id": "nike_emea_brand_safety",
   "artifacts": [
@@ -85,22 +85,43 @@ If the buyer initiates `calibrate_content`, engage in the dialogue:
   ]
 }
 
-// You respond with your interpretation
+// Buyer's governance agent responds with their interpretation
 {
   "evaluations": [{
     "artifact_id": "article_123",
     "suitable": true,
-    "confidence": 0.7,
+    "confidence": 0.9,
     "explanation": "Sports injury coverage in athletic context - aligns with brand's sports marketing positioning"
   }]
 }
 ```
 
-Calibration aligns your interpretation with the buyer's expectations before delivery starts.
+Use these responses to train your local model. If you disagree with a rating, ask follow-up questions to understand the buyer's reasoning.
 
-**5. Support post-delivery validation**
+**5. Support artifact retrieval and webhooks**
 
-After delivery, support `validate_content_delivery` calls and `get_media_buy_artifacts` so buyers can audit where their ads appeared.
+After delivery, buyers need to audit where their ads appeared. Your responsibilities:
+
+- **Implement `get_media_buy_artifacts`** - Return content artifacts for delivered impressions so buyers can validate against their governance agent
+- **Support artifact webhooks** - Push artifacts to buyer-specified endpoints in real-time or batched
+- **Support reporting webhooks** - Push delivery reports to buyer-specified endpoints
+
+The **governance agent** (not you) implements `validate_content_delivery`. Buyers fetch artifacts from you, then send them to their governance agent for validation.
+
+```json
+// Artifact webhook payload
+{
+  "media_buy_id": "mb_nike_reddit_q1",
+  "artifacts": [
+    {
+      "property_id": { "type": "domain", "value": "reddit.com" },
+      "artifact_id": "r_fitness_abc123",
+      "assets": [{ "type": "text", "role": "title", "content": "Best protein sources" }],
+      "delivered_at": "2025-01-15T10:30:00Z"
+    }
+  ]
+}
+```
 
 ### Implementation Checklist
 
@@ -108,9 +129,10 @@ After delivery, support `validate_content_delivery` calls and `get_media_buy_art
 - [ ] Fetch and evaluate standards documents from buyer agents
 - [ ] Reject buys you cannot fulfill - don't accept campaigns you can't enforce
 - [ ] Build content evaluation against the standards document
-- [ ] Implement `calibrate_content` for alignment dialogue
-- [ ] Implement `validate_content_delivery` for post-delivery audit
-- [ ] Implement `get_media_buy_artifacts` so buyers can retrieve content for their own validation
+- [ ] Call `calibrate_content` on buyer's governance agent to align interpretation
+- [ ] Implement `get_media_buy_artifacts` so buyers can retrieve content for validation
+- [ ] Support artifact webhooks for real-time/batched artifact delivery
+- [ ] Support reporting webhooks for delivery metrics
 
 ---
 
@@ -172,62 +194,64 @@ When creating media buys, include the reference:
 
 If the publisher cannot fulfill the standards, they should reject the buy. Handle rejections gracefully and find alternative inventory.
 
-**3. Orchestrate calibration**
+**3. Implement `calibrate_content`**
 
-Before campaigns launch, run calibration with each publisher:
+Publishers call your `calibrate_content` endpoint to calibrate their local models. They send sample artifacts, you respond with how the brand would rate them:
 
 ```python
-# Pseudo-code for calibration orchestration
-for publisher in campaign.publishers:
-    # Get sample content from publisher
-    artifacts = publisher.get_media_buy_artifacts(media_buy_id)
+# Your calibrate_content implementation
+def calibrate_content(standards_id, artifacts):
+    standards = get_standards(standards_id)
+    evaluations = []
 
-    # Run through your evaluation
-    our_results = evaluate(artifacts, standards)
+    for artifact in artifacts:
+        # Evaluate against brand's policy
+        result = evaluate_against_policy(artifact, standards)
+        evaluations.append({
+            "artifact_id": artifact["artifact_id"],
+            "suitable": result.suitable,
+            "confidence": result.confidence,
+            "explanation": result.explanation
+        })
 
-    # Send to publisher for their evaluation
-    their_results = publisher.calibrate_content(standards_id, artifacts)
-
-    # Compare and resolve discrepancies
-    discrepancies = find_discrepancies(our_results, their_results)
-    if discrepancies:
-        # Iterate with more examples until aligned
-        resolve_calibration(publisher, standards, discrepancies)
+    return {"evaluations": evaluations}
 ```
+
+This helps publishers understand your interpretation before they start enforcing.
 
 **4. Validate delivery**
 
-After campaign delivery:
+After campaign delivery, fetch artifacts from publishers and validate against the standards:
 
 ```python
 # Get delivery records from publisher
 artifacts = publisher.get_media_buy_artifacts(media_buy_id, include_delivery=True)
 
-# Option A: Trust publisher's evaluation
-results = publisher.validate_content_delivery(standards_id, artifacts)
-
-# Option B: Validate yourself (fetch content, run your own model)
+# Validate using your governance logic
 for artifact in artifacts:
-    content = fetch_content(artifact.url)  # or use content_access
-    our_result = evaluate(content, standards)
-    compare_with_publisher(our_result, publisher_result)
+    result = evaluate_against_policy(artifact, standards)
+    if not result.suitable:
+        log_brand_safety_incident(artifact, result)
 ```
 
-**5. Report discrepancies**
+You can also receive artifacts via webhook instead of polling.
 
-Surface any misalignment to the brand:
-- Publisher marked suitable, you disagree → potential brand safety incident
-- Publisher marked unsuitable, you disagree → potential missed inventory
+**5. Report to brands**
+
+Surface validation results to the brand:
+- **Incidents**: Content that didn't meet standards
+- **Coverage**: What percentage of delivery was validated
+- **Trends**: Changes in content safety over time
 
 ### Implementation Checklist
 
 - [ ] Store and serve content standards documents
 - [ ] Include `content_standards_ref` in media buy requests
 - [ ] Handle rejections from publishers who can't fulfill standards
-- [ ] Implement calibration orchestration workflow
-- [ ] Fetch artifacts via `get_media_buy_artifacts`
-- [ ] Validate delivery via `validate_content_delivery` or your own evaluation
-- [ ] Build discrepancy reporting for brands
+- [ ] Implement `calibrate_content` so publishers can align their models
+- [ ] Implement `validate_content_delivery` to evaluate artifacts against standards
+- [ ] Fetch artifacts via `get_media_buy_artifacts` or receive via webhook
+- [ ] Build reporting for brands
 
 ---
 
