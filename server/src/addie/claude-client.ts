@@ -694,13 +694,21 @@ export class AddieClaudeClient {
               }
             } else {
               // Regular text result
+              // Log if the result indicates an error (tool returned error string rather than throwing)
+              const looksLikeError = result.startsWith('Error:') ||
+                result.startsWith('Failed to') ||
+                result.includes('not found') ||
+                result.includes('need to be logged in');
+              if (looksLikeError) {
+                logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie: Tool returned error result');
+              }
               toolResults.push({ tool_use_id: toolUseId, content: result });
               toolExecutions.push({
                 tool_name: toolName,
                 parameters: toolInput,
                 result,
                 result_summary: this.summarizeToolResult(toolName, result),
-                is_error: false,
+                is_error: looksLikeError,
                 duration_ms: durationMs,
                 sequence: executionSequence,
               });
@@ -708,6 +716,7 @@ export class AddieClaudeClient {
           } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw exception');
             toolResults.push({
               tool_use_id: toolUseId,
               content: `Error: ${errorMessage}`,
