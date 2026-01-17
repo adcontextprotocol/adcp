@@ -131,7 +131,6 @@
                   {
                     "group": "Tasks",
                     "pages": [
-                      "docs/governance/content-standards/tasks/list_content_features",
                       "docs/governance/content-standards/tasks/list_content_standards",
                       "docs/governance/content-standards/tasks/get_content_standards",
                       "docs/governance/content-standards/tasks/create_content_standards",

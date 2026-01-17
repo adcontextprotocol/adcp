@@ -13,6 +13,18 @@ This guide covers implementation patterns for the Content Standards Protocol fro
 
 If you're a sales agent (publisher ad server, SSP, or platform), implementing Content Standards means accepting buyer policies and enforcing them during delivery.
 
+### The Core Model
+
+When a buyer includes a `content_standards_ref` in their request, you must:
+
+1. **Fetch the standards** and evaluate if you can fulfill them
+2. **Accept or reject** the buy based on your capabilities
+3. **Calibrate** your evaluation model against the buyer's expectations
+4. **Enforce** the standards during delivery
+5. **Report** validation results after delivery
+
+If you cannot fulfill the content standards requirements, **reject the buy**. Don't accept a campaign you can't properly enforce.
+
 ### What You Need to Implement
 
 **1. Accept content standards references on `get_products` and `create_media_buy`**
@@ -29,18 +41,26 @@ Buyers pass their standards via reference:
 ```
 
 When you receive this:
-- Fetch the standards from the buyer's agent (cache aggressively - these don't change often)
-- The standards document tells you exactly what to enforce - no need to call back
-- Store the association between the media buy and the standards
+- Fetch the standards document from the buyer's agent
+- Evaluate whether you can enforce these requirements
+- If you cannot meet the standards, reject the request
+- If you can, accept and store the association with the media buy
 
-**2. Build your evaluation capability**
+**2. Decide: Can you fulfill this?**
 
-The standards document contains everything you need:
+The standards document contains:
 - Rules (what categories to allow/block)
 - Calibration examples (how to interpret edge cases)
-- Required features (what signals this buyer cares about)
+- Competitive separation requirements
+- Any other buyer-specific policies
 
-Use this to train or configure your content evaluation system. This could be:
+Review these requirements against your capabilities. Different publishers have different definitions of "adjacency" - Reddit might include comments, YouTube might include related videos, a news site might mean the article body. That's fine - as long as you can meaningfully enforce the buyer's intent, accept the buy.
+
+If you can't - for example, the buyer requires competitive separation but you don't support it, or they need adjacency data for a channel where it doesn't apply (like billboards) - reject the buy.
+
+**3. Build your evaluation capability**
+
+Use the standards document to train or configure your content evaluation system. This could be:
 - An LLM with the rules as system prompt
 - A classifier trained on the calibration examples
 - A rules engine for deterministic evaluation
@@ -48,12 +68,12 @@ Use this to train or configure your content evaluation system. This could be:
 
 The protocol doesn't prescribe your implementation - just that you honor the standards.
 
-**3. Participate in calibration (optional but recommended)**
+**4. Participate in calibration**
 
 If the buyer initiates `calibrate_content`, engage in the dialogue:
 
 ```json
-// Buyer sends ambiguous examples
+// Buyer sends examples for evaluation
 {
   "standards_id": "nike_emea_brand_safety",
   "artifacts": [
@@ -78,37 +98,16 @@ If the buyer initiates `calibrate_content`, engage in the dialogue:
 
 Calibration aligns your interpretation with the buyer's expectations before delivery starts.
 
-**4. Support `validate_content_delivery` calls**
+**5. Support post-delivery validation**
 
-After delivery, buyers may request validation of where their ads appeared:
-
-```json
-{
-  "standards_id": "nike_emea_brand_safety",
-  "records": [
-    { "artifact_id": "article_456", "impression_count": 15000 },
-    { "artifact_id": "article_789", "impression_count": 8500 }
-  ]
-}
-```
-
-Return your evaluation for each:
-
-```json
-{
-  "results": [
-    { "artifact_id": "article_456", "suitable": true, "categories": ["sports", "lifestyle"] },
-    { "artifact_id": "article_789", "suitable": false, "categories": ["violence"], "reason": "Graphic injury imagery" }
-  ]
-}
-```
+After delivery, support `validate_content_delivery` calls and `get_media_buy_artifacts` so buyers can audit where their ads appeared.
 
 ### Implementation Checklist
 
-- [ ] Implement `list_content_features` so buyers can discover your capabilities before creating standards
 - [ ] Parse `content_standards_ref` in `get_products` and `create_media_buy`
-- [ ] Fetch and cache standards documents from buyer agents
-- [ ] Build content evaluation against the rules in the standards document
+- [ ] Fetch and evaluate standards documents from buyer agents
+- [ ] Reject buys you cannot fulfill - don't accept campaigns you can't enforce
+- [ ] Build content evaluation against the standards document
 - [ ] Implement `calibrate_content` for alignment dialogue
 - [ ] Implement `validate_content_delivery` for post-delivery audit
 - [ ] Implement `get_media_buy_artifacts` so buyers can retrieve content for their own validation
@@ -130,24 +129,7 @@ Brand → Buyer Agent → Sales Agent (Publisher)
             (hosted by buyer)
 ```
 
-**1. Discover publisher capabilities**
-
-Before creating standards, call `list_content_features` on each publisher to understand what they can evaluate:
-
-```json
-// Response from publisher
-{
-  "features": [
-    { "id": "garm_brand_safety", "name": "GARM Brand Safety Categories" },
-    { "id": "sentiment", "name": "Content Sentiment Analysis" },
-    { "id": "competitive_separation", "name": "Competitor Blocking" }
-  ]
-}
-```
-
-Use this to build standards that reference features the publisher actually supports.
-
-**2. Host the brand's standards**
+**1. Host the brand's standards**
 
 Create and store content standards for each brand:
 
@@ -173,7 +155,7 @@ Create and store content standards for each brand:
 
 Expose these via your agent's API so publishers can fetch them.
 
-**3. Pass standards references when buying**
+**2. Pass standards references when buying**
 
 When creating media buys, include the reference:
 
@@ -188,7 +170,9 @@ When creating media buys, include the reference:
 }
 ```
 
-**4. Orchestrate calibration**
+If the publisher cannot fulfill the standards, they should reject the buy. Handle rejections gracefully and find alternative inventory.
+
+**3. Orchestrate calibration**
 
 Before campaigns launch, run calibration with each publisher:
 
@@ -211,7 +195,7 @@ for publisher in campaign.publishers:
         resolve_calibration(publisher, standards, discrepancies)
 ```
 
-**5. Validate delivery**
+**4. Validate delivery**
 
 After campaign delivery:
 
@@ -229,7 +213,7 @@ for artifact in artifacts:
     compare_with_publisher(our_result, publisher_result)
 ```
 
-**6. Report discrepancies**
+**5. Report discrepancies**
 
 Surface any misalignment to the brand:
 - Publisher marked suitable, you disagree → potential brand safety incident
@@ -237,9 +221,9 @@ Surface any misalignment to the brand:
 
 ### Implementation Checklist
 
-- [ ] Call `list_content_features` to discover publisher capabilities
 - [ ] Store and serve content standards documents
 - [ ] Include `content_standards_ref` in media buy requests
+- [ ] Handle rejections from publishers who can't fulfill standards
 - [ ] Implement calibration orchestration workflow
 - [ ] Fetch artifacts via `get_media_buy_artifacts`
 - [ ] Validate delivery via `validate_content_delivery` or your own evaluation
