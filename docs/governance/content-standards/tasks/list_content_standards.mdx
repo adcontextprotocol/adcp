@@ -15,9 +15,9 @@ List available content standards configurations.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `brand_ids` | array | No | Filter by brand identifiers |
 | `countries` | array | No | Filter by country codes |
 | `channels` | array | No | Filter by channels |
+| `languages` | array | No | Filter by BCP 47 language tags |
 
 ## Response
 
@@ -31,20 +31,18 @@ Returns an abbreviated list of standards configurations. Use [get_content_standa
 {
   "standards": [
     {
-      "standards_id": "nike_emea_safety",
-      "version": "1.2.0",
-      "name": "Nike EMEA - all digital channels",
-      "brand_ids": ["nike"],
+      "standards_id": "emea_digital_safety",
+      "name": "EMEA - all digital channels",
       "countries_all": ["GB", "DE", "FR"],
-      "channels_any": ["display", "video", "ctv"]
+      "channels_any": ["display", "video", "ctv"],
+      "languages": ["en", "de", "fr"]
     },
     {
-      "standards_id": "nike_us_display",
-      "version": "1.0.0",
-      "name": "Nike US - display only",
-      "brand_ids": ["nike"],
+      "standards_id": "us_display_only",
+      "name": "US - display only",
       "countries_all": ["US"],
-      "channels_any": ["display"]
+      "channels_any": ["display"],
+      "languages": ["en"]
     }
   ]
 }

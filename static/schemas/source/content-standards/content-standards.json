@@ -9,18 +9,9 @@
       "type": "string",
       "description": "Unique identifier for this standards configuration"
     },
-    "version": {
-      "type": "string",
-      "description": "Version of this standards configuration (semver recommended)"
-    },
     "name": {
       "type": "string",
       "description": "Human-readable name for this standards configuration"
-    },
-    "brand_ids": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Brand identifiers as defined in the Brand Manifest. Standards apply to all listed brands."
     },
     "countries_all": {
       "type": "array",
@@ -29,8 +20,14 @@
     },
     "channels_any": {
       "type": "array",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
+    },
+    "languages": {
+      "type": "array",
       "items": { "type": "string" },
-      "description": "Advertising channels (display, video, audio, ctv, etc.). Standards apply to ANY of the listed channels (OR logic)."
+      "minItems": 1,
+      "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Content is evaluated in these languages."
     },
     "policy": {
       "type": "string",
@@ -76,5 +73,5 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["standards_id", "version"]
+  "required": ["standards_id"]
 }

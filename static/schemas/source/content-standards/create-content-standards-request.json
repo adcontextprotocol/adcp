@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/create-content-standards-request.json",
+  "title": "Create Content Standards Request",
+  "description": "Request parameters for creating a new content standards configuration",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "type": "object",
+      "description": "Where this standards configuration applies",
+      "properties": {
+        "countries_all": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
+        },
+        "channels_any": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/channels.json" },
+          "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
+        },
+        "languages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Required - content is evaluated in these languages."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this scope"
+        }
+      },
+      "required": ["languages"]
+    },
+    "policy": {
+      "type": "string",
+      "description": "Natural language policy describing acceptable and unacceptable content contexts. Used by LLMs and human reviewers to make judgments."
+    },
+    "calibration_exemplars": {
+      "type": "object",
+      "description": "Training/test set to calibrate policy interpretation. Supports both simplified domain references and full artifact definitions.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Simplified domain reference for quick calibration setup",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "domain",
+                    "description": "Indicates this is a domain-level reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "Domain name (e.g., 'espn.com')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content on this domain"
+                  }
+                },
+                "required": ["type", "value"]
+              },
+              {
+                "$ref": "/schemas/content-standards/artifact.json",
+                "description": "Full artifact definition for detailed calibration"
+              }
+            ]
+          },
+          "description": "Content that passes the standards"
+        },
+        "fail": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Simplified domain reference for quick calibration setup",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "domain",
+                    "description": "Indicates this is a domain-level reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "Domain name (e.g., 'tabloid.example.com')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content on this domain"
+                  }
+                },
+                "required": ["type", "value"]
+              },
+              {
+                "$ref": "/schemas/content-standards/artifact.json",
+                "description": "Full artifact definition for detailed calibration"
+              }
+            ]
+          },
+          "description": "Content that fails the standards"
+        }
+      }
+    },
+    "floor": {
+      "type": "object",
+      "description": "Safety floor baseline - a reference to an external floor definition. The floor defines universal content exclusions (hate speech, illegal content, etc.) that apply regardless of brand-specific policy.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the floor definition document"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for the floor"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of the floor definition being referenced"
+        }
+      },
+      "required": ["url"]
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["scope", "policy"],
+  "additionalProperties": true
+}

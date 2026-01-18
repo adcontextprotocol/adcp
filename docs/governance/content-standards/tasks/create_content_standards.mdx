@@ -11,9 +11,11 @@ Create a new content standards configuration.
 
 ## Request
 
+**Schema**: [create-content-standards-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/create-content-standards-request.json)
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | object | Yes | Where this standards configuration applies |
+| `scope` | object | Yes | Where this standards configuration applies (must include `languages`) |
 | `policy` | string | Yes | Natural language policy prompt |
 | `calibration_exemplars` | object | No | Training set of pass/fail artifacts for calibration |
 | `floor` | object | No | Safety floor baseline - reference to external floor definition |
@@ -23,10 +25,10 @@ Create a new content standards configuration.
 ```json
 {
   "scope": {
-    "brand_ids": ["nike"],
     "countries_all": ["GB", "DE", "FR"],
     "channels_any": ["display", "video", "ctv"],
-    "description": "Nike EMEA - all digital channels"
+    "languages": ["en", "de", "fr"],
+    "description": "EMEA - all digital channels"
   },
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively.",
   "calibration_exemplars": {
@@ -47,29 +49,17 @@ Create a new content standards configuration.
 
 ## Response
 
+**Schema**: [create-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/create-content-standards-response.json)
+
 ### Success Response
 
 ```json
 {
-  "standards_id": "nike_emea_safety",
-  "version": "1.0.0"
+  "standards_id": "emea_digital_safety"
 }
 ```
 
 ### Error Responses
-
-**Invalid Scope:**
-
-```json
-{
-  "errors": [
-    {
-      "code": "INVALID_SCOPE",
-      "message": "At least one brand_id is required"
-    }
-  ]
-}
-```
 
 **Scope Conflict:**
 
@@ -78,8 +68,8 @@ Create a new content standards configuration.
   "errors": [
     {
       "code": "SCOPE_CONFLICT",
-      "message": "Standards already exist for brand 'nike' in country 'DE' on channel 'display'",
-      "conflicting_standards_id": "nike_emea_safety"
+      "message": "Standards already exist for country 'DE' on channel 'display'",
+      "conflicting_standards_id": "emea_digital_safety"
     }
   ]
 }
@@ -87,7 +77,7 @@ Create a new content standards configuration.
 
 ## Scope Conflict Handling
 
-Multiple standards cannot have overlapping scopes for the same brand/country/channel combination. When creating standards that would conflict:
+Multiple standards cannot have overlapping scopes for the same country/channel combination. When creating standards that would conflict:
 
 1. **Check existing standards** - Use [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) filtered by your scope
 2. **Update rather than create** - If standards already exist, use [update_content_standards](/docs/governance/content-standards/tasks/update_content_standards)
