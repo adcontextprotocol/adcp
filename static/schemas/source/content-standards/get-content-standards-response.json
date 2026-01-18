@@ -45,26 +45,21 @@
           "type": "string",
           "description": "Natural language policy describing acceptable and unacceptable content contexts"
         },
-        "calibration": {
+        "calibration_exemplars": {
           "type": "object",
           "description": "Training/test set to calibrate policy interpretation. Note: Large calibration sets may impact response size - consider using pagination or separate retrieval for large artifact collections.",
           "properties": {
-            "acceptable": {
+            "pass": {
               "type": "array",
               "items": { "$ref": "/schemas/content-standards/artifact.json" },
-              "description": "Artifacts that are acceptable"
+              "description": "Artifacts that pass the content standards"
             },
-            "unacceptable": {
+            "fail": {
               "type": "array",
               "items": { "$ref": "/schemas/content-standards/artifact.json" },
-              "description": "Artifacts that are unacceptable"
+              "description": "Artifacts that fail the content standards"
             }
           }
-        },
-        "competitive_separation": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Competitor brands to avoid adjacency with"
         },
         "floor": {
           "type": "string",

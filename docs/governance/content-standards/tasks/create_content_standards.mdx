@@ -15,8 +15,7 @@ Create a new content standards configuration.
 |-----------|------|----------|-------------|
 | `scope` | object | Yes | Where this standards configuration applies |
 | `policy` | string | Yes | Natural language policy prompt |
-| `calibration` | object | No | Training set of acceptable/unacceptable artifacts |
-| `competitive_separation` | array | No | Competitor brands to avoid |
+| `calibration_exemplars` | object | No | Training set of pass/fail artifacts for calibration |
 | `floor` | string | No | Safety floor baseline (`garm_floor` or `custom`) |
 
 ### Example Request
@@ -30,16 +29,15 @@ Create a new content standards configuration.
     "description": "Nike EMEA - all digital channels"
   },
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively.",
-  "calibration": {
-    "acceptable": [
+  "calibration_exemplars": {
+    "pass": [
       { "type": "domain", "value": "espn.com", "language": "en" },
       { "type": "domain", "value": "healthline.com", "language": "en" }
     ],
-    "unacceptable": [
+    "fail": [
       { "type": "domain", "value": "tabloid.example.com", "language": "en" }
     ]
   },
-  "competitive_separation": ["adidas", "puma", "under_armour"],
   "floor": "garm_floor"
 }
 ```

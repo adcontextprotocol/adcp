@@ -16,8 +16,7 @@ Update an existing content standards configuration. Creates a new version.
 | `standards_id` | string | Yes | ID of the standards configuration to update |
 | `scope` | object | No | Updated scope |
 | `policy` | string | No | Updated policy prompt |
-| `examples` | object | No | Updated training examples |
-| `competitive_separation` | array | No | Updated competitors list |
+| `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
 | `floor` | string | No | Updated safety floor |
 
 ### Example Request
@@ -26,13 +25,13 @@ Update an existing content standards configuration. Creates a new version.
 {
   "standards_id": "nike_emea_safety",
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid violence, controversial politics, adult themes. Block hate speech and illegal activities.",
-  "examples": {
-    "acceptable": [
+  "calibration_exemplars": {
+    "pass": [
       { "type": "domain", "value": "espn.com", "language": "en" },
       { "type": "domain", "value": "healthline.com", "language": "en" },
       { "type": "domain", "value": "runnersworld.com", "language": "en" }
     ],
-    "unacceptable": [
+    "fail": [
       { "type": "domain", "value": "tabloid.example.com", "language": "en" },
       { "type": "domain", "value": "gambling.example.com", "language": "en" }
     ]

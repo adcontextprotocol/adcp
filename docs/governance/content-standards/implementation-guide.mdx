@@ -73,14 +73,13 @@ When you receive this:
 **2. Decide: Can you fulfill this?**
 
 The standards document contains:
-- Rules (what categories to allow/block)
-- Calibration examples (how to interpret edge cases)
-- Competitive separation requirements
-- Any other buyer-specific policies
+- Policy (natural language description of acceptable/unacceptable content)
+- Calibration exemplars (pass/fail examples to interpret edge cases)
+- Floor (baseline safety standards like GARM)
 
 Review these requirements against your capabilities. Different publishers have different definitions of "adjacency" - Reddit might include comments, YouTube might include related videos, a news site might mean the article body. That's fine - as long as you can meaningfully enforce the brand's intent, accept the buy.
 
-If you can't - for example, the brand requires competitive separation but you don't support it, or they need adjacency data for a channel where it doesn't apply (like billboards) - reject the buy.
+If you can't - for example, they need adjacency data for a channel where it doesn't apply (like billboards) - reject the buy.
 
 **3. Build your evaluation capability**
 
@@ -185,18 +184,16 @@ Brands create content standards through a governance agent. You might facilitate
   "standards_id": "nike_emea_brand_safety",
   "name": "Nike EMEA Brand Safety Policy",
   "brand_id": "nike",
-  "rules": {
-    "blocked_categories": ["violence", "adult", "drugs"],
-    "required_categories": [],
-    "competitive_separation": ["adidas", "puma", "reebok"]
+  "policy": "Sports and fitness content is ideal. Avoid violence, adult themes, drugs.",
+  "calibration_exemplars": {
+    "pass": [
+      { "type": "domain", "value": "espn.com" }
+    ],
+    "fail": [
+      { "type": "domain", "value": "tabloid.example.com" }
+    ]
   },
-  "calibration": [
-    {
-      "artifact": { ... },
-      "expected_result": { "suitable": true },
-      "rationale": "Sports injury in athletic context is acceptable"
-    }
-  ]
+  "floor": "garm_floor"
 }
 ```
 
@@ -288,11 +285,11 @@ Store standards configurations and expose them via `get_content_standards`:
   "effective_date": "2025-01-01T00:00:00Z",
   "name": "Nike EMEA - all digital channels",
   "policy": "Sports and fitness content is ideal. Lifestyle content about health is good...",
-  "calibration": {
-    "acceptable": [...],
-    "unacceptable": [...]
+  "calibration_exemplars": {
+    "pass": [...],
+    "fail": [...]
   },
-  "competitive_separation": ["adidas", "puma", "under_armour"]
+  "floor": "garm_floor"
 }
 ```
 
@@ -331,7 +328,7 @@ def validate_content_delivery(standards_id: str, records: list) -> dict:
 
     for record in records:
         features = []
-        for feature in ["brand_safety", "brand_suitability", "competitive_separation"]:
+        for feature in ["brand_safety", "brand_suitability"]:
             evaluation = evaluate_feature(record["artifact"], standards, feature)
             features.append({
                 "feature_id": feature,
