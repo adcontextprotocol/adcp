@@ -1,0 +1,70 @@
+---
+title: update_content_standards
+sidebar_position: 6
+---
+
+# update_content_standards
+
+Update an existing content standards configuration. Creates a new version.
+
+**Response time**: < 1s
+
+## Request
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | ID of the standards configuration to update |
+| `scope` | object | No | Updated scope |
+| `policy` | string | No | Updated policy prompt |
+| `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
+| `floor` | string | No | Updated safety floor |
+
+### Example Request
+
+```json
+{
+  "standards_id": "nike_emea_safety",
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid violence, controversial politics, adult themes. Block hate speech and illegal activities.",
+  "calibration_exemplars": {
+    "pass": [
+      { "type": "domain", "value": "espn.com", "language": "en" },
+      { "type": "domain", "value": "healthline.com", "language": "en" },
+      { "type": "domain", "value": "runnersworld.com", "language": "en" }
+    ],
+    "fail": [
+      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
+      { "type": "domain", "value": "gambling.example.com", "language": "en" }
+    ]
+  }
+}
+```
+
+## Response
+
+### Success Response
+
+```json
+{
+  "standards_id": "nike_emea_safety",
+  "version": "1.3.0"
+}
+```
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Get current configuration
+- [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) - Create a new configuration
+- [delete_content_standards](/docs/governance/content-standards/tasks/delete_content_standards) - Delete a configuration

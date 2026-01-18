@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/content-standards.json",
+  "title": "Content Standards",
+  "description": "A content standards configuration defining brand safety and suitability policies. Standards are scoped by brand, geography, and channel. Multiple standards can be active simultaneously for different scopes.",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Unique identifier for this standards configuration"
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of this standards configuration (semver recommended)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this standards configuration"
+    },
+    "brand_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Brand identifiers as defined in the Brand Manifest. Standards apply to all listed brands."
+    },
+    "countries_all": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
+    },
+    "channels_any": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Advertising channels (display, video, audio, ctv, etc.). Standards apply to ANY of the listed channels (OR logic)."
+    },
+    "policy": {
+      "type": "string",
+      "description": "Natural language policy describing acceptable and unacceptable content contexts. Used by LLMs and human reviewers to make judgments."
+    },
+    "calibration_exemplars": {
+      "type": "object",
+      "description": "Training/test set to calibrate policy interpretation. Provides concrete examples of pass/fail decisions.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": { "$ref": "/schemas/content-standards/artifact.json" },
+          "description": "Artifacts that pass the content standards"
+        },
+        "fail": {
+          "type": "array",
+          "items": { "$ref": "/schemas/content-standards/artifact.json" },
+          "description": "Artifacts that fail the content standards"
+        }
+      }
+    },
+    "floor": {
+      "type": "object",
+      "description": "Safety floor baseline - a reference to an external floor definition. The floor defines universal content exclusions (hate speech, illegal content, etc.) that apply regardless of brand-specific policy.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the floor definition document (e.g., 'https://scope3.com/brand-safety-floor', 'https://example-publisher.com/content-guidelines')"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for the floor (e.g., 'Scope3 Common Sense Brand Safety')"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of the floor definition being referenced"
+        }
+      },
+      "required": ["url"]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["standards_id", "version"]
+}
