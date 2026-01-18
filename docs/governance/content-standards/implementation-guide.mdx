@@ -27,7 +27,7 @@ The typical flow:
 3. Sales agent accepts or rejects based on capability
 4. Sales agent calibrates against governance agent
 5. Sales agent enforces during delivery
-6. Sales agent pushes artifacts via webhook (or orchestrator polls)
+6. Sales agent provides artifacts (push via webhook or pull via get_media_buy_artifacts)
 7. Orchestrator forwards artifacts to governance agent for validation
 ```
 
@@ -45,7 +45,7 @@ When an orchestrator includes a `content_standards_ref` in their request, you mu
 2. **Accept or reject** the buy based on your capabilities
 3. **Calibrate** your evaluation model against the governance agent's expectations
 4. **Enforce** the standards during delivery
-5. **Push artifacts** to the orchestrator for validation
+5. **Provide artifacts** to the orchestrator for validation
 
 If you cannot fulfill the content standards requirements, **reject the buy**. Don't accept a campaign you can't properly enforce.
 
