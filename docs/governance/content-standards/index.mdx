@@ -295,30 +295,68 @@ See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_conte
 The current model trusts the publisher to faithfully implement the calibrated standards. A future evolution uses **secure enclaves** (Trusted Execution Environments / TEEs) to provide cryptographic guarantees:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Publisher Infrastructure                  │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │              Secure Enclave (TEE)                     │  │
-│  │  ┌─────────────────────────────────────────────────┐  │  │
-│  │  │     Containerized Governance Agent              │  │  │
-│  │  │     (provided by verification service)          │  │  │
-│  │  │                                                 │  │  │
-│  │  │  • Receives content for evaluation              │  │  │
-│  │  │  • Runs brand safety model                      │  │  │
-│  │  │  • Returns pass/fail verdict                    │  │  │
-│  │  │  • Content never leaves enclave                 │  │  │
-│  │  │  • Code is attestable and auditable             │  │  │
-│  │  └─────────────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+                           Verification Service
+                                   │
+                    ┌──────────────┴──────────────┐
+                    │         "Pinhole"           │
+                    │  ┌──────────┐ ┌──────────┐  │
+                    │  │ Models   │ │ Aggregate│  │
+                    │  │ Examples │ │ Results  │  │
+                    │  │    ↓     │ │    ↑     │  │
+                    │  └──────────┘ └──────────┘  │
+                    └──────────────┬──────────────┘
+                                   │
+┌──────────────────────────────────┼──────────────────────────────────┐
+│                    Publisher Infrastructure                          │
+│  ┌───────────────────────────────┼───────────────────────────────┐  │
+│  │              Secure Enclave (TEE)                             │  │
+│  │  ┌────────────────────────────┼────────────────────────────┐  │  │
+│  │  │     Containerized Governance Agent                      │  │  │
+│  │  │                            │                            │  │  │
+│  │  │     IN:                    │            OUT:            │  │  │
+│  │  │     • Updated models       │            • Pass/fail     │  │  │
+│  │  │     • Policy changes       │            • Drift metrics │  │  │
+│  │  │     • Calibration data     │            • Aggregates    │  │  │
+│  │  │                            │                            │  │  │
+│  │  │     NEVER OUT:                                          │  │  │
+│  │  │     • Content artifacts                                 │  │  │
+│  │  │     • User data / PII                                   │  │  │
+│  │  │     • Individual impressions                            │  │  │
+│  │  └─────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│     Content → [Enclave] → Pass/Fail verdict (content never leaves)  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-In this model:
+### The Pinhole Interface
+
+The enclave maintains a narrow, well-defined interface to the verification service:
+
+**Inbound (verification service → enclave):**
+- Updated brand safety models
+- Policy changes and calibration exemplars
+- Configuration updates
+
+**Outbound (enclave → verification service):**
+- Aggregated validation results (pass rates, drift metrics)
+- Statistical summaries
+- Attestation proofs
+
+**Never crosses the boundary:**
+- Raw content artifacts
+- User data or PII
+- Individual impression-level data
+
+This pinhole is the interface that needs standardization - it defines exactly what flows in and out while keeping sensitive content locked inside the publisher's walls.
+
+### Why This Matters
 
 - **Publisher** hosts a secure enclave inside their infrastructure
 - **Governance agent** (from IAS, DoubleVerify, etc.) runs as a container within the enclave
 - **Content** flows into the enclave for evaluation but never leaves the publisher's walls
 - **Both parties** can verify the governance code is running unmodified via attestation
+- **Models stay current** - the enclave can receive updates without exposing content
 
 This provides the same privacy guarantees as local execution, but with cryptographic proof that the correct algorithm is running. The brand knows their standards are being enforced faithfully. The publisher proves compliance without exposing content.
 
