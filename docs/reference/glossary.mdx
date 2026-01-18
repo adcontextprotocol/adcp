@@ -67,11 +67,14 @@ Size unit representing unique device identifiers (cookies, mobile IDs) - typical
 **Device Type** (Media Buy Protocol)
 Targeting dimension for platform types: mobile, desktop, tablet, CTV, audio, DOOH.
 
+**Decisioning Platform**
+Technical infrastructure that selects which ad to serve at impression time. Receives activated signals and executes campaigns. Examples: DSPs (The Trade Desk), SSPs (Index Exchange, OpenX, PubMatic), ad servers (Google Ad Manager, Kevel).
+
 **DOOH (Digital Out-of-Home)**
 Digital advertising displayed on screens in public spaces such as billboards, transit stations, airports, and retail locations. Uses CPM or flat_rate pricing with parameters for SOV, duration, and venue targeting.
 
 **DSP (Demand-Side Platform)**
-Technology platform that allows advertisers to buy advertising inventory programmatically.
+A type of decisioning platform that allows advertisers to buy advertising inventory programmatically.
 
 ## E
 
@@ -163,11 +166,14 @@ Pricing model based on a percentage of media spend rather than fixed CPM.
 
 ## S
 
+**Sales Agent**
+An MCP server that exposes publisher inventory for discovery and purchase. Handles product discovery, media buy creation, and campaign management. Examples: Publisher ad servers exposing AdCP interfaces, sales house platforms.
+
 **Screen Time**
 Total duration an ad was displayed across all DOOH screens, measured in seconds. Used for DOOH delivery reporting.
 
 **Seat**
-A specific advertising account within a platform, typically representing a brand or campaign.
+A specific advertising account within a decisioning platform, typically representing a brand or campaign.
 
 **Segment ID**
 The specific identifier used for signal activation, may differ from signal_id.
@@ -175,8 +181,14 @@ The specific identifier used for signal activation, may differ from signal_id.
 **Share of Voice (SOV)**
 Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
 
+**Signal Agent**
+An MCP server that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Examples: LiveRamp, Experian, Peer39.
+
 **Size Unit** (Signals Protocol)
 The measurement type for signal size: individuals, devices, or households.
+
+**SSP (Supply-Side Platform)**
+A type of decisioning platform that helps publishers sell advertising inventory programmatically. SSPs connect to multiple demand sources and make ad selection decisions. Examples: Index Exchange, OpenX, PubMatic, Magnite.
 
 ## T
 
