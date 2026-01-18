@@ -41,7 +41,7 @@
     },
     "calibration_exemplars": {
       "type": "object",
-      "description": "Updated training/test set to calibrate policy interpretation. Supports domain/URL references and full artifact definitions.",
+      "description": "Updated training/test set to calibrate policy interpretation. Use URL references for pages to be fetched and analyzed, or full artifacts for pre-extracted content.",
       "properties": {
         "pass": {
           "type": "array",
@@ -49,32 +49,12 @@
             "oneOf": [
               {
                 "type": "object",
-                "description": "Domain-level reference - all content on this domain passes",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "domain",
-                    "description": "Indicates this is a domain-level reference"
-                  },
-                  "value": {
-                    "type": "string",
-                    "description": "Domain name (e.g., 'espn.com')"
-                  },
-                  "language": {
-                    "type": "string",
-                    "description": "BCP 47 language tag for content on this domain"
-                  }
-                },
-                "required": ["type", "value"]
-              },
-              {
-                "type": "object",
-                "description": "URL-level reference - this specific page/content passes",
+                "description": "URL reference - specific page to fetch and evaluate",
                 "properties": {
                   "type": {
                     "type": "string",
                     "const": "url",
-                    "description": "Indicates this is a URL-level reference"
+                    "description": "Indicates this is a URL reference"
                   },
                   "value": {
                     "type": "string",
@@ -90,7 +70,7 @@
               },
               {
                 "$ref": "/schemas/content-standards/artifact.json",
-                "description": "Full artifact definition for detailed calibration"
+                "description": "Full artifact with pre-extracted content (text, images, video, audio)"
               }
             ]
           },
@@ -102,32 +82,12 @@
             "oneOf": [
               {
                 "type": "object",
-                "description": "Domain-level reference - all content on this domain fails",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "domain",
-                    "description": "Indicates this is a domain-level reference"
-                  },
-                  "value": {
-                    "type": "string",
-                    "description": "Domain name (e.g., 'tabloid.example.com')"
-                  },
-                  "language": {
-                    "type": "string",
-                    "description": "BCP 47 language tag for content on this domain"
-                  }
-                },
-                "required": ["type", "value"]
-              },
-              {
-                "type": "object",
-                "description": "URL-level reference - this specific page/content fails",
+                "description": "URL reference - specific page to fetch and evaluate",
                 "properties": {
                   "type": {
                     "type": "string",
                     "const": "url",
-                    "description": "Indicates this is a URL-level reference"
+                    "description": "Indicates this is a URL reference"
                   },
                   "value": {
                     "type": "string",
@@ -143,7 +103,7 @@
               },
               {
                 "$ref": "/schemas/content-standards/artifact.json",
-                "description": "Full artifact definition for detailed calibration"
+                "description": "Full artifact with pre-extracted content (text, images, video, audio)"
               }
             ]
           },
