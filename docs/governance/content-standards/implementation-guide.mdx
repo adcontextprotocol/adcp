@@ -1,27 +1,51 @@
 ---
 title: Implementation Guide
-description: How to implement the Content Standards Protocol as a sales agent, buyer agent, or web publisher
+description: How to implement the Content Standards Protocol as a sales agent, orchestrator, or governance agent
 ---
 
 This guide covers implementation patterns for the Content Standards Protocol from three perspectives:
 
 1. **Sales agents** accepting and enforcing brand safety standards
-2. **Buyer agents** orchestrating content validation across publishers
-3. **Web publishers** without direct content access
+2. **Orchestrators** coordinating content standards across publishers
+3. **Governance agents** providing content evaluation services
+
+## Roles Overview
+
+Before diving in, understand who does what:
+
+| Role | Examples | Responsibilities |
+|------|----------|-----------------|
+| **Orchestrator** | DSP, trading desk, agency platform | Coordinates media buying; passes standards refs to sellers; receives artifacts for validation |
+| **Sales Agent** | Publisher ad server, SSP | Accepts standards; calibrates local model; enforces during delivery; pushes artifacts |
+| **Governance Agent** | IAS, DoubleVerify, brand safety service | Hosts standards; implements `calibrate_content` and `validate_content_delivery` |
+
+The typical flow:
+
+```
+1. Brand sets up standards with governance agent (via orchestrator)
+2. Orchestrator sends standards_ref with get_products/create_media_buy
+3. Sales agent accepts or rejects based on capability
+4. Sales agent calibrates against governance agent
+5. Sales agent enforces during delivery
+6. Sales agent pushes artifacts via webhook (or orchestrator polls)
+7. Orchestrator forwards artifacts to governance agent for validation
+```
+
+---
 
 ## For Sales Agents
 
-If you're a sales agent (publisher ad server, SSP, or platform), implementing Content Standards means accepting buyer policies and enforcing them during delivery.
+If you're a sales agent (publisher ad server, SSP, or platform), implementing Content Standards means accepting orchestrator policies and enforcing them during delivery.
 
 ### The Core Model
 
-When a buyer includes a `content_standards_ref` in their request, you must:
+When an orchestrator includes a `content_standards_ref` in their request, you must:
 
-1. **Fetch the standards** and evaluate if you can fulfill them
+1. **Fetch the standards** from the governance agent and evaluate if you can fulfill them
 2. **Accept or reject** the buy based on your capabilities
-3. **Calibrate** your evaluation model against the buyer's expectations
+3. **Calibrate** your evaluation model against the governance agent's expectations
 4. **Enforce** the standards during delivery
-5. **Report** validation results after delivery
+5. **Push artifacts** to the orchestrator for validation
 
 If you cannot fulfill the content standards requirements, **reject the buy**. Don't accept a campaign you can't properly enforce.
 
@@ -29,19 +53,19 @@ If you cannot fulfill the content standards requirements, **reject the buy**. Do
 
 **1. Accept content standards references on `get_products` and `create_media_buy`**
 
-Buyers pass their standards via reference:
+Orchestrators pass their standards via reference:
 
 ```json
 {
   "content_standards_ref": {
     "standards_id": "nike_emea_brand_safety",
-    "agent_url": "https://brandsafety.nike.com"
+    "agent_url": "https://brandsafety.ias.com"
   }
 }
 ```
 
 When you receive this:
-- Fetch the standards document from the buyer's agent
+- Fetch the standards document from the governance agent at `agent_url`
 - Evaluate whether you can enforce these requirements
 - If you cannot meet the standards, reject the request
 - If you can, accept and store the association with the media buy
@@ -54,9 +78,9 @@ The standards document contains:
 - Competitive separation requirements
 - Any other buyer-specific policies
 
-Review these requirements against your capabilities. Different publishers have different definitions of "adjacency" - Reddit might include comments, YouTube might include related videos, a news site might mean the article body. That's fine - as long as you can meaningfully enforce the buyer's intent, accept the buy.
+Review these requirements against your capabilities. Different publishers have different definitions of "adjacency" - Reddit might include comments, YouTube might include related videos, a news site might mean the article body. That's fine - as long as you can meaningfully enforce the brand's intent, accept the buy.
 
-If you can't - for example, the buyer requires competitive separation but you don't support it, or they need adjacency data for a channel where it doesn't apply (like billboards) - reject the buy.
+If you can't - for example, the brand requires competitive separation but you don't support it, or they need adjacency data for a channel where it doesn't apply (like billboards) - reject the buy.
 
 **3. Build your evaluation capability**
 
@@ -68,12 +92,12 @@ Use the standards document to train or configure your content evaluation system.
 
 The protocol doesn't prescribe your implementation - just that you honor the standards.
 
-**4. Participate in calibration**
+**4. Calibrate against the governance agent**
 
-Before campaigns launch, calibrate your interpretation against the buyer's governance agent. You send sample artifacts, they tell you how they would rate them:
+After accepting the buy, calibrate your local model by calling `calibrate_content` on the governance agent. You send sample artifacts from your inventory, they tell you how they would rate them:
 
 ```json
-// You send examples from your inventory
+// You send examples from your inventory to the governance agent
 {
   "standards_id": "nike_emea_brand_safety",
   "artifacts": [
@@ -85,7 +109,7 @@ Before campaigns launch, calibrate your interpretation against the buyer's gover
   ]
 }
 
-// Buyer's governance agent responds with their interpretation
+// Governance agent responds with their interpretation
 {
   "evaluations": [{
     "artifact_id": "article_123",
@@ -96,66 +120,67 @@ Before campaigns launch, calibrate your interpretation against the buyer's gover
 }
 ```
 
-Use these responses to train your local model. If you disagree with a rating, ask follow-up questions to understand the buyer's reasoning.
+Use these responses to train your local model. If you disagree with a rating, ask follow-up questions to understand the governance agent's reasoning.
 
-**5. Support artifact retrieval and webhooks**
+**5. Push artifacts to the orchestrator**
 
-After delivery, buyers need to audit where their ads appeared. Your responsibilities:
-
-- **Implement `get_media_buy_artifacts`** - Return content artifacts for delivered impressions so buyers can validate against their governance agent
-- **Support artifact webhooks** - Push artifacts to buyer-specified endpoints in real-time or batched
-- **Support reporting webhooks** - Push delivery reports to buyer-specified endpoints
-
-The **governance agent** (not you) implements `validate_content_delivery`. Buyers fetch artifacts from you, then send them to their governance agent for validation.
+After delivery, push artifacts to the orchestrator so they can validate against the governance agent. Configure via `artifact_webhook` in the media buy:
 
 ```json
-// Artifact webhook payload
+// Artifact webhook payload (you send this to the orchestrator)
 {
   "media_buy_id": "mb_nike_reddit_q1",
+  "batch_id": "batch_20250115_001",
+  "timestamp": "2025-01-15T11:00:00Z",
   "artifacts": [
     {
-      "property_id": { "type": "domain", "value": "reddit.com" },
-      "artifact_id": "r_fitness_abc123",
-      "assets": [{ "type": "text", "role": "title", "content": "Best protein sources" }],
-      "delivered_at": "2025-01-15T10:30:00Z"
+      "artifact": {
+        "property_id": { "type": "domain", "value": "reddit.com" },
+        "artifact_id": "r_fitness_abc123",
+        "assets": [{ "type": "text", "role": "title", "content": "Best protein sources" }]
+      },
+      "delivered_at": "2025-01-15T10:30:00Z",
+      "impression_id": "imp_abc123"
     }
   ]
 }
 ```
 
+Also support `get_media_buy_artifacts` for orchestrators who prefer to poll.
+
 ### Implementation Checklist
 
 - [ ] Parse `content_standards_ref` in `get_products` and `create_media_buy`
-- [ ] Fetch and evaluate standards documents from buyer agents
+- [ ] Fetch and evaluate standards documents from governance agents
 - [ ] Reject buys you cannot fulfill - don't accept campaigns you can't enforce
 - [ ] Build content evaluation against the standards document
-- [ ] Call `calibrate_content` on buyer's governance agent to align interpretation
-- [ ] Implement `get_media_buy_artifacts` so buyers can retrieve content for validation
-- [ ] Support artifact webhooks for real-time/batched artifact delivery
-- [ ] Support reporting webhooks for delivery metrics
+- [ ] Call `calibrate_content` on the governance agent to align interpretation
+- [ ] Implement `get_media_buy_artifacts` so orchestrators can retrieve content for validation
+- [ ] Support `artifact_webhook` for push-based artifact delivery
+- [ ] Support `reporting_webhook` for delivery metrics
 
 ---
 
-## For Buyer Agents
+## For Orchestrators
 
-If you're a buyer agent (DSP, agency platform, or brand safety service), you orchestrate content standards across multiple publishers.
+If you're an orchestrator (DSP, trading desk, or agency platform), you coordinate content standards between brands, governance agents, and publishers.
 
-### The Proxy Pattern
-
-Buyer agents act as intermediaries between brands and publishers:
+### The Orchestration Pattern
 
 ```
-Brand → Buyer Agent → Sales Agent (Publisher)
-                   ↓
-            Content Standards
-            (hosted by buyer)
+Brand → Orchestrator → Governance Agent (setup)
+                    → Sales Agent (buying)
+                    ← Sales Agent (artifacts)
+                    → Governance Agent (validation)
+                    → Brand (reporting)
 ```
 
-**1. Host the brand's standards**
+**1. Help brands set up standards with governance agents**
 
-Create and store content standards for each brand:
+Brands create content standards through a governance agent. You might facilitate this or the brand may do it directly:
 
 ```json
+// Standards stored at the governance agent
 {
   "standards_id": "nike_emea_brand_safety",
   "name": "Nike EMEA Brand Safety Policy",
@@ -175,11 +200,9 @@ Create and store content standards for each brand:
 }
 ```
 
-Expose these via your agent's API so publishers can fetch them.
-
 **2. Pass standards references when buying**
 
-When creating media buys, include the reference:
+When discovering products or creating media buys, include the governance agent reference:
 
 ```json
 {
@@ -187,20 +210,98 @@ When creating media buys, include the reference:
   "packages": [...],
   "content_standards_ref": {
     "standards_id": "nike_emea_brand_safety",
-    "agent_url": "https://buying.agency.com"
+    "agent_url": "https://brandsafety.ias.com"
+  },
+  "artifact_webhook": {
+    "url": "https://your-platform.com/webhooks/artifacts",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "your-shared-secret-min-32-chars"
+    },
+    "delivery_mode": "batched",
+    "batch_frequency": "hourly",
+    "sampling_rate": 0.25
   }
 }
 ```
 
 If the publisher cannot fulfill the standards, they should reject the buy. Handle rejections gracefully and find alternative inventory.
 
-**3. Implement `calibrate_content`**
+**3. Receive artifacts from sales agents**
 
-Publishers call your `calibrate_content` endpoint to calibrate their local models. They send sample artifacts, you respond with how the brand would rate them:
+Sales agents push artifacts to your `artifact_webhook` endpoint. Forward them to the governance agent for validation:
 
 ```python
-# Your calibrate_content implementation
-def calibrate_content(standards_id, artifacts):
+# Receive artifact webhook from sales agent
+@app.post("/webhooks/artifacts")
+async def receive_artifacts(payload: ArtifactWebhookPayload):
+    # Forward to governance agent for validation
+    validation_result = await governance_agent.validate_content_delivery(
+        standards_id=get_standards_id(payload.media_buy_id),
+        records=[
+            {"artifact": a.artifact, "record_id": a.impression_id}
+            for a in payload.artifacts
+        ]
+    )
+
+    # Log any failures
+    for result in validation_result.results:
+        if any(f.status == "failed" for f in result.features):
+            log_brand_safety_incident(payload.media_buy_id, result)
+
+    return {"status": "received", "batch_id": payload.batch_id}
+```
+
+**4. Report to brands**
+
+Surface validation results to the brand:
+- **Incidents**: Content that didn't meet standards
+- **Coverage**: What percentage of delivery was validated
+- **Trends**: Changes in content safety over time
+
+### Implementation Checklist
+
+- [ ] Facilitate brand setup with governance agents
+- [ ] Include `content_standards_ref` in `get_products` and `create_media_buy` requests
+- [ ] Configure `artifact_webhook` to receive artifacts from sales agents
+- [ ] Handle rejections from publishers who can't fulfill standards
+- [ ] Forward artifacts to governance agent via `validate_content_delivery`
+- [ ] Build reporting for brands
+
+---
+
+## For Governance Agents
+
+If you're a governance agent (IAS, DoubleVerify, or brand safety service), you provide content evaluation as a service.
+
+### What You Implement
+
+**1. Host and serve content standards**
+
+Store standards configurations and expose them via `get_content_standards`:
+
+```json
+// Response to get_content_standards
+{
+  "standards_id": "nike_emea_brand_safety",
+  "version": "1.2.0",
+  "effective_date": "2025-01-01T00:00:00Z",
+  "name": "Nike EMEA - all digital channels",
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health is good...",
+  "calibration": {
+    "acceptable": [...],
+    "unacceptable": [...]
+  },
+  "competitive_separation": ["adidas", "puma", "under_armour"]
+}
+```
+
+**2. Implement `calibrate_content`**
+
+Sales agents call this to align their local models before campaign execution. They send sample artifacts, you respond with how the brand would rate them:
+
+```python
+def calibrate_content(standards_id: str, artifacts: list) -> dict:
     standards = get_standards(standards_id)
     evaluations = []
 
@@ -211,141 +312,51 @@ def calibrate_content(standards_id, artifacts):
             "artifact_id": artifact["artifact_id"],
             "suitable": result.suitable,
             "confidence": result.confidence,
-            "explanation": result.explanation
+            "explanation": result.explanation  # Help them understand your reasoning
         })
 
     return {"evaluations": evaluations}
 ```
 
-This helps publishers understand your interpretation before they start enforcing.
+Calibration is a dialogue - be prepared for follow-up questions and edge cases.
 
-**4. Validate delivery**
+**3. Implement `validate_content_delivery`**
 
-After campaign delivery, fetch artifacts from publishers and validate against the standards:
-
-```python
-# Get delivery records from publisher
-artifacts = publisher.get_media_buy_artifacts(media_buy_id, include_delivery=True)
-
-# Validate using your governance logic
-for artifact in artifacts:
-    result = evaluate_against_policy(artifact, standards)
-    if not result.suitable:
-        log_brand_safety_incident(artifact, result)
-```
-
-You can also receive artifacts via webhook instead of polling.
-
-**5. Report to brands**
-
-Surface validation results to the brand:
-- **Incidents**: Content that didn't meet standards
-- **Coverage**: What percentage of delivery was validated
-- **Trends**: Changes in content safety over time
-
-### Implementation Checklist
-
-- [ ] Store and serve content standards documents
-- [ ] Include `content_standards_ref` in media buy requests
-- [ ] Handle rejections from publishers who can't fulfill standards
-- [ ] Implement `calibrate_content` so publishers can align their models
-- [ ] Implement `validate_content_delivery` to evaluate artifacts against standards
-- [ ] Fetch artifacts via `get_media_buy_artifacts` or receive via webhook
-- [ ] Build reporting for brands
-
----
-
-## For Web Publishers (URL-Based Content)
-
-If you're a web publisher without direct programmatic access to your content (e.g., your CMS doesn't expose an API), you can use a service provider pattern.
-
-### The Problem
-
-A buyer sends you artifact IDs (URLs) for validation:
-
-```json
-{
-  "records": [
-    { "artifact_id": "https://yoursite.com/article/12345" },
-    { "artifact_id": "https://yoursite.com/article/67890" }
-  ]
-}
-```
-
-But your ad server doesn't have the article content - it just knows the URL.
-
-### Solution: Content Service Provider
-
-Use a scraping/content service to resolve URLs to content:
-
-```
-Buyer → Your Ad Server → Content Service → Your Website
-                      ↓
-                 Evaluation
-```
-
-**Option A: Integrate a content service**
+Orchestrators call this to validate artifacts after delivery. Batch evaluation at scale:
 
 ```python
-async def validate_content_delivery(standards_id, records):
-    standards = fetch_standards(standards_id)
+def validate_content_delivery(standards_id: str, records: list) -> dict:
+    standards = get_standards(standards_id)
     results = []
 
     for record in records:
-        # Use content service to fetch and parse
-        content = await content_service.fetch(record.artifact_id)
+        features = []
+        for feature in ["brand_safety", "brand_suitability", "competitive_separation"]:
+            evaluation = evaluate_feature(record["artifact"], standards, feature)
+            features.append({
+                "feature_id": feature,
+                "status": "passed" if evaluation.passed else "failed",
+                "value": evaluation.value,
+                "message": evaluation.message if not evaluation.passed else None
+            })
+        results.append({
+            "record_id": record["record_id"],
+            "features": features
+        })
 
-        # Evaluate against standards
-        result = evaluate(content, standards)
-        results.append(result)
-
-    return results
-```
-
-**Option B: Pre-index your content**
-
-Build a content index that maps URLs to extracted content:
-
-```json
-{
-  "content_access": {
-    "url_pattern": "https://content-cache.yoursite.com/*",
-    "auth": { "type": "bearer", "token": "..." }
-  }
-}
-```
-
-When buyers request validation, they can fetch content directly from your cache.
-
-**Option C: Provide artifact URLs in responses**
-
-In `get_media_buy_artifacts`, include URLs that resolve to content:
-
-```json
-{
-  "artifacts": [
-    {
-      "property_id": { "type": "domain", "value": "yoursite.com" },
-      "artifact_id": "article_12345",
-      "url": "https://yoursite.com/article/12345",
-      "assets": []  // Empty - buyer fetches via URL
+    return {
+        "summary": compute_summary(results),
+        "results": results
     }
-  ],
-  "content_access": {
-    "url_pattern": "https://yoursite.com/*",
-    "auth": null  // Public content
-  }
-}
 ```
-
-The buyer then fetches and evaluates the content themselves.
 
 ### Implementation Checklist
 
-- [ ] Decide on content access pattern (service, cache, or buyer-fetch)
-- [ ] Implement content fetching/caching if needed
-- [ ] Expose `content_access` configuration for authenticated content
-- [ ] Return resolvable URLs in `get_media_buy_artifacts`
+- [ ] Implement `create_content_standards` for brands to set up policies
+- [ ] Implement `get_content_standards` for sales agents to fetch policies
+- [ ] Implement `calibrate_content` for sales agents to align their models
+- [ ] Implement `validate_content_delivery` for orchestrators to validate delivery
+- [ ] Support dialogue in calibration (follow-up questions, edge cases)
 
 ---
 
@@ -370,8 +381,7 @@ All three roles may need to exchange content securely. The `content_access` patt
 - **auth.token**: The credential
 
 Include this in:
-- `create_content_standards` (buyer → seller: "fetch my standards here")
-- `get_media_buy_artifacts` response (seller → buyer: "fetch content here")
-- `validate_content_delivery` request (buyer → seller: "fetch content here if you need it")
+- `get_content_standards` response (governance agent → sales agent: "fetch examples here")
+- `get_media_buy_artifacts` response (sales agent → orchestrator: "fetch content here")
 
 This avoids per-asset tokens and keeps payloads small while enabling secure content exchange.

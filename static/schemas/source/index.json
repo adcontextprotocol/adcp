@@ -608,6 +608,10 @@
         "content-standards-artifact": {
           "$ref": "/schemas/content-standards/artifact.json",
           "description": "Content artifact for evaluation or calibration - represents content context where ad placements occur, identified by property_id + artifact_id"
+        },
+        "artifact-webhook-payload": {
+          "$ref": "/schemas/content-standards/artifact-webhook-payload.json",
+          "description": "Webhook payload for content artifact delivery from sales agents to orchestrators"
         }
       },
       "tasks": {
