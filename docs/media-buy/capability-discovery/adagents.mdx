@@ -65,6 +65,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`domain`** *(optional)*: Primary domain of managing entity
   - **`seller_id`** *(optional)*: Seller ID from IAB Tech Lab sellers.json
   - **`tag_id`** *(optional)*: TAG Certified Against Fraud ID
+  - **`privacy_policy_url`** *(optional)*: URL to entity's privacy policy for consumer consent flows
 
 **`properties`** *(optional)*: Array of properties covered by this file (canonical property definitions)
 
@@ -357,7 +358,8 @@ Large network using tags for grouping efficiency:
     "email": "adops@meta.com",
     "domain": "meta.com",
     "seller_id": "pub-meta-12345",
-    "tag_id": "12345"
+    "tag_id": "12345",
+    "privacy_policy_url": "https://www.meta.com/privacy/policy"
   },
   "properties": [
     {

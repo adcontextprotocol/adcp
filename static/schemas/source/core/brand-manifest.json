@@ -10,6 +10,11 @@
       "format": "uri",
       "description": "Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
     },
+    "privacy_policy_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the brand's privacy policy. Used for consumer consent flows when personal data may be shared with the advertiser. AI platforms can use this to present explicit privacy choices to users before data handoff."
+    },
     "name": {
       "type": "string",
       "description": "Brand or business name"
@@ -318,6 +323,7 @@
       "description": "Full brand manifest with all fields",
       "data": {
         "url": "https://acmecorp.com",
+        "privacy_policy_url": "https://acmecorp.com/privacy",
         "name": "ACME Corporation",
         "logos": [
           {

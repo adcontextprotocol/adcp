@@ -22,6 +22,7 @@ Brand manifests solve a key problem: how to efficiently identify advertisers and
 ### Key Benefits
 
 - **Know Your Customer**: Publishers can verify advertisers meet their standards
+- **Privacy Transparency**: Link to privacy policy for consumer consent flows
 - **Minimal Friction**: Start with just a name or URL, expand as needed
 - **Cacheable**: Same brand manifest reused across all requests
 - **Standardized**: Consistent format across all AdCP implementations
@@ -243,6 +244,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Brand or business name |
+| `privacy_policy_url` | string (uri) | URL to the brand's privacy policy for consumer consent flows |
 | `logos` | Logo[] | Brand logo assets with semantic tags |
 | `colors` | Colors | Brand color palette (hex format) |
 | `fonts` | Fonts | Brand typography guidelines |
@@ -491,6 +493,33 @@ Enterprise brands with large asset libraries should provide explicit assets:
   ]
 }
 ```
+
+## Privacy Integration
+
+Brand manifests support privacy transparency through the `privacy_policy_url` field. This enables AI platforms to present explicit privacy choices to users before sharing personal data with advertisers.
+
+### Consumer Consent Flow
+
+When an AI assistant helps a user engage with an advertiser (booking a flight, making a purchase, etc.), the platform can use the brand manifest's privacy policy URL to:
+
+1. **Present explicit consent**: "May I share your details with Delta? [View their privacy policy]"
+2. **Enable informed decisions**: Users can review data practices before data handoff
+3. **Support machine-readable terms**: Works alongside [MyTerms/IEEE P7012](https://myterms.info) for automated privacy negotiation
+
+### Example with Privacy Policy
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "Delta Airlines",
+  "url": "https://delta.com",
+  "privacy_policy_url": "https://delta.com/privacy"
+}
+```
+
+### MyTerms Discovery
+
+For advertisers implementing [IEEE P7012 (MyTerms)](https://myterms.info), AI platforms can discover machine-readable privacy terms from the advertiser's domain (e.g., `/.well-known/myterms`). The brand manifest's `privacy_policy_url` serves as the human-readable fallback and explicit consent path.
 
 ## Evolution and Versioning
 
