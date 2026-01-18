@@ -9,18 +9,9 @@
       "type": "string",
       "description": "Unique identifier for this standards configuration"
     },
-    "version": {
-      "type": "string",
-      "description": "Version of this standards configuration (semver recommended)"
-    },
     "name": {
       "type": "string",
       "description": "Human-readable name for this standards configuration"
-    },
-    "brand_ids": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Brand identifiers as defined in the Brand Manifest. Standards apply to all listed brands."
     },
     "countries_all": {
       "type": "array",
@@ -29,8 +20,14 @@
     },
     "channels_any": {
       "type": "array",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
+    },
+    "languages_any": {
+      "type": "array",
       "items": { "type": "string" },
-      "description": "Advertising channels (display, video, audio, ctv, etc.). Standards apply to ANY of the listed channels (OR logic)."
+      "minItems": 1,
+      "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
     },
     "policy": {
       "type": "string",
@@ -52,29 +49,9 @@
         }
       }
     },
-    "floor": {
-      "type": "object",
-      "description": "Safety floor baseline - a reference to an external floor definition. The floor defines universal content exclusions (hate speech, illegal content, etc.) that apply regardless of brand-specific policy.",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to the floor definition document (e.g., 'https://scope3.com/brand-safety-floor', 'https://example-publisher.com/content-guidelines')"
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable name for the floor (e.g., 'Scope3 Common Sense Brand Safety')"
-        },
-        "version": {
-          "type": "string",
-          "description": "Version of the floor definition being referenced"
-        }
-      },
-      "required": ["url"]
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["standards_id", "version"]
+  "required": ["standards_id"]
 }

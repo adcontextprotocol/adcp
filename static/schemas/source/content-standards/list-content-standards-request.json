@@ -5,15 +5,15 @@
   "description": "Request parameters for listing content standards configurations",
   "type": "object",
   "properties": {
-    "brand_ids": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Filter by brand identifiers"
-    },
     "channels": {
       "type": "array",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "description": "Filter by channel"
+    },
+    "languages": {
+      "type": "array",
       "items": { "type": "string" },
-      "description": "Filter by channel (display, video, audio, ctv, etc.)"
+      "description": "Filter by BCP 47 language tags"
     },
     "countries": {
       "type": "array",

@@ -11,13 +11,14 @@ Update an existing content standards configuration. Creates a new version.
 
 ## Request
 
+**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/update-content-standards-request.json)
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `standards_id` | string | Yes | ID of the standards configuration to update |
 | `scope` | object | No | Updated scope |
 | `policy` | string | No | Updated policy prompt |
 | `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
-| `floor` | string | No | Updated safety floor |
 
 ### Example Request
 
@@ -27,13 +28,13 @@ Update an existing content standards configuration. Creates a new version.
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid violence, controversial politics, adult themes. Block hate speech and illegal activities.",
   "calibration_exemplars": {
     "pass": [
-      { "type": "domain", "value": "espn.com", "language": "en" },
-      { "type": "domain", "value": "healthline.com", "language": "en" },
-      { "type": "domain", "value": "runnersworld.com", "language": "en" }
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" },
+      { "type": "url", "value": "https://runnersworld.com/training/marathon-tips", "language": "en" }
     ],
     "fail": [
-      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
-      { "type": "domain", "value": "gambling.example.com", "language": "en" }
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
+      { "type": "url", "value": "https://gambling.example.com/betting-guide", "language": "en" }
     ]
   }
 }
@@ -41,12 +42,13 @@ Update an existing content standards configuration. Creates a new version.
 
 ## Response
 
+**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/update-content-standards-response.json)
+
 ### Success Response
 
 ```json
 {
-  "standards_id": "nike_emea_safety",
-  "version": "1.3.0"
+  "standards_id": "nike_emea_safety"
 }
 ```
 
