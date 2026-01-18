@@ -111,26 +111,6 @@
         }
       }
     },
-    "floor": {
-      "type": "object",
-      "description": "Updated safety floor baseline - a reference to an external floor definition. Floors are typically industry-standard (e.g., GARM categories) or vendor-defined (e.g., IAS, DoubleVerify).",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to the floor definition document (e.g., GARM floor, vendor-specific floor)"
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable name for the floor (e.g., 'GARM Brand Safety Floor', 'IAS Brand Safety')"
-        },
-        "version": {
-          "type": "string",
-          "description": "Version of the floor definition being referenced"
-        }
-      },
-      "required": ["url"]
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

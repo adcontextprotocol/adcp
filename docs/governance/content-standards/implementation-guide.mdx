@@ -187,15 +187,11 @@ Brands create content standards through a governance agent. You might facilitate
   "policy": "Sports and fitness content is ideal. Avoid violence, adult themes, drugs.",
   "calibration_exemplars": {
     "pass": [
-      { "type": "domain", "value": "espn.com" }
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" }
     ],
     "fail": [
-      { "type": "domain", "value": "tabloid.example.com" }
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" }
     ]
-  },
-  "floor": {
-    "url": "https://scope3.com/brand-safety-floor",
-    "name": "Scope3 Common Sense Brand Safety"
   }
 }
 ```
@@ -290,10 +286,6 @@ Store standards configurations and expose them via `get_content_standards`:
   "calibration_exemplars": {
     "pass": [...],
     "fail": [...]
-  },
-  "floor": {
-    "url": "https://scope3.com/brand-safety-floor",
-    "name": "Scope3 Common Sense Brand Safety"
   }
 }
 ```

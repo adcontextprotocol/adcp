@@ -38,10 +38,6 @@ Retrieve content safety policies for a specific standards configuration.
       { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
       { "type": "url", "value": "https://news.example.com/controversial-politics-article", "language": "en" }
     ]
-  },
-  "floor": {
-    "url": "https://scope3.com/brand-safety-floor",
-    "name": "Scope3 Common Sense Brand Safety"
   }
 }
 ```
@@ -57,7 +53,10 @@ Retrieve content safety policies for a specific standards configuration.
 | `languages_any` | BCP 47 language tags - standards apply to content in ANY of these languages |
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
 | `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
-| `floor` | Reference to external safety floor definition (URL + name) |
+
+:::note[Brand Safety Floor Requirement]
+Implementors MUST apply a brand safety floor regardless of what policy is defined. AdCP does not define the floor specification.
+:::
 
 ### Error Response
 

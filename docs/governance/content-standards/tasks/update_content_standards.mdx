@@ -19,7 +19,6 @@ Update an existing content standards configuration. Creates a new version.
 | `scope` | object | No | Updated scope |
 | `policy` | string | No | Updated policy prompt |
 | `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
-| `floor` | object | No | Updated safety floor reference (url, name, version) |
 
 ### Example Request
 
@@ -29,13 +28,13 @@ Update an existing content standards configuration. Creates a new version.
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid violence, controversial politics, adult themes. Block hate speech and illegal activities.",
   "calibration_exemplars": {
     "pass": [
-      { "type": "domain", "value": "espn.com", "language": "en" },
-      { "type": "domain", "value": "healthline.com", "language": "en" },
-      { "type": "domain", "value": "runnersworld.com", "language": "en" }
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" },
+      { "type": "url", "value": "https://runnersworld.com/training/marathon-tips", "language": "en" }
     ],
     "fail": [
-      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
-      { "type": "domain", "value": "gambling.example.com", "language": "en" }
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
+      { "type": "url", "value": "https://gambling.example.com/betting-guide", "language": "en" }
     ]
   }
 }

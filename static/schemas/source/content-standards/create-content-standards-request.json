@@ -108,26 +108,6 @@
         }
       }
     },
-    "floor": {
-      "type": "object",
-      "description": "Safety floor baseline - a reference to an external floor definition. Floors are typically industry-standard (e.g., GARM categories) or vendor-defined (e.g., IAS, DoubleVerify) and define universal content exclusions that apply regardless of brand-specific policy. The seller agent retrieves the floor definition from the URL to understand what categories/ratings to implement.",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL to the floor definition document (e.g., GARM floor, vendor-specific floor). The document at this URL defines content categories and exclusion criteria."
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable name for the floor (e.g., 'GARM Brand Safety Floor', 'IAS Brand Safety', 'DoubleVerify Standard')"
-        },
-        "version": {
-          "type": "string",
-          "description": "Version of the floor definition being referenced"
-        }
-      },
-      "required": ["url"]
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
