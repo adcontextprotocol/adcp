@@ -303,7 +303,7 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
 export async function getSubscriptionInfo(
   stripeCustomerId: string
 ): Promise<{
-  status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
   current_period_end?: number;
@@ -404,7 +404,7 @@ export async function getSubscriptionInfo(
         : undefined;
 
     const result = {
-      status: subscription.status as 'active' | 'past_due' | 'canceled' | 'unpaid',
+      status: subscription.status as 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid',
       product_id: typeof product === 'string' ? product : product?.id,
       product_name: productName,
       current_period_end: periodEnd,

@@ -27,6 +27,18 @@ export class StripeCustomerConflictError extends Error {
 export type CompanyType = CompanyTypeValue;
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
 
+/**
+ * Valid revenue tier values for runtime validation
+ */
+export const VALID_REVENUE_TIERS: readonly RevenueTier[] = [
+  'under_1m',
+  '1m_5m',
+  '5m_50m',
+  '50m_250m',
+  '250m_1b',
+  '1b_plus',
+] as const;
+
 export interface Organization {
   workos_organization_id: string;
   name: string;
@@ -62,7 +74,7 @@ export interface Organization {
 }
 
 export interface SubscriptionInfo {
-  status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
   current_period_end?: number;

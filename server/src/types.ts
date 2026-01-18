@@ -136,6 +136,32 @@ export type SubscriptionTier = 'basic' | 'professional' | 'enterprise';
 
 export type CompanyUserRole = 'owner' | 'admin' | 'member';
 
+/**
+ * Valid organization roles for runtime validation
+ */
+export const VALID_ORGANIZATION_ROLES: readonly CompanyUserRole[] = ['owner', 'admin', 'member'] as const;
+
+/**
+ * Roles that can be assigned to new members (excludes owner)
+ */
+export const VALID_ASSIGNABLE_ROLES: readonly ('admin' | 'member')[] = ['admin', 'member'] as const;
+
+/**
+ * Legal document types
+ */
+export type LegalDocumentType = 'terms_of_service' | 'privacy_policy' | 'membership' | 'bylaws' | 'ip_policy';
+
+/**
+ * Valid legal document types for runtime validation
+ */
+export const VALID_LEGAL_DOCUMENT_TYPES: readonly LegalDocumentType[] = [
+  'terms_of_service',
+  'privacy_policy',
+  'membership',
+  'bylaws',
+  'ip_policy',
+] as const;
+
 export interface Company {
   id: string;
   slug: string;
@@ -199,6 +225,26 @@ export type MemberOffering =
   | 'publisher'
   | 'consulting'
   | 'other';
+
+/**
+ * Valid member offering values for runtime validation
+ */
+export const VALID_MEMBER_OFFERINGS: readonly MemberOffering[] = [
+  'buyer_agent',
+  'sales_agent',
+  'creative_agent',
+  'signals_agent',
+  'publisher',
+  'consulting',
+  'other',
+] as const;
+
+/**
+ * Type guard to check if a string is a valid MemberOffering
+ */
+export function isValidMemberOffering(value: string | undefined | null): value is MemberOffering {
+  return typeof value === 'string' && VALID_MEMBER_OFFERINGS.includes(value as MemberOffering);
+}
 
 /**
  * Agent configuration stored in member profiles
