@@ -294,40 +294,31 @@ See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_conte
 
 The current model trusts the publisher to faithfully implement the calibrated standards. A future evolution uses **secure enclaves** (Trusted Execution Environments / TEEs) to provide cryptographic guarantees:
 
+```mermaid
+flowchart TB
+    subgraph VS["Verification Service"]
+        Models["Models & Calibration Data"]
+        Results["Aggregate Results"]
+    end
+
+    subgraph PUB["Publisher Infrastructure"]
+        subgraph TEE["Secure Enclave (TEE)"]
+            Agent["Containerized<br/>Governance Agent"]
+        end
+        Content["Content Artifacts"]
+    end
+
+    Models -->|"Pinhole IN:<br/>models, policy, examples"| Agent
+    Agent -->|"Pinhole OUT:<br/>pass rates, drift metrics"| Results
+    Content -->|"evaluate"| Agent
+    Agent -->|"pass/fail verdict"| Content
+
+    style TEE fill:#e8f5e9,stroke:#4caf50
+    style Agent fill:#c8e6c9,stroke:#388e3c
+    style PUB fill:#fafafa,stroke:#9e9e9e
 ```
-                           Verification Service
-                                   │
-                    ┌──────────────┴──────────────┐
-                    │         "Pinhole"           │
-                    │  ┌──────────┐ ┌──────────┐  │
-                    │  │ Models   │ │ Aggregate│  │
-                    │  │ Examples │ │ Results  │  │
-                    │  │    ↓     │ │    ↑     │  │
-                    │  └──────────┘ └──────────┘  │
-                    └──────────────┬──────────────┘
-                                   │
-┌──────────────────────────────────┼──────────────────────────────────┐
-│                    Publisher Infrastructure                          │
-│  ┌───────────────────────────────┼───────────────────────────────┐  │
-│  │              Secure Enclave (TEE)                             │  │
-│  │  ┌────────────────────────────┼────────────────────────────┐  │  │
-│  │  │     Containerized Governance Agent                      │  │  │
-│  │  │                            │                            │  │  │
-│  │  │     IN:                    │            OUT:            │  │  │
-│  │  │     • Updated models       │            • Pass/fail     │  │  │
-│  │  │     • Policy changes       │            • Drift metrics │  │  │
-│  │  │     • Calibration data     │            • Aggregates    │  │  │
-│  │  │                            │                            │  │  │
-│  │  │     NEVER OUT:                                          │  │  │
-│  │  │     • Content artifacts                                 │  │  │
-│  │  │     • User data / PII                                   │  │  │
-│  │  │     • Individual impressions                            │  │  │
-│  │  └─────────────────────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-│     Content → [Enclave] → Pass/Fail verdict (content never leaves)  │
-└──────────────────────────────────────────────────────────────────────┘
-```
+
+**Content never crosses the pinhole** - only models flow in, only aggregates flow out.
 
 ### The Pinhole Interface
 
