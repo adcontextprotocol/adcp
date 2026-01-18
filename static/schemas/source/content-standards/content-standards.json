@@ -13,16 +13,6 @@
       "type": "string",
       "description": "Version of this standards configuration (semver recommended)"
     },
-    "effective_date": {
-      "type": ["string", "null"],
-      "format": "date-time",
-      "description": "When this standards version becomes/became effective (ISO 8601). Null means draft/not yet active. Standards remain effective until superseded by a newer version or explicitly terminated."
-    },
-    "termination_date": {
-      "type": ["string", "null"],
-      "format": "date-time",
-      "description": "When this standards version was terminated (ISO 8601). Null means currently active (if effective_date is set) or never activated (if effective_date is null). Set when archiving or replacing a standard."
-    },
     "name": {
       "type": "string",
       "description": "Human-readable name for this standards configuration"
