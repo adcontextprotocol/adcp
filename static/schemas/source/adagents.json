@@ -70,6 +70,11 @@
               "description": "TAG Certified Against Fraud ID for verification (if applicable)",
               "minLength": 1,
               "maxLength": 100
+            },
+            "privacy_policy_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to the entity's privacy policy. Used for consumer consent flows when interacting with this sales agent."
             }
           },
           "required": [
@@ -350,7 +355,8 @@
         "email": "adops@meta.com",
         "domain": "meta.com",
         "seller_id": "pub-meta-12345",
-        "tag_id": "12345"
+        "tag_id": "12345",
+        "privacy_policy_url": "https://www.meta.com/privacy/policy"
       },
       "properties": [
         {
