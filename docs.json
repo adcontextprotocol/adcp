@@ -131,6 +131,12 @@
             ]
           },
           {
+            "group": "Sponsored Intelligence Protocol",
+            "pages": [
+              "docs/sponsored-intelligence/overview"
+            ]
+          },
+          {
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
