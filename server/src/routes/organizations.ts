@@ -17,8 +17,9 @@ import {
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
+import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -732,12 +733,11 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate role if provided
-      const validRoles = ['member', 'admin'];
       const roleToAssign = role || 'member';
-      if (!validRoles.includes(roleToAssign)) {
+      if (!(VALID_ASSIGNABLE_ROLES as readonly string[]).includes(roleToAssign)) {
         return res.status(400).json({
           error: 'Invalid role',
-          message: `Role must be one of: ${validRoles.join(', ')}`,
+          message: `Role must be one of: ${VALID_ASSIGNABLE_ROLES.join(', ')}`,
         });
       }
 
@@ -1037,11 +1037,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate revenue_tier if provided
-      const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-      if (revenue_tier && !validRevenueTiers.includes(revenue_tier)) {
+      if (revenue_tier && !(VALID_REVENUE_TIERS as readonly string[]).includes(revenue_tier)) {
         return res.status(400).json({
           error: 'Invalid revenue tier',
-          message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
         });
       }
 
@@ -1393,11 +1392,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate revenue_tier if provided
-      const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-      if (revenue_tier !== undefined && revenue_tier !== null && !validRevenueTiers.includes(revenue_tier)) {
+      if (revenue_tier !== undefined && revenue_tier !== null && !VALID_REVENUE_TIERS.includes(revenue_tier as any)) {
         return res.status(400).json({
           error: 'Invalid revenue tier',
-          message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
         });
       }
 
@@ -1936,11 +1934,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate role if provided
-      const validRoles = ['member', 'admin', 'owner'];
-      if (role && !validRoles.includes(role)) {
+      if (role && !VALID_ORGANIZATION_ROLES.includes(role as any)) {
         return res.status(400).json({
           error: 'Invalid role',
-          message: `Role must be one of: ${validRoles.join(', ')}`,
+          message: `Role must be one of: ${VALID_ORGANIZATION_ROLES.join(', ')}`,
         });
       }
 
@@ -2187,11 +2184,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate role
-      const validRoles = ['member', 'admin', 'owner'];
-      if (!validRoles.includes(role)) {
+      if (!VALID_ORGANIZATION_ROLES.includes(role as any)) {
         return res.status(400).json({
           error: 'Invalid role',
-          message: `Role must be one of: ${validRoles.join(', ')}`,
+          message: `Role must be one of: ${VALID_ORGANIZATION_ROLES.join(', ')}`,
         });
       }
 
