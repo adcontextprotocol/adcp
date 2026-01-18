@@ -9,24 +9,30 @@ The Content Standards Protocol enables **privacy-preserving brand safety** for e
 
 ## The Problem
 
-Traditional brand safety relies on third-party verification: send your content to IAS or DoubleVerify, they evaluate it, return a verdict. This works for static web pages. It doesn't work for:
+Traditional brand safety relies on third-party verification: send your content to IAS or DoubleVerify, they evaluate it, return a verdict. This works for static web pages. It fundamentally cannot work for:
 
 - **AI-generated content** - ChatGPT responses, DALL-E images that exist only in a user session
 - **Private conversations** - Content in messaging apps, private social feeds
 - **Ephemeral content** - Stories, live streams, real-time feeds that disappear
 - **Privacy-regulated content** - GDPR-protected data that cannot be exported
 
-These platforms can't send content to external verification services. But brands still need safety guarantees.
+For these platforms, **there is no traditional verification option**. The content simply cannot leave. OpenAI cannot send user conversations to an external service. A messaging app cannot export private chats. A streaming platform cannot share real-time content before it disappears.
+
+Yet these are exactly the environments where advertising is growing fastest - and where brands most need safety guarantees. Without a privacy-preserving approach, brands either avoid these channels entirely or accept unknown risk.
 
 ## The Solution: Calibration-Based Alignment
 
-Content Standards solves this with a three-phase model where **no sensitive content leaves the publisher's walls**:
+Content Standards solves this by **using agents to protect privacy**. It's a three-phase model where no sensitive content ever leaves the publisher's infrastructure:
 
-1. **Calibration** - Publisher and verification agent align on policy interpretation using synthetic or sample data
-2. **Local Execution** - Publisher runs evaluation locally on every impression (content never leaves)
-3. **Validation** - Statistical sampling detects drift; verification agent audits a sample
+| Phase | Where It Runs | What Happens |
+|-------|---------------|--------------|
+| **1. Calibration** | External (safe data only) | Publisher and verification agent align on policy interpretation using synthetic examples or public samples - no PII, no sensitive content |
+| **2. Local Execution** | Inside publisher's walls | Publisher runs evaluation on every impression using a local model trained during calibration - content never leaves |
+| **3. Validation** | Statistical sampling | Verification agent audits a sample to detect drift - both parties can verify the system is working without exposing PII |
 
 This inverts the traditional model. Instead of "send us your content, we'll evaluate it," it's "we'll teach you our standards, you evaluate locally, we'll audit statistically."
+
+**The key insight**: The execution engine runs entirely inside the publisher's infrastructure. For OpenAI, that means brand safety evaluation happens within their firewall - user conversations never leave. For a messaging app, it means private content stays private. The calibration and validation phases provide confidence that the local model is working correctly, without ever requiring access to sensitive data.
 
 ## What It Covers
 
@@ -283,6 +289,40 @@ See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_conte
 - **DoubleVerify** - Brand safety and verification
 - **Scope3** - Sustainability-focused brand safety with prompt-based policies
 - **Custom** - Brand-specific implementations
+
+## Future: Secure Enclaves
+
+The current model trusts the publisher to faithfully implement the calibrated standards. A future evolution uses **secure enclaves** (Trusted Execution Environments / TEEs) to provide cryptographic guarantees:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Publisher Infrastructure                  │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │              Secure Enclave (TEE)                     │  │
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │     Containerized Governance Agent              │  │  │
+│  │  │     (provided by verification service)          │  │  │
+│  │  │                                                 │  │  │
+│  │  │  • Receives content for evaluation              │  │  │
+│  │  │  • Runs brand safety model                      │  │  │
+│  │  │  • Returns pass/fail verdict                    │  │  │
+│  │  │  • Content never leaves enclave                 │  │  │
+│  │  │  • Code is attestable and auditable             │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+In this model:
+
+- **Publisher** hosts a secure enclave inside their infrastructure
+- **Governance agent** (from IAS, DoubleVerify, etc.) runs as a container within the enclave
+- **Content** flows into the enclave for evaluation but never leaves the publisher's walls
+- **Both parties** can verify the governance code is running unmodified via attestation
+
+This provides the same privacy guarantees as local execution, but with cryptographic proof that the correct algorithm is running. The brand knows their standards are being enforced faithfully. The publisher proves compliance without exposing content.
+
+This architecture aligns with emerging industry frameworks like the [IAB Tech Lab Authentic](https://iabtechlab.com/authentic/) initiative for real-time content verification.
 
 ## Related
 
