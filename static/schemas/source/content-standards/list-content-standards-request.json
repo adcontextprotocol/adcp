@@ -30,6 +30,16 @@
       "description": "Include draft standards with no effective_date (default: false)",
       "default": false
     },
+    "effective_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter to standards effective before this date (ISO 8601)"
+    },
+    "effective_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter to standards effective after this date (ISO 8601)"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
