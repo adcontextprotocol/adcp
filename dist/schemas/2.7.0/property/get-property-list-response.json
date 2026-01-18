@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/property/get-property-list-response.json",
+  "title": "Get Property List Response",
+  "description": "Response payload for get_property_list task. Returns identifiers only (not full property objects or scores). Consumers should cache the resolved identifiers and refresh based on cache_valid_until.",
+  "type": "object",
+  "properties": {
+    "list": {
+      "$ref": "/schemas/2.7.0/property/property-list.json",
+      "description": "The property list metadata (always returned)"
+    },
+    "identifiers": {
+      "type": "array",
+      "description": "Resolved identifiers that passed filters (if resolve=true). Cache these locally for real-time use.",
+      "items": {
+        "$ref": "/schemas/2.7.0/core/identifier.json"
+      }
+    },
+    "total_count": {
+      "type": "integer",
+      "description": "Total number of identifiers in resolved list"
+    },
+    "returned_count": {
+      "type": "integer",
+      "description": "Number of identifiers returned in this response"
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information",
+      "properties": {
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more results are available"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Cursor for next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was resolved"
+    },
+    "cache_valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Cache expiration timestamp. Re-fetch the list after this time to get updated identifiers."
+    },
+    "coverage_gaps": {
+      "type": "object",
+      "description": "Properties included in the list despite missing feature data. Only present when a feature_requirement has if_not_covered='include'. Maps feature_id to list of identifiers not covered for that feature.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "/schemas/2.7.0/core/identifier.json"
+        }
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/2.7.0/core/ext.json"
+    }
+  },
+  "required": ["list"],
+  "additionalProperties": false
+}
