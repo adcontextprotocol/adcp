@@ -19,18 +19,18 @@
           "items": { "$ref": "/schemas/enums/channels.json" },
           "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
         },
-        "languages": {
+        "languages_any": {
           "type": "array",
           "items": { "type": "string" },
           "minItems": 1,
-          "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Required - content is evaluated in these languages."
+          "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
         },
         "description": {
           "type": "string",
           "description": "Human-readable description of this scope"
         }
       },
-      "required": ["languages"]
+      "required": ["languages_any"]
     },
     "policy": {
       "type": "string",
@@ -38,7 +38,7 @@
     },
     "calibration_exemplars": {
       "type": "object",
-      "description": "Training/test set to calibrate policy interpretation. Supports both simplified domain references and full artifact definitions.",
+      "description": "Training/test set to calibrate policy interpretation. Supports simplified domain/URL references and full artifact definitions.",
       "properties": {
         "pass": {
           "type": "array",
@@ -46,7 +46,7 @@
             "oneOf": [
               {
                 "type": "object",
-                "description": "Simplified domain reference for quick calibration setup",
+                "description": "Domain-level reference - all content on this domain passes",
                 "properties": {
                   "type": {
                     "type": "string",
@@ -65,6 +65,27 @@
                 "required": ["type", "value"]
               },
               {
+                "type": "object",
+                "description": "URL-level reference - this specific page/content passes",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "url",
+                    "description": "Indicates this is a URL-level reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full URL to a specific page (e.g., 'https://espn.com/nba/story/_/id/12345/lakers-win')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content at this URL"
+                  }
+                },
+                "required": ["type", "value"]
+              },
+              {
                 "$ref": "/schemas/content-standards/artifact.json",
                 "description": "Full artifact definition for detailed calibration"
               }
@@ -78,7 +99,7 @@
             "oneOf": [
               {
                 "type": "object",
-                "description": "Simplified domain reference for quick calibration setup",
+                "description": "Domain-level reference - all content on this domain fails",
                 "properties": {
                   "type": {
                     "type": "string",
@@ -97,6 +118,27 @@
                 "required": ["type", "value"]
               },
               {
+                "type": "object",
+                "description": "URL-level reference - this specific page/content fails",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "url",
+                    "description": "Indicates this is a URL-level reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full URL to a specific page (e.g., 'https://news.example.com/controversial-article')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content at this URL"
+                  }
+                },
+                "required": ["type", "value"]
+              },
+              {
                 "$ref": "/schemas/content-standards/artifact.json",
                 "description": "Full artifact definition for detailed calibration"
               }
@@ -108,16 +150,16 @@
     },
     "floor": {
       "type": "object",
-      "description": "Safety floor baseline - a reference to an external floor definition. The floor defines universal content exclusions (hate speech, illegal content, etc.) that apply regardless of brand-specific policy.",
+      "description": "Safety floor baseline - a reference to an external floor definition. Floors are typically industry-standard (e.g., GARM categories) or vendor-defined (e.g., IAS, DoubleVerify) and define universal content exclusions that apply regardless of brand-specific policy. The seller agent retrieves the floor definition from the URL to understand what categories/ratings to implement.",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to the floor definition document"
+          "description": "URL to the floor definition document (e.g., GARM floor, vendor-specific floor). The document at this URL defines content categories and exclusion criteria."
         },
         "name": {
           "type": "string",
-          "description": "Human-readable name for the floor"
+          "description": "Human-readable name for the floor (e.g., 'GARM Brand Safety Floor', 'IAS Brand Safety', 'DoubleVerify Standard')"
         },
         "version": {
           "type": "string",

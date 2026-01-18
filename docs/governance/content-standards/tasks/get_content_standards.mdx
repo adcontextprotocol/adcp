@@ -27,18 +27,18 @@ Retrieve content safety policies for a specific standards configuration.
   "name": "EMEA - all digital channels",
   "countries_all": ["GB", "DE", "FR"],
   "channels_any": ["display", "video", "ctv"],
-  "languages": ["en", "de", "fr"],
+  "languages_any": ["en", "de", "fr"],
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
   "calibration_exemplars": {
     "pass": [
       { "type": "domain", "value": "espn.com", "language": "en" },
-      { "type": "domain", "value": "healthline.com", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" },
       { "type": "text", "value": "Lakers win championship in thrilling overtime finish", "language": "en" }
     ],
     "fail": [
       { "type": "domain", "value": "tabloid.example.com", "language": "en" },
-      { "type": "text", "value": "Political scandal rocks the nation", "language": "en" },
-      { "type": "audio_url", "value": "https://cdn.example.com/controversial-podcast.mp3" }
+      { "type": "url", "value": "https://news.example.com/controversial-politics-article", "language": "en" },
+      { "type": "text", "value": "Political scandal rocks the nation", "language": "en" }
     ]
   },
   "floor": {
@@ -56,7 +56,7 @@ Retrieve content safety policies for a specific standards configuration.
 | `name` | Human-readable name |
 | `countries_all` | ISO country codes - standards apply in ALL listed countries |
 | `channels_any` | Ad channels - standards apply to ANY of the listed channels |
-| `languages` | BCP 47 language tags - content is evaluated in these languages |
+| `languages_any` | BCP 47 language tags - standards apply to content in ANY of these languages |
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
 | `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
 | `floor` | Reference to external safety floor definition (URL + name) |

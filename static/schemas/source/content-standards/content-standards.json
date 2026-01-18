@@ -23,11 +23,11 @@
       "items": { "$ref": "/schemas/enums/channels.json" },
       "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
     },
-    "languages": {
+    "languages_any": {
       "type": "array",
       "items": { "type": "string" },
       "minItems": 1,
-      "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Content is evaluated in these languages."
+      "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
     },
     "policy": {
       "type": "string",
