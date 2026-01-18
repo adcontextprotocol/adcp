@@ -605,6 +605,10 @@
           "$ref": "/schemas/property/base-property-source.json",
           "description": "A source of properties for a property list - supports publisher+tags, publisher+property_ids, or direct identifiers"
         },
+        "content-standards": {
+          "$ref": "/schemas/content-standards/content-standards.json",
+          "description": "Reusable content standards configuration - defines brand safety/suitability policies with scope, policy, calibration exemplars, and lifecycle dates"
+        },
         "content-standards-artifact": {
           "$ref": "/schemas/content-standards/artifact.json",
           "description": "Content artifact for evaluation or calibration - represents content context where ad placements occur, identified by property_id + artifact_id"

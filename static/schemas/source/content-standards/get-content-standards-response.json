@@ -7,77 +7,19 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Success response",
+      "description": "Success response - returns the content standards configuration",
+      "allOf": [
+        { "$ref": "/schemas/content-standards/content-standards.json" }
+      ],
       "properties": {
-        "standards_id": {
-          "type": "string",
-          "description": "Identifier for this standards configuration"
-        },
-        "version": {
-          "type": "string",
-          "description": "Version of this standards configuration"
-        },
-        "effective_date": {
-          "type": "string",
-          "format": "date-time",
-          "description": "When this standards version became effective. Null or absent means not yet effective. Multiple standards may be effective simultaneously for different scopes."
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable name for this standards configuration"
-        },
-        "brand_ids": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Brand identifiers as defined in the Brand Manifest"
-        },
-        "countries_all": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "ISO 3166-1 alpha-2 country codes - standards apply in ALL listed countries"
-        },
-        "channels_any": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Advertising channels - standards apply to ANY of the listed channels"
-        },
-        "policy": {
-          "type": "string",
-          "description": "Natural language policy describing acceptable and unacceptable content contexts"
-        },
-        "calibration_exemplars": {
-          "type": "object",
-          "description": "Training/test set to calibrate policy interpretation. Note: Large calibration sets may impact response size - consider using pagination or separate retrieval for large artifact collections.",
-          "properties": {
-            "pass": {
-              "type": "array",
-              "items": { "$ref": "/schemas/content-standards/artifact.json" },
-              "description": "Artifacts that pass the content standards"
-            },
-            "fail": {
-              "type": "array",
-              "items": { "$ref": "/schemas/content-standards/artifact.json" },
-              "description": "Artifacts that fail the content standards"
-            }
-          }
-        },
-        "floor": {
-          "type": "string",
-          "enum": ["garm_floor", "custom"],
-          "description": "Safety floor baseline"
-        },
         "errors": {
           "not": {},
           "description": "Field must not be present in success response"
         },
         "context": {
           "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
         }
-      },
-      "required": ["standards_id", "version"]
+      }
     },
     {
       "type": "object",

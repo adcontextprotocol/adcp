@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/content-standards.json",
+  "title": "Content Standards",
+  "description": "A content standards configuration defining brand safety and suitability policies. Standards are scoped by brand, geography, and channel. Multiple standards can be active simultaneously for different scopes.",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Unique identifier for this standards configuration"
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of this standards configuration (semver recommended)"
+    },
+    "effective_date": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this standards version becomes/became effective (ISO 8601). Null means draft/not yet active. Standards remain effective until superseded by a newer version or explicitly terminated."
+    },
+    "termination_date": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this standards version was terminated (ISO 8601). Null means currently active (if effective_date is set) or never activated (if effective_date is null). Set when archiving or replacing a standard."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this standards configuration"
+    },
+    "brand_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Brand identifiers as defined in the Brand Manifest. Standards apply to all listed brands."
+    },
+    "countries_all": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
+    },
+    "channels_any": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Advertising channels (display, video, audio, ctv, etc.). Standards apply to ANY of the listed channels (OR logic)."
+    },
+    "policy": {
+      "type": "string",
+      "description": "Natural language policy describing acceptable and unacceptable content contexts. Used by LLMs and human reviewers to make judgments."
+    },
+    "calibration_exemplars": {
+      "type": "object",
+      "description": "Training/test set to calibrate policy interpretation. Provides concrete examples of pass/fail decisions.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": { "$ref": "/schemas/content-standards/artifact.json" },
+          "description": "Artifacts that pass the content standards"
+        },
+        "fail": {
+          "type": "array",
+          "items": { "$ref": "/schemas/content-standards/artifact.json" },
+          "description": "Artifacts that fail the content standards"
+        }
+      }
+    },
+    "floor": {
+      "type": "string",
+      "enum": ["garm_floor", "custom"],
+      "description": "Safety floor baseline. 'garm_floor' applies GARM Brand Safety Floor categories. 'custom' means floor is defined entirely by policy."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["standards_id", "version"]
+}

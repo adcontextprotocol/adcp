@@ -52,7 +52,9 @@ Retrieve content safety policies for a specific standards configuration.
 | Field | Description |
 |-------|-------------|
 | `standards_id` | Unique identifier for this standards configuration |
-| `version` | Version of this configuration |
+| `version` | Version of this configuration (semver recommended) |
+| `effective_date` | When this version becomes/became effective. Null = draft/not yet active |
+| `termination_date` | When this version was terminated. Null = currently active (if effective) or never activated |
 | `name` | Human-readable name |
 | `brand_ids` | Brand identifiers as defined in the Brand Manifest |
 | `countries_all` | ISO country codes - standards apply in ALL listed countries |
@@ -60,6 +62,18 @@ Retrieve content safety policies for a specific standards configuration.
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
 | `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
 | `floor` | Safety floor baseline (`garm_floor` = GARM Brand Safety Floor) |
+
+### Lifecycle States
+
+Standards go through a simple lifecycle:
+
+| State | effective_date | termination_date | Meaning |
+|-------|----------------|------------------|---------|
+| Draft | null | null | Being configured, not yet active |
+| Active | set | null | Currently in use |
+| Terminated | set | set | Superseded or archived |
+
+To find unused standards for cleanup, query `list_content_standards` with `effective_date=null` (never activated drafts) or cross-reference with active media buys.
 
 ### Error Response
 
