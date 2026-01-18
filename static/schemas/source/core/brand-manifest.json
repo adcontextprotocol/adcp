@@ -194,10 +194,11 @@
           "enum": [
             "google_merchant_center",
             "facebook_catalog",
+            "openai_product_feed",
             "custom"
           ],
           "default": "google_merchant_center",
-          "description": "Format of the product feed"
+          "description": "Format of the product feed. Use 'openai_product_feed' for feeds conforming to the OpenAI Commerce Product Feed specification."
         },
         "categories": {
           "type": "array",
@@ -220,6 +221,35 @@
             "weekly"
           ],
           "description": "How frequently the product catalog is updated"
+        },
+        "agentic_checkout": {
+          "type": "object",
+          "description": "Agentic checkout endpoint configuration. Enables AI agents to complete purchases on behalf of users through a structured checkout API.",
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "format": "uri",
+              "description": "Base URL for checkout session API (e.g., https://merchant.com/api/checkout_sessions)"
+            },
+            "spec": {
+              "type": "string",
+              "enum": [
+                "openai_agentic_checkout_v1"
+              ],
+              "description": "Checkout API specification implemented by the endpoint"
+            },
+            "supported_payment_providers": {
+              "type": "array",
+              "description": "Payment providers supported by this checkout endpoint",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "endpoint",
+            "spec"
+          ]
         }
       },
       "required": [
@@ -409,6 +439,27 @@
         ],
         "industry": "technology",
         "target_audience": "business decision-makers aged 35-55"
+      }
+    },
+    {
+      "description": "E-commerce brand with OpenAI product feed and agentic checkout",
+      "data": {
+        "url": "https://shopexample.com",
+        "privacy_policy_url": "https://shopexample.com/privacy",
+        "name": "Shop Example",
+        "product_catalog": {
+          "feed_url": "https://shopexample.com/products.jsonl.gz",
+          "feed_format": "openai_product_feed",
+          "update_frequency": "daily",
+          "agentic_checkout": {
+            "endpoint": "https://api.shopexample.com/checkout_sessions",
+            "spec": "openai_agentic_checkout_v1",
+            "supported_payment_providers": [
+              "stripe",
+              "adyen"
+            ]
+          }
+        }
       }
     }
   ]
