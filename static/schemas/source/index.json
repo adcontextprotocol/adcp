@@ -679,6 +679,16 @@
             "description": "Response payload for delete_property_list task"
           }
         },
+        "list-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/list-content-standards-request.json",
+            "description": "Request parameters for listing content standards configurations"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/list-content-standards-response.json",
+            "description": "Response payload with list of content standards configurations"
+          }
+        },
         "get-content-standards": {
           "request": {
             "$ref": "/schemas/content-standards/get-content-standards-request.json",
