@@ -327,10 +327,21 @@ The structure of the brand manifest object itself (whether provided inline or ho
 ```typescript
 {
   feed_url: string;                  // URL to product catalog feed
-  feed_format?: string;              // Format of the product feed (default: "google_merchant_center")
+  feed_format?: string;              // Format: "google_merchant_center" | "facebook_catalog" | "openai_product_feed" | "custom"
   categories?: string[];             // Product categories available in the catalog
   last_updated?: string;             // When the product catalog was last updated (ISO 8601)
   update_frequency?: string;         // How frequently the catalog is updated
+  agentic_checkout?: AgenticCheckout; // Optional checkout endpoint configuration
+}
+```
+
+### AgenticCheckout Object
+
+```typescript
+{
+  endpoint: string;                  // Base URL for checkout session API
+  spec: string;                      // Checkout API specification (e.g., "openai_agentic_checkout_v1")
+  supported_payment_providers?: string[]; // Payment providers (e.g., ["stripe", "adyen"])
 }
 ```
 
@@ -461,7 +472,7 @@ Large retailers should provide product feeds:
 }
 ```
 
-**Supported Feed Formats**: RSS, JSON Feed, Product CSV
+**Supported Feed Formats**: Google Merchant Center, Facebook Catalog, [OpenAI Product Feed](https://developers.openai.com/commerce/specs/feed), Custom
 
 ### 5. Asset Libraries for Enterprise
 
@@ -520,6 +531,58 @@ When an AI assistant helps a user engage with an advertiser (booking a flight, m
 ### MyTerms Discovery
 
 For advertisers implementing [IEEE P7012 (MyTerms)](https://myterms.info), AI platforms can discover machine-readable privacy terms from the advertiser's domain (e.g., `/.well-known/myterms`). The brand manifest's `privacy_policy_url` serves as the human-readable fallback and explicit consent path.
+
+## Agentic Commerce Integration
+
+Brand manifests support integration with AI commerce platforms through the `product_catalog` field. This enables AI agents to discover products and complete purchases on behalf of users.
+
+### OpenAI Commerce
+
+For merchants implementing [OpenAI's Commerce specifications](https://developers.openai.com/commerce), the brand manifest provides a bridge:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "Shop Example",
+  "url": "https://shopexample.com",
+  "privacy_policy_url": "https://shopexample.com/privacy",
+  "product_catalog": {
+    "feed_url": "https://shopexample.com/products.jsonl.gz",
+    "feed_format": "openai_product_feed",
+    "update_frequency": "daily",
+    "agentic_checkout": {
+      "endpoint": "https://api.shopexample.com/checkout_sessions",
+      "spec": "openai_agentic_checkout_v1",
+      "supported_payment_providers": ["stripe", "adyen"]
+    }
+  }
+}
+```
+
+**Key fields for OpenAI Commerce:**
+
+| Field | Description |
+|-------|-------------|
+| `feed_format: "openai_product_feed"` | Indicates the feed conforms to [OpenAI's Product Feed spec](https://developers.openai.com/commerce/specs/feed) |
+| `agentic_checkout.endpoint` | Base URL for [OpenAI's Agentic Checkout API](https://developers.openai.com/commerce/specs/checkout) |
+| `agentic_checkout.spec` | Version identifier for the checkout spec |
+
+### Feed Format Mapping
+
+If you have an existing Google Merchant Center feed, here's how key fields map to OpenAI's spec:
+
+| OpenAI Field | Google Merchant Center | Notes |
+|--------------|----------------------|-------|
+| `item_id` | `id` | Direct mapping |
+| `title` | `title` | Direct mapping |
+| `description` | `description` | Direct mapping |
+| `url` | `link` | Direct mapping |
+| `brand` | `brand` | Direct mapping |
+| `price` | `price` | OpenAI uses number + currency code |
+| `availability` | `availability` | Same enum values |
+| `image_url` | `image_link` | Direct mapping |
+| `is_eligible_search` | N/A | OpenAI-specific flag |
+| `is_eligible_checkout` | N/A | OpenAI-specific flag |
 
 ## Evolution and Versioning
 
