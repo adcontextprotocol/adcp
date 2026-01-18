@@ -75,7 +75,7 @@ When you receive this:
 The standards document contains:
 - Policy (natural language description of acceptable/unacceptable content)
 - Calibration exemplars (pass/fail examples to interpret edge cases)
-- Floor (baseline safety standards like GARM)
+- Floor (reference to external baseline safety standards)
 
 Review these requirements against your capabilities. Different publishers have different definitions of "adjacency" - Reddit might include comments, YouTube might include related videos, a news site might mean the article body. That's fine - as long as you can meaningfully enforce the brand's intent, accept the buy.
 
@@ -193,7 +193,10 @@ Brands create content standards through a governance agent. You might facilitate
       { "type": "domain", "value": "tabloid.example.com" }
     ]
   },
-  "floor": "garm_floor"
+  "floor": {
+    "url": "https://scope3.com/brand-safety-floor",
+    "name": "Scope3 Common Sense Brand Safety"
+  }
 }
 ```
 
@@ -288,7 +291,10 @@ Store standards configurations and expose them via `get_content_standards`:
     "pass": [...],
     "fail": [...]
   },
-  "floor": "garm_floor"
+  "floor": {
+    "url": "https://scope3.com/brand-safety-floor",
+    "name": "Scope3 Common Sense Brand Safety"
+  }
 }
 ```
 

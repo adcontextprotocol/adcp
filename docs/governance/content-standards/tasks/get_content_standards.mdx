@@ -42,7 +42,10 @@ Retrieve content safety policies for a specific standards configuration.
       { "type": "audio_url", "value": "https://cdn.example.com/controversial-podcast.mp3" }
     ]
   },
-  "floor": "garm_floor"
+  "floor": {
+    "url": "https://scope3.com/brand-safety-floor",
+    "name": "Scope3 Common Sense Brand Safety"
+  }
 }
 ```
 
@@ -58,7 +61,7 @@ Retrieve content safety policies for a specific standards configuration.
 | `channels_any` | Ad channels - standards apply to ANY of the listed channels |
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
 | `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
-| `floor` | Safety floor baseline (`garm_floor` = GARM Brand Safety Floor) |
+| `floor` | Reference to external safety floor definition (URL + name) |
 
 ### Error Response
 

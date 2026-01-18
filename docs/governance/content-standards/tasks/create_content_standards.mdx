@@ -16,7 +16,7 @@ Create a new content standards configuration.
 | `scope` | object | Yes | Where this standards configuration applies |
 | `policy` | string | Yes | Natural language policy prompt |
 | `calibration_exemplars` | object | No | Training set of pass/fail artifacts for calibration |
-| `floor` | string | No | Safety floor baseline (`garm_floor` or `custom`) |
+| `floor` | object | No | Safety floor baseline - reference to external floor definition |
 
 ### Example Request
 
@@ -38,7 +38,10 @@ Create a new content standards configuration.
       { "type": "domain", "value": "tabloid.example.com", "language": "en" }
     ]
   },
-  "floor": "garm_floor"
+  "floor": {
+    "url": "https://scope3.com/brand-safety-floor",
+    "name": "Scope3 Common Sense Brand Safety"
+  }
 }
 ```
 

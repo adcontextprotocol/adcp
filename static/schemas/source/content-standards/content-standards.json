@@ -53,9 +53,24 @@
       }
     },
     "floor": {
-      "type": "string",
-      "enum": ["garm_floor", "custom"],
-      "description": "Safety floor baseline. 'garm_floor' applies GARM Brand Safety Floor categories. 'custom' means floor is defined entirely by policy."
+      "type": "object",
+      "description": "Safety floor baseline - a reference to an external floor definition. The floor defines universal content exclusions (hate speech, illegal content, etc.) that apply regardless of brand-specific policy.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the floor definition document (e.g., 'https://scope3.com/brand-safety-floor', 'https://example-publisher.com/content-guidelines')"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for the floor (e.g., 'Scope3 Common Sense Brand Safety')"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of the floor definition being referenced"
+        }
+      },
+      "required": ["url"]
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

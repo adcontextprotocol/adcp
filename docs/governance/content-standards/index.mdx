@@ -5,11 +5,30 @@ sidebar_position: 1
 
 # Content Standards Protocol
 
-The Content Standards Protocol controls *content safety and suitability* - what content contexts are appropriate for a brand's ads.
+The Content Standards Protocol enables **privacy-preserving brand safety** for ephemeral and sensitive content that cannot leave a publisher's infrastructure.
 
-## What It Does
+## The Problem
 
-Content Standards agents evaluate placement contexts against brand policies. This enables:
+Traditional brand safety relies on third-party verification: send your content to IAS or DoubleVerify, they evaluate it, return a verdict. This works for static web pages. It doesn't work for:
+
+- **AI-generated content** - ChatGPT responses, DALL-E images that exist only in a user session
+- **Private conversations** - Content in messaging apps, private social feeds
+- **Ephemeral content** - Stories, live streams, real-time feeds that disappear
+- **Privacy-regulated content** - GDPR-protected data that cannot be exported
+
+These platforms can't send content to external verification services. But brands still need safety guarantees.
+
+## The Solution: Calibration-Based Alignment
+
+Content Standards solves this with a three-phase model where **no sensitive content leaves the publisher's walls**:
+
+1. **Calibration** - Publisher and verification agent align on policy interpretation using synthetic or sample data
+2. **Local Execution** - Publisher runs evaluation locally on every impression (content never leaves)
+3. **Validation** - Statistical sampling detects drift; verification agent audits a sample
+
+This inverts the traditional model. Instead of "send us your content, we'll evaluate it," it's "we'll teach you our standards, you evaluate locally, we'll audit statistically."
+
+## What It Covers
 
 - **Brand safety** - Is this content safe for *any* brand? (universal thresholds like hate speech, illegal content)
 - **Brand suitability** - Is this content appropriate for *my* brand? (brand-specific preferences and tone)
@@ -125,6 +144,32 @@ Sampling rate is negotiated in the media buy:
 
 Higher sampling rates typically cost more but provide stronger guarantees. The seller is responsible for implementing the agreed sampling rate and reporting actual coverage.
 
+## Validation Thresholds
+
+When a seller calibrates their local model against a verification agent, there's an expected drift - the local model won't match the verification agent 100% of the time. **Validation thresholds** define acceptable drift between local execution and validation samples.
+
+Sellers advertise their content safety capabilities in their product catalog:
+
+```json
+{
+  "product_id": "reddit_feed_premium",
+  "content_standards": {
+    "validation_threshold": 0.95,
+    "validation_threshold_description": "Local model matches verification agent 95% of the time"
+  }
+}
+```
+
+| Threshold | Meaning |
+|-----------|---------|
+| **0.99** | Premium - local model is 99% aligned with verification agent |
+| **0.95** | Standard - local model is 95% aligned |
+| **0.90** | Budget - local model is 90% aligned |
+
+**This is a contractual guarantee.** If the seller's validation results show more drift than the advertised threshold, buyers can expect remediation (makegoods, refunds, etc.) just like any other delivery discrepancy.
+
+The threshold answers the key buyer question: "If I accept your local model, how confident can I be that you're enforcing my standards correctly?"
+
 ## Policies
 
 Content Standards uses **natural language prompts** rather than rigid keyword lists:
@@ -132,15 +177,15 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
 ```json
 {
   "policy": "Sports and fitness content is ideal. Lifestyle content about health is good. Entertainment is generally acceptable. Avoid content about violence, controversial politics, adult themes, or content portraying sedentary lifestyle positively. Block hate speech, illegal activities, or ongoing litigation against our company.",
-  "calibration": {
-    "acceptable": [
+  "calibration_exemplars": {
+    "pass": [
       {
         "property_id": {"type": "domain", "value": "espn.com"},
         "artifact_id": "nba_championship_recap_2024",
         "assets": [{"type": "text", "role": "title", "content": "Championship Game Recap"}]
       }
     ],
-    "unacceptable": [
+    "fail": [
       {
         "property_id": {"type": "domain", "value": "tabloid.example.com"},
         "artifact_id": "scandal_story_123",
