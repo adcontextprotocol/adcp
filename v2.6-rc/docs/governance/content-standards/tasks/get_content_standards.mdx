@@ -1,0 +1,82 @@
+---
+title: get_content_standards
+sidebar_position: 2
+---
+
+# get_content_standards
+
+Retrieve content safety policies for a specific standards configuration.
+
+## Request
+
+**Schema**: [get-content-standards-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-content-standards-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Identifier for the standards configuration |
+
+## Response
+
+**Schema**: [get-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-content-standards-response.json)
+
+### Success Response
+
+```json
+{
+  "standards_id": "nike_emea_safety",
+  "version": "1.2.0",
+  "name": "Nike EMEA - all digital channels",
+  "brand_ids": ["nike"],
+  "countries_all": ["GB", "DE", "FR"],
+  "channels_any": ["display", "video", "ctv"],
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
+  "calibration_exemplars": {
+    "pass": [
+      { "type": "domain", "value": "espn.com", "language": "en" },
+      { "type": "domain", "value": "healthline.com", "language": "en" },
+      { "type": "text", "value": "Lakers win championship in thrilling overtime finish", "language": "en" }
+    ],
+    "fail": [
+      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
+      { "type": "text", "value": "Political scandal rocks the nation", "language": "en" },
+      { "type": "audio_url", "value": "https://cdn.example.com/controversial-podcast.mp3" }
+    ]
+  },
+  "floor": {
+    "url": "https://scope3.com/brand-safety-floor",
+    "name": "Scope3 Common Sense Brand Safety"
+  }
+}
+```
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `standards_id` | Unique identifier for this standards configuration |
+| `version` | Version of this configuration (semver recommended) |
+| `name` | Human-readable name |
+| `brand_ids` | Brand identifiers as defined in the Brand Manifest |
+| `countries_all` | ISO country codes - standards apply in ALL listed countries |
+| `channels_any` | Ad channels - standards apply to ANY of the listed channels |
+| `policy` | Natural language policy describing acceptable and unacceptable content contexts |
+| `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
+| `floor` | Reference to external safety floor definition (URL + name) |
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) - Collaborative calibration against these standards
+- [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) - List available standards configurations
