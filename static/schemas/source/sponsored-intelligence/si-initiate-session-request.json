@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sponsored-intelligence/si-initiate-session-request.json",
+  "title": "SI Initiate Session Request",
+  "description": "Host initiates a session with a brand agent",
+  "type": "object",
+  "properties": {
+    "context": {
+      "type": "string",
+      "description": "Conversation handoff from the host describing what the user needs"
+    },
+    "identity": {
+      "$ref": "/schemas/sponsored-intelligence/si-identity.json"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "AdCP media buy ID if session was triggered by advertising"
+    },
+    "placement": {
+      "type": "string",
+      "description": "Where this session was triggered (e.g., 'chatgpt_search', 'claude_chat')"
+    },
+    "offer_id": {
+      "type": "string",
+      "description": "Brand-specific offer identifier to apply"
+    },
+    "supported_capabilities": {
+      "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
+      "description": "What capabilities the host supports"
+    },
+    "availability": {
+      "type": "object",
+      "description": "Pre-flight availability check result (from si_check_availability)",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Availability token from si_check_availability response"
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When availability was checked"
+        }
+      },
+      "required": ["token"]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["context", "identity"],
+  "additionalProperties": true
+}

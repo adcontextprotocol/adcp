@@ -7,13 +7,13 @@ Consumers are discovering and exploring in AI services. They don't want to leave
 
 The Sponsored Intelligence Protocol defines how AI assistants invoke and interact with brand agent endpoints—enabling rich brand experiences without breaking the conversational flow.
 
-## The Billion Dollar Sentence
+## The Trillion Dollar Sentence
 
 When OpenAI announced ads in ChatGPT, they promised "answer independence"—ads won't influence responses. But the real value isn't banner ads at the bottom of chat. It's this:
 
 > "Based on what you're looking for, Delta has flights to Boston starting at $199. Want me to connect you with their assistant to explore options?"
 
-That sentence—where AI recommends a brand and offers to hand off the conversation—is worth billions. Sponsored Intelligence defines the standard for what happens next.
+That sentence—where AI recommends a brand and offers to hand off the conversation—is worth trillions. Sponsored Intelligence defines the standard for what happens next.
 
 ## What is Sponsored Intelligence?
 
@@ -35,9 +35,9 @@ SI can be used in multiple contexts:
 |---------|-------------|---------|
 | **Creative** | Served via media buy | Brand syncs SI endpoint, triggered when campaign runs |
 | **Embedded Experience** | User expresses interest | "Tell me more about Delta" → seamless transition to brand agent |
-| **Standalone Agent** | Organic discovery | User explicitly asks to talk to a brand's agent |
+| **Agentic Landing Page** | Destination for campaigns | The conversational equivalent of a landing page—where brand engagement happens |
 
-The key insight: SI isn't a click-through. It's a conversational handoff.
+The key insight: SI isn't a click-through. It's a conversational handoff. Traditional landing pages exist because users leave the discovery context to learn more. With SI, users stay in the conversation while the brand comes to them.
 
 ## How It Works
 
@@ -46,6 +46,8 @@ SI handles the engagement. The [Agentic Commerce Protocol (ACP)](https://github.
 ```mermaid
 flowchart LR
     A[User Intent] --> B[Host Platform]
+    B -.->|Optional| P[Check Availability]
+    P -.-> C
     B --> C{Consent?}
     C -->|Yes + Identity| D[Initiate Session]
     C -->|Yes, Anonymous| D
@@ -62,10 +64,11 @@ flowchart LR
 ### The Flow
 
 1. **User expresses interest** → Host identifies opportunity
-2. **Consent prompt** → User decides whether to share identity
-3. **Session initiation** → Host invokes brand agent with context + capabilities
-4. **Conversational engagement** → Brand agent interacts via text, voice, video, or embedded UI
-5. **Session termination** → Handoff back for transaction (via ACP) or conversation complete
+2. **Availability check** (optional) → Host verifies offer/product is available (`si_check_availability`)
+3. **Consent prompt** → User decides whether to share identity
+4. **Session initiation** → Host invokes brand agent with context + capabilities (`si_initiate_session`)
+5. **Conversational engagement** → Brand agent interacts via text, voice, video, or embedded UI (`si_send_message`)
+6. **Session termination** → Handoff back for transaction (via ACP) or conversation complete (`si_terminate_session`)
 
 ## SI Manifest: What Brands Declare
 
@@ -74,12 +77,14 @@ Brands publish an SI manifest declaring their agent's capabilities:
 ```json
 {
   "endpoint": {
-    "transport": "mcp",
-    "url": "https://delta.com/agent"
+    "transports": [
+      { "type": "mcp", "url": "https://delta.com/mcp" },
+      { "type": "a2a", "url": "https://delta.com/.well-known/agent.json" }
+    ],
+    "preferred": "mcp"
   },
   "capabilities": {
     "modalities": {
-      "conversational": true,
       "voice": { "provider": "elevenlabs", "voice_id": "delta_v1" },
       "video": { "formats": ["mp4", "webm"], "max_duration_seconds": 60 },
       "avatar": { "provider": "d-id", "avatar_id": "delta_avatar" }
@@ -91,13 +96,25 @@ Brands publish an SI manifest declaring their agent's capabilities:
       }
     },
     "commerce": {
-      "acp_checkout": true,
-      "booking": true
+      "acp_checkout": true
     }
   },
   "brand_manifest_url": "https://delta.com/.well-known/brand-manifest.json"
 }
 ```
+
+> **Note**: All SI agents support conversational (text) modality by default—it's the baseline. The modalities section declares *additional* capabilities like voice, video, and avatar.
+
+### Transport Options
+
+SI supports multiple transport protocols, enabling brands to meet hosts where they are:
+
+| Transport | Description | Best For |
+|-----------|-------------|----------|
+| **MCP** | Model Context Protocol - tool-based interaction | Structured tool calls, IDE integrations |
+| **A2A** | Agent-to-Agent Protocol - message-based interaction | Rich async conversations, agent collaboration |
+
+Brands can declare multiple transports and specify a preference. Hosts select based on their capabilities, enabling graceful negotiation.
 
 ## Capability Negotiation
 
@@ -286,22 +303,35 @@ Standard components include `action_button` for commerce triggers. Currently, th
 
 We expect this to extend to persistent carts, multi-item checkout, and richer commerce flows as the ecosystem matures. The standard component schema is designed to accommodate these extensions.
 
+#### Integration Actions
+
+Brand agents can offer users the option to establish a deeper connection—adding the brand as an MCP tool or establishing an A2A relationship for ongoing agent collaboration:
+
+```json
+{
+  "type": "integration_actions",
+  "data": {
+    "actions": [
+      { "type": "mcp", "label": "Add as MCP Tool", "highlighted": true },
+      { "type": "a2a", "label": "Connect via A2A" }
+    ]
+  }
+}
+```
+
+This enables users to "take the brand with them"—installing the brand's capabilities into their own AI environment for future use without needing to re-discover through ads. It's a powerful conversion path: from sponsored moment to persistent tool.
+
 ## Session Lifecycle
 
 SI sessions have explicit lifecycle management.
 
 ### Initiate Session
 
-Host → Brand, including context, capabilities, identity (if consented), and any active offer from the campaign:
+Host → Brand, including context, capabilities, identity (if consented), and any active offer from the media buy:
 
 ```json
 {
-  "action": "initiate_session",
-  "session_id": "sess_abc123",
-  "campaign_id": "delta_q1_premium_upgrade",
-  "placement": "chatgpt_search",
   "context": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
-  "offer_id": "delta_chatgpt_3313",
   "identity": {
     "consent_granted": true,
     "user": {
@@ -310,11 +340,14 @@ Host → Brand, including context, capabilities, identity (if consented), and an
       "shipping_address": { /* ... */ }
     }
   },
+  "media_buy_id": "delta_q1_premium_upgrade",
+  "placement": "chatgpt_search",
+  "offer_id": "delta_chatgpt_3313",
   "supported_capabilities": { /* what host supports */ }
 }
 ```
 
-The `context` is natural language - the brand agent parses the user's intent. The `offer_id` references a campaign promotion (like free upgrades on eligible flights) that the brand knows how to apply.
+The `context` is a conversation handoff - the host tells the brand agent what the user needs, and the brand agent responds naturally. The `offer_id` references a campaign promotion (like free upgrades on eligible flights) that the brand knows how to apply.
 
 **Frequent flyer and loyalty data**: The brand looks this up from the user's email - hosts don't store loyalty numbers. Delta recognizes `jane@example.com` and retrieves her SkyMiles status automatically.
 
