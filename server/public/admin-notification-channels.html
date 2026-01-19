@@ -418,7 +418,7 @@
         const response = await fetch('/api/admin/notification-channels');
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to load channels');

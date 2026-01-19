@@ -273,7 +273,7 @@
         const response = await fetch('/api/admin/agreements');
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to load agreements');
