@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/property-type.json",
   "title": "Property Type",
-  "description": "Types of advertising properties that can be represented in AdCP",
+  "description": "Types of addressable advertising properties with verifiable ownership. Property types are a subset of media channels - they represent inventory surfaces that can be validated via adagents.json.",
   "type": "string",
   "enum": [
     "website",
@@ -12,5 +12,14 @@
     "podcast",
     "radio",
     "streaming_audio"
-  ]
+  ],
+  "enumDescriptions": {
+    "website": "Web properties accessible via browser, identified by domain",
+    "mobile_app": "Native mobile applications, identified by app store IDs or bundle identifiers",
+    "ctv_app": "Connected TV applications, identified by platform-specific store IDs",
+    "dooh": "Digital out-of-home screen networks, identified by network/venue IDs",
+    "podcast": "Podcast feeds and episodes, identified by RSS feed URLs or podcast IDs",
+    "radio": "Radio station properties, identified by call signs or station IDs",
+    "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs"
+  }
 }

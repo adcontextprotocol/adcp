@@ -424,6 +424,7 @@
           {
             "group": "Reference",
             "pages": [
+              "v2.6-rc/docs/reference/media-channel-taxonomy",
               "v2.6-rc/docs/reference/roadmap",
               "v2.6-rc/docs/reference/release-notes",
               "v2.6-rc/docs/reference/changelog",

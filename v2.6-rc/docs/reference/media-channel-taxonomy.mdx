@@ -1,0 +1,624 @@
+---
+title: Media Channel Taxonomy
+sidebar_position: 15
+description: A standardized taxonomy for advertising media channels, designed for interoperability across media planning tools, ad tech platforms, and AI agents.
+---
+
+# Media Channel Taxonomy
+
+<Info>
+**Status**: Draft Specification
+**Version**: 1.0.0-draft
+**Last Updated**: 2026-01-19
+</Info>
+
+This specification defines a standardized taxonomy for advertising media channels. It is designed for interoperability across media planning tools, ad tech platforms, and AI-powered advertising agents.
+
+## Motivation
+
+The advertising industry lacks a standardized channel taxonomy. While IAB Tech Lab provides taxonomies for content, audience, and ad products, no equivalent exists for media channels. This leads to:
+
+- Inconsistent channel naming across platforms
+- Difficulty aggregating cross-channel campaign data
+- Confusion between channels, formats, and buying models
+- Friction in automated media planning workflows
+
+This specification addresses these gaps by defining:
+
+1. **Media Channels** - Where advertising reaches audiences
+2. **Property Types** - Addressable inventory surfaces with verifiable ownership
+3. **Clear distinction** between channels, formats, and buying models
+
+## Terminology
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+## Definitions
+
+### Media Channel
+
+A **media channel** describes WHERE advertising reaches people. It represents the distribution environment or medium through which ads are delivered to audiences.
+
+Channels are defined by the **audience experience context**, not by:
+- How the ad looks (that's a **format**)
+- How inventory is purchased (that's a **buying model**)
+- What technology serves the ad (that's **infrastructure**)
+
+### Property Type
+
+A **property type** describes a specific addressable inventory surface where:
+- Ownership can be verified (e.g., via `adagents.json`)
+- Ads can be programmatically served
+- Identifiers exist for the property (domains, app IDs, device IDs)
+
+Property types are a SUBSET of channels. Some channels (like `linear_tv` or `print`) may not have addressable property types in the digital sense.
+
+### Format Category
+
+A **format category** describes HOW an ad renders - its creative unit type. Examples: `video`, `audio`, `display`, `native`. Formats are orthogonal to channels; a video ad can appear across web, CTV, social, and mobile app channels.
+
+### Buying Model
+
+A **buying model** describes HOW inventory is purchased. Examples: programmatic auction, direct/guaranteed, influencer partnership, sponsorship. Buying models are orthogonal to channels.
+
+## Media Channels
+
+### Channel Enum
+
+The following channels MUST be supported. Implementations MAY extend with additional channels using the `ext` field.
+
+| Channel | Description |
+|---------|-------------|
+| `web` | Browser-based advertising (desktop and mobile web) |
+| `ctv` | Connected TV applications and streaming on television screens |
+| `mobile_app` | Native applications on smartphones and tablets (excluding CTV and social) |
+| `social` | Social media platforms (may be delivered via web or app) |
+| `search` | Search engine results pages and search advertising networks |
+| `linear_tv` | Traditional broadcast and cable television |
+| `radio` | Traditional AM/FM radio broadcast |
+| `streaming_audio` | Digital audio streaming services (Spotify, Pandora, etc.) |
+| `podcast` | Podcast advertising (host-read or dynamically inserted) |
+| `dooh` | Digital out-of-home screens in public spaces |
+| `ooh` | Classic out-of-home (physical billboards, transit, etc.) |
+| `print` | Newspapers, magazines, and other print publications |
+| `cinema` | Movie theater advertising |
+| `email` | Email advertising and sponsored newsletter content |
+| `gaming` | In-game advertising across platforms |
+| `influencer` | Creator and influencer marketing partnerships |
+| `conversational` | AI assistants, chatbots, and voice interfaces |
+| `sponsorship` | Sponsorships, product placement, and branded content integrations |
+| `commerce_media` | Retail media networks and transactional marketplaces |
+
+### Channel Definitions
+
+#### `web`
+
+Browser-based advertising delivered through desktop or mobile web browsers.
+
+**Includes**:
+- Display banners on websites
+- Video ads on web pages
+- Native content on publisher sites
+- Web-based email clients (when ads are web-served)
+
+**Excludes**:
+- Native mobile apps (use `mobile_app`)
+- Social platform web interfaces (use `social`)
+- Search results pages (use `search`)
+
+**Typical Formats**: display, video, native, rich_media
+
+#### `ctv`
+
+Connected TV advertising delivered through streaming applications on television screens.
+
+**Includes**:
+- Streaming service apps (Netflix, Hulu, etc.)
+- Virtual MVPDs (YouTube TV, Sling, etc.)
+- Free ad-supported streaming TV (FAST)
+- Smart TV native apps
+- Gaming console streaming apps
+
+**Excludes**:
+- Linear broadcast/cable (use `linear_tv`)
+- Mobile video apps (use `mobile_app` or `social`)
+- Web-based streaming in browser (use `web`)
+
+**Typical Formats**: video
+
+#### `mobile_app`
+
+Native applications on smartphones and tablets that are not primarily social media or CTV.
+
+**Includes**:
+- News and content apps
+- Utility and productivity apps
+- Casual games (for non-endemic advertising)
+- E-commerce apps
+
+**Excludes**:
+- Social media apps (use `social`)
+- Streaming apps on TV devices (use `ctv`)
+- Games with dedicated gaming ad networks (use `gaming`)
+
+**Typical Formats**: display, video, native
+
+**Note**: The distinction between `mobile_app` and `gaming` is based on buying context. If inventory is purchased through gaming-specific networks or the primary audience context is gaming, use `gaming`.
+
+#### `social`
+
+Social media platform advertising, regardless of whether accessed via web or app.
+
+**Includes**:
+- Meta platforms (Facebook, Instagram, Threads)
+- X (Twitter)
+- TikTok
+- LinkedIn
+- Snapchat
+- Pinterest
+- Reddit
+
+**Excludes**:
+- Influencer content on social platforms (use `influencer`)
+- YouTube (use `web` for browser or `mobile_app` for app, unless buying through social-style tools)
+
+**Typical Formats**: display, video, native
+
+**Note**: Social is defined by the BUYING CONTEXT (social platform ad tools) rather than the technical delivery surface.
+
+#### `search`
+
+Search engine results pages and search advertising networks.
+
+**Includes**:
+- Google Search ads
+- Microsoft Bing ads
+- DuckDuckGo ads
+- Amazon search ads (product search)
+- App store search ads
+
+**Excludes**:
+- Display ads on search engine properties (use `web`)
+- Shopping/product listing ads outside search context
+
+**Typical Formats**: text (search ads), display (shopping)
+
+#### `linear_tv`
+
+Traditional broadcast and cable television advertising.
+
+**Includes**:
+- National broadcast networks (ABC, CBS, NBC, Fox)
+- Cable networks (ESPN, CNN, HGTV)
+- Local broadcast stations
+- Addressable linear TV
+
+**Excludes**:
+- Streaming on TV screens (use `ctv`)
+- TV Everywhere apps (use `ctv` or `mobile_app`)
+
+**Typical Formats**: video
+
+#### `radio`
+
+Traditional AM/FM radio broadcast advertising.
+
+**Includes**:
+- Terrestrial radio stations
+- Satellite radio (SiriusXM terrestrial simulcast)
+- HD Radio
+
+**Excludes**:
+- Streaming audio services (use `streaming_audio`)
+- Podcasts (use `podcast`)
+- Digital radio streams without broadcast component
+
+**Typical Formats**: audio
+
+#### `streaming_audio`
+
+Digital audio streaming services.
+
+**Includes**:
+- Music streaming (Spotify, Apple Music, Amazon Music, Pandora)
+- Audio content platforms
+- Digital radio streams (iHeartRadio digital, TuneIn)
+
+**Excludes**:
+- Podcasts (use `podcast`)
+- Terrestrial radio simulcast (use `radio`)
+- Video streaming services (use `ctv` or `web`)
+
+**Typical Formats**: audio, display (companion)
+
+#### `podcast`
+
+Podcast advertising, including host-read and dynamically inserted ads.
+
+**Includes**:
+- Host-read sponsorships
+- Dynamically inserted audio ads
+- Podcast network advertising
+
+**Excludes**:
+- Music streaming (use `streaming_audio`)
+- Video podcasts on YouTube (use `web` or `social`)
+
+**Typical Formats**: audio
+
+#### `dooh`
+
+Digital out-of-home advertising on electronic screens in public spaces.
+
+**Includes**:
+- Digital billboards
+- Transit screens (subway, bus shelters, airports)
+- Retail/mall digital displays
+- Gas station screens
+- Elevator screens
+- Stadium/venue digital signage
+
+**Excludes**:
+- Static billboards (use `ooh`)
+- In-store retail media screens (use `dooh` with context)
+- Cinema screens (use `cinema`)
+
+**Typical Formats**: display, video
+
+#### `ooh`
+
+Classic out-of-home advertising on physical (non-digital) surfaces.
+
+**Includes**:
+- Static billboards
+- Transit posters
+- Street furniture
+- Wallscapes
+- Wild postings
+
+**Excludes**:
+- Digital screens (use `dooh`)
+- In-store displays (context-dependent)
+
+**Typical Formats**: display (static)
+
+#### `print`
+
+Newspaper, magazine, and other print publication advertising.
+
+**Includes**:
+- Newspaper display ads
+- Magazine display ads
+- Newspaper/magazine inserts
+- Trade publication advertising
+
+**Excludes**:
+- Digital versions of publications (use `web`)
+- Direct mail (consider `email` or separate channel)
+
+**Typical Formats**: display (static)
+
+#### `cinema`
+
+Movie theater advertising.
+
+**Includes**:
+- Pre-show advertising
+- On-screen trailers and ads
+- Lobby displays
+- Concession advertising
+
+**Excludes**:
+- Streaming movie services (use `ctv`)
+
+**Typical Formats**: video, display
+
+#### `email`
+
+Email advertising and sponsored newsletter content.
+
+**Includes**:
+- Sponsored email newsletters
+- Email display advertising
+- Dedicated email sends
+
+**Excludes**:
+- Transactional email
+- CRM/owned email marketing
+
+**Typical Formats**: display, native
+
+#### `gaming`
+
+In-game advertising across gaming platforms.
+
+**Includes**:
+- In-game display ads
+- Rewarded video ads
+- Playable ads
+- Advergames
+- Esports sponsorships
+- Gaming influencer integrations
+
+**Excludes**:
+- Ads in non-gaming mobile apps (use `mobile_app`)
+- Gaming content on streaming platforms (use `ctv` or `web`)
+
+**Typical Formats**: display, video, native
+
+**Note**: Use `gaming` when inventory is purchased through gaming-specific ad networks or the primary context is gaming entertainment.
+
+#### `influencer`
+
+Creator and influencer marketing partnerships.
+
+**Includes**:
+- Sponsored content creation
+- Brand ambassador programs
+- Affiliate creator partnerships
+- User-generated content campaigns
+
+**Excludes**:
+- Ads placed on creator content by platforms (use `social`, `web`, etc.)
+- Podcast host reads (use `podcast`)
+
+**Typical Formats**: video, native, display
+
+**Note**: `influencer` describes the BUYING MODEL (creator partnership) rather than where content appears. Influencer content may be distributed across `social`, `web`, `podcast`, and other channels.
+
+#### `conversational`
+
+AI assistants, chatbots, and voice interface advertising.
+
+**Includes**:
+- AI assistant integrations (ChatGPT, Claude, Copilot)
+- Voice assistant advertising (Alexa, Google Assistant)
+- Chatbot advertising
+- Conversational commerce
+
+**Excludes**:
+- Display ads on AI platform websites (use `web`)
+- Voice ads on smart speakers playing streaming audio (use `streaming_audio`)
+
+**Typical Formats**: native, text, audio
+
+#### `sponsorship`
+
+Sponsorships, product placement, and branded content integrations.
+
+**Includes**:
+- Event sponsorships
+- Virtual product placement
+- Traditional product placement
+- Branded entertainment
+- Naming rights
+
+**Excludes**:
+- Influencer partnerships (use `influencer`)
+- Standard ad placements at sponsored events (use appropriate channel)
+
+**Typical Formats**: native, video
+
+#### `commerce_media`
+
+Retail media networks and transactional marketplace advertising.
+
+**Includes**:
+- Retail media networks (Amazon Ads, Walmart Connect, Target Roundel)
+- Grocery and delivery platforms (Instacart, DoorDash, Uber)
+- Travel marketplaces (Expedia, Booking.com, Kayak)
+- Financial services offers (credit card marketplaces)
+- Sponsored product listings
+- On-site display and video on commerce platforms
+
+**Excludes**:
+- General web display ads (use `web`)
+- Social commerce (use `social`)
+- Search ads on non-commerce platforms (use `search`)
+
+**Typical Formats**: native, display, video
+
+**Note**: Commerce media is distinguished by its transactional context and closed-loop attribution capabilities. Ads appear within purchase-intent environments where conversion can be directly measured.
+
+## Property Types
+
+Property types describe addressable inventory surfaces with verifiable ownership. They are used in `adagents.json` for authorization validation.
+
+### Property Type Enum
+
+| Property Type | Description | Typical Channel(s) |
+|---------------|-------------|-------------------|
+| `website` | Web properties accessible via browser | `web` |
+| `mobile_app` | Native mobile applications | `mobile_app`, `social`, `gaming` |
+| `ctv_app` | Connected TV applications | `ctv` |
+| `dooh` | Digital out-of-home screen networks | `dooh` |
+| `podcast` | Podcast feeds and episodes | `podcast` |
+| `radio` | Radio station properties | `radio` |
+| `streaming_audio` | Digital audio streaming properties | `streaming_audio` |
+
+### Channels Without Property Types
+
+The following channels do not have corresponding property types because they lack addressable, verifiable inventory surfaces in the traditional sense:
+
+- `linear_tv` - Broadcast/cable inventory is managed through different authorization mechanisms
+- `ooh` - Physical inventory lacks digital identifiers
+- `print` - Physical publication inventory
+- `cinema` - Theater inventory management systems
+- `email` - Email list ownership differs from property authorization
+- `influencer` - Creator relationships rather than property ownership
+- `conversational` - Emerging channel, property model TBD
+- `sponsorship` - Event/content relationships rather than properties
+- `commerce_media` - Platform-managed inventory within retail/marketplace ecosystems
+- `search` - Platform-managed inventory
+
+## Relationship Between Concepts
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        MEDIA CHANNEL                            │
+│     Where advertising reaches people (audience context)         │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                    PROPERTY TYPE                         │   │
+│  │        Addressable inventory with verifiable             │   │
+│  │           ownership (subset of channels)                 │   │
+│  │                                                          │   │
+│  │   website, mobile_app, ctv_app, dooh, podcast,          │   │
+│  │   radio, streaming_audio                                 │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│   + linear_tv, ooh, print, cinema, email, gaming, influencer,  │
+│     conversational, sponsorship, commerce_media, search, social│
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                      FORMAT CATEGORY                            │
+│         How the ad renders (orthogonal to channel)              │
+│                                                                 │
+│     audio, video, display, native, rich_media, universal       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                       BUYING MODEL                              │
+│       How inventory is purchased (orthogonal to channel)        │
+│                                                                 │
+│   programmatic auction, guaranteed/direct, private marketplace, │
+│   influencer partnership, sponsorship deal, etc.                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Implementation
+
+### JSON Schema
+
+Channels are defined in the AdCP schema at:
+
+```
+/schemas/v1/enums/channels.json
+```
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/channels.json",
+  "title": "Media Channel",
+  "description": "Standardized advertising media channels describing where ads reach audiences",
+  "type": "string",
+  "enum": [
+    "web",
+    "ctv",
+    "mobile_app",
+    "social",
+    "search",
+    "linear_tv",
+    "radio",
+    "streaming_audio",
+    "podcast",
+    "dooh",
+    "ooh",
+    "print",
+    "cinema",
+    "email",
+    "gaming",
+    "influencer",
+    "conversational",
+    "sponsorship",
+    "commerce_media"
+  ]
+}
+```
+
+### Usage in Product Discovery
+
+When filtering products by channel:
+
+```json
+{
+  "filters": {
+    "channels": ["ctv", "streaming_audio", "podcast"]
+  }
+}
+```
+
+### Usage in Property Definitions
+
+Properties in `adagents.json` use `property_type`, not `channel`:
+
+```json
+{
+  "properties": [
+    {
+      "property_id": "example_ctv",
+      "property_type": "ctv_app",
+      "name": "Example Streaming App",
+      "identifiers": [
+        {"type": "roku_store_id", "value": "12345"}
+      ]
+    }
+  ]
+}
+```
+
+### Extensibility
+
+Implementations MAY support additional channels beyond this specification using the `ext` field pattern:
+
+```json
+{
+  "channel": "web",
+  "ext": {
+    "sub_channel": "programmatic_guaranteed"
+  }
+}
+```
+
+## Versioning
+
+This taxonomy follows [Semantic Versioning](https://semver.org/):
+
+- **MAJOR**: Removing channels, changing channel semantics
+- **MINOR**: Adding new channels (append-only)
+- **PATCH**: Clarifying descriptions, fixing typos
+
+Adding new channels is a MINOR version change and MUST NOT break existing implementations.
+
+## Migration from Legacy Channel Values
+
+Prior to this taxonomy, AdCP used a different set of channel values that conflated channels with formats. The following table maps legacy values to the new taxonomy:
+
+| Legacy Value | New Channel(s) | Notes |
+|--------------|----------------|-------|
+| `display` | `web`, `mobile_app`, `dooh` | Display is a **format**, not a channel. Map to the appropriate channel based on where the ad appears. |
+| `video` | `web`, `ctv`, `mobile_app`, `social` | Video is a **format**. Map to the channel where video ads are delivered. |
+| `audio` | `streaming_audio`, `podcast`, `radio` | Audio is a **format**. Map to the specific audio channel. |
+| `native` | `web`, `mobile_app`, `social`, `commerce_media` | Native is a **format**. Map to the channel where native ads appear. |
+| `dooh` | `dooh` | No change. |
+| `ctv` | `ctv` | No change. |
+| `podcast` | `podcast` | No change. |
+| `retail` | `commerce_media` | Renamed to encompass retail media networks, marketplaces, and transactional platforms. |
+| `social` | `social` | No change. |
+
+### Migration Guidance
+
+1. **Identify the delivery context**: Determine WHERE the ad reaches the audience, not what format it uses.
+
+2. **Separate channel from format**: If your system stored `video` as a channel, you likely need to track both the channel (`web`, `ctv`, etc.) AND the format (`video`) separately.
+
+3. **Update filters**: When filtering products, use the new channel values. For format filtering, use the `format_types` field instead.
+
+4. **Review integrations**: Any systems passing channel values to AdCP APIs will need to be updated to use the new taxonomy.
+
+## References
+
+- [IAB Tech Lab Taxonomies](https://github.com/InteractiveAdvertisingBureau/Taxonomies) - Content, Audience, Ad Product
+- [OpenRTB/AdCOM](https://github.com/InteractiveAdvertisingBureau/AdCOM) - Placement types and media objects
+- [Planmatic Media Plan Schema](https://github.com/planmatic/mediaplanschema) - Media planning data structures
+- [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119) - Requirement level keywords
+
+## Changelog
+
+### 1.0.0-draft (2026-01-19)
+
+- Initial draft specification
+- 18 channels defined
+- Clear distinction between channel, property_type, and format_category
