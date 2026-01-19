@@ -2,11 +2,13 @@
 "adcontextprotocol": patch
 ---
 
-Fix alert deduplication to check external_url across all perspectives
+Fix Addie alert spam and improve content relevance
 
-The previous fix prevented new duplicate perspectives from being created,
-but the alert query still matched existing duplicates and posted the same
-article multiple times (once per perspective).
+**Alert deduplication fix:**
+The alert query now checks if ANY perspective with the same external_url
+has been alerted to a channel, preventing spam from cross-feed duplicates.
 
-Now the alert query checks if ANY perspective with the same external_url
-has been alerted to a channel, preventing spam from pre-existing duplicates.
+**Content relevance improvement:**
+Tightened `mentions_agentic` detection to require BOTH agentic AI terms
+AND advertising context. This prevents general AI news (e.g., ChatGPT updates)
+from being flagged as relevant to our agentic advertising community.

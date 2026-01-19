@@ -562,18 +562,63 @@ async function createOrUpdateRssKnowledge(
 }
 
 /**
- * Check if content mentions agentic AI concepts
- * Only checks the original article content (not AI-generated summary) to avoid false positives
+ * Check if content mentions agentic AI in an advertising context
+ * Requires BOTH agentic terms AND advertising context to avoid flagging
+ * general AI agent news that isn't relevant to our community
  */
 function checkMentionsAgentic(content: string, _summary: string, tags: string[]): boolean {
   const text = content.toLowerCase();
+
+  // Terms that indicate agentic AI
   const agenticTerms = ['agentic', 'ai agent', 'ai-agent', 'autonomous agent', 'llm agent'];
-  if (agenticTerms.some(term => text.includes(term))) {
+  const hasAgenticTerm = agenticTerms.some(term => text.includes(term));
+
+  // Terms that indicate advertising/marketing context
+  const advertisingTerms = [
+    'advertis', // matches advertising, advertiser, advertisement
+    'programmatic',
+    'media buy',
+    'media-buy',
+    'ad tech',
+    'adtech',
+    'ad-tech',
+    'dsp',
+    'ssp',
+    'demand-side',
+    'supply-side',
+    'rtb',
+    'real-time bidding',
+    'campaign',
+    'impression',
+    'cpm',
+    'cpc',
+    'ctr',
+    'marketing',
+    'brand safety',
+    'ad fraud',
+    'viewability',
+    'attribution',
+    'retargeting',
+    'audience targeting',
+  ];
+  const hasAdvertisingContext = advertisingTerms.some(term => text.includes(term));
+
+  // Require BOTH agentic AND advertising context
+  if (hasAgenticTerm && hasAdvertisingContext) {
     return true;
   }
-  if (tags.some(tag => tag.includes('agent') || tag === 'a2a' || tag === 'mcp')) {
+
+  // Also flag if explicitly tagged as agentic advertising by Claude
+  const agenticAdTags = ['ai-agents', 'a2a', 'mcp', 'programmatic', 'media-buying'];
+  const hasAgenticTag = tags.some(tag => agenticAdTags.includes(tag));
+  const hasAdTag = tags.some(tag =>
+    ['advertising', 'programmatic', 'media-buying', 'adcp'].includes(tag)
+  );
+
+  if (hasAgenticTag && hasAdTag) {
     return true;
   }
+
   return false;
 }
 
