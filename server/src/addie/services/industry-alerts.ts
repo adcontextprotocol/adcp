@@ -240,7 +240,8 @@ async function getNextArticleForChannel(
        )
        AND NOT EXISTS (
          SELECT 1 FROM industry_alerts ia
-         WHERE ia.perspective_id = p.id
+         JOIN perspectives p2 ON ia.perspective_id = p2.id
+         WHERE p2.external_url = p.external_url
            AND ia.channel_id = $2
        )
      ORDER BY
