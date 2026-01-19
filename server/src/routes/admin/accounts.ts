@@ -22,6 +22,7 @@ import {
   NOT_MEMBER_ALIASED,
   type OrgTier,
 } from "../../db/org-filters.js";
+import { VALID_ASSIGNABLE_ROLES } from "../../types.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
@@ -456,7 +457,8 @@ export function setupAccountRoutes(
               workos_user_id as id,
               email,
               first_name,
-              last_name
+              last_name,
+              role
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
@@ -707,7 +709,7 @@ export function setupAccountRoutes(
             email: m.email,
             firstName: m.first_name,
             lastName: m.last_name,
-            role: "member", // Role not cached locally
+            role: m.role || "member",
           })),
           member_count: membersResult.rows.length,
           working_groups: workingGroupResult.rows,
@@ -1906,4 +1908,116 @@ export function setupAccountRoutes(
       }
     }
   );
+
+  /**
+   * Update a member's role in an organization
+   * PUT /api/admin/accounts/:orgId/members/:userId/role
+   *
+   * Note: This endpoint uses userId for lookup (available in the account detail UI),
+   * unlike /members/:orgId/memberships/:membershipId which uses membershipId.
+   */
+  apiRouter.put(
+    "/api/admin/accounts/:orgId/members/:userId/role",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const { orgId, userId } = req.params;
+      const { role } = req.body;
+
+      if (!role) {
+        return res.status(400).json({ error: "Role is required" });
+      }
+
+      if (!VALID_ASSIGNABLE_ROLES.includes(role)) {
+        return res.status(400).json({
+          error: `Invalid role. Must be one of: ${VALID_ASSIGNABLE_ROLES.join(", ")}`,
+        });
+      }
+
+      try {
+        const pool = getPool();
+
+        // Get the membership to find the WorkOS membership ID and current role
+        const membershipResult = await pool.query(
+          `SELECT workos_membership_id, email, first_name, last_name, role
+           FROM organization_memberships
+           WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+          [orgId, userId]
+        );
+
+        if (membershipResult.rows.length === 0) {
+          return res.status(404).json({ error: "Member not found" });
+        }
+
+        const membership = membershipResult.rows[0];
+        const previousRole = membership.role || "member";
+
+        if (!membership.workos_membership_id) {
+          return res.status(400).json({
+            error: "Cannot update role: missing WorkOS membership ID",
+          });
+        }
+
+        // Update role via WorkOS API
+        const { workos } = await import("../../auth/workos-client.js");
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS client not configured" });
+        }
+
+        // Verify membership belongs to the specified organization via WorkOS
+        const existingMembership =
+          await workos.userManagement.getOrganizationMembership(
+            membership.workos_membership_id
+          );
+        if (existingMembership.organizationId !== orgId) {
+          return res.status(400).json({
+            error: "Invalid membership",
+            message: "Membership does not belong to this organization",
+          });
+        }
+
+        await workos.userManagement.updateOrganizationMembership(
+          membership.workos_membership_id,
+          { roleSlug: role }
+        );
+
+        // Update local cache
+        await pool.query(
+          `UPDATE organization_memberships
+           SET role = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+          [role, orgId, userId]
+        );
+
+        logger.info(
+          {
+            orgId,
+            userId,
+            role,
+            previousRole,
+            email: membership.email,
+            adminEmail: req.user?.email,
+          },
+          "Updated member role"
+        );
+
+        res.json({
+          success: true,
+          message: `Role updated to ${role}`,
+          user_id: userId,
+          role,
+        });
+      } catch (error) {
+        logger.error(
+          { err: error, orgId, userId, role },
+          "Error updating member role"
+        );
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update member role",
+        });
+      }
+    }
+  );
 }
+
