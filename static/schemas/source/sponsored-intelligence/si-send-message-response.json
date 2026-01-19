@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sponsored-intelligence/si-send-message-response.json",
+  "title": "SI Send Message Response",
+  "description": "Brand agent's response to a user message",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier"
+    },
+    "response": {
+      "type": "object",
+      "description": "Brand agent's response",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Conversational message from brand agent"
+        },
+        "ui_elements": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
+          },
+          "description": "Visual components to render"
+        }
+      },
+      "additionalProperties": true
+    },
+    "session_status": {
+      "type": "string",
+      "enum": ["active", "pending_handoff", "complete"],
+      "description": "Current session status"
+    },
+    "handoff": {
+      "type": "object",
+      "description": "Handoff request if session_status is pending_handoff",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["transaction", "complete", "exit"],
+          "description": "Type of handoff"
+        },
+        "transaction_context": {
+          "type": "object",
+          "description": "Context for ACP checkout (if type is transaction)",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "Summary of what user wants to purchase"
+            },
+            "product": {
+              "type": "object",
+              "description": "Product details for checkout"
+            }
+          },
+          "additionalProperties": true
+        },
+        "summary": {
+          "type": "string",
+          "description": "Conversation summary for complete/exit handoffs"
+        }
+      },
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["session_id"],
+  "additionalProperties": true
+}

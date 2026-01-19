@@ -1,0 +1,147 @@
+---
+sidebar_position: 1
+title: si_check_availability
+---
+
+Check offer or product availability before initiating a session. This anonymous pre-flight check allows hosts to verify availability without sharing user data.
+
+## Purpose
+
+The availability check serves two purposes:
+
+1. **Validate offers** - Confirm promotions are still active before showing them to users
+2. **Provide correlation** - The returned token enables brand agents to correlate pre-flight checks with sessions
+
+## Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `offer_id` | string | Conditional | Brand-specific offer identifier to check |
+| `product_id` | string | Conditional | Product identifier to check |
+| `context` | string | No | Natural language context (no PII) |
+
+At least one of `offer_id` or `product_id` must be provided.
+
+### Privacy
+
+This request must not include any personally identifiable information. The `context` field may include intent description but must be anonymous.
+
+## Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `available` | boolean | Whether the offer/product is currently available |
+| `availability_token` | string | Token to pass to `si_initiate_session` |
+| `ttl_seconds` | integer | How long this availability is valid |
+| `checked_at` | string | ISO 8601 timestamp of the check |
+| `offer_details` | object | Optional details about the offer |
+| `unavailable_reason` | string | Why offer is unavailable (if not available) |
+| `alternative_offer_ids` | array | Alternative offers to check |
+
+### Offer Details Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Offer title |
+| `summary` | string | Brief description |
+| `expires_at` | string | When the offer expires |
+| `price_hint` | string | Price indication (e.g., "from $199") |
+
+### Unavailable Reasons
+
+| Reason | Description |
+|--------|-------------|
+| `sold_out` | Product/offer inventory exhausted |
+| `expired` | Offer past its end date |
+| `region_restricted` | Not available in user's region |
+| `inactive` | Campaign paused or ended |
+
+## Example
+
+### Request
+
+```json
+{
+  "offer_id": "expedia_delta_bos_328",
+  "product_id": "flight_dl632_jan25",
+  "context": "Looking for Tuesday morning flight to Boston"
+}
+```
+
+### Response (Available)
+
+```json
+{
+  "available": true,
+  "availability_token": "avail_abc123xyz",
+  "ttl_seconds": 3600,
+  "checked_at": "2025-01-19T10:00:00Z",
+  "offer_details": {
+    "title": "Boston Flight Deal",
+    "summary": "Direct flights from $199 with free upgrade",
+    "expires_at": "2025-01-31T23:59:59Z",
+    "price_hint": "from $199"
+  }
+}
+```
+
+### Response (Unavailable)
+
+```json
+{
+  "available": false,
+  "checked_at": "2025-01-19T10:00:00Z",
+  "unavailable_reason": "sold_out",
+  "alternative_offer_ids": [
+    "expedia_delta_bos_alt_329",
+    "expedia_united_bos_330"
+  ]
+}
+```
+
+## Using the Availability Token
+
+When initiating a session after an availability check, include the token:
+
+```json
+{
+  "context": "User wants Tuesday morning flight to Boston",
+  "offer_id": "expedia_delta_bos_328",
+  "availability": {
+    "token": "avail_abc123xyz",
+    "checked_at": "2025-01-19T10:00:00Z"
+  },
+  "identity": {
+    "consent_granted": true,
+    "user": { ... }
+  }
+}
+```
+
+## Key Points
+
+1. **Anonymous by design** - No user data is sent with availability checks. This protects user privacy while enabling hosts to verify offers.
+
+2. **Token correlation** - The availability token allows brand agents to correlate pre-flight checks with subsequent sessions, enabling analytics without PII.
+
+3. **Caching** - Hosts may cache availability responses for up to `ttl_seconds`. This reduces load on brand agents for frequently checked offers.
+
+4. **Graceful degradation** - If availability check fails or times out, hosts may still initiate sessions directly. The availability check is optional.
+
+5. **Alternative suggestions** - When offers are unavailable, brand agents may suggest alternatives via `alternative_offer_ids`.
+
+## Best Practices
+
+### For Hosts
+
+- Check availability before showing sponsored results to users
+- Respect TTL for caching to avoid stale data
+- Handle unavailable gracefully - don't show expired offers
+- Include availability token in session initiation when available
+
+### For Brand Agents
+
+- Return meaningful `offer_details` to help hosts display accurate information
+- Use reasonable TTL values (e.g., 5-60 minutes depending on volatility)
+- Provide helpful `unavailable_reason` for debugging
+- Suggest alternatives when primary offer is unavailable

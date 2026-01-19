@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sponsored-intelligence/si-manifest.json",
+  "title": "SI Manifest",
+  "description": "Brand's declaration of SI endpoint capabilities. Published at .well-known/si-manifest.json or synced via media buy.",
+  "type": "object",
+  "properties": {
+    "endpoint": {
+      "type": "object",
+      "description": "Agent endpoint configuration",
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": ["mcp", "a2a"],
+          "description": "Protocol transport - MCP for direct tool integration, A2A for agent-to-agent"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Agent endpoint URL"
+        }
+      },
+      "required": ["transport", "url"],
+      "additionalProperties": true
+    },
+    "capabilities": {
+      "$ref": "/schemas/sponsored-intelligence/si-capabilities.json"
+    },
+    "brand_manifest_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to brand manifest with colors, fonts, logos, tone"
+    }
+  },
+  "required": ["endpoint", "capabilities"],
+  "additionalProperties": true
+}

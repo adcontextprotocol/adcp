@@ -45,6 +45,7 @@ import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
@@ -770,6 +771,10 @@ export class HTTPServer {
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
     this.app.use('/chat', chatPageRouter);              // Page routes: /chat
     this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
+
+    // Mount SI (Sponsored Intelligence) chat routes
+    const { apiRouter: siChatApiRouter } = createSiChatRoutes();
+    this.app.use('/api/si', siChatApiRouter);           // API routes: /api/si/sessions/*
 
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency

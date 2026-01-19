@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sponsored-intelligence/si-check-availability-request.json",
+  "title": "SI Check Availability Request",
+  "description": "Anonymous pre-flight check for offer/product availability before session handoff",
+  "type": "object",
+  "properties": {
+    "offer_id": {
+      "type": "string",
+      "description": "Brand-specific offer identifier to check availability for"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Product identifier to check availability for"
+    },
+    "context": {
+      "type": "string",
+      "description": "Optional natural language context about user intent (anonymous - no PII)"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "anyOf": [
+    { "required": ["offer_id"] },
+    { "required": ["product_id"] }
+  ],
+  "additionalProperties": true
+}

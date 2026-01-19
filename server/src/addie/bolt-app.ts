@@ -79,6 +79,7 @@ import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } 
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
+import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
@@ -295,6 +296,7 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
+let setSiContext: (memberContext: MemberContext | null, threadExternalId: string) => void = () => {};
 let initialized = false;
 
 /**
@@ -371,6 +373,31 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
       claudeClient.registerTool(tool, handler);
     }
   }
+
+  // Register SI host tools (Sponsored Intelligence protocol)
+  // These enable Addy to connect users with AAO member brand agents
+  // Note: We need to pass context providers that will be called per-request
+  // For now, we register with placeholder getters - actual context comes from handleUserMessage
+  let currentMemberContext: MemberContext | null = null;
+  let currentThreadExternalId: string = '';
+
+  const siHostHandlers = createSiHostToolHandlers(
+    () => currentMemberContext,
+    () => currentThreadExternalId
+  );
+  for (const tool of SI_HOST_TOOLS) {
+    const handler = siHostHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+  logger.info('Addie: SI host tools registered');
+
+  // Export setters for SI context (called from handleUserMessage)
+  setSiContext = (memberContext: MemberContext | null, threadExternalId: string) => {
+    currentMemberContext = memberContext;
+    currentThreadExternalId = threadExternalId;
+  };
 
   // Create the Assistant
   const assistant = new Assistant({
@@ -936,6 +963,9 @@ async function handleUserMessage({
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
+
+  // Set SI context for SI host tools (allows them to access member context and thread ID)
+  setSiContext(memberContext, externalId);
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
