@@ -238,9 +238,12 @@ async function getNextArticleForChannel(
          OR k.notification_channel_ids IS NULL
          OR array_length(k.notification_channel_ids, 1) = 0
        )
+       -- Dedupe by URL: check if ANY perspective with the same article URL
+       -- has been alerted to this channel (prevents spam from cross-feed duplicates)
        AND NOT EXISTS (
          SELECT 1 FROM industry_alerts ia
-         WHERE ia.perspective_id = p.id
+         JOIN perspectives p2 ON ia.perspective_id = p2.id
+         WHERE p2.external_url = p.external_url
            AND ia.channel_id = $2
        )
      ORDER BY
