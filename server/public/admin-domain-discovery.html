@@ -507,7 +507,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           const error = await response.json();
@@ -548,7 +548,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Bulk enrichment failed');
@@ -627,7 +627,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           const error = await response.json();

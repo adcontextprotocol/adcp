@@ -462,7 +462,7 @@
         console.log('[admin-members] Response status:', response.status);
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to load members');
@@ -709,7 +709,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           const errorData = await response.json().catch(() => ({ message: response.statusText }));
@@ -749,7 +749,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to sync member data');
@@ -818,7 +818,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to load payment history');
@@ -944,7 +944,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
 
