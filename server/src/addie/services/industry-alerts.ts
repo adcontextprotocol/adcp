@@ -3,7 +3,7 @@
  *
  * Sends Slack notifications for industry articles with pacing:
  * - Quality 5 articles: Post immediately
- * - Quality 4 articles: Post only if channel has been quiet for 3+ hours
+ * - Quality 4 articles: Post only if channel has been quiet for 1+ hour
  * - Quality < 4: Ignored (not relevant enough for our community)
  *
  * Posts one article at a time to encourage engagement.
@@ -22,7 +22,7 @@ import {
 } from '../../db/notification-channels-db.js';
 
 // Minimum hours of quiet before posting a quality 4 article
-const QUIET_PERIOD_HOURS = 3;
+const QUIET_PERIOD_HOURS = 1;
 
 interface ArticleToAlert {
   id: string;
@@ -261,7 +261,7 @@ async function getNextArticleForChannel(
  * Pacing rules:
  * - Only posts ONE article per channel per run
  * - Quality 5: Post immediately
- * - Quality 4: Post only if channel has been quiet for 3+ hours
+ * - Quality 4: Post only if channel has been quiet for 1+ hour
  * - Quality < 4: Ignored (not posted anywhere)
  */
 export async function processAlerts(): Promise<{
