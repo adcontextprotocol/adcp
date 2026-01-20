@@ -932,9 +932,23 @@ export class ThreadService {
       [days]
     );
 
-    // Latency distribution
+    // Latency distribution (includes background API calls)
     const latencyResult = await query<{ bucket: string; count: string }>(
-      `SELECT
+      `WITH all_api_calls AS (
+        -- Chat responses from thread messages
+        SELECT latency_ms
+        FROM addie_thread_messages
+        WHERE role = 'assistant'
+          AND latency_ms IS NOT NULL
+          AND created_at > NOW() - make_interval(days => $1)
+        UNION ALL
+        -- Background API calls (router, insight extraction, etc.)
+        SELECT latency_ms
+        FROM addie_api_calls
+        WHERE latency_ms IS NOT NULL
+          AND created_at > NOW() - make_interval(days => $1)
+      )
+      SELECT
         CASE
           WHEN latency_ms < 5000 THEN '0-5s'
           WHEN latency_ms < 10000 THEN '5-10s'
@@ -944,16 +958,13 @@ export class ThreadService {
           ELSE '45s+'
         END as bucket,
         COUNT(*) as count
-      FROM addie_thread_messages
-      WHERE role = 'assistant'
-        AND latency_ms IS NOT NULL
-        AND created_at > NOW() - make_interval(days => $1)
+      FROM all_api_calls
       GROUP BY 1
       ORDER BY MIN(latency_ms)`,
       [days]
     );
 
-    // By model
+    // By model (combines thread messages + background API calls)
     const modelResult = await query<{
       model: string;
       count: string;
@@ -962,16 +973,26 @@ export class ThreadService {
       total_input_tokens: string;
       total_output_tokens: string;
     }>(
-      `SELECT
+      `WITH all_api_calls AS (
+        -- Chat responses from thread messages
+        SELECT model, latency_ms, tokens_input, tokens_output
+        FROM addie_thread_messages
+        WHERE role = 'assistant'
+          AND created_at > NOW() - make_interval(days => $1)
+        UNION ALL
+        -- Background API calls (router, insight extraction, etc.)
+        SELECT model, latency_ms, tokens_input, tokens_output
+        FROM addie_api_calls
+        WHERE created_at > NOW() - make_interval(days => $1)
+      )
+      SELECT
         COALESCE(model, 'unknown') as model,
         COUNT(*) as count,
         ROUND((AVG(latency_ms))::numeric, 0) as avg_latency_ms,
         ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms))::numeric, 0) as p50_latency_ms,
         COALESCE(SUM(tokens_input), 0) as total_input_tokens,
         COALESCE(SUM(tokens_output), 0) as total_output_tokens
-      FROM addie_thread_messages
-      WHERE role = 'assistant'
-        AND created_at > NOW() - make_interval(days => $1)
+      FROM all_api_calls
       GROUP BY model
       ORDER BY count DESC`,
       [days]
@@ -1007,16 +1028,22 @@ export class ThreadService {
       [days]
     );
 
-    // By channel
+    // By channel (with timing breakdown to explain latency differences)
     const channelResult = await query<{
       channel: string;
       message_count: string;
       avg_latency_ms: string | null;
+      avg_llm_ms: string | null;
+      avg_tool_ms: string | null;
+      avg_iterations: string | null;
     }>(
       `SELECT
         t.channel,
         COUNT(m.message_id) as message_count,
-        ROUND((AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_latency_ms
+        ROUND((AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_latency_ms,
+        ROUND((AVG(m.timing_total_llm_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_llm_ms,
+        ROUND((AVG(m.timing_total_tool_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_tool_ms,
+        ROUND((AVG(m.processing_iterations) FILTER (WHERE m.role = 'assistant'))::numeric, 1) as avg_iterations
       FROM addie_threads t
       JOIN addie_thread_messages m ON t.thread_id = m.thread_id
       WHERE m.created_at > NOW() - make_interval(days => $1)
@@ -1084,6 +1111,9 @@ export class ThreadService {
         channel: r.channel,
         message_count: parseInt(r.message_count, 10) || 0,
         avg_latency_ms: r.avg_latency_ms ? parseInt(r.avg_latency_ms, 10) : null,
+        avg_llm_ms: r.avg_llm_ms ? parseInt(r.avg_llm_ms, 10) : null,
+        avg_tool_ms: r.avg_tool_ms ? parseInt(r.avg_tool_ms, 10) : null,
+        avg_iterations: r.avg_iterations ? parseFloat(r.avg_iterations) : null,
       })),
       daily_trend: dailyResult.rows.map(r => ({
         date: r.date,
