@@ -61,6 +61,57 @@ A **format category** describes HOW an ad renders - its creative unit type. Exam
 
 A **buying model** describes HOW inventory is purchased. Examples: programmatic auction, direct/guaranteed, influencer partnership, sponsorship. Buying models are orthogonal to channels.
 
+## Understanding Channels vs Property Types
+
+A common source of confusion is the relationship between channels and property types. This section clarifies when to use each concept.
+
+### The Key Distinction
+
+| Concept | Question It Answers | Determined By | Example |
+|---------|---------------------|---------------|---------|
+| **Channel** | How do agencies allocate budget? | Buying context / offering type | `commerce_media` |
+| **Property Type** | Where does the ad technically render? | Addressable inventory surface | `website` |
+
+**Channels reflect how the industry buys media**, not necessarily where ads technically appear. A single ad placement might involve:
+- **Channel**: `commerce_media` (bought through Target Roundel)
+- **Property Type**: `website` (renders on target.com)
+- **Format**: `display` (300x250 banner)
+
+### Why This Matters
+
+Consider retail media: when an agency allocates budget to "retail media," they're buying:
+1. Ads that appear on retailer websites and apps
+2. Ads on other publishers using retailer first-party data
+3. In-store digital screens
+
+All of these are `commerce_media` channel, but the property types vary (`website`, `mobile_app`, `dooh`).
+
+### Channels That Describe Buying Context
+
+Some channels primarily describe **how inventory is purchased** rather than a distinct technical surface:
+
+| Channel | Buying Context | May Appear On |
+|---------|----------------|---------------|
+| `social` | Social platform ad tools | `website`, `mobile_app` property types |
+| `influencer` | Creator partnerships | `social`, `web`, `podcast` channels |
+| `sponsorship` | Sponsorship deals | Various channels and properties |
+| `commerce_media` | Retail media networks | `website`, `mobile_app`, `dooh` |
+| `ai_agents` | AI platform integrations | `website`, `mobile_app`, `desktop_app` |
+
+### When to Use Each
+
+**Use channel when:**
+- Filtering products by media type
+- Reporting on budget allocation
+- Describing where audiences are reached
+- Planning cross-channel campaigns
+
+**Use property_type when:**
+- Validating inventory ownership via `adagents.json`
+- Technical ad serving decisions
+- Verifying authorized properties
+- Platform-specific integrations
+
 ## Media Channels
 
 ### Channel Enum
@@ -368,19 +419,25 @@ Creator and influencer marketing partnerships.
 
 #### `ai_agents`
 
-AI assistants, chatbots, and voice interface advertising.
+AI assistants, chatbots, and voice interface advertising purchased through AI platform ad tools or integrations.
 
 **Includes**:
-- AI assistant integrations (ChatGPT, Claude, Copilot)
+- AI assistant integrations (ChatGPT, Claude, Copilot, Perplexity)
 - Voice assistant advertising (Alexa, Google Assistant)
-- Chatbot advertising
-- Conversational commerce
+- Chatbot advertising platforms
+- Conversational commerce within AI interfaces
+- AI-powered search with conversational results
 
 **Excludes**:
 - Display ads on AI platform websites (use `web`)
 - Voice ads on smart speakers playing streaming audio (use `streaming_audio`)
+- AI widgets embedded in publisher websites when bought through web programmatic (use `web`)
 
 **Typical Formats**: native, text, audio
+
+**Note**: `ai_agents` describes the BUYING CONTEXT (AI platform ad tools/integrations) rather than the underlying technology. AI applications span a spectrum from search-like (Perplexity) to social/entertainment (Character AI) to productivity (coding assistants). The channel is `ai_agents` when inventory is purchased through AI-specific ad platforms or direct integrations. When the same AI widget appears on a publisher's website and is bought through standard web programmatic, the channel is `web`.
+
+**Property Types**: AI agent inventory may appear across `website`, `mobile_app`, and `desktop_app` property types depending on the technical delivery surface.
 
 #### `sponsorship`
 
@@ -431,6 +488,7 @@ Property types describe addressable inventory surfaces with verifiable ownership
 | `website` | Web properties accessible via browser | `web` |
 | `mobile_app` | Native mobile applications | `mobile_app`, `social`, `gaming` |
 | `ctv_app` | Connected TV applications | `ctv` |
+| `desktop_app` | Desktop applications (Electron, native, Chromium wrappers) | `streaming_audio`, `ai_agents`, `gaming` |
 | `dooh` | Digital out-of-home screen networks | `dooh` |
 | `podcast` | Podcast feeds and episodes | `podcast` |
 | `radio` | Radio station properties | `radio` |
@@ -463,8 +521,8 @@ The following channels do not have corresponding property types because they lac
 │  │        Addressable inventory with verifiable             │   │
 │  │           ownership (subset of channels)                 │   │
 │  │                                                          │   │
-│  │   website, mobile_app, ctv_app, dooh, podcast,          │   │
-│  │   radio, streaming_audio                                 │   │
+│  │   website, mobile_app, ctv_app, desktop_app,            │   │
+│  │   dooh, podcast, radio, streaming_audio                 │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │   + linear_tv, ooh, print, cinema, email, gaming, influencer,  │
@@ -608,6 +666,82 @@ Prior to this taxonomy, AdCP used a different set of channel values that conflat
 
 4. **Review integrations**: Any systems passing channel values to AdCP APIs will need to be updated to use the new taxonomy.
 
+## Edge Cases and Ambiguities
+
+Real-world ad placements often don't fit neatly into a single category. This section provides guidance for common edge cases.
+
+### In-App Browsers (WebViews)
+
+When a user clicks a link in a social app (Facebook, Twitter/X) and views content in the app's embedded browser:
+
+| Attribute | Value | Reasoning |
+|-----------|-------|-----------|
+| **Channel** | `social` | Bought through social platform ad tools |
+| **Property Type** | `mobile_app` | Technically rendered within the app's WebView |
+| **Format** | Varies | Could be display, video, native |
+
+The channel remains `social` because the buying context is the social platform, even though the technical rendering uses a WebView.
+
+### Desktop Apps as Chromium Wrappers
+
+Applications like Spotify Desktop, Discord, or Slack that are built on Electron/Chromium:
+
+| Attribute | Value | Reasoning |
+|-----------|-------|-----------|
+| **Channel** | Varies (`streaming_audio`, `social`, etc.) | Based on buying context |
+| **Property Type** | `desktop_app` | Native desktop application |
+| **Format** | Varies | Audio, display, video |
+
+For Spotify Desktop: channel = `streaming_audio`, property_type = `desktop_app`.
+
+### AI Widgets on Publisher Websites
+
+When an AI chatbot widget appears on a traditional publisher's website:
+
+| Scenario | Channel | Reasoning |
+|----------|---------|-----------|
+| Bought through AI platform (e.g., ChatGPT integrations) | `ai_agents` | Buying context is AI platform |
+| Bought through web programmatic (widget is just another ad unit) | `web` | Buying context is standard web |
+
+### Commerce vs Web Display
+
+Display banners appearing on retail websites (e.g., kohls.com):
+
+| Scenario | Channel | Reasoning |
+|----------|---------|-----------|
+| Bought through Kohl's retail media network | `commerce_media` | Buying context is retail media |
+| Bought through programmatic DSP targeting the domain | `web` | Buying context is standard web programmatic |
+
+The same ad placement can be different channels depending on how it was purchased.
+
+### Search vs AI Agents
+
+As search engines incorporate conversational AI:
+
+| Scenario | Channel | Reasoning |
+|----------|---------|-----------|
+| Traditional search ads on Google/Bing | `search` | Standard search ad buying |
+| Sponsored results in Perplexity | `ai_agents` | Bought through AI platform |
+| AI-generated answers with ads on Google SGE | `search` | Bought through Google Ads |
+
+The distinction is buying context, not whether AI is involved in generating results.
+
+### Gaming vs Mobile App
+
+| Scenario | Channel | Reasoning |
+|----------|---------|-----------|
+| Rewarded video in Candy Crush via Unity Ads | `gaming` | Gaming-specific ad network |
+| Banner in Candy Crush via AdMob general inventory | `mobile_app` | Standard mobile programmatic |
+| Esports tournament sponsorship | `gaming` | Gaming audience context |
+
+### Influencer vs Social
+
+| Scenario | Channel | Reasoning |
+|----------|---------|-----------|
+| Buying promoted posts through Instagram Ads Manager | `social` | Platform ad tools |
+| Contracting an influencer to create sponsored content | `influencer` | Creator partnership |
+| Platform-inserted ads around creator content | `social` | Platform ad tools |
+
 ## References
 
 - [IAB Tech Lab Taxonomies](https://github.com/InteractiveAdvertisingBureau/Taxonomies) - Content, Audience, Ad Product
@@ -620,5 +754,8 @@ Prior to this taxonomy, AdCP used a different set of channel values that conflat
 ### 1.0.0-draft (2026-01-19)
 
 - Initial draft specification
-- 18 channels defined
+- 19 channels defined
+- 8 property types defined (including `desktop_app`)
 - Clear distinction between channel, property_type, and format_category
+- Added "Understanding Channels vs Property Types" section clarifying buying context
+- Added edge cases section addressing common ambiguities (WebViews, Chromium wrappers, AI widgets, etc.)
