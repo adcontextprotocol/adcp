@@ -25,6 +25,7 @@ import type { AddieTool } from './types.js';
 import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
 import { MEMBER_TOOLS } from './mcp/member-tools.js';
 import { InsightsDatabase, type MemberInsight } from '../db/insights-db.js';
+import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
 
 /**
  * Execution plan types
@@ -513,6 +514,15 @@ export class AddieRouter {
         outputTokens: response.usage?.output_tokens,
         requiresPrecision,
       }, 'Router: Execution plan generated');
+
+      // Track for performance metrics (fire-and-forget, errors handled internally)
+      void trackApiCall({
+        model: ModelConfig.fast,
+        purpose: ApiPurpose.ROUTER,
+        tokens_input: response.usage?.input_tokens,
+        tokens_output: response.usage?.output_tokens,
+        latency_ms: latencyMs,
+      });
 
       return plan;
     } catch (error) {

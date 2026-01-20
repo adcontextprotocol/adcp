@@ -1771,6 +1771,9 @@
                 <th style="text-align: left; padding: var(--space-2);">Channel</th>
                 <th style="text-align: right; padding: var(--space-2);">Messages</th>
                 <th style="text-align: right; padding: var(--space-2);">Avg Latency</th>
+                <th style="text-align: right; padding: var(--space-2);">LLM Time</th>
+                <th style="text-align: right; padding: var(--space-2);">Tool Time</th>
+                <th style="text-align: right; padding: var(--space-2);">Iterations</th>
               </tr>
             </thead>
             <tbody id="perf-by-channel"></tbody>
@@ -2593,11 +2596,12 @@
         // Latency distribution chart (simple bar chart)
         const chartContainer = document.getElementById('latency-chart');
         const maxCount = Math.max(...data.latency_distribution.map(d => d.count), 1);
+        const maxBarHeight = 110; // pixels, leaving room for labels
         chartContainer.innerHTML = data.latency_distribution.map(d => {
-          const height = Math.max(5, (d.count / maxCount) * 100);
+          const barHeight = Math.max(4, Math.round((d.count / maxCount) * maxBarHeight));
           return `
-            <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
-              <div style="width: 100%; max-width: 60px; background: var(--color-brand); border-radius: var(--radius-sm); height: ${height}%;"></div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%;">
+              <div style="width: 100%; max-width: 60px; background: var(--color-brand); border-radius: var(--radius-sm); height: ${barHeight}px;"></div>
               <div style="font-size: var(--text-xs); margin-top: var(--space-1); color: var(--color-text-secondary);">${d.bucket}</div>
               <div style="font-size: var(--text-xs); color: var(--color-text-muted);">${d.count}</div>
             </div>
@@ -2636,8 +2640,11 @@
             <td style="padding: var(--space-2);"><span class="badge">${c.channel}</span></td>
             <td style="text-align: right; padding: var(--space-2);">${c.message_count}</td>
             <td style="text-align: right; padding: var(--space-2);">${c.avg_latency_ms ? (c.avg_latency_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_llm_ms ? (c.avg_llm_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_tool_ms ? (c.avg_tool_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_iterations || '-'}</td>
           </tr>
-        `).join('') || '<tr><td colspan="3" style="text-align: center; padding: var(--space-4);">No data</td></tr>';
+        `).join('') || '<tr><td colspan="6" style="text-align: center; padding: var(--space-4);">No data</td></tr>';
 
       } catch (error) {
         console.error('Error loading performance:', error);

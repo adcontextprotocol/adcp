@@ -814,6 +814,12 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
+    // Determine effective model (support precision mode override for billing/financial)
+    const effectiveModel = options?.modelOverride ?? this.model;
+    if (options?.modelOverride && options.modelOverride !== this.model) {
+      logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
+    }
+
     // Combine global tools with per-request tools
     // Calculate tool count first to inform token budget for conversation history
     const allTools = [...this.tools, ...(requestTools?.tools || [])];
@@ -825,7 +831,7 @@ export class AddieClaudeClient {
     // Token-aware: automatically trims older messages if conversation exceeds limits
     // Pass tool count for more accurate token budget calculation
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
-      model: this.model,
+      model: effectiveModel,
       toolCount,
     });
 
@@ -834,7 +840,7 @@ export class AddieClaudeClient {
         {
           messagesRemoved: messageTurnsResult.messagesRemoved,
           estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
-          tokenLimit: formatTokenCount(getConversationTokenLimit(this.model, toolCount)),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(effectiveModel, toolCount)),
           toolCount,
         },
         'Addie Stream: Trimmed conversation history to fit context limit'
@@ -877,7 +883,7 @@ export class AddieClaudeClient {
           try {
             // Use streaming API
             const stream = this.client.messages.stream({
-              model: this.model,
+              model: effectiveModel,
               max_tokens: 4096,
               system: systemPrompt,
               tools: customTools,

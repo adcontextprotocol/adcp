@@ -21,6 +21,7 @@ import {
 } from '../../db/insights-db.js';
 import { ModelConfig } from '../../config/models.js';
 import { invalidateInsightsCache } from '../insights-cache.js';
+import { trackApiCall, ApiPurpose } from './api-tracker.js';
 
 const insightsDb = new InsightsDatabase();
 
@@ -219,6 +220,7 @@ export async function extractInsights(
     const prompt = buildExtractionPrompt(message, insightTypes, activeGoals);
 
     const client = new Anthropic({ apiKey });
+    const startTime = Date.now();
     const response = await client.messages.create({
       model: EXTRACTOR_MODEL,
       max_tokens: 1000,
@@ -228,6 +230,17 @@ export async function extractInsights(
           content: prompt,
         },
       ],
+    });
+    const latencyMs = Date.now() - startTime;
+
+    // Track for performance metrics (fire-and-forget, errors handled internally)
+    void trackApiCall({
+      model: EXTRACTOR_MODEL,
+      purpose: ApiPurpose.INSIGHT_EXTRACTION,
+      tokens_input: response.usage?.input_tokens,
+      tokens_output: response.usage?.output_tokens,
+      latency_ms: latencyMs,
+      thread_id: context.threadId,
     });
 
     // Parse response

@@ -2578,6 +2578,7 @@ async function handleChannelMessage({
     // Generate a response with the specified tools (includes admin tools if user is admin, meeting tools with channel context)
     const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
     // Use precision model (Opus) for billing/financial queries
+    const effectiveModel = plan.requires_precision ? ModelConfig.precision : AddieModelConfig.chat;
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
@@ -2609,7 +2610,7 @@ async function handleChannelMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: AddieModelConfig.chat,
+      model: effectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
