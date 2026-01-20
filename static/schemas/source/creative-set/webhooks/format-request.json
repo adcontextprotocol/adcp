@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/format-request.json",
+  "title": "Format Request Webhook",
+  "description": "Webhook payload sent by seller agent to request a new format be built from the creative set's assets. Only processed if creative set has allow_format_requests enabled.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set to build from"
+    },
+    "format_id": {
+      "$ref": "/schemas/core/format-id.json",
+      "description": "The format to build"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this format is needed for"
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent making this request"
+    },
+    "callback_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to notify when the format is ready"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["normal", "urgent"],
+      "default": "normal",
+      "description": "Priority for building this format"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this request was made"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "format_id", "media_buy_id", "seller_agent_url"],
+  "additionalProperties": true
+}

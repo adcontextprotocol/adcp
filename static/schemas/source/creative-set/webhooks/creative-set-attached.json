@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/creative-set-attached.json",
+  "title": "Creative Set Attached Webhook",
+  "description": "Webhook payload sent by seller agent when a creative set is attached to a media buy. Informs creative agent of usage and required formats.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set being attached"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this set is attached to"
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent making this notification"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Formats required for this media buy. Creative agent may auto-build missing formats if allow_format_requests is true.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "callback_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL for creative agent to notify seller of creative set changes (new creatives, updates, format builds). Subscription is active until creative-set-detached is received for this media_buy_id."
+    },
+    "attached_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this attachment occurred"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "media_buy_id", "seller_agent_url"],
+  "additionalProperties": true
+}

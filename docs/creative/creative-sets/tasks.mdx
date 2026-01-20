@@ -1,0 +1,298 @@
+---
+title: Task Reference
+description: API reference for creative set tasks
+---
+
+This page documents all tasks available for managing creative sets.
+
+## create_creative_set
+
+Creates a new creative set workspace on a creative agent.
+
+### Request
+
+```json
+{
+  "name": "Spring Campaign 2025",
+  "description": "Creatives for Q2 spring promotion",
+  "brand_manifest_url": "https://brand.com/manifest.json",
+  "assets": [
+    {
+      "asset_id": "hero_image",
+      "url": "https://cdn.brand.com/hero.jpg",
+      "asset_type": "image",
+      "tags": ["hero", "product"],
+      "name": "Hero Product Shot"
+    }
+  ],
+  "trackers": {
+    "click": "https://track.brand.com/click?dest={LANDING_URL_ENC}&cb={CACHEBUSTER}",
+    "impression": ["https://track.brand.com/imp?cb={CACHEBUSTER}"]
+  },
+  "push_notification_config": {
+    "url": "https://buyer.com/webhooks/creative-updates"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Human-readable name |
+| `description` | string | No | Purpose description |
+| `brand_manifest_url` | string | Yes | URL to live brand manifest |
+| `assets` | array | No | Source assets for building creatives |
+| `trackers` | object | No | Tracker URL templates with macros |
+| `push_notification_config` | object | No | Webhook config for state changes |
+
+### Response
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "name": "Spring Campaign 2025",
+  "archived": false,
+  "creatives": [],
+  "created_at": "2025-01-15T10:00:00Z"
+}
+```
+
+---
+
+## get_creative_set
+
+Retrieves a creative set with its creatives and ad tags.
+
+### Request
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
+  ],
+  "include_previews": true,
+  "include_ad_tags": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_set_id` | string | Yes | Creative set to retrieve |
+| `format_ids` | array | No | Filter to specific formats |
+| `include_previews` | boolean | No | Include preview URLs (default: true) |
+| `include_ad_tags` | boolean | No | Include full ad tag markup (default: true) |
+
+### Response
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "name": "Spring Campaign 2025",
+  "description": "Creatives for Q2 spring promotion",
+  "archived": false,
+  "creatives": [
+    {
+      "creative_id": "cr_display_001",
+      "manifest": {
+        "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+        "assets": {
+          "banner_image": { "type": "image", "url": "https://cdn.creative.com/built/banner.jpg" },
+          "clickthrough_url": { "type": "url", "url": "https://track.brand.com/click?dest=..." }
+        }
+      },
+      "advertiser_status": "approved",
+      "preview_url": "https://creative.brand.com/preview/cr_display_001",
+      "thumbnail_url": "https://creative.brand.com/thumb/cr_display_001.jpg"
+    }
+  ],
+  "updated_at": "2025-01-15T14:30:00Z"
+}
+```
+
+---
+
+## list_creative_sets
+
+Queries creative sets with filtering and pagination.
+
+### Request
+
+```json
+{
+  "filter": {
+    "archived": false,
+    "search": "spring",
+    "created_after": "2025-01-01T00:00:00Z"
+  },
+  "sort": {
+    "field": "updated_at",
+    "order": "desc"
+  },
+  "pagination": {
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "creative_sets": [
+    {
+      "creative_set_id": "cs_abc123",
+      "name": "Spring Campaign 2025",
+      "description": "Creatives for Q2 spring promotion",
+      "archived": false,
+      "creative_count": 5,
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" }
+      ],
+      "created_at": "2025-01-15T10:00:00Z",
+      "updated_at": "2025-01-15T14:30:00Z"
+    }
+  ],
+  "total_count": 1
+}
+```
+
+---
+
+## update_creative_set
+
+Modifies a creative set including add/remove/regenerate creatives.
+
+### Request
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "name": "Spring Campaign 2025 - Updated",
+  "trackers": {
+    "click": "https://track.brand.com/v2/click?dest={LANDING_URL_ENC}"
+  },
+  "add_creatives": [
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_160x600" },
+      "landing_url": "https://brand.com/spring-sale"
+    }
+  ],
+  "remove_creative_ids": ["cr_old_001"],
+  "regenerate_creative_ids": ["cr_display_001"],
+  "regenerate_params": {
+    "prompt": "Use brighter colors, emphasize urgency"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `creative_set_id` | string | Set to update (required) |
+| `name` | string | Updated name |
+| `description` | string | Updated description |
+| `trackers` | object | Updated tracker templates (triggers regeneration) |
+| `archived` | boolean | Archive/unarchive the set |
+| `add_creatives` | array | New creatives to add |
+| `remove_creative_ids` | array | Creative IDs to remove |
+| `regenerate_creative_ids` | array | Creative IDs to regenerate |
+| `regenerate_params` | object | Parameters for regeneration |
+
+### Response
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "name": "Spring Campaign 2025 - Updated",
+  "archived": false,
+  "creatives": [...],
+  "changes": {
+    "creatives_added": ["cr_skyscraper_001"],
+    "creatives_removed": ["cr_old_001"],
+    "creatives_regenerating": ["cr_display_001"]
+  },
+  "updated_at": "2025-01-15T15:00:00Z"
+}
+```
+
+---
+
+## delete_creative_set
+
+Archives or permanently deletes a creative set.
+
+### Request
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "mode": "archive"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_set_id` | string | Yes | Set to delete |
+| `mode` | string | No | `"archive"` (default) or `"permanent"` |
+
+### Response
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "mode": "archive",
+  "deleted_at": "2025-01-15T16:00:00Z"
+}
+```
+
+---
+
+## build_creatives
+
+Builds creatives from a set's source assets for specified formats.
+
+### Request
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "target_formats": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" }
+  ],
+  "prompt": "Clean, modern design. Emphasize the 30% discount.",
+  "asset_ids": ["hero_image", "logo"],
+  "auto_approve": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_set_id` | string | Yes | Set containing source assets |
+| `target_formats` | array | Yes | Formats to build |
+| `prompt` | string | No | Generation guidance (overrides set's `generation_prompt`) |
+| `asset_ids` | array | No | Subset of assets to use |
+| `auto_approve` | boolean | No | Auto-approve built creatives (default: false) |
+
+### Response
+
+```json
+{
+  "creative_set_id": "cs_abc123",
+  "creatives": [
+    {
+      "creative_id": "cr_display_002",
+      "manifest": {...},
+      "advertiser_status": "pending_review",
+      "preview_url": "https://creative.brand.com/preview/cr_display_002"
+    }
+  ],
+  "errors": [
+    {
+      "code": "format_not_supported",
+      "message": "Format display_728x90 requires video assets not present in set"
+    }
+  ]
+}
+```

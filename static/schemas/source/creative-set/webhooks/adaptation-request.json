@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/adaptation-request.json",
+  "title": "Adaptation Request Webhook",
+  "description": "Webhook payload sent by seller agent to request an adaptation of an existing creative. Only processed if creative set has allow_adaptation_requests enabled.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set containing the source creative"
+    },
+    "source_creative_id": {
+      "type": "string",
+      "description": "The creative to adapt from"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this adaptation is needed for"
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent making this request"
+    },
+    "adaptation_type": {
+      "type": "string",
+      "enum": ["cta_change", "copy_variant", "localization", "resize", "custom"],
+      "description": "Type of adaptation requested"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Adaptation-specific parameters",
+      "properties": {
+        "cta_text": {
+          "type": "string",
+          "description": "New CTA text (for cta_change)"
+        },
+        "headline": {
+          "type": "string",
+          "description": "New headline (for copy_variant)"
+        },
+        "body_copy": {
+          "type": "string",
+          "description": "New body copy (for copy_variant)"
+        },
+        "locale": {
+          "type": "string",
+          "description": "Target locale (for localization)"
+        },
+        "target_format_id": {
+          "$ref": "/schemas/core/format-id.json",
+          "description": "Target format (for resize)"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Custom prompt (for custom adaptations)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "callback_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to notify when the adaptation is ready"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this request was made"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "source_creative_id", "media_buy_id", "seller_agent_url", "adaptation_type"],
+  "additionalProperties": true
+}

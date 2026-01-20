@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/delete-creative-set-request.json",
+  "title": "Delete Creative Set Request",
+  "description": "Request parameters for archiving or permanently deleting a creative set",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative set to delete"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["archive", "permanent"],
+      "default": "archive",
+      "description": "'archive' marks as archived but preserves data, 'permanent' deletes all data"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id"],
+  "additionalProperties": true
+}

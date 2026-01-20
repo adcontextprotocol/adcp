@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/list-creative-sets-response.json",
+  "title": "List Creative Sets Response",
+  "description": "Response payload for list_creative_sets task",
+  "type": "object",
+  "properties": {
+    "creative_sets": {
+      "type": "array",
+      "description": "Creative sets matching the query (metadata only, no ad_tags)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_set_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Whether this creative set is archived"
+          },
+          "creative_count": {
+            "type": "integer",
+            "description": "Number of creatives in this set"
+          },
+          "format_ids": {
+            "type": "array",
+            "description": "Formats represented in this set",
+            "items": {
+              "$ref": "/schemas/core/format-id.json"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["creative_set_id", "name"],
+        "additionalProperties": true
+      }
+    },
+    "total_count": {
+      "type": "integer",
+      "description": "Total number of creative sets matching the filter (for pagination)"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_sets"],
+  "additionalProperties": true
+}

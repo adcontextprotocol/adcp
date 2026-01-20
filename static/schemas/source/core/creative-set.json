@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-set.json",
+  "title": "Creative Set",
+  "description": "A workspace for building and managing related creatives. Contains source assets, built creatives, and brand context. Can be referenced by media buys for dynamic sync between creative agent and seller agent.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Unique identifier for this creative set"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this creative set"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the creative set's purpose"
+    },
+    "brand_manifest_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the live brand manifest. Creative agent fetches current version when generating creatives."
+    },
+    "generation_prompt": {
+      "type": "string",
+      "description": "Default prompt/direction for creative generation. Used by build_creatives task when no prompt override is provided. Enables lazy building of formats requested by sellers via format-request webhook."
+    },
+    "allow_format_requests": {
+      "type": "boolean",
+      "description": "Whether seller agents can request new formats to be built from this set's assets",
+      "default": false
+    },
+    "allow_adaptation_requests": {
+      "type": "boolean",
+      "description": "Whether seller agents can request adaptations of existing creatives (CTA changes, localization, etc.)",
+      "default": false
+    },
+    "governance_agent": {
+      "$ref": "/schemas/core/governance-agent-ref.json",
+      "description": "Optional governance agent that reviews creatives before approval. All creatives must pass governance review before being marked as approved."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Source assets available for building creatives (images, videos, copy, etc.)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "description": "Identifier for this asset within the set"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to the asset"
+          },
+          "asset_type": {
+            "$ref": "/schemas/enums/asset-content-type.json",
+            "description": "Type of asset (image, video, text, etc.)"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags for asset discovery",
+            "items": { "type": "string" }
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name"
+          }
+        },
+        "required": ["asset_id", "url"],
+        "additionalProperties": true
+      }
+    },
+    "trackers": {
+      "$ref": "/schemas/core/tracker-config.json",
+      "description": "Tracker URL templates with macro placeholders. Baked into ad tags at build time, macros expanded by seller at serve time."
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Built creatives in this set",
+      "items": {
+        "$ref": "/schemas/core/creative-set-item.json"
+      }
+    },
+    "archived": {
+      "type": "boolean",
+      "description": "Whether this creative set is archived. Cannot archive if connected to an active media buy.",
+      "default": false
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this creative set was created"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this creative set was last modified"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "name"],
+  "additionalProperties": true
+}

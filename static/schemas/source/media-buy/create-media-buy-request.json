@@ -20,6 +20,14 @@
       "$ref": "/schemas/core/brand-manifest-ref.json",
       "description": "Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest. Can be cached and reused across multiple requests."
     },
+    "creative_set_ref": {
+      "$ref": "/schemas/core/creative-set-ref.json",
+      "description": "Reference to a creative set on a creative agent. Seller fetches ad tags from the creative agent using this reference. Tags contain embedded trackers with macro placeholders; seller expands all macros at serve time."
+    },
+    "creative_governance_agent": {
+      "$ref": "/schemas/core/governance-agent-ref.json",
+      "description": "Optional governance agent for publisher-side creative generation. When seller generates creatives on behalf of the advertiser, this agent reviews them before use. Provides brand safety and compliance review."
+    },
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"

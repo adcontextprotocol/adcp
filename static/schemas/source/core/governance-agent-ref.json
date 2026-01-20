@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-agent-ref.json",
+  "title": "Governance Agent Reference",
+  "description": "Reference to a creative governance/standards agent that reviews creatives for compliance with brand safety, platform policies, legal requirements, or other standards. Full governance protocol TBD.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the governance agent"
+    },
+    "creative_standards_id": {
+      "type": "string",
+      "description": "Identifier for the specific creative standards ruleset within the governance agent"
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Authentication for governance agent API calls",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/enums/auth-scheme.json"
+          }
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials exchanged out-of-band"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["agent_url"],
+  "additionalProperties": true
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/format-response.json",
+  "title": "Format Response Webhook",
+  "description": "Webhook payload sent by creative agent to notify seller that a requested format is ready or failed.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set the format was built in"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "The ID of the newly built creative, if successful"
+    },
+    "format_id": {
+      "$ref": "/schemas/core/format-id.json",
+      "description": "The format that was requested"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this format was requested for"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "failed", "pending_approval"],
+      "description": "Status of the format build"
+    },
+    "error": {
+      "$ref": "/schemas/core/error.json",
+      "description": "Error details if status is 'failed'"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this build completed"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "format_id", "media_buy_id", "status"],
+  "additionalProperties": true
+}

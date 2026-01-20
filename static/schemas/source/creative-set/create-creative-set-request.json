@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/create-creative-set-request.json",
+  "title": "Create Creative Set Request",
+  "description": "Request parameters for creating a creative set workspace on a creative agent. The set holds source assets and brand context; creatives are built separately via build_creatives.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this creative set"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the creative set's purpose"
+    },
+    "brand_manifest_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the live brand manifest"
+    },
+    "assets": {
+      "type": "array",
+      "description": "Source assets available for building creatives",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "description": "Identifier for this asset within the set"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to the asset"
+          },
+          "asset_type": {
+            "$ref": "/schemas/enums/asset-content-type.json",
+            "description": "Type of asset (image, video, text, etc.)"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags for asset discovery",
+            "items": { "type": "string" }
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name"
+          }
+        },
+        "required": ["asset_id", "url"],
+        "additionalProperties": true
+      }
+    },
+    "trackers": {
+      "$ref": "/schemas/core/tracker-config.json",
+      "description": "Tracker URL templates with macro placeholders. Creative agent embeds these in built creatives; seller expands macros at serve time."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Webhook configuration for notifications when creative set state changes"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["name", "brand_manifest_url"],
+  "additionalProperties": true
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/build-creatives-request.json",
+  "title": "Build Creatives Request",
+  "description": "Request to build creatives from a creative set's source assets. Creative agent uses the set's assets, brand manifest, and trackers to generate ready-to-serve ad tags.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Creative set containing source assets and trackers"
+    },
+    "target_formats": {
+      "type": "array",
+      "description": "Formats to build creatives for",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Optional natural language guidance for creative generation. If omitted, uses the creative set's generation_prompt."
+    },
+    "asset_ids": {
+      "type": "array",
+      "description": "Optional subset of asset IDs to use. If omitted, creative agent selects appropriate assets.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "auto_approve": {
+      "type": "boolean",
+      "description": "If true, built creatives are automatically approved. If false, they require advertiser review.",
+      "default": false
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "target_formats"],
+  "additionalProperties": true
+}

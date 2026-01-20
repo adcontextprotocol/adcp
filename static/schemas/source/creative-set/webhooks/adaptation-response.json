@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/adaptation-response.json",
+  "title": "Adaptation Response Webhook",
+  "description": "Webhook payload sent by creative agent to notify seller that a requested adaptation is ready or failed.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set the adaptation was built in"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "The ID of the newly built creative, if successful"
+    },
+    "source_creative_id": {
+      "type": "string",
+      "description": "The creative that was adapted from"
+    },
+    "adaptation_type": {
+      "type": "string",
+      "enum": ["cta_change", "copy_variant", "localization", "resize", "custom"],
+      "description": "Type of adaptation that was requested"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this adaptation was requested for"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "failed", "pending_approval"],
+      "description": "Status of the adaptation build"
+    },
+    "error": {
+      "$ref": "/schemas/core/error.json",
+      "description": "Error details if status is 'failed'"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this build completed"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "source_creative_id", "adaptation_type", "media_buy_id", "status"],
+  "additionalProperties": true
+}
