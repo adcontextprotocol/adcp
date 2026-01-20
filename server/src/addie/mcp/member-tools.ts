@@ -503,8 +503,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'probe_adcp_agent',
     description:
-      'Check if an AdCP agent is online and discover its capabilities. Always validates connectivity first, then retrieves available tools and operations. Use this as the primary tool for investigating agents - it combines health checking with capability discovery.',
-    usage_hints: 'use for "is this agent working?", "what can this agent do?", "check my agent", "probe agent", "test connectivity"',
+      'Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use test_adcp_agent to verify actual protocol compliance.',
+    usage_hints: 'use for "is this agent online?", "check connectivity", "what tools does this agent advertise?". For compliance testing, use test_adcp_agent instead.',
     input_schema: {
       type: 'object',
       properties: {
@@ -549,51 +549,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['agent_url'],
-    },
-  },
-  {
-    name: 'call_adcp_agent',
-    description:
-      'Execute an AdCP protocol task on an agent. This is a low-level proxy that forwards requests directly to the agent. Use adcp-media-buy, adcp-signals, or adcp-creative skills for detailed parameter schemas.',
-    usage_hints: 'use for "call get_products", "execute create_media_buy", "run sync_creatives", "get_signals", "build_creative", "interact with the agent directly", "use the full AdCP spec". For testing workflows, prefer test_adcp_agent instead.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL (must be HTTPS, e.g., "https://sales.example.com")',
-        },
-        task: {
-          type: 'string',
-          enum: [
-            // Media Buy tasks
-            'get_products',
-            'list_authorized_properties',
-            'list_creative_formats',
-            'create_media_buy',
-            'update_media_buy',
-            'sync_creatives',
-            'list_creatives',
-            'get_media_buy_delivery',
-            // Signals tasks
-            'get_signals',
-            'activate_signal',
-            // Creative tasks
-            'build_creative',
-            'preview_creative',
-          ],
-          description: 'The AdCP task to execute',
-        },
-        params: {
-          type: 'object',
-          description: 'Task parameters - structure depends on the task. See protocol skills for schemas.',
-        },
-        auth_token: {
-          type: 'string',
-          description: 'Optional auth token. If not provided, will use saved token for this agent.',
-        },
-      },
-      required: ['agent_url', 'task'],
     },
   },
   // ============================================
@@ -1968,11 +1923,11 @@ export function createMemberToolHandlers(
     // Summary
     response += `\n---\n`;
     if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
-      response += `✅ Agent is healthy and ready to use. Try \`test_adcp_agent\` to run a full workflow test.`;
+      response += `✅ Agent is **online** and responding. Run \`test_adcp_agent\` to verify protocol compliance.`;
     } else if (isHealthy) {
-      response += `✅ Agent is responding but not in the registry. You can still use \`call_adcp_agent\` to execute tasks directly.`;
+      response += `✅ Agent is **online** but not in the registry. Try calling it with \`get_products\` or run \`test_adcp_agent\` to verify it works correctly.`;
     } else {
-      response += `❌ Agent is not responding. Check the URL and ensure the agent is running.`;
+      response += `❌ Agent is **not responding**. Check the URL and ensure the agent is running.`;
     }
 
     return response;
@@ -2170,87 +2125,6 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    }
-  });
-
-  // ============================================
-  // ADCP AGENT PROXY
-  // ============================================
-  handlers.set('call_adcp_agent', async (input) => {
-    const agentUrl = input.agent_url as string;
-    const task = input.task as string;
-    const params = (input.params as Record<string, unknown>) || {};
-    let authToken = input.auth_token as string | undefined;
-
-    // Validate URL to prevent SSRF attacks
-    try {
-      const url = new URL(agentUrl);
-
-      // Must be HTTPS
-      if (url.protocol !== 'https:') {
-        return '**Error:** Agent URL must use HTTPS protocol.';
-      }
-
-      // Block internal/private networks
-      const hostname = url.hostname.toLowerCase();
-      if (
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === '::1' ||
-        hostname.endsWith('.local') ||
-        hostname.endsWith('.internal') ||
-        hostname.startsWith('10.') ||
-        hostname.startsWith('192.168.') ||
-        hostname.match(/^172\.(1[6-9]|2\d|3[01])\./) ||
-        hostname === '169.254.169.254' // AWS metadata
-      ) {
-        return '**Error:** Agent URL cannot point to internal or private networks.';
-      }
-    } catch {
-      return '**Error:** Invalid agent URL format.';
-    }
-
-    // Look up saved auth token if not provided
-    if (!authToken && memberContext?.organization?.workos_organization_id) {
-      const savedContext = await agentContextDb.getByOrgAndUrl(
-        memberContext.organization.workos_organization_id,
-        agentUrl
-      );
-      if (savedContext?.id) {
-        authToken = (await agentContextDb.getAuthToken(savedContext.id)) ?? undefined;
-      }
-    }
-
-    logger.info({ agentUrl, task, hasAuth: !!authToken }, 'Addie: call_adcp_agent');
-
-    try {
-      const { AdCPClient } = await import('@adcp/client');
-      const multiClient = new AdCPClient([
-        {
-          id: 'target',
-          name: 'target',
-          agent_uri: agentUrl,
-          protocol: 'mcp',
-          ...(authToken && { auth_token: authToken }),
-        },
-      ]);
-      const client = multiClient.agent('target');
-
-      const result = await client.executeTask(task, params);
-
-      if (!result.success) {
-        // Return errors in a structured way
-        return `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
-      }
-
-      // Format successful response
-      let output = `**Task:** \`${task}\`\n**Status:** Success\n\n`;
-      output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
-
-      return output;
-    } catch (error) {
-      logger.error({ error, agentUrl, task }, 'Addie: call_adcp_agent failed');
-      return `**Task failed:** \`${task}\`\n\n**Error:** ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

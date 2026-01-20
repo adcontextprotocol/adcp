@@ -124,7 +124,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_signals',
       'activate_signal',
       // Agent management
-      'call_adcp_agent',
       'save_agent',
       'list_saved_agents',
       'remove_saved_agent',
