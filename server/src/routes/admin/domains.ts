@@ -1190,7 +1190,7 @@ export function setupDomainRoutes(
 
         // Check if domain is already claimed by another org locally
         const existingResult = await pool.query(
-          `SELECT od.workos_organization_id, o.name as org_name
+          `SELECT od.workos_organization_id, od.verified, o.name as org_name
            FROM organization_domains od
            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
            WHERE od.domain = $1`,
@@ -1206,12 +1206,16 @@ export function setupDomainRoutes(
               existing_organization_id: existingOrg.workos_organization_id,
             });
           }
-          // Domain already belongs to this org
-          return res.json({
-            success: true,
-            message: "Domain already associated with this organization",
-            domain: normalizedDomain,
-          });
+          // Domain already belongs to this org - but need to verify it if not already
+          if (existingOrg.verified) {
+            return res.json({
+              success: true,
+              message: "Domain already associated with this organization",
+              domain: normalizedDomain,
+            });
+          }
+          // Domain exists but not verified - continue to verify it
+          logger.info({ orgId, domain: normalizedDomain }, "Domain exists but not verified, proceeding to verify");
         }
 
         // Add to WorkOS first - this is the source of truth
