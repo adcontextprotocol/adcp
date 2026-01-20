@@ -423,24 +423,24 @@ export function createOrganizationsRouter(): Router {
         success: true,
         message: `Invitation sent to ${request.user_email}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ err: error }, 'Approve join request error:');
 
       // Check for specific WorkOS errors
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('already a member')) {
+      if (error?.code === 'organization_membership_already_exists') {
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
-      if (errorMessage.includes('pending invitation')) {
+      if (error?.code === 'invitation_already_exists') {
         return res.status(400).json({
           error: 'Invitation exists',
           message: 'There is already a pending invitation for this user',
         });
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to approve join request',
         message: errorMessage,
@@ -937,17 +937,17 @@ export function createOrganizationsRouter(): Router {
           role: membership.role?.slug || roleToAssign,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ err: error }, 'Add domain user error');
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('already a member')) {
+      if (error?.code === 'organization_membership_already_exists') {
         return res.status(400).json({
           error: 'Already a member',
           message: 'This user is already a member of the organization.',
         });
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to add domain user',
         message: errorMessage,
@@ -2002,24 +2002,24 @@ export function createOrganizationsRouter(): Router {
           accept_invitation_url: invitation.acceptInvitationUrl,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ err: error }, 'Send invitation error');
 
       // Check for specific WorkOS errors
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('already a member')) {
+      if (error?.code === 'organization_membership_already_exists') {
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
-      if (errorMessage.includes('pending invitation')) {
+      if (error?.code === 'invitation_already_exists') {
         return res.status(400).json({
           error: 'Invitation already exists',
           message: 'An invitation has already been sent to this email address',
         });
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to send invitation',
         message: errorMessage,

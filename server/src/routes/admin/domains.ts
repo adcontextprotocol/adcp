@@ -2199,9 +2199,27 @@ export function setupDomainRoutes(
               after = memberships.listMetadata?.after;
             } while (after);
 
-            // Filter to users who aren't already members
+            // Also get pending invitations (can't add users who have pending invites)
+            const pendingInvitationEmails = new Set<string>();
+            after = undefined;
+            do {
+              const invitations = await config.workos!.userManagement.listInvitations({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+              for (const inv of invitations.data) {
+                if (inv.state === 'pending') {
+                  pendingInvitationEmails.add(inv.email.toLowerCase());
+                }
+              }
+              after = invitations.listMetadata?.after;
+            } while (after);
+
+            // Filter to users who aren't already members and don't have pending invitations
             const usersToAdd = (row.users as Array<{ email: string; name: string | null; workos_user_id: string }>)
-              .filter(u => !existingMemberUserIds.has(u.workos_user_id));
+              .filter(u => !existingMemberUserIds.has(u.workos_user_id) &&
+                          !pendingInvitationEmails.has(u.email.toLowerCase()));
 
             if (usersToAdd.length > 0) {
               orgUsersToAdd.push({
@@ -2355,9 +2373,10 @@ export function setupDomainRoutes(
                 userId: user.workos_user_id,
                 addedBy: adminUser.id,
               }, 'Domain user auto-added to organization via backfill');
-            } catch (err) {
-              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-              if (errorMessage.includes('already a member')) {
+            } catch (err: any) {
+              if (err?.code === 'organization_membership_already_exists' ||
+                  err?.code === 'cannot_reactivate_pending_organization_membership') {
+                // User is already a member or has a pending invitation
                 orgSkipped++;
               } else {
                 logger.warn({ err, orgId, email: user.email }, 'Failed to add domain user');
