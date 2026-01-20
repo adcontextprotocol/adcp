@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/core/webhook-config.json",
+  "title": "Webhook Config",
+  "description": "Base webhook configuration for authenticated HTTP callbacks. Defines the common structure for url, token, and authentication used by reporting_webhook, artifact_webhook, and other webhook configurations. Note: Due to JSON Schema limitations with allOf + additionalProperties:false, consuming schemas inline these properties rather than using $ref composition.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL"
+    },
+    "token": {
+      "type": "string",
+      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+      "minLength": 16
+    },
+    "authentication": {
+      "$ref": "/schemas/2.7.0/core/webhook-authentication.json"
+    }
+  },
+  "required": [
+    "url",
+    "authentication"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/content-standards/list-content-standards-response.json",
+  "title": "List Content Standards Response",
+  "description": "Response payload with list of content standards configurations",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response - returns array of content standards",
+      "properties": {
+        "standards": {
+          "type": "array",
+          "items": { "$ref": "/schemas/2.7.0/content-standards/content-standards.json" },
+          "description": "Array of content standards configurations matching the filter criteria"
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/2.7.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/2.7.0/core/ext.json"
+        }
+      },
+      "required": ["standards"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/2.7.0/core/error.json" }
+        },
+        "standards": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/2.7.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/2.7.0/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

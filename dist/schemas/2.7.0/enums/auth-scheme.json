@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/enums/auth-scheme.json",
+  "title": "Authentication Scheme",
+  "description": "Authentication schemes for push notification endpoints",
+  "type": "string",
+  "enum": [
+    "Bearer",
+    "HMAC-SHA256"
+  ]
+}
