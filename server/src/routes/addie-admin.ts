@@ -2196,7 +2196,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         tokens_input: plan.tokens_input,
         tokens_output: plan.tokens_output,
         model: plan.model,
-        ...(plan.action === 'respond' ? { tools: plan.tools } : {}),
+        ...(plan.action === 'respond' ? { tool_sets: plan.tool_sets } : {}),
       };
 
       // Create a test thread and log the message with router decision
