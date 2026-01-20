@@ -2,8 +2,8 @@
  * AdCP Protocol Tools
  *
  * Standard MCP tools that match the AdCP protocol specification.
- * These expose the same functionality as call_adcp_agent but with
- * proper schemas that match the protocol, enabling skills to work.
+ * Each tool has a typed schema that helps Claude understand the parameters.
+ * Use debug=true to see protocol-level details (requests, responses, schema validation).
  */
 
 import { logger } from '../../logger.js';
@@ -72,6 +72,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             },
           },
         },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details (requests, responses, schema validation)',
+        },
       },
       required: ['agent_url', 'brief'],
     },
@@ -135,6 +139,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'ISO 8601 datetime when campaign ends',
         },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
       },
       required: ['agent_url', 'buyer_ref', 'brand_manifest', 'packages', 'start_time', 'end_time'],
     },
@@ -185,6 +193,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'boolean',
           description: 'Preview changes without applying',
         },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
       },
       required: ['agent_url', 'creatives'],
     },
@@ -207,6 +219,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Filter to specific format categories (video, display, audio, etc.)',
         },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
       },
       required: ['agent_url'],
     },
@@ -223,6 +239,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         agent_url: {
           type: 'string',
           description: 'The sales agent URL (must be HTTPS)',
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
         },
       },
       required: ['agent_url'],
@@ -256,6 +276,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             start: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
             end: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
           },
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
         },
       },
       required: ['agent_url', 'media_buy_id'],
@@ -297,6 +321,10 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         creative_manifest: {
           type: 'object',
           description: 'Source manifest - minimal for generation, complete for transformation',
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
         },
       },
       required: ['agent_url', 'target_format_id'],
@@ -340,6 +368,10 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           type: 'string',
           enum: ['url', 'html'],
           description: 'Output format (default: url)',
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
         },
       },
       required: ['agent_url', 'request_type'],
@@ -407,6 +439,10 @@ export const ADCP_SIGNALS_TOOLS: AddieTool[] = [
           type: 'number',
           description: 'Limit number of results',
         },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
       },
       required: ['agent_url', 'signal_spec', 'deliver_to'],
     },
@@ -441,6 +477,10 @@ export const ADCP_SIGNALS_TOOLS: AddieTool[] = [
             },
             required: ['type'],
           },
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
         },
       },
       required: ['agent_url', 'signal_agent_segment_id', 'deployments'],
@@ -522,7 +562,8 @@ export function createAdcpToolHandlers(
   async function executeTask(
     agentUrl: string,
     task: string,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
+    debug: boolean = false
   ): Promise<string> {
     const validationError = validateAgentUrl(agentUrl);
     if (validationError) {
@@ -531,29 +572,44 @@ export function createAdcpToolHandlers(
 
     const authToken = await getAuthToken(agentUrl);
 
-    logger.info({ agentUrl, task, hasAuth: !!authToken }, `AdCP: executing ${task}`);
+    logger.info({ agentUrl, task, hasAuth: !!authToken, debug }, `AdCP: executing ${task}`);
 
     try {
       const { AdCPClient } = await import('@adcp/client');
-      const multiClient = new AdCPClient([
-        {
-          id: 'target',
-          name: 'target',
-          agent_uri: agentUrl,
-          protocol: 'mcp',
-          ...(authToken && { auth_token: authToken }),
-        },
-      ]);
+      const multiClient = new AdCPClient(
+        [
+          {
+            id: 'target',
+            name: 'target',
+            agent_uri: agentUrl,
+            protocol: 'mcp',
+            ...(authToken && { auth_token: authToken }),
+          },
+        ],
+        { debug }
+      );
       const client = multiClient.agent('target');
 
-      const result = await client.executeTask(task, params);
+      const result = await client.executeTask(task, params, undefined, { debug });
 
       if (!result.success) {
-        return `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
+        let output = `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
+
+        // Include debug logs on failure (always useful for debugging)
+        if (result.debug_logs && result.debug_logs.length > 0) {
+          output += `\n\n**Debug Logs:**\n\`\`\`json\n${JSON.stringify(result.debug_logs, null, 2)}\n\`\`\``;
+        }
+
+        return output;
       }
 
       let output = `**Task:** \`${task}\`\n**Status:** Success\n\n`;
       output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+
+      // Include debug logs if debug mode is enabled
+      if (debug && result.debug_logs && result.debug_logs.length > 0) {
+        output += `\n\n**Debug Logs:**\n\`\`\`json\n${JSON.stringify(result.debug_logs, null, 2)}\n\`\`\``;
+      }
 
       return output;
     } catch (error) {
@@ -565,17 +621,19 @@ export function createAdcpToolHandlers(
   // Media Buy handlers
   handlers.set('get_products', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       brief: input.brief,
     };
     if (input.brand_manifest) params.brand_manifest = input.brand_manifest;
     if (input.filters) params.filters = input.filters;
 
-    return executeTask(agentUrl, 'get_products', params);
+    return executeTask(agentUrl, 'get_products', params, debug);
   });
 
   handlers.set('create_media_buy', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       buyer_ref: input.buyer_ref,
       brand_manifest: input.brand_manifest,
@@ -584,58 +642,64 @@ export function createAdcpToolHandlers(
       end_time: input.end_time,
     };
 
-    return executeTask(agentUrl, 'create_media_buy', params);
+    return executeTask(agentUrl, 'create_media_buy', params, debug);
   });
 
   handlers.set('sync_creatives', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       creatives: input.creatives,
     };
     if (input.assignments) params.assignments = input.assignments;
     if (input.dry_run !== undefined) params.dry_run = input.dry_run;
 
-    return executeTask(agentUrl, 'sync_creatives', params);
+    return executeTask(agentUrl, 'sync_creatives', params, debug);
   });
 
   handlers.set('list_creative_formats', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {};
     if (input.format_types) params.format_types = input.format_types;
 
-    return executeTask(agentUrl, 'list_creative_formats', params);
+    return executeTask(agentUrl, 'list_creative_formats', params, debug);
   });
 
   handlers.set('list_authorized_properties', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
-    return executeTask(agentUrl, 'list_authorized_properties', {});
+    const debug = input.debug as boolean | undefined;
+    return executeTask(agentUrl, 'list_authorized_properties', {}, debug);
   });
 
   handlers.set('get_media_buy_delivery', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       media_buy_id: input.media_buy_id,
     };
     if (input.granularity) params.granularity = input.granularity;
     if (input.date_range) params.date_range = input.date_range;
 
-    return executeTask(agentUrl, 'get_media_buy_delivery', params);
+    return executeTask(agentUrl, 'get_media_buy_delivery', params, debug);
   });
 
   // Creative handlers
   handlers.set('build_creative', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       target_format_id: input.target_format_id,
     };
     if (input.message) params.message = input.message;
     if (input.creative_manifest) params.creative_manifest = input.creative_manifest;
 
-    return executeTask(agentUrl, 'build_creative', params);
+    return executeTask(agentUrl, 'build_creative', params, debug);
   });
 
   handlers.set('preview_creative', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       request_type: input.request_type,
     };
@@ -644,12 +708,13 @@ export function createAdcpToolHandlers(
     if (input.requests) params.requests = input.requests;
     if (input.output_format) params.output_format = input.output_format;
 
-    return executeTask(agentUrl, 'preview_creative', params);
+    return executeTask(agentUrl, 'preview_creative', params, debug);
   });
 
   // Signals handlers
   handlers.set('get_signals', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       signal_spec: input.signal_spec,
       deliver_to: input.deliver_to,
@@ -657,17 +722,18 @@ export function createAdcpToolHandlers(
     if (input.filters) params.filters = input.filters;
     if (input.max_results) params.max_results = input.max_results;
 
-    return executeTask(agentUrl, 'get_signals', params);
+    return executeTask(agentUrl, 'get_signals', params, debug);
   });
 
   handlers.set('activate_signal', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
+    const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       signal_agent_segment_id: input.signal_agent_segment_id,
       deployments: input.deployments,
     };
 
-    return executeTask(agentUrl, 'activate_signal', params);
+    return executeTask(agentUrl, 'activate_signal', params, debug);
   });
 
   return handlers;
