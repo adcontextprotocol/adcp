@@ -870,11 +870,13 @@
 
           <!-- Domains -->
           <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">Linked Domains</h2>
-              <button class="btn btn-sm btn-secondary" onclick="openAddDomainModal()">+ Add</button>
-            </div>
-            <div class="collapsible-content collapsed" id="domainsContent" style="margin-top: var(--space-4);">
+            <h2 class="collapsible collapsed" onclick="toggleSection(this)">
+              <span style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Linked Domains</span>
+                <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); openAddDomainModal()">+ Add</button>
+              </span>
+            </h2>
+            <div class="collapsible-content collapsed" id="domainsContent">
               <div id="domainsList" class="empty-state">
                 No domains linked
               </div>
