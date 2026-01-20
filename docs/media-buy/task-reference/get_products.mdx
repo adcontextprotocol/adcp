@@ -144,7 +144,7 @@ asyncio.run(discover_with_filters())
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
-| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
+| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (case-insensitive, e.g., `["US", "CA", "GB"]`) |
 | `channels` | string[] | Filter by advertising channels (e.g., `["web", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
 
 ### Budget Range Object

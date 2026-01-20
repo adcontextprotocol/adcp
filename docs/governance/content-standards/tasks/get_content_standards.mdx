@@ -23,28 +23,21 @@ Retrieve content safety policies for a specific standards configuration.
 
 ```json
 {
-  "standards_id": "nike_emea_safety",
-  "version": "1.2.0",
-  "name": "Nike EMEA - all digital channels",
-  "brand_ids": ["nike"],
+  "standards_id": "emea_digital_safety",
+  "name": "EMEA - all digital channels",
   "countries_all": ["GB", "DE", "FR"],
   "channels_any": ["display", "video", "ctv"],
+  "languages_any": ["en", "de", "fr"],
   "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
   "calibration_exemplars": {
     "pass": [
-      { "type": "domain", "value": "espn.com", "language": "en" },
-      { "type": "domain", "value": "healthline.com", "language": "en" },
-      { "type": "text", "value": "Lakers win championship in thrilling overtime finish", "language": "en" }
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-championship", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" }
     ],
     "fail": [
-      { "type": "domain", "value": "tabloid.example.com", "language": "en" },
-      { "type": "text", "value": "Political scandal rocks the nation", "language": "en" },
-      { "type": "audio_url", "value": "https://cdn.example.com/controversial-podcast.mp3" }
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
+      { "type": "url", "value": "https://news.example.com/controversial-politics-article", "language": "en" }
     ]
-  },
-  "floor": {
-    "url": "https://scope3.com/brand-safety-floor",
-    "name": "Scope3 Common Sense Brand Safety"
   }
 }
 ```
@@ -54,14 +47,18 @@ Retrieve content safety policies for a specific standards configuration.
 | Field | Description |
 |-------|-------------|
 | `standards_id` | Unique identifier for this standards configuration |
-| `version` | Version of this configuration (semver recommended) |
 | `name` | Human-readable name |
-| `brand_ids` | Brand identifiers as defined in the Brand Manifest |
-| `countries_all` | ISO country codes - standards apply in ALL listed countries |
+| `countries_all` | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - standards apply in ALL listed countries |
 | `channels_any` | Ad channels - standards apply to ANY of the listed channels |
+| `languages_any` | ISO 639-1 or BCP 47 language tags (case-insensitive, lowercase recommended) - standards apply to content in ANY of these languages |
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
 | `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
-| `floor` | Reference to external safety floor definition (URL + name) |
+
+<Note>
+**Brand Safety Floor Requirement**
+
+Implementors MUST apply a brand safety floor regardless of what policy is defined. AdCP does not define the floor specification.
+</Note>
 
 ### Error Response
 
@@ -78,5 +75,5 @@ Retrieve content safety policies for a specific standards configuration.
 
 ## Related Tasks
 
-- [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) - Collaborative calibration against these standards
-- [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) - List available standards configurations
+- [calibrate_content](./calibrate_content) - Collaborative calibration against these standards
+- [list_content_standards](./list_content_standards) - List available standards configurations

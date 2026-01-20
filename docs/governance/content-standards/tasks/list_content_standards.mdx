@@ -15,15 +15,15 @@ List available content standards configurations.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `brand_ids` | array | No | Filter by brand identifiers |
-| `countries` | array | No | Filter by country codes |
+| `countries` | array | No | Filter by ISO 3166-1 alpha-2 country codes (case-insensitive) |
 | `channels` | array | No | Filter by channels |
+| `languages` | array | No | Filter by ISO 639-1 or BCP 47 language tags (case-insensitive) |
 
 ## Response
 
 **Schema**: [list-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/list-content-standards-response.json)
 
-Returns an abbreviated list of standards configurations. Use [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) to retrieve full details including policy text and calibration data.
+Returns an abbreviated list of standards configurations. Use [get_content_standards](./get_content_standards) to retrieve full details including policy text and calibration data.
 
 ### Success Response
 
@@ -31,20 +31,18 @@ Returns an abbreviated list of standards configurations. Use [get_content_standa
 {
   "standards": [
     {
-      "standards_id": "nike_emea_safety",
-      "version": "1.2.0",
-      "name": "Nike EMEA - all digital channels",
-      "brand_ids": ["nike"],
+      "standards_id": "emea_digital_safety",
+      "name": "EMEA - all digital channels",
       "countries_all": ["GB", "DE", "FR"],
-      "channels_any": ["display", "video", "ctv"]
+      "channels_any": ["display", "video", "ctv"],
+      "languages": ["en", "de", "fr"]
     },
     {
-      "standards_id": "nike_us_display",
-      "version": "1.0.0",
-      "name": "Nike US - display only",
-      "brand_ids": ["nike"],
+      "standards_id": "us_display_only",
+      "name": "US - display only",
       "countries_all": ["US"],
-      "channels_any": ["display"]
+      "channels_any": ["display"],
+      "languages": ["en"]
     }
   ]
 }
@@ -65,5 +63,5 @@ Returns an abbreviated list of standards configurations. Use [get_content_standa
 
 ## Related Tasks
 
-- [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Get a specific standards configuration
-- [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) - Create a new configuration
+- [get_content_standards](./get_content_standards) - Get a specific standards configuration
+- [create_content_standards](./create_content_standards) - Create a new configuration
