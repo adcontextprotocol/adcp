@@ -43,7 +43,7 @@ This inverts the traditional model. Instead of "send us your content, we'll eval
 
 Content standards evaluation involves four key questions that buyers and sellers negotiate:
 
-1. **What content?** - What [artifacts](/docs/governance/content-standards/artifacts) to evaluate (the ad-adjacent content)
+1. **What content?** - What [artifacts](./artifacts) to evaluate (the ad-adjacent content)
 2. **How much adjacency?** - How many artifacts around the ad slot to consider
 3. **What sampling rate?** - What percentage of traffic to evaluate
 4. **How to calibrate?** - How to align on policy interpretation before runtime
@@ -204,7 +204,7 @@ Content Standards uses **natural language prompts** rather than rigid keyword li
 
 The policy prompt enables AI-powered verification agents to understand context and nuance. **Calibration** examples provide a training/test set that helps the agent interpret the policy correctly.
 
-See [Artifacts](/docs/governance/content-standards/artifacts) for details on artifact structure and secured asset access.
+See [Artifacts](./artifacts) for details on artifact structure and secured asset access.
 
 ## Scoped Standards
 
@@ -255,7 +255,7 @@ Before running campaigns, sellers calibrate their local models against the verif
 }
 ```
 
-See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) for the full task specification.
+See [calibrate_content](./tasks/calibrate_content) for the full task specification.
 
 ## Tasks
 
@@ -263,24 +263,24 @@ See [calibrate_content](/docs/governance/content-standards/tasks/calibrate_conte
 
 | Task | Description |
 |------|-------------|
-| [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) | List available standards configurations |
-| [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) | Retrieve a specific standards configuration |
+| [list_content_standards](./tasks/list_content_standards) | List available standards configurations |
+| [get_content_standards](./tasks/get_content_standards) | Retrieve a specific standards configuration |
 
 ### Management
 
 | Task | Description |
 |------|-------------|
-| [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) | Create a new standards configuration |
-| [update_content_standards](/docs/governance/content-standards/tasks/update_content_standards) | Update an existing standards configuration |
-| [delete_content_standards](/docs/governance/content-standards/tasks/delete_content_standards) | Delete a standards configuration |
+| [create_content_standards](./tasks/create_content_standards) | Create a new standards configuration |
+| [update_content_standards](./tasks/update_content_standards) | Update an existing standards configuration |
+| [delete_content_standards](./tasks/delete_content_standards) | Delete a standards configuration |
 
 ### Calibration & Validation
 
 | Task | Description |
 |------|-------------|
-| [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) | Collaborative dialogue to align on policy interpretation |
-| [get_media_buy_artifacts](/docs/governance/content-standards/tasks/get_media_buy_artifacts) | Retrieve content artifacts from a media buy |
-| [validate_content_delivery](/docs/governance/content-standards/tasks/validate_content_delivery) | Batch validation of content artifacts |
+| [calibrate_content](./tasks/calibrate_content) | Collaborative dialogue to align on policy interpretation |
+| [get_media_buy_artifacts](./tasks/get_media_buy_artifacts) | Retrieve content artifacts from a media buy |
+| [validate_content_delivery](./tasks/validate_content_delivery) | Batch validation of content artifacts |
 
 ## Typical Providers
 
@@ -354,5 +354,5 @@ This architecture aligns with the [IAB Tech Lab ARTF (Agentic RTB Framework)](ht
 
 ## Related
 
-- [Artifacts](/docs/governance/content-standards/artifacts) - What artifacts are and how to structure them
-- [Brand Manifest](/docs/creative/brand-manifest) - Static brand identity that can link to standards agents
+- [Artifacts](./artifacts) - What artifacts are and how to structure them
+- [Brand Manifest](../../creative/brand-manifest) - Static brand identity that can link to standards agents
