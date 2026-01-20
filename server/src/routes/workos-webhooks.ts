@@ -45,6 +45,7 @@ interface OrganizationMembershipData {
   user_id: string;
   organization_id: string;
   status: 'active' | 'pending' | 'inactive';
+  role?: { slug: string } | null;
   created_at: string;
   updated_at: string;
 }
@@ -188,6 +189,8 @@ async function upsertMembership(
     return;
   }
 
+  const role = membership.role?.slug || 'member';
+
   await pool.query(
     `INSERT INTO organization_memberships (
       workos_user_id,
@@ -196,14 +199,16 @@ async function upsertMembership(
       email,
       first_name,
       last_name,
+      role,
       synced_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
     ON CONFLICT (workos_user_id, workos_organization_id)
     DO UPDATE SET
       workos_membership_id = EXCLUDED.workos_membership_id,
       email = EXCLUDED.email,
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
+      role = EXCLUDED.role,
       synced_at = NOW(),
       updated_at = NOW()`,
     [
@@ -213,6 +218,7 @@ async function upsertMembership(
       userData.email,
       userData.first_name,
       userData.last_name,
+      role,
     ]
   );
 
