@@ -1240,9 +1240,11 @@
     <!-- Config Version Banner -->
     <div class="card" id="config-version-banner" style="display: flex; justify-content: space-between; align-items: center; background: var(--color-bg-muted); padding: var(--space-4) var(--space-5);">
       <div>
-        <span style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Config Version:</span>
+        <span style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Addie Version:</span>
         <span id="config-version-id" style="font-family: var(--font-mono); color: var(--color-brand);">-</span>
-        <span style="color: var(--color-text-secondary); margin-left: var(--space-2);">(<span id="config-rule-count">-</span> rules)</span>
+        <span style="color: var(--color-text-secondary); margin-left: var(--space-2);">
+          (code <span id="config-code-version">-</span>, <span id="config-rule-count">-</span> rules)
+        </span>
       </div>
       <div style="display: flex; gap: var(--space-4); align-items: center;">
         <span style="font-size: var(--text-sm); color: var(--color-text-secondary);">
@@ -1464,15 +1466,16 @@
 
     <!-- Config Version History Modal -->
     <div class="modal-overlay" id="config-history-modal" style="display: none;">
-      <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-        <h2>Config Version History</h2>
+      <div class="modal" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+        <h2>Addie Version History</h2>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
-          Each config version represents a unique combination of active rules. Performance metrics are tracked per version.
+          Each version represents a unique combination of code version and active rules. Performance metrics are tracked per version.
         </p>
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="border-bottom: var(--border-1) solid var(--color-gray-200);">
               <th style="text-align: left; padding: var(--space-2);">Version</th>
+              <th style="text-align: left; padding: var(--space-2);">Code</th>
               <th style="text-align: left; padding: var(--space-2);">Created</th>
               <th style="text-align: center; padding: var(--space-2);">Rules</th>
               <th style="text-align: center; padding: var(--space-2);">Messages</th>
@@ -1700,10 +1703,15 @@
             <h2 style="margin: 0;">Performance Metrics</h2>
             <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
               Latency, token usage, and tool performance analysis
+              <span style="margin-left: var(--space-2); padding: 2px 8px; background: var(--color-bg-muted); border-radius: var(--radius-sm); font-family: var(--font-mono);">
+                Addie <span id="perf-addie-version">v?</span> (code <span id="perf-code-version">-</span>)
+              </span>
             </p>
           </div>
           <div class="filter-row">
             <select id="perf-days-filter" onchange="loadPerformance()">
+              <option value="0.125">Last 3 hours</option>
+              <option value="0.5">Last 12 hours</option>
               <option value="1">Last 24 hours</option>
               <option value="7" selected>Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -2146,11 +2154,15 @@
         if (config.config_version) {
           const cv = config.config_version;
           document.getElementById('config-version-id').textContent = `v${cv.version_id}`;
+          document.getElementById('config-code-version').textContent = cv.code_version || '-';
           document.getElementById('config-rule-count').textContent = cv.rule_count || 0;
           document.getElementById('config-message-count').textContent = cv.message_count || 0;
           document.getElementById('config-rating').textContent = cv.avg_rating
             ? `${parseFloat(cv.avg_rating).toFixed(1)}/5`
             : 'N/A';
+          // Also update performance page version display
+          document.getElementById('perf-addie-version').textContent = `v${cv.version_id}`;
+          document.getElementById('perf-code-version').textContent = cv.code_version || '-';
         }
       } catch (error) {
         console.error('Error loading stats:', error);
@@ -2168,7 +2180,7 @@
 
         const listEl = document.getElementById('config-history-list');
         if (!data.versions || data.versions.length === 0) {
-          listEl.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-4); color: var(--color-text-secondary);">No config versions found</td></tr>';
+          listEl.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: var(--space-4); color: var(--color-text-secondary);">No config versions found</td></tr>';
           return;
         }
 
@@ -2178,6 +2190,9 @@
               <span style="font-family: var(--font-mono); font-weight: var(--font-semibold);">v${v.version_id}</span>
               <br>
               <span style="font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);">${v.config_hash?.substring(0, 8) || '-'}</span>
+            </td>
+            <td style="padding: var(--space-2); font-size: var(--text-sm); font-family: var(--font-mono);">
+              ${v.code_version || '-'}
             </td>
             <td style="padding: var(--space-2); font-size: var(--text-sm);">
               ${new Date(v.created_at).toLocaleDateString()}<br>
@@ -2197,7 +2212,7 @@
       } catch (error) {
         console.error('Error loading config history:', error);
         document.getElementById('config-history-list').innerHTML =
-          '<tr><td colspan="6" style="text-align: center; padding: var(--space-4); color: var(--color-error);">Error loading history</td></tr>';
+          '<tr><td colspan="7" style="text-align: center; padding: var(--space-4); color: var(--color-error);">Error loading history</td></tr>';
       }
     }
 
