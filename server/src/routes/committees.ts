@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeade
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
+import { invalidateWebAdminStatusCache } from "../addie/mcp/admin-tools.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
@@ -527,6 +528,7 @@ export function createCommitteeRouters(): {
       });
 
       invalidateMemberContextCache();
+      invalidateWebAdminStatusCache(workos_user_id);
 
       res.status(201).json(membership);
     } catch (error) {
@@ -552,6 +554,7 @@ export function createCommitteeRouters(): {
       }
 
       invalidateMemberContextCache();
+      invalidateWebAdminStatusCache(userId);
 
       res.json({ success: true });
     } catch (error) {
@@ -957,6 +960,7 @@ export function createCommitteeRouters(): {
       });
 
       invalidateMemberContextCache();
+      invalidateWebAdminStatusCache(user.id);
 
       res.status(201).json({ success: true, membership });
     } catch (error) {
@@ -1174,6 +1178,7 @@ export function createCommitteeRouters(): {
       }
 
       invalidateMemberContextCache();
+      invalidateWebAdminStatusCache(user.id);
 
       res.json({ success: true });
     } catch (error) {

@@ -46,6 +46,7 @@
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
           { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
           { href: '/admin/notification-channels', label: 'Alert Channels', icon: '📢' },
           { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
@@ -385,6 +386,17 @@
     window.location.href = `/auth/login?return_to=${returnUrl}`;
   }
 
+  // Shared fetch wrapper that handles 401 redirects automatically
+  async function adminFetch(url, options = {}) {
+    const response = await fetch(url, options);
+    if (response.status === 401) {
+      redirectToLogin();
+      // Return a never-resolving promise to prevent further processing
+      return new Promise(() => {});
+    }
+    return response;
+  }
+
   // Auto-initialize only on admin pages
   function shouldInitialize() {
     return window.location.pathname.startsWith('/admin');
@@ -404,6 +416,7 @@
     init,
     toggleSidebar,
     closeSidebar,
-    redirectToLogin
+    redirectToLogin,
+    fetch: adminFetch
   };
 })();

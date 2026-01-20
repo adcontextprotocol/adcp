@@ -10,6 +10,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { createProspect } from "../../services/prospect.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
+import { VALID_REVENUE_TIERS } from "../../db/organization-db.js";
 import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
@@ -623,11 +624,10 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         const pool = getPool();
 
         // Validate revenue_tier if provided
-        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-        if (updates.revenue_tier && !validRevenueTiers.includes(updates.revenue_tier)) {
+        if (updates.revenue_tier && !VALID_REVENUE_TIERS.includes(updates.revenue_tier as any)) {
           return res.status(400).json({
             error: "Invalid revenue_tier",
-            message: `revenue_tier must be one of: ${validRevenueTiers.join(", ")}`,
+            message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(", ")}`,
           });
         }
 

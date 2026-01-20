@@ -342,7 +342,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'propose_content',
     description:
-      'Create content for the website (perspectives, committee posts). Content can be for personal perspectives or committee collections. Committee leads and admins can publish directly; others submit for review. Supports co-authors.',
+      'Create content for the website. Content is published to a committee (working group, council, or chapter). Default is "editorial" which is the site-wide Perspectives section. Committee leads and admins can publish directly; others submit for review.',
     usage_hints: 'use for "write a perspective", "post to the sustainability group", "create an article", "share my thoughts on X"',
     input_schema: {
       type: 'object',
@@ -352,15 +352,11 @@ export const MEMBER_TOOLS: AddieTool[] = [
         content_type: { type: 'string', enum: ['article', 'link'], description: 'Type (default: article)' },
         external_url: { type: 'string', description: 'URL for link type' },
         excerpt: { type: 'string', description: 'Short excerpt/summary' },
-        category: { type: 'string', description: 'Category' },
-        collection: {
-          type: 'object', description: 'Where to publish',
-          properties: { type: { type: 'string', enum: ['personal', 'committee'], description: 'Collection type' }, committee_slug: { type: 'string', description: 'Committee slug' } },
-          required: ['type'],
-        },
+        category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem)' },
+        committee_slug: { type: 'string', description: 'Target committee slug (default: editorial for Perspectives). Use list_working_groups to see options.' },
         co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
-      required: ['title', 'collection'],
+      required: ['title'],
     },
   },
   {
@@ -507,8 +503,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'probe_adcp_agent',
     description:
-      'Check if an AdCP agent is online and discover its capabilities. Always validates connectivity first, then retrieves available tools and operations. Use this as the primary tool for investigating agents - it combines health checking with capability discovery.',
-    usage_hints: 'use for "is this agent working?", "what can this agent do?", "check my agent", "probe agent", "test connectivity"',
+      'Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use test_adcp_agent to verify actual protocol compliance.',
+    usage_hints: 'use for "is this agent online?", "check connectivity", "what tools does this agent advertise?". For compliance testing, use test_adcp_agent instead.',
     input_schema: {
       type: 'object',
       properties: {
@@ -553,51 +549,6 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
       },
       required: ['agent_url'],
-    },
-  },
-  {
-    name: 'call_adcp_agent',
-    description:
-      'Execute an AdCP protocol task on an agent. This is a low-level proxy that forwards requests directly to the agent. Use adcp-media-buy, adcp-signals, or adcp-creative skills for detailed parameter schemas.',
-    usage_hints: 'use for "call get_products", "execute create_media_buy", "run sync_creatives", "get_signals", "build_creative", "interact with the agent directly", "use the full AdCP spec". For testing workflows, prefer test_adcp_agent instead.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_url: {
-          type: 'string',
-          description: 'The agent URL (must be HTTPS, e.g., "https://sales.example.com")',
-        },
-        task: {
-          type: 'string',
-          enum: [
-            // Media Buy tasks
-            'get_products',
-            'list_authorized_properties',
-            'list_creative_formats',
-            'create_media_buy',
-            'update_media_buy',
-            'sync_creatives',
-            'list_creatives',
-            'get_media_buy_delivery',
-            // Signals tasks
-            'get_signals',
-            'activate_signal',
-            // Creative tasks
-            'build_creative',
-            'preview_creative',
-          ],
-          description: 'The AdCP task to execute',
-        },
-        params: {
-          type: 'object',
-          description: 'Task parameters - structure depends on the task. See protocol skills for schemas.',
-        },
-        auth_token: {
-          type: 'string',
-          description: 'Optional auth token. If not provided, will use saved token for this agent.',
-        },
-      },
-      required: ['agent_url', 'task'],
     },
   },
   // ============================================
@@ -776,8 +727,7 @@ async function callApi(
       'Content-Type': 'application/json',
     };
 
-    // Add user context for authentication
-    // The API will validate this against the session
+    // Add user context headers (for logging/tracking)
     if (memberContext?.workos_user?.workos_user_id) {
       headers['X-Addie-User-Id'] = memberContext.workos_user.workos_user_id;
     }
@@ -915,7 +865,7 @@ export function createMemberToolHandlers(
       return `Failed to fetch working groups: ${result.error}`;
     }
 
-    const groups = result.data as Array<{
+    const data = result.data as { working_groups: Array<{
       slug: string;
       name: string;
       description: string;
@@ -923,9 +873,10 @@ export function createMemberToolHandlers(
       member_count: number;
       committee_type: string;
       region?: string;
-    }>;
+    }> };
+    const groups = data.working_groups;
 
-    if (groups.length === 0) {
+    if (!groups || groups.length === 0) {
       const typeLabel = typeFilter && typeFilter !== 'all' ? ` (type: ${typeFilter})` : '';
       return `No active committees found${typeLabel}.`;
     }
@@ -962,15 +913,15 @@ export function createMemberToolHandlers(
       return `Failed to fetch working group: ${result.error}`;
     }
 
-    const group = result.data as {
+    const data = result.data as { working_group: {
       name: string;
       slug: string;
       description: string;
       is_private: boolean;
       member_count: number;
-      leaders: Array<{ name: string; headline?: string }>;
-      recent_posts?: Array<{ title: string; author: string; published_at: string }>;
-    };
+      leaders?: Array<{ name?: string; user_id: string }>;
+    }; is_member: boolean };
+    const group = data.working_group;
 
     let response = `## ${group.name}\n\n`;
     response += `**Slug:** ${group.slug}\n`;
@@ -981,16 +932,9 @@ export function createMemberToolHandlers(
     if (group.leaders && group.leaders.length > 0) {
       response += `### Leaders\n`;
       group.leaders.forEach((leader) => {
-        response += `- **${leader.name}**${leader.headline ? ` - ${leader.headline}` : ''}\n`;
+        response += `- ${leader.name || 'Unknown'}\n`;
       });
       response += `\n`;
-    }
-
-    if (group.recent_posts && group.recent_posts.length > 0) {
-      response += `### Recent Posts\n`;
-      group.recent_posts.forEach((post) => {
-        response += `- "${post.title}" by ${post.author}\n`;
-      });
     }
 
     return response;
@@ -1028,20 +972,22 @@ export function createMemberToolHandlers(
       return `Failed to fetch your working groups: ${result.error}`;
     }
 
-    const memberships = result.data as Array<{
-      working_group: { name: string; slug: string };
-      role: string;
-      joined_at: string;
-    }>;
+    const data = result.data as { working_groups: Array<{
+      name: string;
+      slug: string;
+      committee_type: string;
+      is_private: boolean;
+    }> };
+    const groups = data.working_groups;
 
-    if (memberships.length === 0) {
+    if (!groups || groups.length === 0) {
       return "You're not a member of any working groups yet. Use list_working_groups to find groups to join!";
     }
 
     let response = `## Your Working Group Memberships\n\n`;
-    memberships.forEach((m) => {
-      const role = m.role === 'leader' ? '👑 Leader' : '👤 Member';
-      response += `- **${m.working_group.name}** (${m.working_group.slug}) - ${role}\n`;
+    groups.forEach((group) => {
+      const typeLabel = group.committee_type !== 'working_group' ? ` [${group.committee_type.replace('_', ' ')}]` : '';
+      response += `- **${group.name}**${typeLabel} (${group.slug})\n`;
     });
 
     return response;
@@ -1151,7 +1097,7 @@ export function createMemberToolHandlers(
       return `Failed to fetch your profile: ${result.error}`;
     }
 
-    const profile = result.data as {
+    const data = result.data as { profile: {
       name: string;
       slug: string;
       headline?: string;
@@ -1161,7 +1107,13 @@ export function createMemberToolHandlers(
       linkedin?: string;
       location?: string;
       is_visible: boolean;
-    };
+    } | null; organization_name?: string };
+
+    if (!data.profile) {
+      return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one!";
+    }
+
+    const profile = data.profile;
 
     let response = `## Your Member Profile\n\n`;
     response += `**Name:** ${profile.name}\n`;
@@ -1240,13 +1192,13 @@ export function createMemberToolHandlers(
     }
 
     let response = `## Recent Perspectives\n\n`;
-    response += `_View all at: https://agenticadvertising.org/latest/research_\n\n`;
+    response += `_View all at: https://agenticadvertising.org/latest/perspectives_\n\n`;
     perspectives.forEach((p) => {
       response += `### ${p.title}\n`;
       response += `**By:** ${p.author_name} | **Published:** ${new Date(p.published_at).toLocaleDateString()}\n`;
       if (p.excerpt) response += `${p.excerpt}\n`;
       // Link content points to external URL, articles would be internal
-      const readMoreUrl = p.external_url || `https://agenticadvertising.org/latest/research`;
+      const readMoreUrl = p.external_url || `https://agenticadvertising.org/latest/perspectives`;
       response += `**Read more:** ${readMoreUrl}\n\n`;
     });
 
@@ -1305,13 +1257,20 @@ export function createMemberToolHandlers(
     const externalUrl = input.external_url as string | undefined;
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
-    const inputCollection = input.collection as { type: string; committee_slug?: string } | undefined;
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
 
-    // Default to editorial collection for personal/perspectives content
-    const collection = inputCollection?.type === 'personal' || !inputCollection
-      ? { type: 'committee', committee_slug: 'editorial' }
-      : inputCollection;
+    // Support both new format (committee_slug) and legacy format (collection.committee_slug)
+    const legacyCollection = input.collection as { type?: string; committee_slug?: string } | undefined;
+
+    // Validate legacy format: if type='committee', require committee_slug
+    if (legacyCollection?.type === 'committee' && !legacyCollection.committee_slug) {
+      return 'committee_slug is required when using collection.type="committee". Specify the committee or omit collection to default to editorial (Perspectives).';
+    }
+
+    const committeeSlug = (input.committee_slug as string) ||
+      legacyCollection?.committee_slug ||
+      (legacyCollection?.type === 'personal' ? 'editorial' : null) ||
+      'editorial';
 
     // Validate requirements
     if (contentType === 'article' && !contentBody) {
@@ -1320,65 +1279,60 @@ export function createMemberToolHandlers(
     if (contentType === 'link' && !externalUrl) {
       return 'A URL is required for link type content. Please provide the external_url.';
     }
-    if (collection.type === 'committee' && !collection.committee_slug) {
-      return 'committee_slug is required when targeting a committee collection.';
-    }
 
-    // Build request body
-    const body: Record<string, unknown> = {
-      title,
-      content: contentBody,
-      content_type: contentType,
-      external_url: externalUrl,
-      excerpt,
-      category,
-      collection,
-    };
+    // Call the content service directly (bypasses HTTP auth)
+    // Dynamic import to avoid pulling in auth.ts at module load time
+    const { proposeContentForUser } = await import('../../routes/content.js');
+    const result = await proposeContentForUser(
+      {
+        id: memberContext.workos_user.workos_user_id,
+        email: memberContext.workos_user.email,
+      },
+      {
+        title,
+        content: contentBody,
+        content_type: contentType as 'article' | 'link',
+        external_url: externalUrl,
+        excerpt,
+        category,
+        collection: { committee_slug: committeeSlug },
+      }
+    );
 
-    // Handle co-authors by looking up user IDs from emails
-    if (coAuthorEmails && coAuthorEmails.length > 0) {
-      // For now, co-authors are added via a separate call after content creation
-      // We'll note them in the response
-    }
-
-    const result = await callApi('POST', '/api/content/propose', memberContext, body);
-
-    if (!result.ok) {
-      if (result.status === 404) {
-        return `Committee "${collection.committee_slug}" not found. Use list_working_groups to see available committees.`;
+    if (!result.success) {
+      if (result.error?.includes('No collection found')) {
+        return `Committee "${committeeSlug}" not found. Use list_working_groups to see available committees.`;
       }
       return `Failed to create content: ${result.error}`;
     }
 
-    const data = result.data as { id: string; slug: string; status: string; message: string };
-
-    let response = `## Content ${data.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
+    let response = `## Content ${result.status === 'published' ? 'Published' : 'Submitted'}\n\n`;
     response += `**Title:** ${title}\n`;
-    response += `**Status:** ${data.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
+    response += `**Status:** ${result.status === 'published' ? '✅ Published' : '⏳ Pending Review'}\n`;
 
-    if (collection.committee_slug === 'editorial') {
+    if (committeeSlug === 'editorial') {
       response += `**Collection:** Perspectives\n`;
     } else {
-      response += `**Collection:** ${collection.committee_slug}\n`;
+      response += `**Collection:** ${committeeSlug}\n`;
     }
 
-    if (data.status === 'published') {
-      if (collection.committee_slug === 'editorial') {
-        response += `\n**View:** https://agenticadvertising.org/latest/research\n`;
-        response += `_Your perspective is now live in The Latest > Research section._\n`;
+    if (result.status === 'published') {
+      if (committeeSlug === 'editorial') {
+        response += `\n**View:** https://agenticadvertising.org/latest/perspectives\n`;
+        response += `_Your perspective is now live in The Latest > Perspectives section._\n`;
       } else {
-        response += `\n**View:** https://agenticadvertising.org/committees/${collection.committee_slug}\n`;
+        response += `\n**View:** https://agenticadvertising.org/committees/${committeeSlug}\n`;
       }
     } else {
-      if (collection.committee_slug === 'editorial') {
-        response += `\n_Your perspective has been submitted for review. Once approved, it will appear in The Latest > Research section._\n`;
+      if (committeeSlug === 'editorial') {
+        response += `\n_Your perspective has been submitted for review. Once approved, it will appear in The Latest > Perspectives section._\n`;
       } else {
         response += `\n_Your content has been submitted for review. A committee lead will review it and you'll be notified when it's approved._\n`;
       }
     }
 
     if (coAuthorEmails && coAuthorEmails.length > 0) {
-      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${data.id}`;
+      response += `\n💡 **Note:** To add co-authors, you can edit this content at: https://agenticadvertising.org/admin/content/${result.id}`;
     }
 
     return response;
@@ -1971,11 +1925,11 @@ export function createMemberToolHandlers(
     // Summary
     response += `\n---\n`;
     if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
-      response += `✅ Agent is healthy and ready to use. Try \`test_adcp_agent\` to run a full workflow test.`;
+      response += `✅ Agent is **online** and responding. Run \`test_adcp_agent\` to verify protocol compliance.`;
     } else if (isHealthy) {
-      response += `✅ Agent is responding but not in the registry. You can still use \`call_adcp_agent\` to execute tasks directly.`;
+      response += `✅ Agent is **online** but not in the registry. Try calling it with \`get_products\` or run \`test_adcp_agent\` to verify it works correctly.`;
     } else {
-      response += `❌ Agent is not responding. Check the URL and ensure the agent is running.`;
+      response += `❌ Agent is **not responding**. Check the URL and ensure the agent is running.`;
     }
 
     return response;
@@ -2173,87 +2127,6 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    }
-  });
-
-  // ============================================
-  // ADCP AGENT PROXY
-  // ============================================
-  handlers.set('call_adcp_agent', async (input) => {
-    const agentUrl = input.agent_url as string;
-    const task = input.task as string;
-    const params = (input.params as Record<string, unknown>) || {};
-    let authToken = input.auth_token as string | undefined;
-
-    // Validate URL to prevent SSRF attacks
-    try {
-      const url = new URL(agentUrl);
-
-      // Must be HTTPS
-      if (url.protocol !== 'https:') {
-        return '**Error:** Agent URL must use HTTPS protocol.';
-      }
-
-      // Block internal/private networks
-      const hostname = url.hostname.toLowerCase();
-      if (
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === '::1' ||
-        hostname.endsWith('.local') ||
-        hostname.endsWith('.internal') ||
-        hostname.startsWith('10.') ||
-        hostname.startsWith('192.168.') ||
-        hostname.match(/^172\.(1[6-9]|2\d|3[01])\./) ||
-        hostname === '169.254.169.254' // AWS metadata
-      ) {
-        return '**Error:** Agent URL cannot point to internal or private networks.';
-      }
-    } catch {
-      return '**Error:** Invalid agent URL format.';
-    }
-
-    // Look up saved auth token if not provided
-    if (!authToken && memberContext?.organization?.workos_organization_id) {
-      const savedContext = await agentContextDb.getByOrgAndUrl(
-        memberContext.organization.workos_organization_id,
-        agentUrl
-      );
-      if (savedContext?.id) {
-        authToken = (await agentContextDb.getAuthToken(savedContext.id)) ?? undefined;
-      }
-    }
-
-    logger.info({ agentUrl, task, hasAuth: !!authToken }, 'Addie: call_adcp_agent');
-
-    try {
-      const { AdCPClient } = await import('@adcp/client');
-      const multiClient = new AdCPClient([
-        {
-          id: 'target',
-          name: 'target',
-          agent_uri: agentUrl,
-          protocol: 'mcp',
-          ...(authToken && { auth_token: authToken }),
-        },
-      ]);
-      const client = multiClient.agent('target');
-
-      const result = await client.executeTask(task, params);
-
-      if (!result.success) {
-        // Return errors in a structured way
-        return `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
-      }
-
-      // Format successful response
-      let output = `**Task:** \`${task}\`\n**Status:** Success\n\n`;
-      output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
-
-      return output;
-    } catch (error) {
-      logger.error({ error, agentUrl, task }, 'Addie: call_adcp_agent failed');
-      return `**Task failed:** \`${task}\`\n\n**Error:** ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

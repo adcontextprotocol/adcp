@@ -5,7 +5,7 @@ description: Execute AdCP Creative Protocol operations with creative agents - bu
 
 # AdCP Creative Protocol
 
-This skill enables you to execute the AdCP Creative Protocol with creative agents. Use the `call_adcp_agent` tool to send requests to creative agents.
+This skill enables you to execute the AdCP Creative Protocol with creative agents. Use the standard MCP tools (`list_creative_formats`, `build_creative`, `preview_creative`) exposed by the connected agent.
 
 ## Overview
 

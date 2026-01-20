@@ -17,8 +17,9 @@ import {
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
+import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -422,24 +423,24 @@ export function createOrganizationsRouter(): Router {
         success: true,
         message: `Invitation sent to ${request.user_email}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ err: error }, 'Approve join request error:');
 
       // Check for specific WorkOS errors
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('already a member')) {
+      if (error?.code === 'organization_membership_already_exists') {
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
-      if (errorMessage.includes('pending invitation')) {
+      if (error?.code === 'invitation_already_exists') {
         return res.status(400).json({
           error: 'Invitation exists',
           message: 'There is already a pending invitation for this user',
         });
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to approve join request',
         message: errorMessage,
@@ -732,12 +733,11 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate role if provided
-      const validRoles = ['member', 'admin'];
       const roleToAssign = role || 'member';
-      if (!validRoles.includes(roleToAssign)) {
+      if (!(VALID_ASSIGNABLE_ROLES as readonly string[]).includes(roleToAssign)) {
         return res.status(400).json({
           error: 'Invalid role',
-          message: `Role must be one of: ${validRoles.join(', ')}`,
+          message: `Role must be one of: ${VALID_ASSIGNABLE_ROLES.join(', ')}`,
         });
       }
 
@@ -937,17 +937,17 @@ export function createOrganizationsRouter(): Router {
           role: membership.role?.slug || roleToAssign,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ err: error }, 'Add domain user error');
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('already a member')) {
+      if (error?.code === 'organization_membership_already_exists') {
         return res.status(400).json({
           error: 'Already a member',
           message: 'This user is already a member of the organization.',
         });
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to add domain user',
         message: errorMessage,
@@ -1037,11 +1037,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate revenue_tier if provided
-      const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-      if (revenue_tier && !validRevenueTiers.includes(revenue_tier)) {
+      if (revenue_tier && !(VALID_REVENUE_TIERS as readonly string[]).includes(revenue_tier)) {
         return res.status(400).json({
           error: 'Invalid revenue tier',
-          message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
         });
       }
 
@@ -1076,6 +1075,27 @@ export function createOrganizationsRouter(): Router {
 
       // Use trimmed name for consistency
       const trimmedName = organization_name.trim();
+
+      // Check if an org with this domain already exists BEFORE creating
+      if (verifiedDomain) {
+        const pool = getPool();
+        const existingOrgResult = await pool.query(
+          `SELECT o.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE LOWER(od.domain) = LOWER($1)`,
+          [verifiedDomain]
+        );
+
+        if (existingOrgResult.rows.length > 0) {
+          return res.status(409).json({
+            error: 'Organization exists',
+            message: `An organization for ${verifiedDomain} already exists: "${existingOrgResult.rows[0].name}". Please search for it and request to join instead of creating a new one.`,
+            existing_org_id: existingOrgResult.rows[0].workos_organization_id,
+            existing_org_name: existingOrgResult.rows[0].name,
+          });
+        }
+      }
 
       logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier, verifiedDomain }, 'Creating WorkOS organization');
 
@@ -1372,11 +1392,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate revenue_tier if provided
-      const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
-      if (revenue_tier !== undefined && revenue_tier !== null && !validRevenueTiers.includes(revenue_tier)) {
+      if (revenue_tier !== undefined && revenue_tier !== null && !VALID_REVENUE_TIERS.includes(revenue_tier as any)) {
         return res.status(400).json({
           error: 'Invalid revenue tier',
-          message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
         });
       }
 
@@ -1915,11 +1934,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate role if provided
-      const validRoles = ['member', 'admin', 'owner'];
-      if (role && !validRoles.includes(role)) {
+      if (role && !VALID_ORGANIZATION_ROLES.includes(role as any)) {
         return res.status(400).json({
           error: 'Invalid role',
-          message: `Role must be one of: ${validRoles.join(', ')}`,
+          message: `Role must be one of: ${VALID_ORGANIZATION_ROLES.join(', ')}`,
         });
       }
 
@@ -1984,24 +2002,24 @@ export function createOrganizationsRouter(): Router {
           accept_invitation_url: invitation.acceptInvitationUrl,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ err: error }, 'Send invitation error');
 
       // Check for specific WorkOS errors
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('already a member')) {
+      if (error?.code === 'organization_membership_already_exists') {
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
         });
       }
-      if (errorMessage.includes('pending invitation')) {
+      if (error?.code === 'invitation_already_exists') {
         return res.status(400).json({
           error: 'Invitation already exists',
           message: 'An invitation has already been sent to this email address',
         });
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to send invitation',
         message: errorMessage,
@@ -2166,11 +2184,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Validate role
-      const validRoles = ['member', 'admin', 'owner'];
-      if (!validRoles.includes(role)) {
+      if (!VALID_ORGANIZATION_ROLES.includes(role as any)) {
         return res.status(400).json({
           error: 'Invalid role',
-          message: `Role must be one of: ${validRoles.join(', ')}`,
+          message: `Role must be one of: ${VALID_ORGANIZATION_ROLES.join(', ')}`,
         });
       }
 

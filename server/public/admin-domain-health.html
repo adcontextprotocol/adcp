@@ -1511,6 +1511,33 @@
           </div>
         ` : '';
 
+        // Stripe customer conflict handling
+        const stripeConflict = preview.stripe_customer_conflict || {};
+        const stripeConflictHtml = stripeConflict.has_conflict ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-error-700);">🔴 Stripe Customer Conflict</strong>
+            <p style="margin: var(--space-2) 0;">Both organizations have Stripe customers. Choose which to keep:</p>
+            <ul style="margin: var(--space-2) 0 var(--space-2) var(--space-4); font-size: var(--text-sm);">
+              <li><strong>Primary:</strong> ${escapeHtml(stripeConflict.primary_customer_id || 'None')}</li>
+              <li><strong>Secondary:</strong> ${escapeHtml(stripeConflict.secondary_customer_id || 'None')}</li>
+            </ul>
+            <div style="margin-top: var(--space-3);">
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="keep_primary" checked>
+                <strong>Keep Primary</strong> - Keep primary's Stripe customer, orphan secondary's
+              </label>
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="use_secondary">
+                <strong>Use Secondary</strong> - Replace primary's with secondary's Stripe customer
+              </label>
+              <label style="display: block;">
+                <input type="radio" name="stripe_resolution" value="keep_both_unlinked">
+                <strong>Unlink Both</strong> - Unlink both for manual resolution later
+              </label>
+            </div>
+          </div>
+        ` : '';
+
         const changesHtml = preview.estimated_changes.length > 0 ? `
           <div style="margin-bottom: var(--space-4);">
             <strong>Data to be moved:</strong>
@@ -1569,6 +1596,7 @@
                 </div>
               </div>
 
+              ${stripeConflictHtml}
               ${warningsHtml}
               ${changesHtml}
 
@@ -1577,7 +1605,8 @@
                 <button class="btn btn-primary" id="confirmMergeBtn" style="background: var(--color-error-600);"
                         data-primary-id="${encodeURIComponent(primaryOrgId)}"
                         data-secondary-id="${encodeURIComponent(secondaryOrgId)}"
-                        data-remaining-ids="${secondaryOrgIds.slice(1).map(encodeURIComponent).join(',')}">
+                        data-remaining-ids="${secondaryOrgIds.slice(1).map(encodeURIComponent).join(',')}"
+                        data-has-stripe-conflict="${stripeConflict.has_conflict || false}">
                   Confirm Merge
                 </button>
               </div>
@@ -1590,14 +1619,15 @@
           const primaryId = decodeURIComponent(this.dataset.primaryId);
           const secondaryId = decodeURIComponent(this.dataset.secondaryId);
           const remainingIds = this.dataset.remainingIds ? this.dataset.remainingIds.split(',').map(decodeURIComponent).join(',') : '';
-          confirmMerge(primaryId, secondaryId, remainingIds);
+          const hasStripeConflict = this.dataset.hasStripeConflict === 'true';
+          confirmMerge(primaryId, secondaryId, remainingIds, hasStripeConflict);
         });
       } catch (error) {
         alert('Failed to load merge preview: ' + error.message);
       }
     }
 
-    async function confirmMerge(primaryOrgId, secondaryOrgId, remainingOrgIds) {
+    async function confirmMerge(primaryOrgId, secondaryOrgId, remainingOrgIds, hasStripeConflict = false) {
       // Disable all buttons immediately to prevent double-clicks
       document.querySelectorAll('#mergeModal button, #confirmMergeBtn, #continueMergeBtn').forEach(btn => {
         btn.disabled = true;
@@ -1611,6 +1641,13 @@
         return;
       }
 
+      // Get Stripe customer resolution if there's a conflict
+      let stripeCustomerResolution = null;
+      if (hasStripeConflict) {
+        const selected = document.querySelector('input[name="stripe_resolution"]:checked');
+        stripeCustomerResolution = selected ? selected.value : 'keep_primary';
+      }
+
       mergeModalElement.innerHTML = `
         <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
           <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
@@ -1621,10 +1658,14 @@
       `;
 
       try {
+        const body = { primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId };
+        if (stripeCustomerResolution) {
+          body.stripe_customer_resolution = stripeCustomerResolution;
+        }
         const response = await fetch('/api/admin/cleanup/merge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId })
+          body: JSON.stringify(body)
         });
 
         if (!response.ok) {

@@ -10,6 +10,7 @@ import { runDocumentIndexerJob } from './committee-document-indexer.js';
 import { runSummaryGeneratorJob } from './committee-summary-generator.js';
 import { runOutreachScheduler } from '../services/proactive-outreach.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
+import { runSetupNudgesJob } from './setup-nudges.js';
 
 const logger = baseLogger.child({ module: 'job-scheduler' });
 
@@ -86,10 +87,7 @@ class JobScheduler {
     // Run after a delay on startup
     job.initialTimeoutId = setTimeout(async () => {
       try {
-        const result = await runOutreachScheduler({ limit: 5 });
-        if (result.sent > 0) {
-          logger.info(result, 'Proactive outreach: initial run completed');
-        }
+        await runOutreachScheduler({ limit: 5 });
       } catch (err) {
         logger.error({ err }, 'Proactive outreach: initial run failed');
       }
@@ -98,10 +96,7 @@ class JobScheduler {
     // Then run periodically
     job.intervalId = setInterval(async () => {
       try {
-        const result = await runOutreachScheduler({ limit: 5 });
-        if (result.sent > 0) {
-          logger.info(result, 'Proactive outreach: job completed');
-        }
+        await runOutreachScheduler({ limit: 5 });
       } catch (err) {
         logger.error({ err }, 'Proactive outreach: job failed');
       }
@@ -205,6 +200,49 @@ class JobScheduler {
   }
 
   /**
+   * Start the setup nudges job
+   * Sends DMs to members about incomplete setup tasks (missing logo, tagline, pending join requests)
+   */
+  startSetupNudges(): void {
+    const JOB_NAME = 'setup-nudges';
+    const INTERVAL_HOURS = 6; // Check every 6 hours
+    const INITIAL_DELAY_MS = 240000; // 4 minute delay on startup
+
+    const job: ScheduledJob = {
+      name: JOB_NAME,
+      intervalId: null,
+      initialTimeoutId: null,
+    };
+
+    // Run after a delay on startup
+    job.initialTimeoutId = setTimeout(async () => {
+      try {
+        const result = await runSetupNudgesJob({ limit: 10 });
+        if (result.nudgesSent > 0) {
+          logger.info(result, 'Setup nudges: initial run completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Setup nudges: initial run failed');
+      }
+    }, INITIAL_DELAY_MS);
+
+    // Then run periodically
+    job.intervalId = setInterval(async () => {
+      try {
+        const result = await runSetupNudgesJob({ limit: 10 });
+        if (result.nudgesSent > 0) {
+          logger.info(result, 'Setup nudges: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Setup nudges: job failed');
+      }
+    }, INTERVAL_HOURS * 60 * 60 * 1000);
+
+    this.jobs.set(JOB_NAME, job);
+    logger.debug({ intervalHours: INTERVAL_HOURS }, 'Setup nudges job started');
+  }
+
+  /**
    * Stop the document indexer job
    */
   stopDocumentIndexer(): void {
@@ -230,6 +268,13 @@ class JobScheduler {
    */
   stopEnrichment(): void {
     this.stopJob('account-enrichment');
+  }
+
+  /**
+   * Stop the setup nudges job
+   */
+  stopSetupNudges(): void {
+    this.stopJob('setup-nudges');
   }
 
   /**

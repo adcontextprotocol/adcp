@@ -132,6 +132,203 @@ async function getUserInfo(userId: string): Promise<{ name: string; title?: stri
 }
 
 /**
+ * User context for direct function calls (from Addie or other internal services)
+ */
+export interface ContentUser {
+  id: string;
+  email?: string;
+}
+
+/**
+ * Result from proposeContentForUser
+ */
+export interface ProposeContentResult {
+  success: boolean;
+  id?: string;
+  slug?: string;
+  status?: 'published' | 'pending_review' | 'draft';
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Propose content to a collection - direct function call (no HTTP required).
+ * Use this from internal services like Addie to bypass HTTP authentication.
+ */
+export async function proposeContentForUser(
+  user: ContentUser,
+  request: ProposeContentRequest
+): Promise<ProposeContentResult> {
+  const {
+    title,
+    content,
+    content_type = 'article',
+    external_url,
+    external_site_name,
+    excerpt,
+    category,
+    tags = [],
+    collection,
+    authors,
+  } = request;
+
+  // Validate required fields
+  if (!title) {
+    return { success: false, error: 'title is required' };
+  }
+
+  // Support both old format (collection.type + committee_slug) and new format (just committee_slug)
+  const committeeSlug = collection?.committee_slug || collection?.slug;
+  if (!committeeSlug) {
+    return { success: false, error: 'collection.committee_slug or collection.slug is required' };
+  }
+
+  // Validate content_type requirements
+  if (content_type === 'link' && !external_url) {
+    return { success: false, error: 'external_url is required for link type content' };
+  }
+
+  if (content_type === 'article' && !content) {
+    return { success: false, error: 'content is required for article type content' };
+  }
+
+  const pool = getPool();
+
+  // Resolve the collection (working group)
+  const committeeResult = await pool.query(
+    `SELECT id, name, accepts_public_submissions, slack_channel_id FROM working_groups WHERE slug = $1`,
+    [committeeSlug]
+  );
+
+  if (committeeResult.rows.length === 0) {
+    logger.warn({ committeeSlug, userId: user.id }, 'Content proposal failed: collection not found');
+    return { success: false, error: `No collection found with slug: ${committeeSlug}` };
+  }
+
+  const committee = committeeResult.rows[0];
+  const committeeId = committee.id as string;
+  const committeeName = committee.name as string;
+  const committeeSlackChannelId = committee.slack_channel_id as string | null;
+  const acceptsPublicSubmissions = committee.accepts_public_submissions;
+
+  // Check if user can submit to this collection
+  const userIsLead = await isCommitteeLead(committeeId, user.id);
+  const userIsAdmin = await isWebUserAdmin(user.id);
+
+  // For non-public collections, user must be a member
+  if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
+    const membershipResult = await pool.query(
+      `SELECT 1 FROM working_group_memberships WHERE working_group_id = $1 AND workos_user_id = $2`,
+      [committeeId, user.id]
+    );
+    if (membershipResult.rows.length === 0) {
+      logger.warn({ committeeSlug, userId: user.id }, 'Content proposal failed: user not a member');
+      return { success: false, error: 'You must be a member of this committee to submit content' };
+    }
+  }
+
+  // Determine if user can publish directly (leads and admins only)
+  const canPublishDirectly = userIsLead || userIsAdmin;
+
+  // Generate slug from title
+  const baseSlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .substring(0, 100);
+  const slug = `${baseSlug}-${Date.now().toString(36)}`;
+
+  // Determine initial status
+  const status = canPublishDirectly ? 'published' : 'pending_review';
+  const publishedAt = canPublishDirectly ? new Date().toISOString() : null;
+  const proposedAt = new Date().toISOString();
+
+  // Get author info for display
+  const userInfo = await getUserInfo(user.id);
+  const authorName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
+  const authorTitle = userInfo?.title;
+
+  // Insert the content
+  const result = await pool.query(
+    `INSERT INTO perspectives (
+      slug, content_type, title, content, excerpt,
+      external_url, external_site_name, category, tags,
+      author_name, author_title, author_user_id,
+      proposer_user_id, proposed_at,
+      working_group_id, status, published_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    RETURNING *`,
+    [
+      slug, content_type, title, content, excerpt,
+      external_url, external_site_name, category, tags,
+      authorName, authorTitle, user.id,
+      user.id, proposedAt,
+      committeeId, status, publishedAt,
+    ]
+  );
+
+  const perspective = result.rows[0];
+
+  // Create content_authors records
+  const authorsToCreate = authors && authors.length > 0
+    ? authors
+    : [{ user_id: user.id, display_name: authorName, display_title: authorTitle, display_order: 0 }];
+
+  for (const author of authorsToCreate) {
+    await pool.query(
+      `INSERT INTO content_authors (perspective_id, user_id, display_name, display_title, display_order)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (perspective_id, user_id) DO NOTHING`,
+      [perspective.id, author.user_id, author.display_name, author.display_title, author.display_order || 0]
+    );
+  }
+
+  logger.info({
+    perspectiveId: perspective.id,
+    userId: user.id,
+    title,
+    status,
+    committeeSlug,
+  }, 'Content proposed via direct function call');
+
+  // Notify working group if content needs review
+  if (status === 'pending_review') {
+    notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
+      logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
+    });
+  } else if (status === 'published') {
+    notifyPublishedPost({
+      slackChannelId: committeeSlackChannelId ?? undefined,
+      workingGroupName: committeeName,
+      workingGroupSlug: committeeSlug,
+      postTitle: title,
+      postSlug: perspective.slug,
+      authorName,
+      contentType: content_type,
+      excerpt: excerpt || undefined,
+      externalUrl: external_url || undefined,
+      category: category || undefined,
+      isMembersOnly: false,
+    }).catch(err => {
+      logger.warn({ err }, 'Failed to send Slack channel notification for proposed content');
+    });
+  }
+
+  const message = canPublishDirectly
+    ? 'Content published successfully'
+    : 'Content submitted for review. A committee lead or admin will review it soon.';
+
+  return {
+    success: true,
+    id: perspective.id,
+    slug: perspective.slug,
+    status: perspective.status,
+    message,
+  };
+}
+
+/**
  * Create content routes
  * Returns a router to be mounted at /api/content
  */
@@ -200,190 +397,29 @@ export function createContentRouter(): Router {
   router.post('/propose', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
-      const {
-        title,
-        content,
-        content_type = 'article',
-        external_url,
-        external_site_name,
-        excerpt,
-        category,
-        tags = [],
-        collection,
-        authors,
-      } = req.body as ProposeContentRequest;
-
-      // Validate required fields
-      if (!title) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          message: 'title is required',
-        });
-      }
-
-      // Support both old format (collection.type + committee_slug) and new format (just committee_slug)
-      const committeeSlug = collection?.committee_slug || collection?.slug;
-      if (!committeeSlug) {
-        return res.status(400).json({
-          error: 'Missing collection',
-          message: 'collection.committee_slug or collection.slug is required',
-        });
-      }
-
-      // Validate content_type requirements
-      if (content_type === 'link' && !external_url) {
-        return res.status(400).json({
-          error: 'Missing external_url',
-          message: 'external_url is required for link type content',
-        });
-      }
-
-      if (content_type === 'article' && !content) {
-        return res.status(400).json({
-          error: 'Missing content',
-          message: 'content is required for article type content',
-        });
-      }
-
-      const pool = getPool();
-
-      // Resolve the collection (working group)
-      const committeeResult = await pool.query(
-        `SELECT id, name, accepts_public_submissions, slack_channel_id FROM working_groups WHERE slug = $1`,
-        [committeeSlug]
+      const result = await proposeContentForUser(
+        { id: user.id, email: user.email },
+        req.body as ProposeContentRequest
       );
 
-      if (committeeResult.rows.length === 0) {
-        return res.status(404).json({
-          error: 'Collection not found',
-          message: `No collection found with slug: ${committeeSlug}`,
+      if (!result.success) {
+        // Map errors to appropriate HTTP status codes
+        const status = result.error?.includes('not found') ? 404
+                     : result.error?.includes('must be a member') ? 403
+                     : 400;
+        return res.status(status).json({
+          error: status === 404 ? 'Collection not found'
+               : status === 403 ? 'Not a member'
+               : 'Validation error',
+          message: result.error,
         });
       }
-
-      const committee = committeeResult.rows[0];
-      const committeeId = committee.id as string;
-      const committeeName = committee.name as string;
-      const committeeSlackChannelId = committee.slack_channel_id as string | null;
-      const acceptsPublicSubmissions = committee.accepts_public_submissions;
-
-      // Check if user can submit to this collection
-      const userIsLead = await isCommitteeLead(committeeId, user.id);
-      const userIsAdmin = await isWebUserAdmin(user.id);
-
-      // For non-public collections, user must be a member
-      if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
-        const membershipResult = await pool.query(
-          `SELECT 1 FROM working_group_memberships WHERE working_group_id = $1 AND workos_user_id = $2`,
-          [committeeId, user.id]
-        );
-        if (membershipResult.rows.length === 0) {
-          return res.status(403).json({
-            error: 'Not a member',
-            message: 'You must be a member of this committee to submit content',
-          });
-        }
-      }
-
-      // Determine if user can publish directly (leads and admins only)
-      const canPublishDirectly = userIsLead || userIsAdmin;
-
-      // Generate slug from title
-      const baseSlug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .substring(0, 100);
-      const slug = `${baseSlug}-${Date.now().toString(36)}`;
-
-      // Determine initial status
-      const status = canPublishDirectly ? 'published' : 'pending_review';
-      const publishedAt = canPublishDirectly ? new Date().toISOString() : null;
-      const proposedAt = new Date().toISOString();
-
-      // Get author info for display
-      const userInfo = await getUserInfo(user.id);
-      const authorName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
-      const authorTitle = userInfo?.title;
-
-      // Insert the content
-      const result = await pool.query(
-        `INSERT INTO perspectives (
-          slug, content_type, title, content, excerpt,
-          external_url, external_site_name, category, tags,
-          author_name, author_title, author_user_id,
-          proposer_user_id, proposed_at,
-          working_group_id, status, published_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING *`,
-        [
-          slug, content_type, title, content, excerpt,
-          external_url, external_site_name, category, tags,
-          authorName, authorTitle, user.id,
-          user.id, proposedAt,
-          committeeId, status, publishedAt,
-        ]
-      );
-
-      const perspective = result.rows[0];
-
-      // Create content_authors records
-      const authorsToCreate = authors && authors.length > 0
-        ? authors
-        : [{ user_id: user.id, display_name: authorName, display_title: authorTitle, display_order: 0 }];
-
-      for (const author of authorsToCreate) {
-        await pool.query(
-          `INSERT INTO content_authors (perspective_id, user_id, display_name, display_title, display_order)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (perspective_id, user_id) DO NOTHING`,
-          [perspective.id, author.user_id, author.display_name, author.display_title, author.display_order || 0]
-        );
-      }
-
-      logger.info({
-        perspectiveId: perspective.id,
-        userId: user.id,
-        title,
-        status,
-        collection: collection.type,
-        committeeSlug: collection.committee_slug,
-      }, 'Content proposed');
-
-      // Notify working group if content needs review
-      if (status === 'pending_review') {
-        // Fire and forget - don't block the response
-        notifyWorkingGroupOfPendingContent(committeeId, perspective, authorName).catch(err => {
-          logger.error({ err, perspectiveId: perspective.id, committeeId, authorName }, 'Failed to send content notification');
-        });
-      } else if (status === 'published') {
-        // Send Slack notification to the working group's channel
-        notifyPublishedPost({
-          slackChannelId: committeeSlackChannelId ?? undefined,
-          workingGroupName: committeeName,
-          workingGroupSlug: committeeSlug,
-          postTitle: title,
-          postSlug: perspective.slug,
-          authorName,
-          contentType: content_type,
-          excerpt: excerpt || undefined,
-          externalUrl: external_url || undefined,
-          category: category || undefined,
-          isMembersOnly: false, // Content proposed through unified system is public
-        }).catch(err => {
-          logger.warn({ err }, 'Failed to send Slack channel notification for proposed content');
-        });
-      }
-
-      const message = canPublishDirectly
-        ? 'Content published successfully'
-        : 'Content submitted for review. A committee lead or admin will review it soon.';
 
       res.status(201).json({
-        id: perspective.id,
-        slug: perspective.slug,
-        status: perspective.status,
-        message,
+        id: result.id,
+        slug: result.slug,
+        status: result.status,
+        message: result.message,
       });
     } catch (error) {
       logger.error({ err: error }, 'POST /api/content/propose error');

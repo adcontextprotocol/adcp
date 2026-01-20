@@ -136,6 +136,32 @@ export type SubscriptionTier = 'basic' | 'professional' | 'enterprise';
 
 export type CompanyUserRole = 'owner' | 'admin' | 'member';
 
+/**
+ * Valid organization roles for runtime validation
+ */
+export const VALID_ORGANIZATION_ROLES: readonly CompanyUserRole[] = ['owner', 'admin', 'member'] as const;
+
+/**
+ * Roles that can be assigned to new members (excludes owner)
+ */
+export const VALID_ASSIGNABLE_ROLES: readonly ('admin' | 'member')[] = ['admin', 'member'] as const;
+
+/**
+ * Legal document types
+ */
+export type LegalDocumentType = 'terms_of_service' | 'privacy_policy' | 'membership' | 'bylaws' | 'ip_policy';
+
+/**
+ * Valid legal document types for runtime validation
+ */
+export const VALID_LEGAL_DOCUMENT_TYPES: readonly LegalDocumentType[] = [
+  'terms_of_service',
+  'privacy_policy',
+  'membership',
+  'bylaws',
+  'ip_policy',
+] as const;
+
 export interface Company {
   id: string;
   slug: string;
@@ -199,6 +225,26 @@ export type MemberOffering =
   | 'publisher'
   | 'consulting'
   | 'other';
+
+/**
+ * Valid member offering values for runtime validation
+ */
+export const VALID_MEMBER_OFFERINGS: readonly MemberOffering[] = [
+  'buyer_agent',
+  'sales_agent',
+  'creative_agent',
+  'signals_agent',
+  'publisher',
+  'consulting',
+  'other',
+] as const;
+
+/**
+ * Type guard to check if a string is a valid MemberOffering
+ */
+export function isValidMemberOffering(value: string | undefined | null): value is MemberOffering {
+  return typeof value === 'string' && VALID_MEMBER_OFFERINGS.includes(value as MemberOffering);
+}
 
 /**
  * Agent configuration stored in member profiles
@@ -323,6 +369,7 @@ export type LocationSource = 'manual' | 'outreach' | 'inferred';
 export interface UserLocation {
   city?: string;
   country?: string;
+  timezone?: string;
   location_source?: LocationSource;
   location_updated_at?: Date;
 }
@@ -371,6 +418,7 @@ export interface WorkingGroupTopic {
   slug: string;
   name: string;
   description?: string;
+  slack_channel_id?: string;
 }
 
 export interface WorkingGroup {
@@ -432,6 +480,7 @@ export interface CreateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
@@ -453,6 +502,7 @@ export interface UpdateWorkingGroupInput {
   display_order?: number;
   committee_type?: CommitteeType;
   region?: string;
+  topics?: WorkingGroupTopic[];
   // Industry gathering fields
   linked_event_id?: string;
   event_start_date?: Date;
@@ -856,7 +906,7 @@ export interface EventSponsorDisplay {
 
 export type MeetingStatus = 'draft' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 export type MeetingSeriesStatus = 'active' | 'paused' | 'archived';
-export type MeetingInviteMode = 'all_members' | 'topic_subscribers' | 'manual';
+export type MeetingInviteMode = 'all_members' | 'topic_subscribers' | 'slack_channel' | 'manual';
 export type RsvpStatus = 'pending' | 'accepted' | 'declined' | 'tentative';
 export type MeetingInviteSource = 'auto' | 'manual' | 'request';
 
@@ -890,6 +940,7 @@ export interface MeetingSeries {
   google_calendar_id?: string;
   google_event_series_id?: string;
   invite_mode: MeetingInviteMode;
+  invite_slack_channel_id?: string;
   status: MeetingSeriesStatus;
   created_by_user_id?: string;
   created_at: Date;
@@ -906,6 +957,7 @@ export interface CreateMeetingSeriesInput {
   duration_minutes?: number;
   timezone?: string;
   invite_mode?: MeetingInviteMode;
+  invite_slack_channel_id?: string;
   created_by_user_id?: string;
 }
 
@@ -923,6 +975,7 @@ export interface UpdateMeetingSeriesInput {
   google_calendar_id?: string;
   google_event_series_id?: string;
   invite_mode?: MeetingInviteMode;
+  invite_slack_channel_id?: string;
   status?: MeetingSeriesStatus;
 }
 
@@ -995,6 +1048,7 @@ export interface UpdateMeetingInput {
 
 export interface ListMeetingsOptions {
   working_group_id?: string;
+  working_group_ids?: string[]; // Filter by multiple working groups
   series_id?: string;
   status?: MeetingStatus;
   topic_slugs?: string[];

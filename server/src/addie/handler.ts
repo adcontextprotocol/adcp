@@ -54,6 +54,10 @@ import {
   ESCALATION_TOOLS,
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
+import {
+  ADCP_TOOLS,
+  createAdcpToolHandlers,
+} from './mcp/adcp-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -260,6 +264,14 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
 
+  // Add AdCP protocol tools (standard MCP tools for interacting with agents)
+  // These match the skill format and enable proper protocol interactions
+  const adcpHandlers = createAdcpToolHandlers(memberContext);
+  allTools.push(...ADCP_TOOLS);
+  for (const [name, handler] of adcpHandlers) {
+    allHandlers.set(name, handler);
+  }
+
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
 
@@ -298,6 +310,19 @@ async function createUserScopedTools(
   // Override bookmark_resource handler with user-scoped version (for attribution)
   if (slackUserId) {
     allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
+  }
+
+  // Override Slack search handlers with user-scoped versions (for private channel access control)
+  if (slackUserId) {
+    const userScopedKnowledgeHandlers = createKnowledgeToolHandlers(slackUserId);
+    const searchSlackHandler = userScopedKnowledgeHandlers.get('search_slack');
+    const getChannelActivityHandler = userScopedKnowledgeHandlers.get('get_channel_activity');
+    if (searchSlackHandler) {
+      allHandlers.set('search_slack', searchSlackHandler);
+    }
+    if (getChannelActivityHandler) {
+      allHandlers.set('get_channel_activity', getChannelActivityHandler);
+    }
   }
 
   return {

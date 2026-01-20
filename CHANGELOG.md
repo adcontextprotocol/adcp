@@ -2,6 +2,50 @@
 
 ## 2.6.0
 
+### Major Changes
+
+- Add Content Standards Protocol for brand safety and suitability evaluation (#621)
+
+  **New Protocol:**
+  
+  Introduces a comprehensive content standards framework enabling buyers to define, calibrate, and enforce brand safety policies across advertising placements.
+
+  **New Tasks:**
+  - `list_content_standards` - List available content standards configurations
+  - `get_content_standards` - Retrieve full standards configuration with policy details
+  - `create_content_standards` - Create new content standards configuration
+  - `update_content_standards` - Update existing content standards configuration
+  - `calibrate_content` - Collaborative calibration dialogue for policy alignment
+  - `validate_content_delivery` - Batch validate delivery records against standards
+  - `get_media_buy_artifacts` - Retrieve content artifacts from media buys for validation
+
+  **New Schemas:**
+  - `content-standards.json` - Reusable content standards configuration
+  - `content-standards-artifact.json` - Content artifact for evaluation
+  - `artifact-webhook-payload.json` - Webhook payload for artifact delivery
+
+- Add Property Governance Protocol for AdCP 3.0 (#588)
+
+  **New Protocol:**
+  
+  Enables governance agents to evaluate properties against feature-based requirements for brand safety, content quality, and compliance.
+
+  **New Tasks:**
+  - `list_property_features` - Discover governance agent capabilities
+  - `create_property_list` - Create managed property lists with filters
+  - `update_property_list` - Update existing property lists
+  - `get_property_list` - Retrieve property list with resolved properties
+  - `list_property_lists` - List all property lists
+  - `delete_property_list` - Delete a property list
+
+  **New Schemas:**
+  - `property-feature-definition.json` - Feature definition schema
+  - `property-feature.json` - Feature assessment schema
+  - `feature-requirement.json` - Feature-based requirement schema
+  - `property-list.json` - Managed property list schema
+  - `property-list-filters.json` - Dynamic filter schema
+  - `property-list-changed-webhook.json` - Webhook payload for list changes
+
 ### Minor Changes
 
 - Add unified `assets` field to format schema for better asset discovery
@@ -38,6 +82,113 @@
   ```
 
   **Migration:** Non-breaking change. `assets_required` is deprecated but still supported. New implementations should use `assets`.
+
+- Add typed extensions infrastructure with auto-discovery (#648)
+
+  **New Feature:**
+  
+  Introduces a typed extension system allowing vendors and domains to add custom data to AdCP schemas in a discoverable, validated way.
+
+  **New Schemas:**
+  - `extensions/extension-meta.json` - Meta schema for extension definitions
+  - `extensions/index.json` - Auto-generated registry of all extensions
+  - `protocols/adcp-extension.json` - AdCP extension for agent cards
+
+  **Benefits:**
+  - Vendor-specific data without polluting core schemas
+  - Auto-discovery of available extensions
+  - Validation support for extension data
+
+- Add OpenAI Commerce integration to brand manifest (#802)
+
+  **Schema Changes:**
+  - **brand-manifest.json**: Add `openai_commerce` field for OpenAI shopping integration
+  
+  Enables brands to include their OpenAI Commerce merchant ID for AI-powered shopping experiences.
+
+- Add privacy_policy_url to brand manifest and adagents.json (#801)
+
+  **Schema Changes:**
+  - **brand-manifest.json**: Add optional `privacy_policy_url` field
+  - **adagents.json**: Add optional `privacy_policy_url` field
+  
+  Enables publishers and brands to declare their privacy policy URLs for compliance and transparency.
+
+- Refactor: replace creative_ids with creative_assignments (#794)
+
+  **Breaking Change:**
+  
+  Package schema now uses `creative_assignments` array instead of `creative_ids` for more flexible creative-to-package mapping with placement support.
+
+  **Migration:**
+  ```json
+  // Before
+  { "creative_ids": ["creative_1", "creative_2"] }
+  
+  // After
+  { "creative_assignments": [
+    { "creative_id": "creative_1" },
+    { "creative_id": "creative_2", "placement_ids": ["homepage_banner"] }
+  ]}
+  ```
+
+### Patch Changes
+
+- fix: Mintlify callout syntax and case-insensitivity docs (#834)
+- fix: Convert governance docs to relative links (#820)
+- build: rebuild dist/schemas/2.6.0 with impressions and paused fields
+- chore: regenerate dist/schemas/2.6.0 with additionalProperties: true
+- ci: add 2.6.x branch to all workflows
+- docs: add deprecated assets_required examples with deprecation comments
+- schema: make 'required' field mandatory in assets array and nested repeatable_group assets
+- schema: add formal deprecated: true to assets_required field
+
+## 2.5.3
+
+### Patch Changes
+
+- 309a880: Allow additional properties in all JSON schemas for forward compatibility
+
+  Changes all schemas from `"additionalProperties": false` to `"additionalProperties": true`. This enables clients running older schema versions to accept responses from servers with newer schemas without breaking validation - a standard practice for protocol evolution in distributed systems.
+
+- 5d0ce75: Add explicit type definition to error.json details property
+
+  The `details` property in core/error.json now explicitly declares `"type": "object"` and `"additionalProperties": true`, consistent with other error details definitions in the codebase. This addresses issue #343 where the data type was unspecified.
+
+- cdcd70f: Fix migration 151 to delete duplicates before updating Slack IDs to WorkOS IDs
+- 39abf79: Add missing fields to package request schemas for consistency with core/package.json.
+
+  **Schema Changes:**
+
+  - `media-buy/package-request.json`: Added `impressions` and `paused` fields
+  - `media-buy/update-media-buy-request.json`: Added `impressions` field to package updates
+
+  **Details:**
+
+  - `impressions`: Impression goal for the package (optional, minimum: 0)
+  - `paused`: Create package in paused state (optional, default: false)
+
+  These fields were defined in `core/package.json` but missing from the request schemas, making it impossible to set impression goals or initial paused state when creating/updating media buys.
+
+  **Documentation:**
+
+  - Updated `create_media_buy` task reference with new package parameters
+  - Updated `update_media_buy` task reference with impressions parameter
+
+- fa68588: fix: display Slack profile name for chapter leaders without WorkOS accounts
+
+  Leaders added via Slack ID that haven't linked their WorkOS account now display
+  their Slack profile name (real_name or display_name) instead of the raw Slack
+  user ID (e.g., U09BEKNJ3GB).
+
+  The getLeaders and getLeadersBatch queries now include slack_user_mappings as an
+  additional name source in the COALESCE chain.
+
+- 9315247: Release schemas with `additionalProperties: true` for forward compatibility
+
+  This releases `dist/schemas/2.5.2/` containing the relaxed schema validation
+  introduced in #646. Clients can now safely ignore unknown fields when parsing
+  API responses, allowing the API to evolve without breaking existing integrations.
 
 ## 2.5.2
 

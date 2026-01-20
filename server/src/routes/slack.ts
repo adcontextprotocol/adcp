@@ -122,13 +122,31 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
   // Handle URL verification separately (before Bolt)
   // URL verification requests don't have signatures, so we need to handle them first
   // We use a custom parser that peeks at the body without consuming it for non-verification requests
+  // Also handles interactive payloads which come as URL-encoded form data
   addieRouter.post('/events', (req, res, next) => {
     let body = '';
     req.setEncoding('utf8');
     req.on('data', (chunk: string) => { body += chunk; });
     req.on('end', () => {
       try {
-        const parsed = JSON.parse(body);
+        let parsed: Record<string, unknown>;
+
+        // Check if this is URL-encoded form data (interactive payloads)
+        // Slack sends interactive component payloads as: payload={json}
+        if (body.startsWith('payload=')) {
+          const params = new URLSearchParams(body);
+          const payloadStr = params.get('payload');
+          if (!payloadStr) {
+            logger.warn('Addie: Empty payload in form data');
+            return res.status(400).json({ error: 'Empty payload' });
+          }
+          parsed = JSON.parse(payloadStr);
+          logger.debug({ type: (parsed as Record<string, unknown>).type }, 'Addie: Parsed interactive payload');
+        } else {
+          // Regular JSON body (events, URL verification)
+          parsed = JSON.parse(body);
+        }
+
         if (parsed.type === 'url_verification') {
           logger.info('Addie: Handling URL verification challenge');
           return res.json({ challenge: parsed.challenge });

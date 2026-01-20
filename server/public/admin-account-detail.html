@@ -452,6 +452,25 @@
       max-height: 0 !important;
     }
 
+    /* Role select dropdown */
+    .role-select {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      margin-left: var(--space-2);
+    }
+    .role-select:hover {
+      border-color: var(--color-brand);
+    }
+    .role-select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     /* Quick follow-up form */
     .quick-followup {
       display: flex;
@@ -811,12 +830,12 @@
           <!-- Users (Members + Slack-only) -->
           <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">
+              <h2 class="collapsible" onclick="toggleSection(this)" style="margin-bottom: 0;">
                 Users <span id="memberCount" style="font-weight: normal; color: var(--color-text-muted);"></span>
               </h2>
               <button id="migrateMembersBtn" class="btn btn-sm btn-secondary" onclick="openMigrateMembersModal()" style="display: none;">Migrate Members</button>
             </div>
-            <div class="collapsible-content collapsed" id="membersContent" style="margin-top: var(--space-4);">
+            <div class="collapsible-content" id="membersContent" style="margin-top: var(--space-4);">
               <!-- Website Members -->
               <div id="membersSectionWrapper">
                 <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Website Members</h3>
@@ -851,11 +870,13 @@
 
           <!-- Domains -->
           <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <h2 class="collapsible collapsed" onclick="toggleSection(this)" style="margin-bottom: 0;">Linked Domains</h2>
-              <button class="btn btn-sm btn-secondary" onclick="openAddDomainModal()">+ Add</button>
-            </div>
-            <div class="collapsible-content collapsed" id="domainsContent" style="margin-top: var(--space-4);">
+            <h2 class="collapsible collapsed" onclick="toggleSection(this)">
+              <span style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Linked Domains</span>
+                <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); openAddDomainModal()">+ Add</button>
+              </span>
+            </h2>
+            <div class="collapsible-content collapsed" id="domainsContent">
               <div id="domainsList" class="empty-state">
                 No domains linked
               </div>
@@ -1547,9 +1568,15 @@
         let membersHtml = '';
         for (const m of a.members) {
           const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
+          const role = m.role || 'member';
+          const isOwner = role === 'owner';
           membersHtml += `<li>
             <span class="member-name-link" onclick="viewMemberContext('${m.id}')">${escapeHtml(name)}</span>
-            ${m.role ? `<span class="member-role">${m.role}</span>` : ''}
+            <select class="role-select" onchange="updateUserRole('${m.id}', this.value)" ${isOwner ? 'disabled' : ''}>
+              <option value="member" ${role === 'member' ? 'selected' : ''}>Member</option>
+              <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
+              <option value="owner" ${role === 'owner' ? 'selected' : ''} disabled>Owner</option>
+            </select>
             <div style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</div>
           </li>`;
         }
@@ -2338,7 +2365,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2370,7 +2397,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -2402,7 +2429,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav?.redirectToLogin?.();
+            window.AdminSidebar?.redirectToLogin?.();
             return;
           }
           const data = await response.json().catch(() => ({}));
@@ -3187,6 +3214,33 @@
         alert(`Invoice ${action === 'void' ? 'voided' : 'deleted'} successfully`);
       } catch (error) {
         alert('Error: ' + error.message);
+      }
+    }
+
+    // Update user role
+    async function updateUserRole(userId, newRole) {
+      if (!confirm(`Change this user's role to ${newRole}?`)) {
+        location.reload(); // Reset dropdown
+        return;
+      }
+
+      try {
+        const response = await AdminSidebar.fetch(`/api/admin/accounts/${accountId}/members/${userId}/role`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: newRole })
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || data.error || 'Failed to update role');
+        }
+
+        location.reload();
+      } catch (error) {
+        console.error('Error updating role:', error);
+        alert(`Failed to update role: ${error.message}`);
+        location.reload();
       }
     }
 

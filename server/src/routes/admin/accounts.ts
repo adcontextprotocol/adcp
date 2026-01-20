@@ -22,6 +22,7 @@ import {
   NOT_MEMBER_ALIASED,
   type OrgTier,
 } from "../../db/org-filters.js";
+import { VALID_ASSIGNABLE_ROLES } from "../../types.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
@@ -42,17 +43,11 @@ const logger = createLogger("admin-accounts");
 function deriveOrgTier(org: {
   subscription_status: string | null;
   subscription_canceled_at?: Date | null;
-  subscription_amount?: number | null;
   has_users?: boolean;
   has_engaged_users?: boolean;
 }): OrgTier {
-  // Member: paying subscription
-  if (
-    org.subscription_status === "active" &&
-    !org.subscription_canceled_at &&
-    org.subscription_amount &&
-    org.subscription_amount > 0
-  ) {
+  // Member: active, non-canceled subscription (includes comped members)
+  if (org.subscription_status === "active" && !org.subscription_canceled_at) {
     return "member";
   }
 
@@ -176,7 +171,7 @@ export function setupAccountRoutes(
           members,
           disqualified,
         ] = await Promise.all([
-          // Needs attention - all accounts needing action
+          // Needs attention - prospects with action items OR members with real problems
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
@@ -188,18 +183,30 @@ export function setupAccountRoutes(
               AND oi.status IN ('draft', 'open')
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (
-                na.id IS NOT NULL
-                OR oi.stripe_invoice_id IS NOT NULL
-                OR (
-                  COALESCE(o.engagement_score, 0) >= 50
-                  AND NOT EXISTS (
-                    SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                -- Non-members: show if they have action items
+                (
+                  (${NOT_MEMBER_ALIASED})
+                  AND (
+                    na.id IS NOT NULL
+                    OR oi.stripe_invoice_id IS NOT NULL
+                    OR (
+                      COALESCE(o.engagement_score, 0) >= 50
+                      AND NOT EXISTS (
+                        SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
+                      )
+                    )
                   )
+                )
+                OR
+                -- Members: only show if they have a real problem (expiring soon)
+                (
+                  ${MEMBER_FILTER_ALIASED}
+                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 )
               )
           `),
 
-          // New insights - prospects with recent Slack activity
+          // New insights - prospects with recent Slack activity (30 days)
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
             FROM organizations o
@@ -207,19 +214,21 @@ export function setupAccountRoutes(
               SELECT 1 FROM organization_memberships om
               JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
               WHERE om.workos_organization_id = o.workos_organization_id
-                AND sm.last_slack_activity_at >= NOW() - INTERVAL '7 days'
+                AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
             AND (${NOT_MEMBER_ALIASED})
           `),
 
-          // Hot prospects
+          // Hot prospects (engagement >= 50 OR high interest)
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
             WHERE (${NOT_MEMBER_ALIASED})
-              AND COALESCE(o.engagement_score, 0) >= 50
-              AND o.interest_level IN ('high', 'very_high')
+              AND (
+                COALESCE(o.engagement_score, 0) >= 50
+                OR o.interest_level IN ('high', 'very_high')
+              )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
 
@@ -462,7 +471,8 @@ export function setupAccountRoutes(
               workos_user_id as id,
               email,
               first_name,
-              last_name
+              last_name,
+              role
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
@@ -713,7 +723,7 @@ export function setupAccountRoutes(
             email: m.email,
             firstName: m.first_name,
             lastName: m.last_name,
-            role: "member", // Role not cached locally
+            role: m.role || "member",
           })),
           member_count: membersResult.rows.length,
           working_groups: workingGroupResult.rows,
@@ -1274,166 +1284,6 @@ export function setupAccountRoutes(
     }
   });
 
-  // GET /api/admin/accounts/view-counts - Get counts for each view tab
-  apiRouter.get(
-    "/accounts/view-counts",
-    requireAuth,
-    requireAdmin,
-    async (req, res) => {
-      try {
-        const pool = getPool();
-        const currentUserId = req.user?.id;
-
-        const [
-          needsAttention,
-          newInsights,
-          hot,
-          newProspects,
-          goingCold,
-          myAccounts,
-          renewals,
-          members,
-          disqualified,
-        ] = await Promise.all([
-          // Needs attention - prospects with action items OR members with real problems
-          pool.query(`
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
-              AND na.is_next_step = TRUE
-              AND na.next_step_completed_at IS NULL
-              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
-            LEFT JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
-            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (
-                -- Non-members: show if they have action items
-                (
-                  (${NOT_MEMBER_ALIASED})
-                  AND (
-                    na.id IS NOT NULL
-                    OR oi.stripe_invoice_id IS NOT NULL
-                    OR (
-                      COALESCE(o.engagement_score, 0) >= 50
-                      AND NOT EXISTS (
-                        SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
-                      )
-                    )
-                  )
-                )
-                OR
-                -- Members: only show if they have a real problem (expiring soon)
-                (
-                  ${MEMBER_FILTER_ALIASED}
-                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
-                )
-              )
-          `),
-
-          // New insights - prospects with recent Slack activity (30 days)
-          pool.query(`
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            WHERE EXISTS (
-              SELECT 1 FROM organization_memberships om
-              JOIN slack_user_mappings sm ON sm.workos_user_id = om.workos_user_id
-              WHERE om.workos_organization_id = o.workos_organization_id
-                AND sm.last_slack_activity_at >= NOW() - INTERVAL '30 days'
-            )
-            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-            AND (${NOT_MEMBER_ALIASED})
-          `),
-
-          // Hot prospects (engagement >= 50 OR high interest)
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE (${NOT_MEMBER_ALIASED})
-              AND (
-                COALESCE(o.engagement_score, 0) >= 50
-                OR o.interest_level IN ('high', 'very_high')
-              )
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `),
-
-          // New prospects - recently created non-members
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.created_at >= NOW() - INTERVAL '14 days'
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (${NOT_MEMBER_ALIASED})
-          `),
-
-          // Going cold
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.last_activity_at IS NOT NULL
-              AND o.last_activity_at < NOW() - INTERVAL '30 days'
-              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-              AND (${NOT_MEMBER_ALIASED})
-          `),
-
-          // My accounts
-          currentUserId
-            ? pool.query(
-                `
-            SELECT COUNT(DISTINCT o.workos_organization_id) as count
-            FROM organizations o
-            INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id AND os.user_id = $1
-            WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
-          `,
-                [currentUserId]
-              )
-            : Promise.resolve({ rows: [{ count: 0 }] }),
-
-          // Renewals
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE ${MEMBER_FILTER_ALIASED}
-              AND o.subscription_current_period_end IS NOT NULL
-              AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
-              AND o.subscription_current_period_end > NOW()
-          `),
-
-          // Members
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE ${MEMBER_FILTER_ALIASED}
-          `),
-
-          // Disqualified
-          pool.query(`
-            SELECT COUNT(*) as count
-            FROM organizations o
-            WHERE o.prospect_status = 'disqualified'
-          `),
-        ]);
-
-        res.json({
-          needs_attention: parseInt(needsAttention.rows[0].count),
-          new_insights: parseInt(newInsights.rows[0].count),
-          hot: parseInt(hot.rows[0].count),
-          new_prospects: parseInt(newProspects.rows[0].count),
-          going_cold: parseInt(goingCold.rows[0].count),
-          my_accounts: parseInt(myAccounts.rows[0].count),
-          renewals: parseInt(renewals.rows[0].count),
-          members: parseInt(members.rows[0].count),
-          disqualified: parseInt(disqualified.rows[0].count),
-        });
-      } catch (error) {
-        logger.error({ err: error }, "Error fetching view counts");
-        res.status(500).json({
-          error: "Internal server error",
-          message: "Unable to fetch view counts",
-        });
-      }
-    }
-  );
-
   // GET /api/admin/activity-feed - Unified activity stream across all sources
   apiRouter.get(
     "/activity-feed",
@@ -1912,4 +1762,116 @@ export function setupAccountRoutes(
       }
     }
   );
+
+  /**
+   * Update a member's role in an organization
+   * PUT /api/admin/accounts/:orgId/members/:userId/role
+   *
+   * Note: This endpoint uses userId for lookup (available in the account detail UI),
+   * unlike /members/:orgId/memberships/:membershipId which uses membershipId.
+   */
+  apiRouter.put(
+    "/api/admin/accounts/:orgId/members/:userId/role",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const { orgId, userId } = req.params;
+      const { role } = req.body;
+
+      if (!role) {
+        return res.status(400).json({ error: "Role is required" });
+      }
+
+      if (!VALID_ASSIGNABLE_ROLES.includes(role)) {
+        return res.status(400).json({
+          error: `Invalid role. Must be one of: ${VALID_ASSIGNABLE_ROLES.join(", ")}`,
+        });
+      }
+
+      try {
+        const pool = getPool();
+
+        // Get the membership to find the WorkOS membership ID and current role
+        const membershipResult = await pool.query(
+          `SELECT workos_membership_id, email, first_name, last_name, role
+           FROM organization_memberships
+           WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+          [orgId, userId]
+        );
+
+        if (membershipResult.rows.length === 0) {
+          return res.status(404).json({ error: "Member not found" });
+        }
+
+        const membership = membershipResult.rows[0];
+        const previousRole = membership.role || "member";
+
+        if (!membership.workos_membership_id) {
+          return res.status(400).json({
+            error: "Cannot update role: missing WorkOS membership ID",
+          });
+        }
+
+        // Update role via WorkOS API
+        const { workos } = await import("../../auth/workos-client.js");
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS client not configured" });
+        }
+
+        // Verify membership belongs to the specified organization via WorkOS
+        const existingMembership =
+          await workos.userManagement.getOrganizationMembership(
+            membership.workos_membership_id
+          );
+        if (existingMembership.organizationId !== orgId) {
+          return res.status(400).json({
+            error: "Invalid membership",
+            message: "Membership does not belong to this organization",
+          });
+        }
+
+        await workos.userManagement.updateOrganizationMembership(
+          membership.workos_membership_id,
+          { roleSlug: role }
+        );
+
+        // Update local cache
+        await pool.query(
+          `UPDATE organization_memberships
+           SET role = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+          [role, orgId, userId]
+        );
+
+        logger.info(
+          {
+            orgId,
+            userId,
+            role,
+            previousRole,
+            email: membership.email,
+            adminEmail: req.user?.email,
+          },
+          "Updated member role"
+        );
+
+        res.json({
+          success: true,
+          message: `Role updated to ${role}`,
+          user_id: userId,
+          role,
+        });
+      } catch (error) {
+        logger.error(
+          { err: error, orgId, userId, role },
+          "Error updating member role"
+        );
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update member role",
+        });
+      }
+    }
+  );
 }
+

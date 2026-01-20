@@ -27,6 +27,18 @@ export class StripeCustomerConflictError extends Error {
 export type CompanyType = CompanyTypeValue;
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
 
+/**
+ * Valid revenue tier values for runtime validation
+ */
+export const VALID_REVENUE_TIERS: readonly RevenueTier[] = [
+  'under_1m',
+  '1m_5m',
+  '5m_50m',
+  '50m_250m',
+  '250m_1b',
+  '1b_plus',
+] as const;
+
 export interface Organization {
   workos_organization_id: string;
   name: string;
@@ -62,7 +74,7 @@ export interface Organization {
 }
 
 export interface SubscriptionInfo {
-  status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   product_id?: string;
   product_name?: string;
   current_period_end?: number;
@@ -504,6 +516,51 @@ export class OrganizationDatabase {
     }
 
     return conflicts;
+  }
+
+  /**
+   * Find Stripe customer mismatches where an org has a different customer ID in the DB
+   * than what Stripe metadata says it should have.
+   *
+   * This detects the case where:
+   * - Org has stripe_customer_id = cus_X in the database
+   * - But a different Stripe customer (cus_Y) has metadata saying it belongs to that org
+   *
+   * This often indicates an org has multiple Stripe customers (e.g., someone created
+   * a new customer instead of using the existing one).
+   */
+  async findStripeCustomerMismatches(): Promise<Array<{
+    org_id: string;
+    org_name: string;
+    db_customer_id: string;
+    stripe_metadata_customer_id: string;
+  }>> {
+    const mismatches: Array<{
+      org_id: string;
+      org_name: string;
+      db_customer_id: string;
+      stripe_metadata_customer_id: string;
+    }> = [];
+
+    // Get all Stripe customers with org metadata
+    const stripeCustomers = await listCustomersWithOrgIds();
+
+    for (const { stripeCustomerId, workosOrgId } of stripeCustomers) {
+      const localOrg = await this.getOrganization(workosOrgId);
+
+      // Check if org exists and has a DIFFERENT customer ID than Stripe metadata suggests
+      if (localOrg && localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
+        // Mismatch: Org has cus_X in DB, but Stripe customer cus_Y claims to belong to this org
+        mismatches.push({
+          org_id: workosOrgId,
+          org_name: localOrg.name,
+          db_customer_id: localOrg.stripe_customer_id,
+          stripe_metadata_customer_id: stripeCustomerId,
+        });
+      }
+    }
+
+    return mismatches;
   }
 
   /**
