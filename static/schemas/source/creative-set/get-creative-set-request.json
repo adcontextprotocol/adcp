@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/get-creative-set-request.json",
+  "title": "Get Creative Set Request",
+  "description": "Request parameters for retrieving a creative set. Used by both orchestrators and seller agents to fetch creative set details and ad tags.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative set"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter to specific formats. Creative agent may adapt/generate missing formats if possible.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "include_previews": {
+      "type": "boolean",
+      "description": "Include preview_url and thumbnail_url for each creative",
+      "default": true
+    },
+    "include_ad_tags": {
+      "type": "boolean",
+      "description": "Include ad_tag field with full markup. Set to false for metadata-only responses.",
+      "default": true
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id"],
+  "additionalProperties": true
+}

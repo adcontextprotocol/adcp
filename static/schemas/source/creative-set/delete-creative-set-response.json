@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/delete-creative-set-response.json",
+  "title": "Delete Creative Set Response",
+  "description": "Response payload for delete_creative_set task",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Unique identifier for the deleted creative set"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["archive", "permanent"],
+      "description": "Deletion mode that was applied"
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the deletion occurred"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "mode"],
+  "additionalProperties": true
+}

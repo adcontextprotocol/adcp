@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/creative-approval-update.json",
+  "title": "Creative Approval Update Webhook",
+  "description": "Webhook payload sent by seller agent when the approval status of a creative changes for a specific media buy.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set containing the creative"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "The creative whose approval status changed"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this approval applies to"
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent making this notification"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected"],
+      "description": "The new approval status"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason for rejection, required if status is 'rejected'"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this approval status changed"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "creative_id", "media_buy_id", "seller_agent_url", "status"],
+  "additionalProperties": true
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/seller-approval.json",
+  "title": "Seller Approval",
+  "description": "Record of a seller's approval status for a creative on a specific media buy",
+  "type": "object",
+  "properties": {
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent that issued this approval"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Media buy this approval applies to"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected"],
+      "description": "Seller's approval status for this creative"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason for rejection, if status is 'rejected'"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this approval status was last updated"
+    }
+  },
+  "required": ["seller_agent_url", "media_buy_id", "status"],
+  "additionalProperties": true
+}

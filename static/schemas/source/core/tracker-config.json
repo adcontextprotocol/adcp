@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tracker-config.json",
+  "title": "Tracker Config",
+  "description": "Tracker URL templates with macro placeholders for embedding in ad tags. Trackers are baked into creatives at creation time, with macros expanded by the seller at serve time. Common macros include: {CACHEBUSTER}, {TIMESTAMP}, {LANDING_URL}, {LANDING_URL_ENC}, {CREATIVE_ID}, {MEDIA_BUY_ID}, {PACKAGE_ID}, {AXEM_TOKEN}.",
+  "type": "object",
+  "properties": {
+    "click": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "Click tracker URL template. Wraps the landing URL. Example: 'https://track.buyer.com/click?dest={LANDING_URL_ENC}&axem={AXEM_TOKEN}&cb={CACHEBUSTER}'"
+    },
+    "impression": {
+      "type": "array",
+      "description": "Impression tracker URL templates. Fired when ad renders.",
+      "items": {
+        "type": "string",
+        "format": "uri-template"
+      }
+    },
+    "viewability": {
+      "type": "array",
+      "description": "Viewability verification script URLs (e.g., MOAT, IAS, DoubleVerify). Loaded as scripts for measurement SDKs.",
+      "items": {
+        "type": "string",
+        "format": "uri-template"
+      }
+    },
+    "vast_events": {
+      "type": "object",
+      "description": "VAST video tracking event URLs. Keys are standard VAST event names.",
+      "properties": {
+        "start": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "firstQuartile": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "midpoint": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "thirdQuartile": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "complete": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "impression": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "click": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "pause": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "resume": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "skip": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "mute": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "unmute": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "fullscreen": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "exitFullscreen": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "playerExpand": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "playerCollapse": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        }
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "format": "uri-template" }
+      }
+    }
+  },
+  "additionalProperties": true
+}

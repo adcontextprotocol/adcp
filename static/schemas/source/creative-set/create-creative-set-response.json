@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/create-creative-set-response.json",
+  "title": "Create Creative Set Response",
+  "description": "Response payload for create_creative_set task",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Unique identifier for the created creative set"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the creative set"
+    },
+    "archived": {
+      "type": "boolean",
+      "description": "Whether this creative set is archived",
+      "default": false
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Initial creatives (may be empty or in 'processing' status)",
+      "items": {
+        "$ref": "/schemas/core/creative-set-item.json"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this creative set was created"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "name"],
+  "additionalProperties": true
+}

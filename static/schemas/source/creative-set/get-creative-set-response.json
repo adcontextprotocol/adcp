@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/get-creative-set-response.json",
+  "title": "Get Creative Set Response",
+  "description": "Response payload for get_creative_set task. Returns creative set details with ad tags containing embedded trackers and macro placeholders.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative set"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the creative set"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the creative set"
+    },
+    "archived": {
+      "type": "boolean",
+      "description": "Whether this creative set is archived",
+      "default": false
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Creatives in this set, filtered by format_ids if specified",
+      "items": {
+        "$ref": "/schemas/core/creative-set-item.json"
+      }
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this creative set was last modified"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "name", "creatives"],
+  "additionalProperties": true
+}

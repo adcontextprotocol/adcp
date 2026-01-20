@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-set/webhooks/creative-set-detached.json",
+  "title": "Creative Set Detached Webhook",
+  "description": "Webhook payload sent by seller agent when a creative set is detached from a media buy.",
+  "type": "object",
+  "properties": {
+    "creative_set_id": {
+      "type": "string",
+      "description": "The creative set being detached"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The media buy this set was detached from"
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent making this notification"
+    },
+    "reason": {
+      "type": "string",
+      "enum": ["media_buy_ended", "media_buy_cancelled", "creative_replaced", "manual"],
+      "description": "Why the creative set was detached"
+    },
+    "detached_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this detachment occurred"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creative_set_id", "media_buy_id", "seller_agent_url"],
+  "additionalProperties": true
+}

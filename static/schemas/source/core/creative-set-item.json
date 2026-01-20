@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-set-item.json",
+  "title": "Creative Set Item",
+  "description": "A creative within a creative set. Wraps a creative-manifest with set-specific metadata like approval status and preview URLs.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for this creative within the set"
+    },
+    "manifest": {
+      "$ref": "/schemas/core/creative-manifest.json",
+      "description": "The creative manifest containing format_id and assets. The rendered ad tag (with trackers embedded) is an asset within this manifest (e.g., html-asset or vast-asset)."
+    },
+    "advertiser_status": {
+      "$ref": "/schemas/enums/creative-status.json",
+      "description": "Advertiser/brand approval status. Distinct from any seller-side approval which happens after the seller receives the creative."
+    },
+    "preview_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to preview the rendered creative"
+    },
+    "thumbnail_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to a static thumbnail image of the creative"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this creative was created"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this creative was last modified"
+    },
+    "seller_approvals": {
+      "type": "array",
+      "description": "Approval status from seller agents for specific media buys. Updated via webhook notifications from sellers.",
+      "items": {
+        "$ref": "/schemas/core/seller-approval.json"
+      }
+    }
+  },
+  "required": ["creative_id", "manifest"],
+  "additionalProperties": true
+}
