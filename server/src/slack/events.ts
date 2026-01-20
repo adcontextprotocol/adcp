@@ -15,6 +15,7 @@ import { getSlackUser, getChannelInfo } from './client.js';
 import { syncUserToChaptersFromSlackChannels } from './sync.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
+import { invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
 import {
   isAddieReady,
   handleAssistantThreadStarted,
@@ -322,6 +323,7 @@ async function autoAddToWorkingGroup(
       interest_level: interestLevel,
       interest_source: interestSource,
     });
+    invalidateWebAdminStatusCache(workosUserId);
 
     logger.info(
       {
