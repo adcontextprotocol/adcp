@@ -19,9 +19,11 @@ Create a new content standards configuration.
 | `policy` | string | Yes | Natural language policy prompt |
 | `calibration_exemplars` | object | No | Training set of pass/fail artifacts for calibration |
 
-:::note[Brand Safety Floor Requirement]
+<Note>
+**Brand Safety Floor Requirement**
+
 Implementors MUST apply a brand safety floor regardless of what policy is defined in content standards. Content that violates the floor (hate speech, illegal content, etc.) must be excluded even when no content standards are specified. AdCP does not define the floor specification; this is left to implementors and industry standards (e.g., GARM categories).
-:::
+</Note>
 
 ### Example Request
 

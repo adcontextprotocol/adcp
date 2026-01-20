@@ -215,9 +215,18 @@ Buyers typically maintain multiple standards configurations for different contex
   "standards_id": "uk_tv_zero_calorie",
   "name": "UK TV - zero-calorie brands",
   "countries_all": ["GB"],
-  "channels_any": ["ctv", "linear_tv"]
+  "channels_any": ["ctv", "linear_tv"],
+  "languages_any": ["en"]
 }
 ```
+
+<Info>
+**Code Format Conventions**
+
+Country and language codes are **case-insensitive** - implementations must normalize before comparison. Recommended formats follow ISO standards:
+- **Countries**: Uppercase ISO 3166-1 alpha-2 (e.g., `GB`, `US`, `DE`)
+- **Languages**: Lowercase ISO 639-1 or BCP 47 (e.g., `en`, `de`, `fr`)
+</Info>
 
 **The buyer selects the appropriate `standards_id` when creating a media buy.** The seller receives a reference to the resolved standards - they don't need to do scope matching themselves.
 

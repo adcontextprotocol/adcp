@@ -53,7 +53,7 @@ Discover signals based on natural language description, with deployment status a
 - `signal_spec` (string, required): Natural language description of desired signals
 - `deliver_to` (object, required): Where signals will be used
   - `deployments` (array): Target platforms/agents with `type`, `platform`/`agent_url`, and optional `account`
-  - `countries` (array): ISO country codes where signals will be used
+  - `countries` (array): ISO 3166-1 alpha-2 country codes where signals will be used (case-insensitive, uppercase recommended)
 - `filters` (object, optional): Filter by `catalog_types`, `data_providers`, `max_cpm`, `min_coverage_percentage`
 - `max_results` (number, optional): Limit number of results
 

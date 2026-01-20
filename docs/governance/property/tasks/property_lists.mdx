@@ -168,7 +168,7 @@ Filters are applied when the list is resolved (via `get_property_list`):
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| `countries_all` | string[] | ISO country codes - property must have feature data for ALL (required) |
+| `countries_all` | string[] | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - property must have feature data for ALL (required) |
 | `channels_any` | string[] | Advertising channels - property must support ANY (required) |
 | `property_types` | string[] | Property types (website, mobile_app, ctv_app, etc.) |
 | `feature_requirements` | FeatureRequirement[] | Requirements based on agent-provided features |
@@ -229,7 +229,7 @@ This transparency helps agencies distinguish between properties that passed a re
 ### Required Filters
 
 Every property list must include at least:
-- One country in `countries_all` (ISO country code)
+- One country in `countries_all` (ISO 3166-1 alpha-2 code, case-insensitive)
 - One channel in `channels_any` (display, video, audio, etc.)
 
 These are required because governance agents need to know which jurisdiction and context to evaluate properties against.
