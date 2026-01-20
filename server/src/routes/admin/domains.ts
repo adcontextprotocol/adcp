@@ -2179,12 +2179,21 @@ export function setupDomainRoutes(
         for (const row of result.rows) {
           const orgId = row.workos_organization_id;
 
-          // Get existing members for this org
+          // Get existing members for this org (paginate through all)
           try {
-            const memberships = await config.workos!.userManagement.listOrganizationMemberships({
-              organizationId: orgId,
-            });
-            const existingMemberUserIds = new Set(memberships.data.map(m => m.userId));
+            const existingMemberUserIds = new Set<string>();
+            let after: string | undefined;
+            do {
+              const memberships = await config.workos!.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+              for (const m of memberships.data) {
+                existingMemberUserIds.add(m.userId);
+              }
+              after = memberships.listMetadata?.after;
+            } while (after);
 
             // Filter to users who aren't already members
             const usersToAdd = (row.users as Array<{ email: string; name: string | null; workos_user_id: string }>)
@@ -2300,13 +2309,21 @@ export function setupDomainRoutes(
           let orgSkipped = 0;
           let orgErrors = 0;
 
-          // Get existing members for this org
-          let existingMemberUserIds: Set<string>;
+          // Get existing members for this org (paginate through all)
+          const existingMemberUserIds = new Set<string>();
           try {
-            const memberships = await config.workos!.userManagement.listOrganizationMemberships({
-              organizationId: orgId,
-            });
-            existingMemberUserIds = new Set(memberships.data.map(m => m.userId));
+            let after: string | undefined;
+            do {
+              const memberships = await config.workos!.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+              for (const m of memberships.data) {
+                existingMemberUserIds.add(m.userId);
+              }
+              after = memberships.listMetadata?.after;
+            } while (after);
           } catch (err) {
             logger.warn({ err, orgId }, 'Failed to get memberships for org, skipping');
             continue;
