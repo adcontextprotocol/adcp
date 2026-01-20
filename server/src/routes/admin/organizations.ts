@@ -938,8 +938,7 @@ export function setupOrganizationRoutes(
             mi.confidence,
             mi.source_type,
             mi.created_at,
-            mit.name as insight_type,
-            mit.display_name as insight_type_display
+            mit.name as insight_type
           FROM member_insights mi
           JOIN member_insight_types mit ON mi.insight_type_id = mit.id
           WHERE mi.slack_user_id = ANY($1)
@@ -952,7 +951,7 @@ export function setupOrganizationRoutes(
         const insights = insightsResult.rows.map((row) => ({
           slack_user_id: row.slack_user_id,
           member_name: slackUserMap.get(row.slack_user_id) || row.slack_user_id,
-          insight_type: row.insight_type_display || row.insight_type,
+          insight_type: row.insight_type,
           value: row.value,
           confidence: row.confidence,
           source_type: row.source_type,
