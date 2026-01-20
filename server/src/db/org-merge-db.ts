@@ -137,24 +137,24 @@ export async function mergeOrganizations(
     // =====================================================
     // 2. Merge organization_domains
     // =====================================================
-    const domainsResult = await client.query(
-      `INSERT INTO organization_domains (
-        workos_organization_id, domain, is_primary, verified, source,
-        created_at, updated_at
-      )
-      SELECT
-        $1, domain, false, verified, source, created_at, updated_at
-      FROM organization_domains
-      WHERE workos_organization_id = $2
-      ON CONFLICT (domain) DO NOTHING
-      RETURNING domain`,
-      [primaryOrgId, secondaryOrgId]
-    );
-
+    // Count domains before transfer for summary
     const totalDomains = await client.query(
       `SELECT COUNT(*) as count FROM organization_domains
        WHERE workos_organization_id = $1`,
       [secondaryOrgId]
+    );
+
+    // Transfer domains by updating the organization_id directly
+    // The UNIQUE(domain) constraint ensures each domain belongs to only one org,
+    // so we just update the org_id rather than insert/delete
+    const domainsResult = await client.query(
+      `UPDATE organization_domains
+       SET workos_organization_id = $1,
+           is_primary = false,
+           updated_at = NOW()
+       WHERE workos_organization_id = $2
+       RETURNING domain`,
+      [primaryOrgId, secondaryOrgId]
     );
 
     summary.tables_merged.push({
@@ -162,12 +162,6 @@ export async function mergeOrganizations(
       rows_moved: domainsResult.rows.length,
       rows_skipped_duplicate: parseInt(totalDomains.rows[0].count, 10) - domainsResult.rows.length,
     });
-
-    // Delete secondary org domains
-    await client.query(
-      `DELETE FROM organization_domains WHERE workos_organization_id = $1`,
-      [secondaryOrgId]
-    );
 
     // =====================================================
     // 3. Merge organization_join_requests
