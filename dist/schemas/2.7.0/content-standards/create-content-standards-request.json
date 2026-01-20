@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/content-standards/create-content-standards-request.json",
+  "title": "Create Content Standards Request",
+  "description": "Request parameters for creating a new content standards configuration",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "type": "object",
+      "description": "Where this standards configuration applies",
+      "properties": {
+        "countries_all": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
+        },
+        "channels_any": {
+          "type": "array",
+          "items": { "$ref": "/schemas/2.7.0/enums/channels.json" },
+          "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
+        },
+        "languages_any": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this scope"
+        }
+      },
+      "required": ["languages_any"]
+    },
+    "policy": {
+      "type": "string",
+      "description": "Natural language policy describing acceptable and unacceptable content contexts. Used by LLMs and human reviewers to make judgments."
+    },
+    "calibration_exemplars": {
+      "type": "object",
+      "description": "Training/test set to calibrate policy interpretation. Use URL references for pages to be fetched and analyzed, or full artifacts for pre-extracted content.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "URL reference - specific page to fetch and evaluate",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "url",
+                    "description": "Indicates this is a URL reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full URL to a specific page (e.g., 'https://espn.com/nba/story/_/id/12345/lakers-win')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content at this URL"
+                  }
+                },
+                "required": ["type", "value"]
+              },
+              {
+                "$ref": "/schemas/2.7.0/content-standards/artifact.json",
+                "description": "Full artifact with pre-extracted content (text, images, video, audio)"
+              }
+            ]
+          },
+          "description": "Content that passes the standards"
+        },
+        "fail": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "URL reference - specific page to fetch and evaluate",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "url",
+                    "description": "Indicates this is a URL reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full URL to a specific page (e.g., 'https://news.example.com/controversial-article')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content at this URL"
+                  }
+                },
+                "required": ["type", "value"]
+              },
+              {
+                "$ref": "/schemas/2.7.0/content-standards/artifact.json",
+                "description": "Full artifact with pre-extracted content (text, images, video, audio)"
+              }
+            ]
+          },
+          "description": "Content that fails the standards"
+        }
+      }
+    },
+    "context": {
+      "$ref": "/schemas/2.7.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.7.0/core/ext.json"
+    }
+  },
+  "required": ["scope", "policy"],
+  "additionalProperties": true
+}

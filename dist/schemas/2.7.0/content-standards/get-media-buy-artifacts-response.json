@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/content-standards/get-media-buy-artifacts-response.json",
+  "title": "Get Media Buy Artifacts Response",
+  "description": "Response containing content artifacts from a media buy for validation",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response with artifacts",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "description": "Media buy these artifacts belong to"
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "Delivery records with full artifact content",
+          "items": {
+            "type": "object",
+            "properties": {
+              "record_id": {
+                "type": "string",
+                "description": "Unique identifier for this delivery record"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the delivery occurred"
+              },
+              "package_id": {
+                "type": "string",
+                "description": "Which package this delivery belongs to"
+              },
+              "artifact": {
+                "$ref": "/schemas/2.7.0/content-standards/artifact.json",
+                "description": "Full artifact with content assets"
+              },
+              "country": {
+                "type": "string",
+                "description": "ISO 3166-1 alpha-2 country code where delivery occurred"
+              },
+              "channel": {
+                "type": "string",
+                "description": "Channel type (e.g., display, video, audio, social)"
+              },
+              "brand_context": {
+                "type": "object",
+                "description": "Brand information for policy evaluation. Schema TBD - placeholder for brand identifiers.",
+                "properties": {
+                  "brand_id": {
+                    "type": "string",
+                    "description": "Brand identifier"
+                  },
+                  "sku_id": {
+                    "type": "string",
+                    "description": "Product/SKU identifier if applicable"
+                  }
+                }
+              },
+              "local_verdict": {
+                "type": "string",
+                "enum": ["pass", "fail", "unevaluated"],
+                "description": "Seller's local model verdict for this artifact"
+              }
+            },
+            "required": ["record_id", "artifact"]
+          }
+        },
+        "sampling_info": {
+          "type": "object",
+          "description": "Information about how the sample was generated",
+          "properties": {
+            "total_deliveries": {
+              "type": "integer",
+              "description": "Total deliveries in the time range"
+            },
+            "sampled_count": {
+              "type": "integer",
+              "description": "Number of artifacts in this response"
+            },
+            "effective_rate": {
+              "type": "number",
+              "description": "Actual sampling rate achieved"
+            },
+            "method": {
+              "type": "string",
+              "enum": ["random", "stratified", "recent", "failures_only"],
+              "description": "Sampling method used"
+            }
+          }
+        },
+        "pagination": {
+          "type": "object",
+          "description": "Pagination information for large result sets",
+          "properties": {
+            "cursor": {
+              "type": "string",
+              "description": "Cursor for fetching the next page"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether more results are available"
+            }
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/2.7.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/2.7.0/core/ext.json"
+        }
+      },
+      "required": ["media_buy_id", "artifacts"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/2.7.0/core/error.json" }
+        },
+        "media_buy_id": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/2.7.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/2.7.0/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

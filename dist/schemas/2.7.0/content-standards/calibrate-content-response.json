@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/content-standards/calibrate-content-response.json",
+  "title": "Calibrate Content Response",
+  "description": "Response payload with verdict and detailed explanations for collaborative calibration",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response with detailed calibration feedback",
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "fail"],
+          "description": "Overall pass/fail verdict for the content evaluation"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Model confidence in the verdict (0-1)"
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Detailed natural language explanation of the decision"
+        },
+        "features": {
+          "type": "array",
+          "description": "Per-feature breakdown with explanations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Which feature was evaluated (e.g., brand_safety, brand_suitability, competitor_adjacency)"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["passed", "failed", "warning", "unevaluated"],
+                "description": "Evaluation status for this feature"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "Human-readable explanation of why this feature passed or failed"
+              }
+            },
+            "required": ["feature_id", "status"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        }
+      },
+      "required": ["verdict"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/2.7.0/core/error.json" }
+        },
+        "verdict": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

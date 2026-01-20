@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.7.0/property/validate-property-delivery-request.json",
+  "title": "Validate Property Delivery Request",
+  "description": "Request payload for validate_property_delivery task. Validates delivery records against a property list to determine compliance.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list to validate against"
+    },
+    "records": {
+      "type": "array",
+      "description": "Delivery records to validate. Each record represents impressions delivered to a property identifier.",
+      "items": {
+        "$ref": "/schemas/2.7.0/property/delivery-record.json"
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "include_compliant": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include compliant records in results (default: only return non_compliant, unmodeled, and unidentified)"
+    },
+    "ext": {
+      "$ref": "/schemas/2.7.0/core/ext.json"
+    }
+  },
+  "required": ["list_id", "records"],
+  "additionalProperties": false
+}
