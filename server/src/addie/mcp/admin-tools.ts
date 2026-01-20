@@ -65,7 +65,7 @@ import {
   createAndSendInvoice,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
-import { mergeOrganizations, previewMerge } from '../../db/org-merge-db.js';
+import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
 import { workos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
 import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
@@ -742,14 +742,19 @@ Returns a list of organizations with open or draft invoices.`,
   // ============================================
   {
     name: 'merge_organizations',
-    description: 'Merge duplicate organization records. Destructive, cannot be undone. Preview first with preview=true.',
-    usage_hints: 'Preview first, then execute with preview=false.',
+    description: 'Merge duplicate organization records. Destructive, cannot be undone. Preview first with preview=true. If both orgs have Stripe customers, you must specify stripe_customer_resolution.',
+    usage_hints: 'Preview first, then execute with preview=false. Check preview for Stripe customer conflicts.',
     input_schema: {
       type: 'object' as const,
       properties: {
         primary_org_id: { type: 'string', description: 'Org ID to keep (data merged into)' },
         secondary_org_id: { type: 'string', description: 'Org ID to remove (data moved from)' },
         preview: { type: 'boolean', description: 'Show preview only (default: true)' },
+        stripe_customer_resolution: {
+          type: 'string',
+          enum: ['keep_primary', 'use_secondary', 'keep_both_unlinked'],
+          description: 'Required if both orgs have Stripe customers. keep_primary=keep primary Stripe customer, use_secondary=replace with secondary Stripe customer, keep_both_unlinked=unlink both for manual resolution',
+        },
       },
       required: ['primary_org_id', 'secondary_org_id'],
     },
@@ -3665,6 +3670,7 @@ Use add_committee_leader to assign a leader.`;
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
     const preview = input.preview !== false; // Default to preview mode for safety
+    const stripeCustomerResolution = input.stripe_customer_resolution as StripeCustomerResolution | undefined;
 
     if (!primaryOrgId || !secondaryOrgId) {
       return '❌ Both primary_org_id and secondary_org_id are required.';
@@ -3725,6 +3731,25 @@ Use add_committee_leader to assign a leader.`;
           response += `- Secondary org will be deleted from WorkOS\n`;
         }
 
+        // Stripe customer conflict section
+        const stripeConflict = previewResult.stripe_customer_conflict;
+        if (stripeConflict.has_conflict) {
+          response += `\n### 🔴 Stripe Customer Conflict\n`;
+          response += `Both organizations have Stripe customers that need resolution:\n`;
+          response += `- **Primary:** ${stripeConflict.primary_customer_id}\n`;
+          response += `- **Secondary:** ${stripeConflict.secondary_customer_id}\n\n`;
+          response += `You must specify \`stripe_customer_resolution\` to proceed:\n`;
+          response += `- \`keep_primary\`: Keep primary's Stripe customer, orphan secondary's\n`;
+          response += `- \`use_secondary\`: Replace primary's customer with secondary's\n`;
+          response += `- \`keep_both_unlinked\`: Unlink both for manual resolution\n`;
+        } else if (stripeConflict.secondary_customer_id && !stripeConflict.primary_customer_id) {
+          response += `\n### Stripe\n`;
+          response += `Secondary org's Stripe customer (${stripeConflict.secondary_customer_id}) will be moved to primary org.\n`;
+        } else if (stripeConflict.primary_customer_id) {
+          response += `\n### Stripe\n`;
+          response += `Primary org's Stripe customer (${stripeConflict.primary_customer_id}) will be kept.\n`;
+        }
+
         if (previewResult.warnings.length > 0) {
           response += `\n### Warnings\n`;
           for (const warning of previewResult.warnings) {
@@ -3733,7 +3758,11 @@ Use add_committee_leader to assign a leader.`;
         }
 
         response += `\n---\n`;
-        response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
+        if (stripeConflict.requires_resolution) {
+          response += `_This is a preview. To execute the merge, call merge_organizations with preview=false and stripe_customer_resolution set._`;
+        } else {
+          response += `_This is a preview. To execute the merge, call merge_organizations again with preview=false._`;
+        }
 
         return response;
       } else {
@@ -3775,7 +3804,12 @@ Use add_committee_leader to assign a leader.`;
 
         // Step 2: Execute the database merge
         const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
-        const result = await mergeOrganizations(primaryOrgId, secondaryOrgId, mergedBy);
+        const result = await mergeOrganizations(
+          primaryOrgId,
+          secondaryOrgId,
+          mergedBy,
+          stripeCustomerResolution ? { stripeCustomerResolution } : undefined
+        );
 
         // Step 3: Add users to primary org in WorkOS
         let workosAdded = 0;
@@ -3842,6 +3876,22 @@ Use add_committee_leader to assign a leader.`;
           }
           if (workosOrgDeleted) {
             response += `- 🗑️ Deleted secondary org from WorkOS\n`;
+          }
+        }
+
+        // Stripe customer action
+        if (result.stripe_customer_action && result.stripe_customer_action !== 'none') {
+          response += `\n### Stripe\n`;
+          switch (result.stripe_customer_action) {
+            case 'kept_primary':
+              response += `- ✅ Kept primary org's Stripe customer\n`;
+              break;
+            case 'moved_from_secondary':
+              response += `- 🔄 Moved Stripe customer from secondary to primary org\n`;
+              break;
+            case 'conflict_unresolved':
+              response += `- ⚠️ Both Stripe customers were unlinked - manual linking required\n`;
+              break;
           }
         }
 
