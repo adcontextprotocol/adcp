@@ -696,11 +696,31 @@
         "get-content-standards": {
           "request": {
             "$ref": "/schemas/content-standards/get-content-standards-request.json",
-            "description": "Request parameters for retrieving content safety policies"
+            "description": "Request parameters for retrieving a specific standards configuration"
           },
           "response": {
             "$ref": "/schemas/content-standards/get-content-standards-response.json",
-            "description": "Response payload with content safety policies"
+            "description": "Response payload with full standards configuration including policy and calibration data"
+          }
+        },
+        "create-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/create-content-standards-request.json",
+            "description": "Request parameters for creating a new content standards configuration"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/create-content-standards-response.json",
+            "description": "Response payload with new standards_id"
+          }
+        },
+        "update-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/update-content-standards-request.json",
+            "description": "Request parameters for updating an existing content standards configuration"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/update-content-standards-response.json",
+            "description": "Response payload confirming update"
           }
         },
         "calibrate-content": {
