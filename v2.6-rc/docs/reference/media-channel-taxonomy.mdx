@@ -674,13 +674,12 @@ Real-world ad placements often don't fit neatly into a single category. This sec
 
 When a user clicks a link in a social app (Facebook, Twitter/X) and views content in the app's embedded browser:
 
-| Attribute | Value | Reasoning |
-|-----------|-------|-----------|
-| **Channel** | `social` | Bought through social platform ad tools |
-| **Property Type** | `mobile_app` | Technically rendered within the app's WebView |
-| **Format** | Varies | Could be display, video, native |
+| Scenario | Channel | Property Type | Reasoning |
+|----------|---------|---------------|-----------|
+| Ads on cnn.com viewed in Facebook's WebView | `web` | `website` | Ads are bought through standard web programmatic targeting cnn.com |
+| Facebook's own sponsored content in the feed | `social` | `mobile_app` | Bought through Facebook Ads Manager |
 
-The channel remains `social` because the buying context is the social platform, even though the technical rendering uses a WebView.
+The WebView is just a technical container. Ads on the destination site (cnn.com) are still `web` channel because they're bought through standard web programmatic, not through the social platform's ad tools.
 
 ### Desktop Apps as Chromium Wrappers
 
@@ -696,12 +695,16 @@ For Spotify Desktop: channel = `streaming_audio`, property_type = `desktop_app`.
 
 ### AI Widgets on Publisher Websites
 
-When an AI chatbot widget appears on a traditional publisher's website:
+When an AI chatbot widget appears on a traditional publisher's website, the channel depends on user intent and buying context—similar to outstream video (OLV):
 
 | Scenario | Channel | Reasoning |
 |----------|---------|-----------|
-| Bought through AI platform (e.g., ChatGPT integrations) | `ai_agents` | Buying context is AI platform |
-| Bought through web programmatic (widget is just another ad unit) | `web` | Buying context is standard web |
+| User's primary focus is the AI assistant (dedicated interaction) | `ai_agents` | User intent is conversational AI |
+| AI widget is peripheral to page content (like OLV autoplay) | `web` | User focus is the publisher content |
+| Ads bought through AI platform's ad tools | `ai_agents` | Buying context is AI platform |
+| Ads bought through standard web programmatic | `web` | Buying context is standard web |
+
+This mirrors how OLV is treated: an autoplay video unit in an article is `web` (user is reading), but a dedicated video player experience shifts the context.
 
 ### Commerce vs Web Display
 
