@@ -26,6 +26,10 @@ import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
 import { MEMBER_TOOLS } from './mcp/member-tools.js';
 import { InsightsDatabase, type MemberInsight } from '../db/insights-db.js';
 import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
+import {
+  getToolSetDescriptionsForRouter,
+  requiresPrecision as checkPrecision,
+} from './tool-sets.js';
 
 /**
  * Execution plan types
@@ -48,20 +52,8 @@ export type ExecutionPlan = ExecutionPlanBase & (
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tools: string[]; reason: string }
+  | { action: 'respond'; tool_sets: string[]; reason: string }
 );
-
-/**
- * Billing-related tools that require precision mode
- * When these tools are selected, we'll use Opus instead of Sonnet
- */
-export const PRECISION_REQUIRED_TOOLS = [
-  'find_membership_products',
-  'create_payment_link',
-  'send_invoice',
-  'send_payment_request',
-  'grant_discount',
-];
 
 /**
  * Context for routing decisions
@@ -306,10 +298,8 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   const isMember = !!ctx.memberContext?.workos_user?.workos_user_id;
   const isLinked = isMember;
 
-  // Build tool descriptions section - this is key for proper tool selection
-  const toolsSection = Object.entries(TOOL_DESCRIPTIONS)
-    .map(([name, desc]) => `- **${name}**: ${desc}`)
-    .join('\n');
+  // Build tool SET descriptions - router selects categories, not individual tools
+  const toolSetsSection = getToolSetDescriptionsForRouter(isAdmin);
 
   // Build react patterns
   const reactList = Object.entries(ROUTING_RULES.reactWith)
@@ -324,17 +314,16 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   if (!isLinked) {
     conditionalRules += `
 The user has NOT linked their Slack account to AgenticAdvertising.org.
-- If they ask about membership features, suggest linking their account first
-- Use tools: [get_my_profile] to check their status`;
+- If they ask about membership features, include the "member" tool set`;
   }
   if (isAdmin) {
     conditionalRules += `
 The user is an ADMIN.
-- They may ask about system configuration or analytics
+- They have access to the "admin" tool set for system operations
 - Be more direct and technical in responses`;
   }
 
-  return `You are Addie's router. Analyze this message and determine the execution plan.
+  return `You are Addie's router. Analyze this message and select the appropriate tool SETS.
 
 ## User Context
 - Source: ${ctx.source}
@@ -344,18 +333,22 @@ The user is an ADMIN.
 ${conditionalRules}
 ${insightsSection}
 
-## Available Tools (with when to use each)
-${toolsSection}
+## Available Tool Sets
+Select which CATEGORIES of tools will be needed. Each set contains multiple related tools.
+${toolSetsSection}
 
-## Tool Selection Guidelines
-IMPORTANT: Choose tools based on the user's INTENT, not just keywords:
-- "How does X work?" / "What is X?" / "Explain X" → search_docs (learning/understanding)
-- "Validate my adagents.json" / "Check example.com" / "Debug my setup" → validate_adagents (action/validation)
-- "How do I use the SDK?" / "Salesagent setup" → search_repos (implementation help)
-- "What did someone say about X?" → search_slack (community discussions)
-- Questions about MCP, A2A, OpenRTB, AdCOM, TCF, GPP, UID2, Prebid, IAB specs → search_repos (we have these indexed!)
-- "Is my agent working?" / "Test my endpoint" → check_agent_health (testing)
-- Questions about topics NOT in our indexed repos → web_search (external info)
+## Tool Set Selection Guidelines
+IMPORTANT: Select tool SETS based on the user's INTENT:
+- Questions about AdCP, protocols, implementation → ["knowledge"]
+- Questions about member profile, working groups, account → ["member"]
+- Looking for vendors, partners, introductions → ["directory"]
+- Testing/validating AdCP agent implementations → ["agent_testing"]
+- Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
+- Content workflows, GitHub issues, proposals → ["content"]
+- Billing, invoices, payment links → ["billing"]
+- Scheduling meetings, calendar → ["meetings"]
+- Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
+- General questions needing no tools → []
 
 ## Messages to React To (emoji only, no response)
 ${reactList}
@@ -382,9 +375,9 @@ Respond with a JSON object for the execution plan. Choose ONE action:
    - When you need more information to help effectively
    - Use sparingly - only when truly ambiguous
 
-4. {"action": "respond", "tools": ["tool1", "tool2"], "reason": "brief reason"}
-   - When you can help and know which tools to use
-   - Select tools from the Available Tools list based on user intent
+4. {"action": "respond", "tool_sets": ["set1", "set2"], "reason": "brief reason"}
+   - When you can help - select the tool SET(S) that will be needed
+   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
 
 Respond with ONLY the JSON object, no other text.`;
@@ -397,7 +390,7 @@ type ParsedPlan =
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tools: string[]; reason: string };
+  | { action: 'respond'; tool_sets: string[]; reason: string };
 
 /**
  * Parse the router response into a partial ExecutionPlan
@@ -431,11 +424,11 @@ function parseRouterResponse(response: string): ParsedPlan {
       };
     }
     if (parsed.action === 'respond') {
-      // Accept tool names as-is - they come from ROUTING_RULES.expertise
-      const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
+      // Accept tool set names as-is
+      const toolSets = Array.isArray(parsed.tool_sets) ? parsed.tool_sets : [];
       return {
         action: 'respond',
-        tools,
+        tool_sets: toolSets,
         reason: parsed.reason || 'Can help with this topic',
       };
     }
@@ -445,8 +438,8 @@ function parseRouterResponse(response: string): ParsedPlan {
     return { action: 'ignore', reason: 'Unknown action type' };
   } catch (error) {
     logger.error({ error, response }, 'Router: Failed to parse response');
-    // On parse error, default to respond with no tools (safe fallback)
-    return { action: 'respond', tools: [], reason: 'Parse error - defaulting to general response' };
+    // On parse error, default to respond with knowledge tools (safe fallback)
+    return { action: 'respond', tool_sets: ['knowledge'], reason: 'Parse error - defaulting to knowledge tools' };
   }
 }
 
@@ -487,12 +480,10 @@ export class AddieRouter {
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
 
-      // Check if any selected tools require precision mode (billing, financial)
-      let requiresPrecision = false;
+      // Check if any selected tool sets require precision mode (billing, financial)
+      let requiresPrecisionMode = false;
       if (parsedPlan.action === 'respond') {
-        requiresPrecision = parsedPlan.tools.some(tool =>
-          PRECISION_REQUIRED_TOOLS.includes(tool)
-        );
+        requiresPrecisionMode = checkPrecision(parsedPlan.tool_sets);
       }
 
       const plan: ExecutionPlan = {
@@ -502,17 +493,18 @@ export class AddieRouter {
         tokens_input: response.usage?.input_tokens,
         tokens_output: response.usage?.output_tokens,
         model: ModelConfig.fast,
-        requires_precision: requiresPrecision,
+        requires_precision: requiresPrecisionMode,
       };
 
       logger.debug({
         source: ctx.source,
         action: plan.action,
         reason: plan.reason,
+        toolSets: parsedPlan.action === 'respond' ? parsedPlan.tool_sets : undefined,
         durationMs: latencyMs,
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
-        requiresPrecision,
+        requiresPrecision: requiresPrecisionMode,
       }, 'Router: Execution plan generated');
 
       // Track for performance metrics (fire-and-forget, errors handled internally)
@@ -527,11 +519,11 @@ export class AddieRouter {
       return plan;
     } catch (error) {
       logger.error({ error }, 'Router: Failed to generate execution plan');
-      // On error, default to respond (safe fallback - don't miss important messages)
+      // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
       return {
         action: 'respond',
-        tools: [],
-        reason: 'Router error - defaulting to general response',
+        tool_sets: ['knowledge'],
+        reason: 'Router error - defaulting to knowledge tools',
         decision_method: 'llm',
         latency_ms: Date.now() - startTime,
       };

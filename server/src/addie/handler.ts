@@ -54,6 +54,10 @@ import {
   ESCALATION_TOOLS,
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
+import {
+  ADCP_TOOLS,
+  createAdcpToolHandlers,
+} from './mcp/adcp-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -257,6 +261,14 @@ async function createUserScopedTools(
   const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
   allTools.push(...ESCALATION_TOOLS);
   for (const [name, handler] of escalationHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add AdCP protocol tools (standard MCP tools for interacting with agents)
+  // These match the skill format and enable proper protocol interactions
+  const adcpHandlers = createAdcpToolHandlers(memberContext);
+  allTools.push(...ADCP_TOOLS);
+  for (const [name, handler] of adcpHandlers) {
     allHandlers.set(name, handler);
   }
 

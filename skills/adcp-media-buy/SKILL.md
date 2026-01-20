@@ -5,7 +5,7 @@ description: Execute AdCP Media Buy Protocol operations with sales agents - disc
 
 # AdCP Media Buy Protocol
 
-This skill enables you to execute the AdCP Media Buy Protocol with sales agents. Use the `call_adcp_agent` tool to send requests to sales agents.
+This skill enables you to execute the AdCP Media Buy Protocol with sales agents. Use the standard MCP tools (`get_products`, `create_media_buy`, `sync_creatives`, etc.) exposed by the connected agent.
 
 ## Overview
 

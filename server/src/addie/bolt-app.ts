@@ -60,6 +60,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  ADCP_TOOLS,
+  createAdcpToolHandlers,
+} from './mcp/adcp-tools.js';
+import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
   canScheduleMeetings,
@@ -78,6 +82,10 @@ import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
+import {
+  getToolsForSets,
+  buildUnavailableSetsHint,
+} from './tool-sets.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
@@ -668,6 +676,14 @@ async function createUserScopedTools(
   }
   logger.debug('Addie Bolt: Escalation tools enabled');
 
+  // Add AdCP protocol tools (standard MCP tools for interacting with agents)
+  const adcpHandlers = createAdcpToolHandlers(memberContext);
+  allTools.push(...ADCP_TOOLS);
+  for (const [name, handler] of adcpHandlers) {
+    allHandlers.set(name, handler);
+  }
+  logger.debug('Addie Bolt: AdCP protocol tools enabled');
+
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
 
@@ -728,6 +744,53 @@ async function createUserScopedTools(
       handlers: allHandlers,
     },
     isAdmin: userIsAdmin,
+  };
+}
+
+/**
+ * Filter tools to only include those in the selected tool sets.
+ * This reduces the context sent to Sonnet based on Haiku's routing decision.
+ *
+ * @param userTools - All tools available to the user
+ * @param selectedSets - Tool set names from the router's execution plan
+ * @param isAdmin - Whether the user is an admin (affects which sets are valid)
+ * @returns Filtered tools and a hint about unavailable sets
+ */
+function filterToolsBySet(
+  userTools: RequestTools,
+  selectedSets: string[],
+  isAdmin: boolean
+): { filteredTools: RequestTools; unavailableHint: string } {
+  // Get all tool names that should be available based on selected sets
+  const allowedToolNames = new Set(getToolsForSets(selectedSets, isAdmin));
+
+  // Filter tools to only those allowed
+  const filteredToolDefs = userTools.tools.filter(tool => allowedToolNames.has(tool.name));
+
+  // Filter handlers to match
+  const filteredHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  for (const [name, handler] of userTools.handlers) {
+    if (allowedToolNames.has(name)) {
+      filteredHandlers.set(name, handler);
+    }
+  }
+
+  // Build hint about unavailable tool sets
+  const unavailableHint = buildUnavailableSetsHint(selectedSets, isAdmin);
+
+  logger.debug({
+    selectedSets,
+    allowedCount: filteredToolDefs.length,
+    totalCount: userTools.tools.length,
+    filteredToolNames: filteredToolDefs.map(t => t.name),
+  }, 'Addie Bolt: Filtered tools by set');
+
+  return {
+    filteredTools: {
+      tools: filteredToolDefs,
+      handlers: filteredHandlers,
+    },
+    unavailableHint,
   };
 }
 
@@ -1643,7 +1706,7 @@ function buildRouterDecision(plan: ExecutionPlan): {
   action: string;
   reason: string;
   decision_method: 'quick_match' | 'llm';
-  tools?: string[];
+  tool_sets?: string[];
   latency_ms?: number;
   tokens_input?: number;
   tokens_output?: number;
@@ -1660,7 +1723,7 @@ function buildRouterDecision(plan: ExecutionPlan): {
   };
 
   if (plan.action === 'respond') {
-    return { ...base, tools: plan.tools };
+    return { ...base, tool_sets: plan.tool_sets };
   }
 
   return base;
@@ -2566,7 +2629,7 @@ async function handleChannelMessage({
     }
 
     // action === 'respond'
-    logger.info({ channelId, userId, tools: plan.tools },
+    logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
     // Build message with member context
@@ -2575,15 +2638,22 @@ async function handleChannelMessage({
       messageText
     );
 
-    // Generate a response with the specified tools (includes admin tools if user is admin, meeting tools with channel context)
+    // Get all user-scoped tools then filter by selected tool sets
     const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
+    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin);
+
+    // Append unavailable sets hint to message context so Sonnet knows what's not loaded
+    const messageWithHint = unavailableHint
+      ? `${messageWithContext}\n\n${unavailableHint}`
+      : messageWithContext;
+
     // Use precision model (Opus) for billing/financial queries
     const effectiveModel = plan.requires_precision ? ModelConfig.precision : AddieModelConfig.chat;
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
     };
-    const response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+    const response = await claudeClient.processMessage(messageWithHint, undefined, filteredTools, undefined, processOptions);
 
     if (!response.text || response.text.trim().length === 0) {
       logger.debug({ channelId }, 'Addie Bolt: No response generated');
@@ -2639,7 +2709,7 @@ async function handleChannelMessage({
         user_id: userId,
         user_display_name: memberContext?.slack_user?.display_name || undefined,
         tools_used: response.tools_used,
-        router_tools: plan.tools,
+        router_tool_sets: plan.tool_sets,
         router_reason: plan.reason,
         router_decision_method: plan.decision_method,
         router_latency_ms: plan.latency_ms,
