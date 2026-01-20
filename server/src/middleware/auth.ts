@@ -3,6 +3,7 @@ import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser } from '../types.js';
 import { createLogger } from '../logger.js';
+import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -754,9 +755,12 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     });
   }
 
-  // Check admin access via environment variable (comma-separated list of emails)
+  // Check admin access via aao-admin working group membership (primary)
+  // or ADMIN_EMAILS env var (fallback for emergency access)
   const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-  const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+  const isAdminByEmail = adminEmails.includes(req.user.email.toLowerCase());
+  const isAdminByWorkingGroup = await isWebUserAdmin(req.user.id);
+  const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
 
   if (!isAdmin) {
     logger.warn({ userId: req.user.id, email: req.user.email }, 'Non-admin user attempted to access admin endpoint');

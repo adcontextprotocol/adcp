@@ -13,6 +13,7 @@ import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
+import { invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
 import type { SyncSlackUsersResult } from './types.js';
 
 const slackDb = new SlackDatabase();
@@ -260,6 +261,7 @@ export async function syncWorkingGroupMembersFromSlack(
           user_email: mapping.slack_email || undefined,
           user_name: mapping.slack_real_name || mapping.slack_display_name || undefined,
         });
+        invalidateWebAdminStatusCache(mapping.workos_user_id);
 
         result.members_added++;
       } catch (error) {
@@ -399,6 +401,7 @@ export async function syncUserToChaptersFromSlackChannels(
           interest_level: group.committee_type === 'industry_gathering' ? 'interested' : undefined,
           interest_source: 'slack_join',
         });
+        invalidateWebAdminStatusCache(workosUserId);
 
         result.chapters_joined++;
         result.chapters.push({

@@ -3539,6 +3539,7 @@ export function createAdminToolHandlers(
           workos_user_id: userId,
           user_email: userEmail,
         });
+        invalidateWebAdminStatusCache(userId);
       }
 
       logger.info({ committeeSlug, committeeName: committee.name, userId, userEmail }, 'Added committee leader via Addie');
@@ -3597,6 +3598,7 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
       }
 
       await wgDb.removeLeader(committee.id, userId);
+      invalidateWebAdminStatusCache(userId);
 
       logger.info({ committeeSlug, committeeName: committee.name, userId }, 'Removed committee leader via Addie');
 
