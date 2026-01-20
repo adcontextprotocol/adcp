@@ -439,13 +439,25 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
 
   // GET /api/admin/addie/threads/performance - Get tool performance metrics
   // NOTE: Must be defined BEFORE /threads/:id to avoid matching "performance" as an ID
+  // Accepts days param (can be fractional, e.g., 0.125 for 3 hours)
   apiRouter.get("/threads/performance", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
       const { days } = req.query;
-      const daysNum = days ? parseInt(days as string, 10) : 7;
+      const daysNum = days ? parseFloat(days as string) : 7;
 
-      const performance = await threadService.getPerformanceMetrics(daysNum);
+      // Validate days parameter
+      if (isNaN(daysNum) || daysNum <= 0 || daysNum > 365) {
+        return res.status(400).json({
+          error: "Invalid parameter",
+          message: "days must be a number between 0 and 365",
+        });
+      }
+
+      // Convert days to hours for the service (supports fractional days)
+      const hours = Math.round(daysNum * 24);
+
+      const performance = await threadService.getPerformanceMetrics(hours);
       res.json(performance);
     } catch (error) {
       logger.error({ err: error }, "Error fetching performance metrics");

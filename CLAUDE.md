@@ -89,6 +89,19 @@ Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (n
 - **MINOR**: Add optional fields, new enum values, new tasks
 - **MAJOR**: Remove/rename fields, change types, remove enum values
 
+### Addie Code Version
+When making significant changes to Addie's core logic, bump `CODE_VERSION` in `server/src/addie/config-version.ts`.
+
+**When to bump:**
+- Claude client behavior (`claude-client.ts`)
+- Tool implementations (`mcp/*.ts`)
+- Message processing logic (`thread-service.ts`, `bolt-app.ts`)
+- Router logic beyond `ROUTING_RULES` (`router.ts`)
+
+**Format:** `YYYY.MM.N` (e.g., `2025.01.1`, `2025.01.2`, `2025.02.1`)
+
+This creates a new Addie config version, allowing performance comparison before/after code changes.
+
 ## Deployment
 
 Production deploys to **Fly.io** (not Vercel). Migrations run automatically on startup.

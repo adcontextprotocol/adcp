@@ -3191,6 +3191,7 @@ export class AddieDatabase {
       `SELECT
          cv.version_id,
          cv.config_hash,
+         cv.code_version,
          cv.created_at,
          array_length(cv.active_rule_ids, 1) as rule_count,
          cv.message_count,
@@ -3213,6 +3214,7 @@ export class AddieDatabase {
       `SELECT
          cv.version_id,
          cv.config_hash,
+         cv.code_version,
          cv.created_at,
          array_length(cv.active_rule_ids, 1) as rule_count,
          cv.message_count,
@@ -3233,6 +3235,7 @@ export class AddieDatabase {
 export interface ConfigVersionInfo {
   version_id: number;
   config_hash: string;
+  code_version: string | null;
   created_at: Date;
   rule_count: number;
   message_count: number;

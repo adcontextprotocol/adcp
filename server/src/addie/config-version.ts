@@ -1,12 +1,12 @@
 /**
  * Configuration Versioning for Addie
  *
- * Tracks versions of Addie's configuration (rules + router) so we can:
+ * Tracks versions of Addie's configuration (rules + router + code) so we can:
  * - Log a simple version_id with each message instead of full config
  * - Analyze feedback by configuration version
  * - Compare performance across config changes
  *
- * Each unique combination of active rules + router config gets a version ID.
+ * Each unique combination of active rules + router config + code version gets a version ID.
  * When config changes, a new version is created; when it reverts, existing version is reused.
  */
 
@@ -15,6 +15,20 @@ import { query } from '../db/client.js';
 import { logger } from '../logger.js';
 import { ROUTING_RULES } from './router.js';
 
+/**
+ * CODE_VERSION - Bump this when making significant changes to Addie's core logic.
+ *
+ * This should be incremented when changing:
+ * - Claude client behavior (claude-client.ts)
+ * - Tool implementations (mcp/*.ts)
+ * - Message processing logic (thread-service.ts, bolt-app.ts)
+ * - Router logic beyond ROUTING_RULES (router.ts)
+ *
+ * Format: YYYY.MM.N where N is incremented for multiple changes in a month
+ * Example: 2025.01.1, 2025.01.2, 2025.02.1
+ */
+export const CODE_VERSION = '2025.01.2';
+
 // Types
 export interface ConfigVersion {
   version_id: number;
@@ -22,6 +36,7 @@ export interface ConfigVersion {
   active_rule_ids: number[];
   rules_snapshot: unknown;
   router_rules_hash: string | null;
+  code_version: string | null;
   created_at: Date;
   message_count: number;
   positive_feedback: number;
@@ -52,11 +67,11 @@ export function computeRouterRulesHash(): string {
 }
 
 /**
- * Compute config hash from rule IDs and router rules
+ * Compute config hash from rule IDs, router rules, and code version
  */
 function computeConfigHash(ruleIds: number[], routerHash: string): string {
   const sortedIds = [...ruleIds].sort((a, b) => a - b);
-  const input = `rules:${sortedIds.join(',')}|router:${routerHash}`;
+  const input = `rules:${sortedIds.join(',')}|router:${routerHash}|code:${CODE_VERSION}`;
   return createHash('sha256').update(input).digest('hex').substring(0, 32);
 }
 
@@ -96,14 +111,15 @@ export async function getOrCreateConfigVersion(
     // Create new version
     const result = await query<ConfigVersion>(
       `INSERT INTO addie_config_versions (
-        config_hash, active_rule_ids, rules_snapshot, router_rules_hash
-      ) VALUES ($1, $2, $3, $4)
+        config_hash, active_rule_ids, rules_snapshot, router_rules_hash, code_version
+      ) VALUES ($1, $2, $3, $4, $5)
       RETURNING *`,
       [
         configHash,
         ruleIds,
         JSON.stringify(rulesSnapshot),
         routerHash,
+        CODE_VERSION,
       ]
     );
 
@@ -114,6 +130,7 @@ export async function getOrCreateConfigVersion(
       version_id: cachedVersion.version_id,
       config_hash: configHash,
       rule_count: ruleIds.length,
+      code_version: CODE_VERSION,
     }, 'Config: Created new configuration version');
 
     return cachedVersion;
@@ -161,6 +178,7 @@ export async function compareConfigVersions(
   added_rules: number[];
   removed_rules: number[];
   router_changed: boolean;
+  code_changed: boolean;
   version_a: ConfigVersion | null;
   version_b: ConfigVersion | null;
 }> {
@@ -174,6 +192,7 @@ export async function compareConfigVersions(
       added_rules: [],
       removed_rules: [],
       router_changed: false,
+      code_changed: false,
       version_a: versionA,
       version_b: versionB,
     };
@@ -185,11 +204,13 @@ export async function compareConfigVersions(
   const added_rules = versionB.active_rule_ids.filter(id => !rulesA.has(id));
   const removed_rules = versionA.active_rule_ids.filter(id => !rulesB.has(id));
   const router_changed = versionA.router_rules_hash !== versionB.router_rules_hash;
+  const code_changed = versionA.code_version !== versionB.code_version;
 
   return {
     added_rules,
     removed_rules,
     router_changed,
+    code_changed,
     version_a: versionA,
     version_b: versionB,
   };

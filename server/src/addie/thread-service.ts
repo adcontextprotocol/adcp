@@ -905,9 +905,10 @@ export class ThreadService {
 
   /**
    * Get performance metrics including per-tool timing
+   * @param hours - Number of hours to look back (default 168 = 7 days)
    */
-  async getPerformanceMetrics(days = 7): Promise<{
-    period_days: number;
+  async getPerformanceMetrics(hours = 168): Promise<{
+    period_hours: number;
     summary: {
       total_messages: number;
       total_assistant_messages: number;
@@ -977,8 +978,8 @@ export class ThreadService {
         ROUND((AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL))::numeric, 0) as avg_input_tokens,
         ROUND((AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL))::numeric, 0) as avg_output_tokens
       FROM addie_thread_messages
-      WHERE created_at > NOW() - make_interval(days => $1)`,
-      [days]
+      WHERE created_at > NOW() - make_interval(hours => $1)`,
+      [hours]
     );
 
     // Latency distribution (includes background API calls)
@@ -989,13 +990,13 @@ export class ThreadService {
         FROM addie_thread_messages
         WHERE role = 'assistant'
           AND latency_ms IS NOT NULL
-          AND created_at > NOW() - make_interval(days => $1)
+          AND created_at > NOW() - make_interval(hours => $1)
         UNION ALL
         -- Background API calls (router, insight extraction, etc.)
         SELECT latency_ms
         FROM addie_api_calls
         WHERE latency_ms IS NOT NULL
-          AND created_at > NOW() - make_interval(days => $1)
+          AND created_at > NOW() - make_interval(hours => $1)
       )
       SELECT
         CASE
@@ -1010,7 +1011,7 @@ export class ThreadService {
       FROM all_api_calls
       GROUP BY 1
       ORDER BY MIN(latency_ms)`,
-      [days]
+      [hours]
     );
 
     // By model (combines thread messages + background API calls)
@@ -1027,12 +1028,12 @@ export class ThreadService {
         SELECT model, latency_ms, tokens_input, tokens_output
         FROM addie_thread_messages
         WHERE role = 'assistant'
-          AND created_at > NOW() - make_interval(days => $1)
+          AND created_at > NOW() - make_interval(hours => $1)
         UNION ALL
         -- Background API calls (router, insight extraction, etc.)
         SELECT model, latency_ms, tokens_input, tokens_output
         FROM addie_api_calls
-        WHERE created_at > NOW() - make_interval(days => $1)
+        WHERE created_at > NOW() - make_interval(hours => $1)
       )
       SELECT
         COALESCE(model, 'unknown') as model,
@@ -1044,7 +1045,7 @@ export class ThreadService {
       FROM all_api_calls
       GROUP BY model
       ORDER BY count DESC`,
-      [days]
+      [hours]
     );
 
     // By tool (using JSONB)
@@ -1062,7 +1063,7 @@ export class ThreadService {
         FROM addie_thread_messages
         WHERE tool_calls IS NOT NULL
           AND tool_calls != '[]'::jsonb
-          AND created_at > NOW() - make_interval(days => $1)
+          AND created_at > NOW() - make_interval(hours => $1)
       )
       SELECT
         tool->>'name' as tool_name,
@@ -1074,7 +1075,7 @@ export class ThreadService {
       FROM tool_calls
       GROUP BY tool->>'name'
       ORDER BY call_count DESC`,
-      [days]
+      [hours]
     );
 
     // By channel (with timing breakdown to explain latency differences)
@@ -1095,10 +1096,10 @@ export class ThreadService {
         ROUND((AVG(m.processing_iterations) FILTER (WHERE m.role = 'assistant'))::numeric, 1) as avg_iterations
       FROM addie_threads t
       JOIN addie_thread_messages m ON t.thread_id = m.thread_id
-      WHERE m.created_at > NOW() - make_interval(days => $1)
+      WHERE m.created_at > NOW() - make_interval(hours => $1)
       GROUP BY t.channel
       ORDER BY message_count DESC`,
-      [days]
+      [hours]
     );
 
     // Daily trend
@@ -1114,16 +1115,16 @@ export class ThreadService {
         ROUND((AVG(latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as avg_latency_ms,
         COALESCE(SUM(tokens_input), 0) + COALESCE(SUM(tokens_output), 0) as total_tokens
       FROM addie_thread_messages
-      WHERE created_at > NOW() - make_interval(days => $1)
+      WHERE created_at > NOW() - make_interval(hours => $1)
       GROUP BY DATE_TRUNC('day', created_at)
       ORDER BY date DESC`,
-      [days]
+      [hours]
     );
 
     const summary = summaryResult.rows[0];
 
     return {
-      period_days: days,
+      period_hours: hours,
       summary: {
         total_messages: parseInt(summary.total_messages, 10) || 0,
         total_assistant_messages: parseInt(summary.total_assistant_messages, 10) || 0,
