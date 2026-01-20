@@ -85,7 +85,7 @@ The following channels MUST be supported. Implementations MAY extend with additi
 | `email` | Email advertising and sponsored newsletter content |
 | `gaming` | In-game advertising across platforms |
 | `influencer` | Creator and influencer marketing partnerships |
-| `conversational` | AI assistants, chatbots, and voice interfaces |
+| `ai_agents` | AI assistants, chatbots, and voice interfaces |
 | `sponsorship` | Sponsorships, product placement, and branded content integrations |
 | `commerce_media` | Retail media networks and transactional marketplaces |
 
@@ -366,7 +366,7 @@ Creator and influencer marketing partnerships.
 
 **Note**: `influencer` describes the BUYING MODEL (creator partnership) rather than where content appears. Influencer content may be distributed across `social`, `web`, `podcast`, and other channels.
 
-#### `conversational`
+#### `ai_agents`
 
 AI assistants, chatbots, and voice interface advertising.
 
@@ -446,7 +446,7 @@ The following channels do not have corresponding property types because they lac
 - `cinema` - Theater inventory management systems
 - `email` - Email list ownership differs from property authorization
 - `influencer` - Creator relationships rather than property ownership
-- `conversational` - Emerging channel, property model TBD
+- `ai_agents` - Emerging channel, property model TBD
 - `sponsorship` - Event/content relationships rather than properties
 - `commerce_media` - Platform-managed inventory within retail/marketplace ecosystems
 - `search` - Platform-managed inventory
@@ -468,7 +468,7 @@ The following channels do not have corresponding property types because they lac
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │   + linear_tv, ooh, print, cinema, email, gaming, influencer,  │
-│     conversational, sponsorship, commerce_media, search, social│
+│     ai_agents, sponsorship, commerce_media, search, social│
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -521,7 +521,7 @@ Channels are defined in the AdCP schema at:
     "email",
     "gaming",
     "influencer",
-    "conversational",
+    "ai_agents",
     "sponsorship",
     "commerce_media"
   ]
