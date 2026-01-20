@@ -373,7 +373,11 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const { channel, flagged_only, unreviewed_only, has_user_feedback, min_messages, user_id, since, limit, offset } = req.query;
+      const {
+        channel, flagged_only, unreviewed_only, has_user_feedback,
+        min_messages, user_id, since, limit, offset,
+        search, tool, user_search
+      } = req.query;
 
       const threads = await threadService.listThreads({
         channel: channel as ThreadChannel | undefined,
@@ -385,6 +389,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         since: since ? new Date(since as string) : undefined,
         limit: limit ? parseInt(limit as string, 10) : 50,
         offset: offset ? parseInt(offset as string, 10) : undefined,
+        // Search filters (with length limits to prevent performance issues)
+        search_text: typeof search === 'string' && search.length <= 500 ? search : undefined,
+        tool_name: typeof tool === 'string' && tool.length <= 100 ? tool : undefined,
+        user_search: typeof user_search === 'string' && user_search.length <= 200 ? user_search : undefined,
       });
 
       res.json({
@@ -444,6 +452,22 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch performance metrics",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/threads/tools - Get list of available tool names for filtering
+  // NOTE: Must be defined BEFORE /threads/:id to avoid matching "tools" as an ID
+  apiRouter.get("/threads/tools", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const tools = await threadService.getAvailableTools();
+      res.json({ tools });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching available tools");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch available tools",
       });
     }
   });

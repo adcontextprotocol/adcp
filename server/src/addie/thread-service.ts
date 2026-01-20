@@ -217,6 +217,10 @@ export interface ThreadListFilters {
   since?: Date;
   limit?: number;
   offset?: number;
+  // Search filters
+  search_text?: string;
+  tool_name?: string;
+  user_search?: string;
 }
 
 export type RatingSource = 'user' | 'admin';
@@ -526,40 +530,61 @@ export class ThreadService {
     const params: unknown[] = [];
     let paramIndex = 1;
 
+    // Determine if we need to join with messages table for search/tool filtering
+    const needsMessageJoin = !!(filters.search_text || filters.tool_name);
+
     if (filters.channel) {
-      conditions.push(`channel = $${paramIndex++}`);
+      conditions.push(`s.channel = $${paramIndex++}`);
       params.push(filters.channel);
     }
 
     if (filters.user_id) {
-      conditions.push(`user_id = $${paramIndex++}`);
+      conditions.push(`s.user_id = $${paramIndex++}`);
       params.push(filters.user_id);
     }
 
     if (filters.flagged_only) {
-      conditions.push(`flagged = TRUE`);
+      conditions.push(`s.flagged = TRUE`);
     }
 
     if (filters.unreviewed_only) {
-      conditions.push(`reviewed = FALSE`);
+      conditions.push(`s.reviewed = FALSE`);
     }
 
     if (filters.has_feedback) {
-      conditions.push(`feedback_count > 0`);
+      conditions.push(`s.feedback_count > 0`);
     }
 
     if (filters.has_user_feedback) {
-      conditions.push(`user_feedback_count > 0`);
+      conditions.push(`s.user_feedback_count > 0`);
     }
 
     if (filters.min_messages !== undefined && filters.min_messages > 0) {
-      conditions.push(`message_count >= $${paramIndex++}`);
+      conditions.push(`s.message_count >= $${paramIndex++}`);
       params.push(filters.min_messages);
     }
 
     if (filters.since) {
-      conditions.push(`started_at >= $${paramIndex++}`);
+      conditions.push(`s.started_at >= $${paramIndex++}`);
       params.push(filters.since);
+    }
+
+    // User display name search (ILIKE for partial matching)
+    if (filters.user_search) {
+      conditions.push(`s.user_display_name ILIKE $${paramIndex++}`);
+      params.push(`%${filters.user_search}%`);
+    }
+
+    // Text search in message content (requires join)
+    if (filters.search_text) {
+      conditions.push(`m.content ILIKE $${paramIndex++}`);
+      params.push(`%${filters.search_text}%`);
+    }
+
+    // Tool name filter (requires join, searches tools_used array)
+    if (filters.tool_name) {
+      conditions.push(`$${paramIndex++} = ANY(m.tools_used)`);
+      params.push(filters.tool_name);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -568,15 +593,39 @@ export class ThreadService {
 
     params.push(limit, offset);
 
-    const result = await query<ThreadSummary>(
-      `SELECT * FROM addie_threads_summary
-       ${whereClause}
-       ORDER BY last_message_at DESC
-       LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
-      params
-    );
+    let sql: string;
+    if (needsMessageJoin) {
+      // Join with messages table for text/tool search, use DISTINCT to avoid duplicates
+      sql = `SELECT DISTINCT ON (s.last_message_at, s.thread_id) s.*
+             FROM addie_threads_summary s
+             JOIN addie_thread_messages m ON s.thread_id = m.thread_id
+             ${whereClause}
+             ORDER BY s.last_message_at DESC, s.thread_id
+             LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    } else {
+      // Simple query without join
+      sql = `SELECT s.*
+             FROM addie_threads_summary s
+             ${whereClause}
+             ORDER BY s.last_message_at DESC
+             LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    }
 
+    const result = await query<ThreadSummary>(sql, params);
     return result.rows;
+  }
+
+  /**
+   * Get list of distinct tool names used across all threads
+   */
+  async getAvailableTools(): Promise<string[]> {
+    const result = await query<{ tool_name: string }>(
+      `SELECT DISTINCT unnest(tools_used) as tool_name
+       FROM addie_thread_messages
+       WHERE tools_used IS NOT NULL AND array_length(tools_used, 1) > 0
+       ORDER BY tool_name`
+    );
+    return result.rows.map(r => r.tool_name);
   }
 
   /**

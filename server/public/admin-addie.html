@@ -1587,25 +1587,39 @@
               Browse conversations across all channels (Web, Slack, A2A)
             </p>
           </div>
-          <div class="filter-row">
-            <select id="stats-timeframe">
-              <option value="7d" selected>This Week</option>
-              <option value="24h">Last 24 Hours</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="all">All Time</option>
-            </select>
-            <select id="channel-filter">
-              <option value="">All Channels</option>
-              <option value="web">Web</option>
-              <option value="slack">Slack</option>
-              <option value="a2a">A2A</option>
-            </select>
-            <label><input type="checkbox" id="threads-flagged-only"> Flagged only</label>
-            <label><input type="checkbox" id="threads-unreviewed-only"> Unreviewed only</label>
-            <label><input type="checkbox" id="threads-has-feedback"> Has user feedback</label>
-            <label><input type="checkbox" id="threads-multi-turn" checked> Multi-turn only</label>
-            <button class="btn btn-secondary" onclick="loadThreads()">Refresh</button>
-          </div>
+        </div>
+        <!-- Search Row -->
+        <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap;">
+          <input type="text" id="threads-search-text" placeholder="Search message content..."
+                 style="flex: 2; min-width: 200px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);"
+                 onkeydown="if(event.key==='Enter')loadThreads()">
+          <input type="text" id="threads-search-user" placeholder="Search by user name..."
+                 style="flex: 1; min-width: 150px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);"
+                 onkeydown="if(event.key==='Enter')loadThreads()">
+          <select id="threads-tool-filter" style="min-width: 150px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);">
+            <option value="">All Tools</option>
+          </select>
+          <button id="threads-search-btn" class="btn btn-primary" onclick="loadThreads()">Search</button>
+          <button class="btn btn-secondary" onclick="clearThreadsSearch()">Clear</button>
+        </div>
+        <!-- Filter Row -->
+        <div class="filter-row" style="margin-bottom: var(--space-3);">
+          <select id="stats-timeframe">
+            <option value="7d" selected>This Week</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="all">All Time</option>
+          </select>
+          <select id="channel-filter">
+            <option value="">All Channels</option>
+            <option value="web">Web</option>
+            <option value="slack">Slack</option>
+            <option value="a2a">A2A</option>
+          </select>
+          <label><input type="checkbox" id="threads-flagged-only"> Flagged only</label>
+          <label><input type="checkbox" id="threads-unreviewed-only"> Unreviewed only</label>
+          <label><input type="checkbox" id="threads-has-feedback"> Has user feedback</label>
+          <label><input type="checkbox" id="threads-multi-turn" checked> Multi-turn only</label>
         </div>
         <div class="threads-stats" id="threads-stats" style="margin-bottom: var(--space-4);"></div>
         <div class="threads-list" id="threads-list">
@@ -2437,14 +2451,51 @@
       }
     }
 
+    // Load available tools for the filter dropdown
+    async function loadThreadsTools() {
+      try {
+        const response = await fetch('/api/admin/addie/threads/tools');
+        const data = await response.json();
+        const select = document.getElementById('threads-tool-filter');
+        select.innerHTML = '<option value="">All Tools</option>' +
+          data.tools.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+      } catch (error) {
+        console.error('Error loading tools:', error);
+      }
+    }
+
+    // Clear search filters
+    function clearThreadsSearch() {
+      document.getElementById('threads-search-text').value = '';
+      document.getElementById('threads-search-user').value = '';
+      document.getElementById('threads-tool-filter').value = '';
+      loadThreads();
+    }
+
     // Load unified threads
+    let threadsLoading = false;
     async function loadThreads() {
+      // Prevent concurrent requests
+      if (threadsLoading) return;
+      threadsLoading = true;
+
+      const searchBtn = document.getElementById('threads-search-btn');
+      if (searchBtn) {
+        searchBtn.disabled = true;
+        searchBtn.textContent = 'Searching...';
+      }
+
       const channel = document.getElementById('channel-filter').value;
       const flaggedOnly = document.getElementById('threads-flagged-only').checked;
       const unreviewedOnly = document.getElementById('threads-unreviewed-only').checked;
       const hasUserFeedback = document.getElementById('threads-has-feedback').checked;
       const multiTurnOnly = document.getElementById('threads-multi-turn').checked;
       const timeframe = document.getElementById('stats-timeframe').value;
+
+      // Search filters
+      const searchText = document.getElementById('threads-search-text').value.trim();
+      const userSearch = document.getElementById('threads-search-user').value.trim();
+      const toolFilter = document.getElementById('threads-tool-filter').value;
 
       const params = new URLSearchParams();
       params.append('limit', '50');
@@ -2453,6 +2504,11 @@
       if (unreviewedOnly) params.append('unreviewed_only', 'true');
       if (hasUserFeedback) params.append('has_user_feedback', 'true');
       if (multiTurnOnly) params.append('min_messages', '2');
+
+      // Add search params
+      if (searchText) params.append('search', searchText);
+      if (userSearch) params.append('user_search', userSearch);
+      if (toolFilter) params.append('tool', toolFilter);
 
       // Add timeframe filter to threads query
       if (timeframe !== 'all') {
@@ -2575,6 +2631,13 @@
         console.error('Error loading threads:', error);
         document.getElementById('threads-list').innerHTML =
           '<div class="empty-state"><h3>Error loading threads</h3></div>';
+      } finally {
+        threadsLoading = false;
+        const searchBtn = document.getElementById('threads-search-btn');
+        if (searchBtn) {
+          searchBtn.disabled = false;
+          searchBtn.textContent = 'Search';
+        }
       }
     }
 
@@ -4804,6 +4867,7 @@
     loadSuggestions();
     loadInsights();
     loadKnowledge();
+    loadThreadsTools();
     loadThreads();
     loadQueue();
 
