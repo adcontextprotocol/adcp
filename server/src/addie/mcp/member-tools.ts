@@ -865,7 +865,7 @@ export function createMemberToolHandlers(
       return `Failed to fetch working groups: ${result.error}`;
     }
 
-    const groups = result.data as Array<{
+    const data = result.data as { working_groups: Array<{
       slug: string;
       name: string;
       description: string;
@@ -873,9 +873,10 @@ export function createMemberToolHandlers(
       member_count: number;
       committee_type: string;
       region?: string;
-    }>;
+    }> };
+    const groups = data.working_groups;
 
-    if (groups.length === 0) {
+    if (!groups || groups.length === 0) {
       const typeLabel = typeFilter && typeFilter !== 'all' ? ` (type: ${typeFilter})` : '';
       return `No active committees found${typeLabel}.`;
     }
@@ -912,15 +913,15 @@ export function createMemberToolHandlers(
       return `Failed to fetch working group: ${result.error}`;
     }
 
-    const group = result.data as {
+    const data = result.data as { working_group: {
       name: string;
       slug: string;
       description: string;
       is_private: boolean;
       member_count: number;
-      leaders: Array<{ name: string; headline?: string }>;
-      recent_posts?: Array<{ title: string; author: string; published_at: string }>;
-    };
+      leaders?: Array<{ name?: string; user_id: string }>;
+    }; is_member: boolean };
+    const group = data.working_group;
 
     let response = `## ${group.name}\n\n`;
     response += `**Slug:** ${group.slug}\n`;
@@ -931,16 +932,9 @@ export function createMemberToolHandlers(
     if (group.leaders && group.leaders.length > 0) {
       response += `### Leaders\n`;
       group.leaders.forEach((leader) => {
-        response += `- **${leader.name}**${leader.headline ? ` - ${leader.headline}` : ''}\n`;
+        response += `- ${leader.name || 'Unknown'}\n`;
       });
       response += `\n`;
-    }
-
-    if (group.recent_posts && group.recent_posts.length > 0) {
-      response += `### Recent Posts\n`;
-      group.recent_posts.forEach((post) => {
-        response += `- "${post.title}" by ${post.author}\n`;
-      });
     }
 
     return response;
@@ -978,20 +972,22 @@ export function createMemberToolHandlers(
       return `Failed to fetch your working groups: ${result.error}`;
     }
 
-    const memberships = result.data as Array<{
-      working_group: { name: string; slug: string };
-      role: string;
-      joined_at: string;
-    }>;
+    const data = result.data as { working_groups: Array<{
+      name: string;
+      slug: string;
+      committee_type: string;
+      is_private: boolean;
+    }> };
+    const groups = data.working_groups;
 
-    if (memberships.length === 0) {
+    if (!groups || groups.length === 0) {
       return "You're not a member of any working groups yet. Use list_working_groups to find groups to join!";
     }
 
     let response = `## Your Working Group Memberships\n\n`;
-    memberships.forEach((m) => {
-      const role = m.role === 'leader' ? '👑 Leader' : '👤 Member';
-      response += `- **${m.working_group.name}** (${m.working_group.slug}) - ${role}\n`;
+    groups.forEach((group) => {
+      const typeLabel = group.committee_type !== 'working_group' ? ` [${group.committee_type.replace('_', ' ')}]` : '';
+      response += `- **${group.name}**${typeLabel} (${group.slug})\n`;
     });
 
     return response;
@@ -1101,7 +1097,7 @@ export function createMemberToolHandlers(
       return `Failed to fetch your profile: ${result.error}`;
     }
 
-    const profile = result.data as {
+    const data = result.data as { profile: {
       name: string;
       slug: string;
       headline?: string;
@@ -1111,7 +1107,13 @@ export function createMemberToolHandlers(
       linkedin?: string;
       location?: string;
       is_visible: boolean;
-    };
+    } | null; organization_name?: string };
+
+    if (!data.profile) {
+      return "You don't have a member profile yet. Visit https://agenticadvertising.org/member-profile to create one!";
+    }
+
+    const profile = data.profile;
 
     let response = `## Your Member Profile\n\n`;
     response += `**Name:** ${profile.name}\n`;
