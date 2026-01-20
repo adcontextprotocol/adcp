@@ -11,7 +11,7 @@ import {
   isCleanupConfigured,
 } from "../../services/prospect-cleanup.js";
 import { isLushaConfigured } from "../../services/lusha.js";
-import { mergeOrganizations, previewMerge } from "../../db/org-merge-db.js";
+import { mergeOrganizations, previewMerge, StripeCustomerResolution } from "../../db/org-merge-db.js";
 import { getPool } from "../../db/client.js";
 
 const logger = createLogger("admin-cleanup");
@@ -257,6 +257,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
             has_notes: !!secondaryOrg.prospect_notes,
           },
           estimated_changes: preview.estimated_changes,
+          stripe_customer_conflict: preview.stripe_customer_conflict,
           warnings: preview.warnings,
         });
       } catch (error) {
@@ -272,7 +273,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
   // POST /api/admin/cleanup/merge - Execute organization merge
   apiRouter.post("/cleanup/merge", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { primary_org_id, secondary_org_id } = req.body;
+      const { primary_org_id, secondary_org_id, stripe_customer_resolution } = req.body;
 
       if (!primary_org_id || !secondary_org_id) {
         return res.status(400).json({
@@ -281,18 +282,28 @@ export function setupCleanupRoutes(apiRouter: Router): void {
         });
       }
 
+      // Validate stripe_customer_resolution if provided
+      const validResolutions: StripeCustomerResolution[] = ['keep_primary', 'use_secondary', 'keep_both_unlinked'];
+      if (stripe_customer_resolution && !validResolutions.includes(stripe_customer_resolution)) {
+        return res.status(400).json({
+          error: "Invalid stripe_customer_resolution",
+          message: `Must be one of: ${validResolutions.join(', ')}`,
+        });
+      }
+
       const user = (req as any).user;
       const userId = user?.id || "unknown";
 
       logger.info(
-        { primary_org_id, secondary_org_id, userId },
+        { primary_org_id, secondary_org_id, userId, stripe_customer_resolution },
         "Executing organization merge"
       );
 
       const result = await mergeOrganizations(
         primary_org_id,
         secondary_org_id,
-        userId
+        userId,
+        stripe_customer_resolution ? { stripeCustomerResolution: stripe_customer_resolution } : undefined
       );
 
       logger.info(
@@ -300,6 +311,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
           primary_org_id,
           secondary_org_id,
           tables_merged: result.tables_merged.length,
+          stripe_customer_action: result.stripe_customer_action,
         },
         "Organization merge completed"
       );
@@ -308,8 +320,11 @@ export function setupCleanupRoutes(apiRouter: Router): void {
     } catch (error) {
       logger.error({ err: error }, "Error executing merge");
 
-      // Return 400 for validation errors (e.g., personal workspace merge attempts)
-      if (error instanceof Error && error.message.startsWith('Cannot merge personal workspaces')) {
+      // Return 400 for validation errors (e.g., personal workspace merge attempts, Stripe conflicts)
+      if (error instanceof Error && (
+        error.message.startsWith('Cannot merge personal workspaces') ||
+        error.message.startsWith('Both organizations have Stripe customers')
+      )) {
         return res.status(400).json({
           error: "Validation error",
           message: error.message,

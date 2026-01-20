@@ -698,6 +698,33 @@
           </div>
         ` : '';
 
+        // Stripe customer conflict handling
+        const stripeConflict = preview.stripe_customer_conflict || {};
+        const stripeConflictHtml = stripeConflict.has_conflict ? `
+          <div class="action-panel" style="margin-bottom: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300);">
+            <strong style="color: var(--color-error-700);">🔴 Stripe Customer Conflict</strong>
+            <p style="margin: var(--space-2) 0;">Both organizations have Stripe customers. Choose which to keep:</p>
+            <ul style="margin: var(--space-2) 0 var(--space-2) var(--space-4); font-size: var(--text-sm);">
+              <li><strong>Primary:</strong> ${escapeHtml(stripeConflict.primary_customer_id || 'None')}</li>
+              <li><strong>Secondary:</strong> ${escapeHtml(stripeConflict.secondary_customer_id || 'None')}</li>
+            </ul>
+            <div style="margin-top: var(--space-3);">
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="keep_primary" checked>
+                <strong>Keep Primary</strong> - Keep primary's Stripe customer, orphan secondary's
+              </label>
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="use_secondary">
+                <strong>Use Secondary</strong> - Replace primary's with secondary's Stripe customer
+              </label>
+              <label style="display: block;">
+                <input type="radio" name="stripe_resolution" value="keep_both_unlinked">
+                <strong>Unlink Both</strong> - Unlink both for manual resolution later
+              </label>
+            </div>
+          </div>
+        ` : '';
+
         const changesHtml = preview.estimated_changes.length > 0 ? `
           <div style="margin-bottom: var(--space-4);">
             <strong>Data to be moved:</strong>
@@ -746,12 +773,13 @@
                 </div>
               </div>
 
+              ${stripeConflictHtml}
               ${warningsHtml}
               ${changesHtml}
 
               <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
                 <button class="btn btn-secondary" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Cancel</button>
-                <button class="btn btn-danger" onclick="executeMerge('${primaryOrgId}', '${secondaryOrgId}')">
+                <button class="btn btn-danger" onclick="executeMerge('${primaryOrgId}', '${secondaryOrgId}', ${stripeConflict.has_conflict || false})">
                   Confirm Merge
                 </button>
               </div>
@@ -763,9 +791,16 @@
       }
     }
 
-    async function executeMerge(primaryOrgId, secondaryOrgId) {
+    async function executeMerge(primaryOrgId, secondaryOrgId, hasStripeConflict = false) {
       if (!confirm('Are you sure you want to merge these organizations? This action cannot be undone.')) {
         return;
+      }
+
+      // Get Stripe customer resolution if there's a conflict
+      let stripeCustomerResolution = null;
+      if (hasStripeConflict) {
+        const selected = document.querySelector('input[name="stripe_resolution"]:checked');
+        stripeCustomerResolution = selected ? selected.value : 'keep_primary';
       }
 
       const modal = document.getElementById('aiAnalysisModal');
@@ -781,10 +816,14 @@
       }
 
       try {
+        const body = { primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId };
+        if (stripeCustomerResolution) {
+          body.stripe_customer_resolution = stripeCustomerResolution;
+        }
         const response = await fetch('/api/admin/cleanup/merge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId })
+          body: JSON.stringify(body)
         });
 
         if (!response.ok) {
