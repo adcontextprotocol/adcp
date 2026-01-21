@@ -565,8 +565,8 @@ export class OrganizationDatabase {
 
   /**
    * Get subscription info for an organization
-   * Tries Stripe first if customer ID is available, falls back to local DB fields
-   * This allows local development without Stripe webhooks
+   * Checks both Stripe and local DB fields, preferring active status from either source.
+   * Local DB is authoritative for invoice-based payments (no Stripe subscription).
    */
   async getSubscriptionInfo(workos_organization_id: string): Promise<SubscriptionInfo | null> {
     const org = await this.getOrganization(workos_organization_id);
@@ -575,28 +575,42 @@ export class OrganizationDatabase {
       return { status: 'none' };
     }
 
-    // If we have a Stripe customer ID, try to get info from Stripe
+    // Build local DB info first (source of truth for invoice-based payments)
+    const localInfo: SubscriptionInfo | null = org.subscription_status
+      ? {
+          status: org.subscription_status as SubscriptionInfo['status'],
+          product_name: org.subscription_product_name || undefined,
+          product_id: org.subscription_product_id || undefined,
+          current_period_end: org.subscription_current_period_end
+            ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
+            : undefined,
+          cancel_at_period_end: org.subscription_canceled_at !== null,
+        }
+      : null;
+
+    // If we have a Stripe customer ID, check for active subscription
     if (org.stripe_customer_id) {
       const stripeInfo = await getSubscriptionInfo(org.stripe_customer_id);
+
+      // If Stripe has an active subscription, use that
+      if (stripeInfo && stripeInfo.status !== 'none') {
+        return stripeInfo;
+      }
+
+      // Stripe has no subscription - prefer local DB if it shows active
+      // This handles invoice-based payments where there's no Stripe subscription
+      if (localInfo && localInfo.status === 'active') {
+        return localInfo;
+      }
+
+      // Return Stripe's response (which may be 'none')
       if (stripeInfo) {
         return stripeInfo;
       }
     }
 
-    // Fall back to local database fields (useful for local dev without Stripe)
-    if (org.subscription_status) {
-      return {
-        status: org.subscription_status as SubscriptionInfo['status'],
-        product_name: org.subscription_product_name || undefined,
-        product_id: org.subscription_product_id || undefined,
-        current_period_end: org.subscription_current_period_end
-          ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
-          : undefined,
-        cancel_at_period_end: org.subscription_canceled_at !== null,
-      };
-    }
-
-    return { status: 'none' };
+    // No Stripe customer - use local DB or return 'none'
+    return localInfo || { status: 'none' };
   }
 
   // Agreement Methods
