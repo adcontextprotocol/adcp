@@ -988,7 +988,7 @@
               <div class="aao-footer__title">Legal</div>
               <ul class="aao-footer__list">
                 <li><a href="/api/agreement?type=privacy_policy">Privacy Policy</a></li>
-                <li><a href="/api/agreement?type=terms_of_service">Terms of Service</a></li>
+                <li><a href="/api/agreement?type=terms_of_service">Terms of Use</a></li>
                 <li><a href="/api/agreement?type=bylaws">Bylaws</a></li>
                 <li><a href="/api/agreement?type=ip_policy">IP Policy</a></li>
               </ul>

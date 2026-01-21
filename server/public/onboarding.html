@@ -689,7 +689,7 @@
           <div class="agreements-checkbox" onclick="document.getElementById('tosAgree').click(); event.stopPropagation();">
             <input type="checkbox" id="tosAgree" required onclick="event.stopPropagation();">
             <label for="tosAgree" onclick="event.stopPropagation();">
-              I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+              I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
             </label>
           </div>
           <button type="submit" class="btn" id="createBtn">Register Company</button>
@@ -724,7 +724,7 @@
         <div class="agreements-checkbox" onclick="document.getElementById('tosAgreeIndividual').click(); event.stopPropagation();">
           <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
           <label for="tosAgreeIndividual" onclick="event.stopPropagation();">
-            I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+            I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
           </label>
         </div>
         <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Join as Individual</button>
@@ -1186,7 +1186,7 @@
       }
 
       if (!tosAgree) {
-        showError('Please agree to the Terms of Service and Privacy Policy');
+        showError('Please agree to the Terms of Use and Privacy Policy');
         return;
       }
 
@@ -1228,7 +1228,7 @@
       var btn = document.getElementById('individualBtn');
 
       if (!tosAgree) {
-        showError('Please agree to the Terms of Service and Privacy Policy');
+        showError('Please agree to the Terms of Use and Privacy Policy');
         return;
       }
 
