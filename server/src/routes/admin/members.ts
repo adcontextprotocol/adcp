@@ -272,10 +272,72 @@ export function setupMembersRoutes(
                   };
                   syncResults.updated = true;
                 } else {
-                  syncResults.stripe = {
-                    success: true,
-                    error: "No active subscription found",
-                  };
+                  // No subscription - check for paid membership invoices
+                  // This handles customers who paid via manual invoice
+                  const invoices = await stripe.invoices.list({
+                    customer: org.stripe_customer_id,
+                    status: 'paid',
+                    limit: 10,
+                  });
+
+                  // Find the most recent paid membership invoice
+                  const membershipInvoice = invoices.data.find(inv => {
+                    const lineItem = inv.lines?.data?.[0] as any;
+                    const lookupKey = lineItem?.price?.lookup_key || '';
+                    const productMetadata = lineItem?.price?.product?.metadata || {};
+                    return (
+                      lookupKey.startsWith('aao_membership_') ||
+                      lookupKey.startsWith('aao_invoice_') ||
+                      productMetadata.category === 'membership'
+                    );
+                  });
+
+                  if (membershipInvoice && membershipInvoice.amount_paid > 0) {
+                    // Calculate period end (use invoice period_end or default to 1 year from payment)
+                    const periodEnd = membershipInvoice.period_end
+                      ? new Date(membershipInvoice.period_end * 1000)
+                      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+                    await pool.query(
+                      `UPDATE organizations
+                       SET subscription_status = 'active',
+                           subscription_amount = $1,
+                           subscription_currency = $2,
+                           subscription_current_period_end = $3,
+                           updated_at = NOW()
+                       WHERE workos_organization_id = $4`,
+                      [
+                        membershipInvoice.amount_paid,
+                        membershipInvoice.currency || 'usd',
+                        periodEnd,
+                        orgId,
+                      ]
+                    );
+
+                    syncResults.stripe = {
+                      success: true,
+                      subscription: {
+                        status: 'active',
+                        amount: membershipInvoice.amount_paid,
+                        interval: 'year', // Manual invoices are typically annual
+                        current_period_end: Math.floor(periodEnd.getTime() / 1000),
+                        canceled_at: null,
+                      },
+                    };
+                    syncResults.updated = true;
+
+                    logger.info({
+                      orgId,
+                      invoiceId: membershipInvoice.id,
+                      amount: membershipInvoice.amount_paid,
+                      periodEnd: periodEnd.toISOString(),
+                    }, 'Synced membership status from paid invoice (no subscription)');
+                  } else {
+                    syncResults.stripe = {
+                      success: true,
+                      error: "No active subscription or paid membership invoice found",
+                    };
+                  }
                 }
               }
             } catch (error) {
