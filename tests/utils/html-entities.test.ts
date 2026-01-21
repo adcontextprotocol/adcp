@@ -12,6 +12,11 @@ describe('decodeHtmlEntities', () => {
   it('decodes decimal character references', () => {
     expect(decodeHtmlEntities("&#39;")).toBe("'");
     expect(decodeHtmlEntities("&#34;")).toBe('"');
+    // High code point: right single quote (U+2019) - common in Adweek titles
+    expect(decodeHtmlEntities("&#8217;")).toBe('\u2019');
+    expect(decodeHtmlEntities("Read All of ADWEEK&#8217;s Year-Ahead")).toBe(
+      "Read All of ADWEEK\u2019s Year-Ahead"
+    );
   });
 
   it('decodes named entities', () => {

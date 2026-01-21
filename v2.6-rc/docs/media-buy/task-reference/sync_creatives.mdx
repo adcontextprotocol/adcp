@@ -106,7 +106,7 @@ asyncio.run(main())
 | `assignments`     | object     | No       | Map of creative_id to array of package_ids for bulk assignment                                                                                                           |
 | `dry_run`         | boolean    | No       | When true, preview changes without applying them (default: false)                                                                                                        |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
-| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false)                                                                                                      |
+| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot delete creatives assigned to active, non-paused packages.                                  |
 
 ### Creative Object
 
@@ -651,11 +651,11 @@ The operation status (`completed`) means the review process finished. Individual
 | `PACKAGE_NOT_FOUND`       | Package ID doesn't exist in media buy             | Verify `package_id` from `create_media_buy` response                 |
 | `BRAND_SAFETY_VIOLATION`  | Creative failed brand safety scan                 | Review content against publisher's brand safety guidelines           |
 | `FORMAT_MISMATCH`         | Assets don't match format requirements            | Verify asset types and specifications match format definition        |
-| `DUPLICATE_CREATIVE_ID`   | Creative ID already exists in different media buy | Use unique `creative_id` or sync to correct media buy                |
+| `CREATIVE_IN_ACTIVE_DELIVERY` | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
 ## Best Practices
 
-1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development.
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #7).
 
 2. **Validate first** - Use `dry_run: true` to catch errors before actual upload. This saves bandwidth and processing time.
 
@@ -666,6 +666,8 @@ The operation status (`completed`) means the review process finished. Individual
 5. **Brand manifests** - For generative creatives, validate manifest schema before syncing to avoid processing failures.
 
 6. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
+
+7. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via `update_media_buy`, or create a new creative with a different `creative_id`.
 
 ## Next Steps
 

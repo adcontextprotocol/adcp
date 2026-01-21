@@ -28,6 +28,10 @@ export interface ThreadContext {
   viewing_channel_name?: string;
   viewing_channel_description?: string;
   viewing_channel_topic?: string;
+  // Working group associated with the viewing channel (if any)
+  viewing_channel_working_group_slug?: string;
+  viewing_channel_working_group_name?: string;
+  viewing_channel_working_group_id?: string;
   team_id?: string;
   enterprise_id?: string;
 
@@ -213,6 +217,10 @@ export interface ThreadListFilters {
   since?: Date;
   limit?: number;
   offset?: number;
+  // Search filters
+  search_text?: string;
+  tool_name?: string;
+  user_search?: string;
 }
 
 export type RatingSource = 'user' | 'admin';
@@ -522,40 +530,61 @@ export class ThreadService {
     const params: unknown[] = [];
     let paramIndex = 1;
 
+    // Determine if we need to join with messages table for search/tool filtering
+    const needsMessageJoin = !!(filters.search_text || filters.tool_name);
+
     if (filters.channel) {
-      conditions.push(`channel = $${paramIndex++}`);
+      conditions.push(`s.channel = $${paramIndex++}`);
       params.push(filters.channel);
     }
 
     if (filters.user_id) {
-      conditions.push(`user_id = $${paramIndex++}`);
+      conditions.push(`s.user_id = $${paramIndex++}`);
       params.push(filters.user_id);
     }
 
     if (filters.flagged_only) {
-      conditions.push(`flagged = TRUE`);
+      conditions.push(`s.flagged = TRUE`);
     }
 
     if (filters.unreviewed_only) {
-      conditions.push(`reviewed = FALSE`);
+      conditions.push(`s.reviewed = FALSE`);
     }
 
     if (filters.has_feedback) {
-      conditions.push(`feedback_count > 0`);
+      conditions.push(`s.feedback_count > 0`);
     }
 
     if (filters.has_user_feedback) {
-      conditions.push(`user_feedback_count > 0`);
+      conditions.push(`s.user_feedback_count > 0`);
     }
 
     if (filters.min_messages !== undefined && filters.min_messages > 0) {
-      conditions.push(`message_count >= $${paramIndex++}`);
+      conditions.push(`s.message_count >= $${paramIndex++}`);
       params.push(filters.min_messages);
     }
 
     if (filters.since) {
-      conditions.push(`started_at >= $${paramIndex++}`);
+      conditions.push(`s.started_at >= $${paramIndex++}`);
       params.push(filters.since);
+    }
+
+    // User display name search (ILIKE for partial matching)
+    if (filters.user_search) {
+      conditions.push(`s.user_display_name ILIKE $${paramIndex++}`);
+      params.push(`%${filters.user_search}%`);
+    }
+
+    // Text search in message content (requires join)
+    if (filters.search_text) {
+      conditions.push(`m.content ILIKE $${paramIndex++}`);
+      params.push(`%${filters.search_text}%`);
+    }
+
+    // Tool name filter (requires join, searches tools_used array)
+    if (filters.tool_name) {
+      conditions.push(`$${paramIndex++} = ANY(m.tools_used)`);
+      params.push(filters.tool_name);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -564,15 +593,39 @@ export class ThreadService {
 
     params.push(limit, offset);
 
-    const result = await query<ThreadSummary>(
-      `SELECT * FROM addie_threads_summary
-       ${whereClause}
-       ORDER BY last_message_at DESC
-       LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
-      params
-    );
+    let sql: string;
+    if (needsMessageJoin) {
+      // Join with messages table for text/tool search, use DISTINCT to avoid duplicates
+      sql = `SELECT DISTINCT ON (s.last_message_at, s.thread_id) s.*
+             FROM addie_threads_summary s
+             JOIN addie_thread_messages m ON s.thread_id = m.thread_id
+             ${whereClause}
+             ORDER BY s.last_message_at DESC, s.thread_id
+             LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    } else {
+      // Simple query without join
+      sql = `SELECT s.*
+             FROM addie_threads_summary s
+             ${whereClause}
+             ORDER BY s.last_message_at DESC
+             LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    }
 
+    const result = await query<ThreadSummary>(sql, params);
     return result.rows;
+  }
+
+  /**
+   * Get list of distinct tool names used across all threads
+   */
+  async getAvailableTools(): Promise<string[]> {
+    const result = await query<{ tool_name: string }>(
+      `SELECT DISTINCT unnest(tools_used) as tool_name
+       FROM addie_thread_messages
+       WHERE tools_used IS NOT NULL AND array_length(tools_used, 1) > 0
+       ORDER BY tool_name`
+    );
+    return result.rows.map(r => r.tool_name);
   }
 
   /**
@@ -852,9 +905,10 @@ export class ThreadService {
 
   /**
    * Get performance metrics including per-tool timing
+   * @param hours - Number of hours to look back (default 168 = 7 days)
    */
-  async getPerformanceMetrics(days = 7): Promise<{
-    period_days: number;
+  async getPerformanceMetrics(hours = 168): Promise<{
+    period_hours: number;
     summary: {
       total_messages: number;
       total_assistant_messages: number;
@@ -924,13 +978,27 @@ export class ThreadService {
         ROUND((AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL))::numeric, 0) as avg_input_tokens,
         ROUND((AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL))::numeric, 0) as avg_output_tokens
       FROM addie_thread_messages
-      WHERE created_at > NOW() - make_interval(days => $1)`,
-      [days]
+      WHERE created_at > NOW() - make_interval(hours => $1)`,
+      [hours]
     );
 
-    // Latency distribution
+    // Latency distribution (includes background API calls)
     const latencyResult = await query<{ bucket: string; count: string }>(
-      `SELECT
+      `WITH all_api_calls AS (
+        -- Chat responses from thread messages
+        SELECT latency_ms
+        FROM addie_thread_messages
+        WHERE role = 'assistant'
+          AND latency_ms IS NOT NULL
+          AND created_at > NOW() - make_interval(hours => $1)
+        UNION ALL
+        -- Background API calls (router, insight extraction, etc.)
+        SELECT latency_ms
+        FROM addie_api_calls
+        WHERE latency_ms IS NOT NULL
+          AND created_at > NOW() - make_interval(hours => $1)
+      )
+      SELECT
         CASE
           WHEN latency_ms < 5000 THEN '0-5s'
           WHEN latency_ms < 10000 THEN '5-10s'
@@ -940,16 +1008,13 @@ export class ThreadService {
           ELSE '45s+'
         END as bucket,
         COUNT(*) as count
-      FROM addie_thread_messages
-      WHERE role = 'assistant'
-        AND latency_ms IS NOT NULL
-        AND created_at > NOW() - make_interval(days => $1)
+      FROM all_api_calls
       GROUP BY 1
       ORDER BY MIN(latency_ms)`,
-      [days]
+      [hours]
     );
 
-    // By model
+    // By model (combines thread messages + background API calls)
     const modelResult = await query<{
       model: string;
       count: string;
@@ -958,19 +1023,29 @@ export class ThreadService {
       total_input_tokens: string;
       total_output_tokens: string;
     }>(
-      `SELECT
+      `WITH all_api_calls AS (
+        -- Chat responses from thread messages
+        SELECT model, latency_ms, tokens_input, tokens_output
+        FROM addie_thread_messages
+        WHERE role = 'assistant'
+          AND created_at > NOW() - make_interval(hours => $1)
+        UNION ALL
+        -- Background API calls (router, insight extraction, etc.)
+        SELECT model, latency_ms, tokens_input, tokens_output
+        FROM addie_api_calls
+        WHERE created_at > NOW() - make_interval(hours => $1)
+      )
+      SELECT
         COALESCE(model, 'unknown') as model,
         COUNT(*) as count,
         ROUND((AVG(latency_ms))::numeric, 0) as avg_latency_ms,
         ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms))::numeric, 0) as p50_latency_ms,
         COALESCE(SUM(tokens_input), 0) as total_input_tokens,
         COALESCE(SUM(tokens_output), 0) as total_output_tokens
-      FROM addie_thread_messages
-      WHERE role = 'assistant'
-        AND created_at > NOW() - make_interval(days => $1)
+      FROM all_api_calls
       GROUP BY model
       ORDER BY count DESC`,
-      [days]
+      [hours]
     );
 
     // By tool (using JSONB)
@@ -988,7 +1063,7 @@ export class ThreadService {
         FROM addie_thread_messages
         WHERE tool_calls IS NOT NULL
           AND tool_calls != '[]'::jsonb
-          AND created_at > NOW() - make_interval(days => $1)
+          AND created_at > NOW() - make_interval(hours => $1)
       )
       SELECT
         tool->>'name' as tool_name,
@@ -1000,25 +1075,31 @@ export class ThreadService {
       FROM tool_calls
       GROUP BY tool->>'name'
       ORDER BY call_count DESC`,
-      [days]
+      [hours]
     );
 
-    // By channel
+    // By channel (with timing breakdown to explain latency differences)
     const channelResult = await query<{
       channel: string;
       message_count: string;
       avg_latency_ms: string | null;
+      avg_llm_ms: string | null;
+      avg_tool_ms: string | null;
+      avg_iterations: string | null;
     }>(
       `SELECT
         t.channel,
         COUNT(m.message_id) as message_count,
-        ROUND((AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_latency_ms
+        ROUND((AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_latency_ms,
+        ROUND((AVG(m.timing_total_llm_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_llm_ms,
+        ROUND((AVG(m.timing_total_tool_ms) FILTER (WHERE m.role = 'assistant'))::numeric, 0) as avg_tool_ms,
+        ROUND((AVG(m.processing_iterations) FILTER (WHERE m.role = 'assistant'))::numeric, 1) as avg_iterations
       FROM addie_threads t
       JOIN addie_thread_messages m ON t.thread_id = m.thread_id
-      WHERE m.created_at > NOW() - make_interval(days => $1)
+      WHERE m.created_at > NOW() - make_interval(hours => $1)
       GROUP BY t.channel
       ORDER BY message_count DESC`,
-      [days]
+      [hours]
     );
 
     // Daily trend
@@ -1034,16 +1115,16 @@ export class ThreadService {
         ROUND((AVG(latency_ms) FILTER (WHERE role = 'assistant'))::numeric, 0) as avg_latency_ms,
         COALESCE(SUM(tokens_input), 0) + COALESCE(SUM(tokens_output), 0) as total_tokens
       FROM addie_thread_messages
-      WHERE created_at > NOW() - make_interval(days => $1)
+      WHERE created_at > NOW() - make_interval(hours => $1)
       GROUP BY DATE_TRUNC('day', created_at)
       ORDER BY date DESC`,
-      [days]
+      [hours]
     );
 
     const summary = summaryResult.rows[0];
 
     return {
-      period_days: days,
+      period_hours: hours,
       summary: {
         total_messages: parseInt(summary.total_messages, 10) || 0,
         total_assistant_messages: parseInt(summary.total_assistant_messages, 10) || 0,
@@ -1080,6 +1161,9 @@ export class ThreadService {
         channel: r.channel,
         message_count: parseInt(r.message_count, 10) || 0,
         avg_latency_ms: r.avg_latency_ms ? parseInt(r.avg_latency_ms, 10) : null,
+        avg_llm_ms: r.avg_llm_ms ? parseInt(r.avg_llm_ms, 10) : null,
+        avg_tool_ms: r.avg_tool_ms ? parseInt(r.avg_tool_ms, 10) : null,
+        avg_iterations: r.avg_iterations ? parseFloat(r.avg_iterations) : null,
       })),
       daily_trend: dailyResult.rows.map(r => ({
         date: r.date,

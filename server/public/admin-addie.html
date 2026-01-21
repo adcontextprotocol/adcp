@@ -1240,9 +1240,11 @@
     <!-- Config Version Banner -->
     <div class="card" id="config-version-banner" style="display: flex; justify-content: space-between; align-items: center; background: var(--color-bg-muted); padding: var(--space-4) var(--space-5);">
       <div>
-        <span style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Config Version:</span>
+        <span style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Addie Version:</span>
         <span id="config-version-id" style="font-family: var(--font-mono); color: var(--color-brand);">-</span>
-        <span style="color: var(--color-text-secondary); margin-left: var(--space-2);">(<span id="config-rule-count">-</span> rules)</span>
+        <span style="color: var(--color-text-secondary); margin-left: var(--space-2);">
+          (code <span id="config-code-version">-</span>, <span id="config-rule-count">-</span> rules)
+        </span>
       </div>
       <div style="display: flex; gap: var(--space-4); align-items: center;">
         <span style="font-size: var(--text-sm); color: var(--color-text-secondary);">
@@ -1464,15 +1466,16 @@
 
     <!-- Config Version History Modal -->
     <div class="modal-overlay" id="config-history-modal" style="display: none;">
-      <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-        <h2>Config Version History</h2>
+      <div class="modal" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+        <h2>Addie Version History</h2>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
-          Each config version represents a unique combination of active rules. Performance metrics are tracked per version.
+          Each version represents a unique combination of code version and active rules. Performance metrics are tracked per version.
         </p>
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="border-bottom: var(--border-1) solid var(--color-gray-200);">
               <th style="text-align: left; padding: var(--space-2);">Version</th>
+              <th style="text-align: left; padding: var(--space-2);">Code</th>
               <th style="text-align: left; padding: var(--space-2);">Created</th>
               <th style="text-align: center; padding: var(--space-2);">Rules</th>
               <th style="text-align: center; padding: var(--space-2);">Messages</th>
@@ -1587,25 +1590,39 @@
               Browse conversations across all channels (Web, Slack, A2A)
             </p>
           </div>
-          <div class="filter-row">
-            <select id="stats-timeframe">
-              <option value="7d" selected>This Week</option>
-              <option value="24h">Last 24 Hours</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="all">All Time</option>
-            </select>
-            <select id="channel-filter">
-              <option value="">All Channels</option>
-              <option value="web">Web</option>
-              <option value="slack">Slack</option>
-              <option value="a2a">A2A</option>
-            </select>
-            <label><input type="checkbox" id="threads-flagged-only"> Flagged only</label>
-            <label><input type="checkbox" id="threads-unreviewed-only"> Unreviewed only</label>
-            <label><input type="checkbox" id="threads-has-feedback"> Has user feedback</label>
-            <label><input type="checkbox" id="threads-multi-turn" checked> Multi-turn only</label>
-            <button class="btn btn-secondary" onclick="loadThreads()">Refresh</button>
-          </div>
+        </div>
+        <!-- Search Row -->
+        <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap;">
+          <input type="text" id="threads-search-text" placeholder="Search message content..."
+                 style="flex: 2; min-width: 200px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);"
+                 onkeydown="if(event.key==='Enter')loadThreads()">
+          <input type="text" id="threads-search-user" placeholder="Search by user name..."
+                 style="flex: 1; min-width: 150px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);"
+                 onkeydown="if(event.key==='Enter')loadThreads()">
+          <select id="threads-tool-filter" style="min-width: 150px; padding: var(--space-2); border: var(--border-1) solid var(--color-gray-300); border-radius: var(--radius);">
+            <option value="">All Tools</option>
+          </select>
+          <button id="threads-search-btn" class="btn btn-primary" onclick="loadThreads()">Search</button>
+          <button class="btn btn-secondary" onclick="clearThreadsSearch()">Clear</button>
+        </div>
+        <!-- Filter Row -->
+        <div class="filter-row" style="margin-bottom: var(--space-3);">
+          <select id="stats-timeframe">
+            <option value="7d" selected>This Week</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="all">All Time</option>
+          </select>
+          <select id="channel-filter">
+            <option value="">All Channels</option>
+            <option value="web">Web</option>
+            <option value="slack">Slack</option>
+            <option value="a2a">A2A</option>
+          </select>
+          <label><input type="checkbox" id="threads-flagged-only"> Flagged only</label>
+          <label><input type="checkbox" id="threads-unreviewed-only"> Unreviewed only</label>
+          <label><input type="checkbox" id="threads-has-feedback"> Has user feedback</label>
+          <label><input type="checkbox" id="threads-multi-turn" checked> Multi-turn only</label>
         </div>
         <div class="threads-stats" id="threads-stats" style="margin-bottom: var(--space-4);"></div>
         <div class="threads-list" id="threads-list">
@@ -1686,10 +1703,15 @@
             <h2 style="margin: 0;">Performance Metrics</h2>
             <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
               Latency, token usage, and tool performance analysis
+              <span style="margin-left: var(--space-2); padding: 2px 8px; background: var(--color-bg-muted); border-radius: var(--radius-sm); font-family: var(--font-mono);">
+                Addie <span id="perf-addie-version">v?</span> (code <span id="perf-code-version">-</span>)
+              </span>
             </p>
           </div>
           <div class="filter-row">
             <select id="perf-days-filter" onchange="loadPerformance()">
+              <option value="0.125">Last 3 hours</option>
+              <option value="0.5">Last 12 hours</option>
               <option value="1">Last 24 hours</option>
               <option value="7" selected>Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -1771,6 +1793,9 @@
                 <th style="text-align: left; padding: var(--space-2);">Channel</th>
                 <th style="text-align: right; padding: var(--space-2);">Messages</th>
                 <th style="text-align: right; padding: var(--space-2);">Avg Latency</th>
+                <th style="text-align: right; padding: var(--space-2);">LLM Time</th>
+                <th style="text-align: right; padding: var(--space-2);">Tool Time</th>
+                <th style="text-align: right; padding: var(--space-2);">Iterations</th>
               </tr>
             </thead>
             <tbody id="perf-by-channel"></tbody>
@@ -2129,11 +2154,15 @@
         if (config.config_version) {
           const cv = config.config_version;
           document.getElementById('config-version-id').textContent = `v${cv.version_id}`;
+          document.getElementById('config-code-version').textContent = cv.code_version || '-';
           document.getElementById('config-rule-count').textContent = cv.rule_count || 0;
           document.getElementById('config-message-count').textContent = cv.message_count || 0;
           document.getElementById('config-rating').textContent = cv.avg_rating
             ? `${parseFloat(cv.avg_rating).toFixed(1)}/5`
             : 'N/A';
+          // Also update performance page version display
+          document.getElementById('perf-addie-version').textContent = `v${cv.version_id}`;
+          document.getElementById('perf-code-version').textContent = cv.code_version || '-';
         }
       } catch (error) {
         console.error('Error loading stats:', error);
@@ -2151,7 +2180,7 @@
 
         const listEl = document.getElementById('config-history-list');
         if (!data.versions || data.versions.length === 0) {
-          listEl.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-4); color: var(--color-text-secondary);">No config versions found</td></tr>';
+          listEl.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: var(--space-4); color: var(--color-text-secondary);">No config versions found</td></tr>';
           return;
         }
 
@@ -2161,6 +2190,9 @@
               <span style="font-family: var(--font-mono); font-weight: var(--font-semibold);">v${v.version_id}</span>
               <br>
               <span style="font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono);">${v.config_hash?.substring(0, 8) || '-'}</span>
+            </td>
+            <td style="padding: var(--space-2); font-size: var(--text-sm); font-family: var(--font-mono);">
+              ${v.code_version || '-'}
             </td>
             <td style="padding: var(--space-2); font-size: var(--text-sm);">
               ${new Date(v.created_at).toLocaleDateString()}<br>
@@ -2180,7 +2212,7 @@
       } catch (error) {
         console.error('Error loading config history:', error);
         document.getElementById('config-history-list').innerHTML =
-          '<tr><td colspan="6" style="text-align: center; padding: var(--space-4); color: var(--color-error);">Error loading history</td></tr>';
+          '<tr><td colspan="7" style="text-align: center; padding: var(--space-4); color: var(--color-error);">Error loading history</td></tr>';
       }
     }
 
@@ -2434,14 +2466,51 @@
       }
     }
 
+    // Load available tools for the filter dropdown
+    async function loadThreadsTools() {
+      try {
+        const response = await fetch('/api/admin/addie/threads/tools');
+        const data = await response.json();
+        const select = document.getElementById('threads-tool-filter');
+        select.innerHTML = '<option value="">All Tools</option>' +
+          data.tools.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+      } catch (error) {
+        console.error('Error loading tools:', error);
+      }
+    }
+
+    // Clear search filters
+    function clearThreadsSearch() {
+      document.getElementById('threads-search-text').value = '';
+      document.getElementById('threads-search-user').value = '';
+      document.getElementById('threads-tool-filter').value = '';
+      loadThreads();
+    }
+
     // Load unified threads
+    let threadsLoading = false;
     async function loadThreads() {
+      // Prevent concurrent requests
+      if (threadsLoading) return;
+      threadsLoading = true;
+
+      const searchBtn = document.getElementById('threads-search-btn');
+      if (searchBtn) {
+        searchBtn.disabled = true;
+        searchBtn.textContent = 'Searching...';
+      }
+
       const channel = document.getElementById('channel-filter').value;
       const flaggedOnly = document.getElementById('threads-flagged-only').checked;
       const unreviewedOnly = document.getElementById('threads-unreviewed-only').checked;
       const hasUserFeedback = document.getElementById('threads-has-feedback').checked;
       const multiTurnOnly = document.getElementById('threads-multi-turn').checked;
       const timeframe = document.getElementById('stats-timeframe').value;
+
+      // Search filters
+      const searchText = document.getElementById('threads-search-text').value.trim();
+      const userSearch = document.getElementById('threads-search-user').value.trim();
+      const toolFilter = document.getElementById('threads-tool-filter').value;
 
       const params = new URLSearchParams();
       params.append('limit', '50');
@@ -2450,6 +2519,11 @@
       if (unreviewedOnly) params.append('unreviewed_only', 'true');
       if (hasUserFeedback) params.append('has_user_feedback', 'true');
       if (multiTurnOnly) params.append('min_messages', '2');
+
+      // Add search params
+      if (searchText) params.append('search', searchText);
+      if (userSearch) params.append('user_search', userSearch);
+      if (toolFilter) params.append('tool', toolFilter);
 
       // Add timeframe filter to threads query
       if (timeframe !== 'all') {
@@ -2572,6 +2646,13 @@
         console.error('Error loading threads:', error);
         document.getElementById('threads-list').innerHTML =
           '<div class="empty-state"><h3>Error loading threads</h3></div>';
+      } finally {
+        threadsLoading = false;
+        const searchBtn = document.getElementById('threads-search-btn');
+        if (searchBtn) {
+          searchBtn.disabled = false;
+          searchBtn.textContent = 'Search';
+        }
       }
     }
 
@@ -2593,11 +2674,12 @@
         // Latency distribution chart (simple bar chart)
         const chartContainer = document.getElementById('latency-chart');
         const maxCount = Math.max(...data.latency_distribution.map(d => d.count), 1);
+        const maxBarHeight = 110; // pixels, leaving room for labels
         chartContainer.innerHTML = data.latency_distribution.map(d => {
-          const height = Math.max(5, (d.count / maxCount) * 100);
+          const barHeight = Math.max(4, Math.round((d.count / maxCount) * maxBarHeight));
           return `
-            <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
-              <div style="width: 100%; max-width: 60px; background: var(--color-brand); border-radius: var(--radius-sm); height: ${height}%;"></div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%;">
+              <div style="width: 100%; max-width: 60px; background: var(--color-brand); border-radius: var(--radius-sm); height: ${barHeight}px;"></div>
               <div style="font-size: var(--text-xs); margin-top: var(--space-1); color: var(--color-text-secondary);">${d.bucket}</div>
               <div style="font-size: var(--text-xs); color: var(--color-text-muted);">${d.count}</div>
             </div>
@@ -2636,8 +2718,11 @@
             <td style="padding: var(--space-2);"><span class="badge">${c.channel}</span></td>
             <td style="text-align: right; padding: var(--space-2);">${c.message_count}</td>
             <td style="text-align: right; padding: var(--space-2);">${c.avg_latency_ms ? (c.avg_latency_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_llm_ms ? (c.avg_llm_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_tool_ms ? (c.avg_tool_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_iterations || '-'}</td>
           </tr>
-        `).join('') || '<tr><td colspan="3" style="text-align: center; padding: var(--space-4);">No data</td></tr>';
+        `).join('') || '<tr><td colspan="6" style="text-align: center; padding: var(--space-4);">No data</td></tr>';
 
       } catch (error) {
         console.error('Error loading performance:', error);
@@ -4797,6 +4882,7 @@
     loadSuggestions();
     loadInsights();
     loadKnowledge();
+    loadThreadsTools();
     loadThreads();
     loadQueue();
 

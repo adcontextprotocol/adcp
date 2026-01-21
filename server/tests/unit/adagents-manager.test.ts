@@ -730,6 +730,78 @@ describe('AdAgentsManager', () => {
     });
   });
 
+  describe('MCP Protocol Support', () => {
+    it('falls back to MCP when A2A endpoints return 404', async () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://mcp-agent.example.com/mcp',
+          authorized_for: 'Test',
+        },
+      ];
+
+      // A2A endpoints return 404
+      mockedAxios.get.mockResolvedValue({
+        status: 404,
+        data: {},
+        headers: {},
+      });
+
+      // Mock MCP client
+      vi.doMock('@adcp/client', () => ({
+        AdCPClient: class {
+          agent() {
+            return {
+              getAgentInfo: () =>
+                Promise.resolve({
+                  name: 'MCP Test Agent',
+                  tools: [{ name: 'tool1' }, { name: 'tool2' }],
+                }),
+            };
+          }
+        },
+      }));
+
+      const results = await manager.validateAgentCards(agents);
+
+      expect(results[0].valid).toBe(true);
+      expect(results[0].card_data?.protocol).toBe('mcp');
+      expect(results[0].card_data?.tools_count).toBe(2);
+    });
+
+    it('returns combined errors when both A2A and MCP fail', async () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://broken-agent.example.com',
+          authorized_for: 'Test',
+        },
+      ];
+
+      // A2A endpoints return 404
+      mockedAxios.get.mockResolvedValue({
+        status: 404,
+        data: {},
+        headers: {},
+      });
+
+      // Mock MCP client to fail
+      vi.doMock('@adcp/client', () => ({
+        AdCPClient: class {
+          agent() {
+            return {
+              getAgentInfo: () => Promise.reject(new Error('Connection refused')),
+            };
+          }
+        },
+      }));
+
+      const results = await manager.validateAgentCards(agents);
+
+      expect(results[0].valid).toBe(false);
+      expect(results[0].errors.some((e) => e.includes('A2A'))).toBe(true);
+      expect(results[0].errors.some((e) => e.includes('MCP'))).toBe(true);
+    });
+  });
+
   describe('validateProposed', () => {
     it('validates proposed agents without making HTTP requests', () => {
       const agents: AuthorizedAgent[] = [

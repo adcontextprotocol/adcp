@@ -8,9 +8,16 @@
 import { Router, Request, Response } from 'express';
 import { Webhook } from 'svix';
 import Anthropic from '@anthropic-ai/sdk';
+import crypto from 'crypto';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { ModelConfig } from '../config/models.js';
+import { verifyWebhookSignature as verifyZoomSignature } from '../integrations/zoom.js';
+import {
+  handleRecordingCompleted,
+  handleMeetingStarted,
+  handleMeetingEnded,
+} from '../services/meeting-service.js';
 import {
   getFeedByEmailSlug,
   createEmailPerspective,
@@ -1237,6 +1244,148 @@ export function createWebhooksRouter(): Router {
         const totalDurationMs = Date.now() - requestStartTime;
         logger.error({ error, totalDurationMs }, 'Error processing Resend inbound webhook');
         res.status(500).json({ error: 'Internal error' });
+      }
+    }
+  );
+
+  // =========================================================================
+  // Zoom Webhooks
+  // =========================================================================
+
+  router.post(
+    '/zoom',
+    // Custom middleware to capture raw body for signature verification
+    (req: Request, res: Response, next) => {
+      let rawBody = '';
+      req.setEncoding('utf8');
+
+      req.on('data', (chunk: string) => {
+        rawBody += chunk;
+      });
+
+      req.on('end', () => {
+        (req as Request & { rawBody: string }).rawBody = rawBody;
+        try {
+          req.body = JSON.parse(rawBody);
+          next();
+        } catch {
+          logger.warn({ rawBodyLength: rawBody.length }, 'Invalid JSON in Zoom webhook request');
+          res.status(400).json({ error: 'Invalid JSON' });
+        }
+      });
+    },
+    async (req: Request, res: Response) => {
+      const requestStartTime = Date.now();
+
+      try {
+        const body = req.body;
+        const rawBody = (req as Request & { rawBody: string }).rawBody;
+
+        // Log incoming request immediately for debugging
+        logger.info({
+          event: body?.event,
+          hasSignature: !!req.headers['x-zm-signature'],
+          hasTimestamp: !!req.headers['x-zm-request-timestamp'],
+          bodyLength: rawBody?.length,
+        }, 'Received Zoom webhook request');
+
+        // Handle URL validation challenge from Zoom
+        // https://developers.zoom.us/docs/api/rest/webhook-reference/#validate-your-webhook-endpoint
+        if (body.event === 'endpoint.url_validation') {
+          const plainToken = body.payload?.plainToken;
+          if (!plainToken) {
+            logger.warn('Zoom URL validation request missing plainToken');
+            return res.status(400).json({ error: 'Missing plainToken' });
+          }
+
+          const webhookSecret = process.env.ZOOM_WEBHOOK_SECRET;
+          if (!webhookSecret) {
+            logger.error('ZOOM_WEBHOOK_SECRET not configured - cannot validate endpoint');
+            return res.status(500).json({ error: 'Webhook secret not configured' });
+          }
+
+          // Generate encrypted token using HMAC-SHA256
+          const encryptedToken = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(plainToken)
+            .digest('hex');
+
+          logger.info('Responding to Zoom URL validation challenge');
+          return res.status(200).json({
+            plainToken,
+            encryptedToken,
+          });
+        }
+
+        // Verify webhook signature for real events
+        const signature = req.headers['x-zm-signature'] as string;
+        const timestamp = req.headers['x-zm-request-timestamp'] as string;
+
+        if (!signature || !timestamp) {
+          logger.warn('Zoom webhook missing signature headers');
+          return res.status(401).json({ error: 'Missing signature headers' });
+        }
+
+        // Validate timestamp is recent (within 5 minutes) to prevent replay attacks
+        const requestTime = parseInt(timestamp, 10) * 1000; // Zoom sends seconds
+        const currentTime = Date.now();
+        const fiveMinutesMs = 5 * 60 * 1000;
+
+        if (isNaN(requestTime) || Math.abs(currentTime - requestTime) > fiveMinutesMs) {
+          logger.warn({ timestamp, currentTime }, 'Zoom webhook timestamp too old or invalid');
+          return res.status(401).json({ error: 'Timestamp expired' });
+        }
+
+        if (!verifyZoomSignature(rawBody, signature, timestamp)) {
+          logger.warn('Zoom webhook signature verification failed');
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        logger.info({ event: body.event, meetingId: body.payload?.object?.id }, 'Processing Zoom webhook');
+
+        // Handle different event types
+        switch (body.event) {
+          case 'recording.completed':
+          case 'recording.transcript_completed': {
+            const meetingUuid = body.payload?.object?.uuid;
+            const meetingId = body.payload?.object?.id;
+            if (meetingUuid && typeof meetingUuid === 'string' && meetingUuid.length < 256) {
+              // Pass both UUID and numeric ID - we store the numeric ID in our DB
+              await handleRecordingCompleted(meetingUuid, meetingId?.toString());
+            } else if (meetingUuid) {
+              logger.warn({ meetingUuidType: typeof meetingUuid }, 'Invalid meetingUuid format');
+            }
+            break;
+          }
+
+          case 'meeting.started': {
+            const startedMeetingId = body.payload?.object?.id;
+            if (startedMeetingId) {
+              await handleMeetingStarted(startedMeetingId.toString());
+            }
+            break;
+          }
+
+          case 'meeting.ended': {
+            const endedMeetingId = body.payload?.object?.id;
+            if (endedMeetingId) {
+              await handleMeetingEnded(endedMeetingId.toString());
+            }
+            break;
+          }
+
+          default:
+            logger.debug({ event: body.event }, 'Unhandled Zoom webhook event');
+        }
+
+        const totalDurationMs = Date.now() - requestStartTime;
+        logger.info({ event: body.event, totalDurationMs }, 'Processed Zoom webhook');
+
+        return res.status(200).json({ ok: true });
+      } catch (error) {
+        const totalDurationMs = Date.now() - requestStartTime;
+        logger.error({ error, totalDurationMs }, 'Error processing Zoom webhook');
+        return res.status(500).json({ error: 'Internal error' });
       }
     }
   );

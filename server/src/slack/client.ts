@@ -7,6 +7,7 @@
 
 import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import type {
   SlackUser,
   SlackChannel,
@@ -21,6 +22,15 @@ function getSlackDb(): SlackDatabase {
     slackDb = new SlackDatabase();
   }
   return slackDb;
+}
+
+// Lazy-initialized working group database for access checks
+let workingGroupDb: WorkingGroupDatabase | null = null;
+function getWorkingGroupDb(): WorkingGroupDatabase {
+  if (!workingGroupDb) {
+    workingGroupDb = new WorkingGroupDatabase();
+  }
+  return workingGroupDb;
 }
 
 // Use ADDIE_BOT_TOKEN as the primary token (fall back to SLACK_BOT_TOKEN for migration)
@@ -490,6 +500,137 @@ export async function getChannelMembers(channelId: string): Promise<string[]> {
   } while (cursor);
 
   return members;
+}
+
+/**
+ * Check if a user has access to a channel
+ * Returns true for public channels, checks membership for private channels
+ *
+ * Private channels are only indexed if they have a linked working group,
+ * so we use local working group membership for access control (fast, no API calls).
+ */
+export async function checkChannelAccess(
+  channelId: string,
+  slackUserId: string
+): Promise<{ hasAccess: boolean; isPrivate: boolean; reason?: string }> {
+  try {
+    const channelInfo = await getChannelInfo(channelId);
+    if (!channelInfo) {
+      return { hasAccess: false, isPrivate: false, reason: 'Channel not found' };
+    }
+
+    // Public channels are accessible to all workspace members
+    if (!channelInfo.is_private) {
+      return { hasAccess: true, isPrivate: false };
+    }
+
+    // Private channel - check local working group membership
+    const wgDb = getWorkingGroupDb();
+    const workingGroup = await wgDb.getWorkingGroupBySlackChannelId(channelId);
+
+    if (!workingGroup) {
+      // Private channel without a working group is not indexed
+      return {
+        hasAccess: false,
+        isPrivate: true,
+        reason: 'This private channel is not indexed (no linked working group)',
+      };
+    }
+
+    // Check local membership
+    const slackDb = getSlackDb();
+    const mapping = await slackDb.getBySlackUserId(slackUserId);
+
+    if (mapping?.workos_user_id) {
+      const isMember = await wgDb.isMember(workingGroup.id, mapping.workos_user_id);
+      if (isMember) {
+        return { hasAccess: true, isPrivate: true };
+      }
+    }
+
+    return {
+      hasAccess: false,
+      isPrivate: true,
+      reason: 'You are not a member of this private channel',
+    };
+  } catch (error) {
+    logger.warn({ error, channelId, slackUserId }, 'Failed to check channel access');
+    // Fail closed - deny access on error
+    return { hasAccess: false, isPrivate: false, reason: 'Failed to verify access' };
+  }
+}
+
+/**
+ * Find a channel by name (partial match) and check user access
+ * Returns channel info if found and accessible
+ */
+export async function findChannelWithAccess(
+  channelName: string,
+  slackUserId: string
+): Promise<{ channel: SlackChannel; hasAccess: boolean; reason?: string } | null> {
+  try {
+    // Get all channels the bot can see
+    const allChannels = await getSlackChannels({
+      types: 'public_channel,private_channel',
+      exclude_archived: true,
+    });
+
+    // Find channel by name (case-insensitive partial match)
+    const normalizedName = channelName.toLowerCase();
+    const matchedChannel = allChannels.find(
+      (c) => c.name.toLowerCase().includes(normalizedName)
+    );
+
+    if (!matchedChannel) {
+      return null;
+    }
+
+    // Check access
+    const access = await checkChannelAccess(matchedChannel.id, slackUserId);
+
+    return {
+      channel: matchedChannel,
+      hasAccess: access.hasAccess,
+      reason: access.reason,
+    };
+  } catch (error) {
+    logger.warn({ error, channelName, slackUserId }, 'Failed to find channel with access check');
+    return null;
+  }
+}
+
+/**
+ * Get the list of private channel IDs the user has access to
+ * Used to filter search results - only returns channels with working groups
+ */
+export async function getAccessiblePrivateChannelIds(slackUserId: string): Promise<string[]> {
+  try {
+    const slackDb = getSlackDb();
+    const wgDb = getWorkingGroupDb();
+
+    // Get user's WorkOS ID
+    const mapping = await slackDb.getBySlackUserId(slackUserId);
+    if (!mapping?.workos_user_id) {
+      return [];
+    }
+
+    // Get all working groups the user is a member of
+    const workingGroupIds = await wgDb.getWorkingGroupIdsByUser(mapping.workos_user_id);
+
+    // Get the channel IDs for these working groups
+    const channelIds: string[] = [];
+    for (const wgId of workingGroupIds) {
+      const workingGroup = await wgDb.getWorkingGroupById(wgId);
+      if (workingGroup?.slack_channel_id) {
+        channelIds.push(workingGroup.slack_channel_id);
+      }
+    }
+
+    return channelIds;
+  } catch (error) {
+    logger.warn({ error, slackUserId }, 'Failed to get accessible private channel IDs');
+    return [];
+  }
 }
 
 /**

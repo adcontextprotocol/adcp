@@ -13,6 +13,8 @@ import {
   getAllSettings,
   getBillingChannel,
   setBillingChannel,
+  getEscalationChannel,
+  setEscalationChannel,
 } from '../../db/system-settings-db.js';
 import { getSlackChannels, getChannelInfo, isSlackConfigured } from '../../slack/client.js';
 
@@ -26,10 +28,12 @@ export function createAdminSettingsRouter(): Router {
     try {
       const settings = await getAllSettings();
       const billingChannel = await getBillingChannel();
+      const escalationChannel = await getEscalationChannel();
 
       res.json({
         settings,
         billing_channel: billingChannel,
+        escalation_channel: escalationChannel,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -131,6 +135,65 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update billing channel');
       res.status(500).json({
         error: 'Failed to update billing channel',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // PUT /api/admin/settings/escalation-channel - Update escalation notification channel
+  router.put('/escalation-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { channel_id, channel_name } = req.body;
+
+      // Allow null to clear the channel
+      if (channel_id !== null && channel_id !== undefined) {
+        // Validate channel ID format
+        if (typeof channel_id !== 'string' || !/^[CG][A-Z0-9]+$/.test(channel_id)) {
+          res.status(400).json({
+            error: 'Invalid channel ID format',
+            message: 'Channel ID should start with C or G followed by alphanumeric characters',
+          });
+          return;
+        }
+
+        // Verify the channel is private (escalation info may contain sensitive user data)
+        if (isSlackConfigured()) {
+          const channelInfo = await getChannelInfo(channel_id);
+          if (channelInfo && !channelInfo.is_private) {
+            res.status(400).json({
+              error: 'Invalid channel',
+              message: 'Only private channels are allowed for escalation notifications',
+            });
+            return;
+          }
+        }
+      }
+
+      // Validate channel name if provided
+      if (channel_name !== null && channel_name !== undefined) {
+        if (typeof channel_name !== 'string' || channel_name.length > 200) {
+          res.status(400).json({
+            error: 'Invalid channel name',
+            message: 'Channel name must be a string under 200 characters',
+          });
+          return;
+        }
+      }
+
+      const userId = req.user?.id;
+      await setEscalationChannel(channel_id ?? null, channel_name ?? null, userId);
+
+      logger.info({ channel_id, channel_name, userId }, 'Escalation channel updated');
+
+      const updated = await getEscalationChannel();
+      res.json({
+        success: true,
+        escalation_channel: updated,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update escalation channel');
+      res.status(500).json({
+        error: 'Failed to update escalation channel',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

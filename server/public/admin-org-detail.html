@@ -1489,7 +1489,7 @@
 
         if (!orgResponse.ok) {
           if (orgResponse.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           if (orgResponse.status === 404) {
@@ -1504,11 +1504,6 @@
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
         domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
         teamMembers = teamResponse.ok ? await teamResponse.json() : [];
-
-        // Get current user ID from AdminNav if available
-        if (window.AdminNav && window.AdminNav.user) {
-          currentUserId = window.AdminNav.user.id;
-        }
 
         renderOrganization();
         renderOwnerSelector();
@@ -1799,7 +1794,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           const data = await response.json();
@@ -2231,7 +2226,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to save changes');
@@ -2301,7 +2296,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to save activity');
@@ -2355,7 +2350,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to save follow-up');
@@ -2383,7 +2378,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to complete step');
@@ -2531,7 +2526,7 @@
 
         if (response && !response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to update owner');
@@ -2570,7 +2565,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to update watch status');
@@ -2730,7 +2725,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error(await getErrorMessage(response, 'Failed to add domain'));
@@ -2760,7 +2755,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error(await getErrorMessage(response, 'Failed to set primary domain'));
@@ -2790,7 +2785,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error(await getErrorMessage(response, 'Failed to remove domain'));
@@ -2822,7 +2817,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error(await getErrorMessage(response, 'Failed to verify domain'));
@@ -2954,7 +2949,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to save interest level');
@@ -3186,7 +3181,7 @@
 
           if (!response.ok) {
             if (response.status === 401) {
-              window.AdminNav.redirectToLogin();
+              window.AdminSidebar.redirectToLogin();
               return;
             }
             throw new Error(await getErrorMessage(response, 'Failed to link domain'));
@@ -4260,7 +4255,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           if (response.status === 503) {

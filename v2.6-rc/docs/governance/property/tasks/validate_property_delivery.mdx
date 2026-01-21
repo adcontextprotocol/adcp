@@ -1,0 +1,402 @@
+---
+sidebar_position: 4
+title: validate_property_delivery
+---
+
+# validate_property_delivery
+
+<Info>
+**AdCP 3.0 Proposal** - This task is under development for AdCP 3.0.
+</Info>
+
+Validates delivery records against a property list to determine compliance. Answers two questions:
+1. **Property compliance**: Did my impressions land on properties in my list?
+2. **Supply path authorization**: Was the sales agent authorized to sell that inventory?
+
+## Use Cases
+
+- **Post-campaign validation**: Verify that impressions were delivered to compliant properties
+- **Supply path verification**: Confirm sales agents were authorized by publishers
+- **Real-time monitoring**: Check compliance rate during campaign execution
+- **Audit trails**: Generate compliance reports for regulatory or brand safety reviews
+
+## Request
+
+```json
+{
+  "$schema": "/schemas/property/validate-property-delivery-request.json",
+  "list_id": "pl_abc123",
+  "records": [
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "impressions": 103
+    },
+    {
+      "identifier": { "type": "domain", "value": "sketchy-site.example" },
+      "impressions": 47
+    },
+    {
+      "identifier": { "type": "android_package", "value": "com.unknown.app" },
+      "impressions": 25
+    }
+  ],
+  "include_compliant": false
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `list_id` | string | Yes | ID of the property list to validate against |
+| `records` | array | Yes | Delivery records to validate (1-10,000 records) |
+| `records[].identifier` | object | Yes | Property identifier (`type` and `value`) |
+| `records[].impressions` | integer | Yes | Number of impressions delivered |
+| `records[].record_id` | string | No | Client-provided ID for correlation |
+| `records[].sales_agent_url` | string | No | Sales agent URL to validate authorization against adagents.json |
+| `include_compliant` | boolean | No | Include compliant records in results (default: false) |
+
+## Response
+
+```json
+{
+  "$schema": "/schemas/property/validate-property-delivery-response.json",
+  "list_id": "pl_abc123",
+  "summary": {
+    "total_records": 4,
+    "total_impressions": 200,
+    "compliant_records": 1,
+    "compliant_impressions": 103,
+    "non_compliant_records": 1,
+    "non_compliant_impressions": 47,
+    "not_covered_records": 1,
+    "not_covered_impressions": 25,
+    "unidentified_records": 1,
+    "unidentified_impressions": 25
+  },
+  "aggregate": {
+    "score": 68.7,
+    "grade": "C+",
+    "label": "68.7% compliant",
+    "methodology_url": "https://governance.example.com/methodology/compliance-scoring"
+  },
+  "results": [
+    {
+      "identifier": { "type": "domain", "value": "sketchy-site.example" },
+      "status": "non_compliant",
+      "impressions": 47,
+      "violations": [
+        {
+          "code": "not_in_list",
+          "message": "Identifier not found in resolved property list"
+        }
+      ]
+    },
+    {
+      "identifier": { "type": "domain", "value": "new-site.example" },
+      "status": "not_covered",
+      "impressions": 25
+    },
+    {
+      "identifier": { "type": "android_package", "value": "com.unknown.app" },
+      "status": "unidentified",
+      "impressions": 25
+    }
+  ],
+  "validated_at": "2026-01-04T19:00:00Z",
+  "list_resolved_at": "2026-01-04T12:00:00Z"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `list_id` | string | ID of the property list validated against |
+| `summary` | object | Raw counts for property compliance validation |
+| `aggregate` | object | Optional computed metrics from the governance agent |
+| `results` | array | Per-record validation results |
+| `validated_at` | datetime | When validation was performed |
+| `list_resolved_at` | datetime | Resolution timestamp of the property list used |
+
+### Summary Fields
+
+The summary provides raw counts - consumers calculate rates as needed:
+
+| Field | Description |
+|-------|-------------|
+| `total_records` | Total records validated |
+| `total_impressions` | Total impressions across all records |
+| `compliant_records` / `compliant_impressions` | Records/impressions in the property list |
+| `non_compliant_records` / `non_compliant_impressions` | Records/impressions NOT in the property list |
+| `not_covered_records` / `not_covered_impressions` | Identifier recognized but no data available |
+| `unidentified_records` / `unidentified_impressions` | Identifier type not resolvable |
+
+### Validation Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `compliant` | Identifier is in the resolved property list |
+| `non_compliant` | Identifier is NOT in the resolved property list |
+| `not_covered` | Identifier recognized but governance agent has no data for it |
+| `unidentified` | Identifier type not resolvable by this agent |
+
+## Understanding not_covered vs unidentified
+
+These two statuses distinguish different types of "unknown" scenarios:
+
+**`not_covered`** - The governance agent recognized the identifier (e.g., it's a valid domain) but doesn't have data for that specific property. This happens when:
+- A property is too new to be in the agent's database
+- The property exists but hasn't been evaluated yet
+- The agent's coverage doesn't include that property category
+
+**`unidentified`** - The governance agent couldn't recognize the identifier at all. This happens when:
+- Client-side detection failed to capture the property
+- The identifier type isn't supported (e.g., agent handles domains but received an app ID)
+- The identifier value is malformed or invalid
+
+Both statuses should be excluded from compliance rate calculations - you cannot penalize for detection or coverage gaps.
+
+## Optional Aggregate Metrics
+
+Governance agents can optionally return computed metrics in the `aggregate` field:
+
+```json
+"aggregate": {
+  "score": 68.7,
+  "grade": "C+",
+  "label": "68.7% compliant",
+  "methodology_url": "https://governance.example.com/methodology"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `score` | Numeric score (scale is agent-defined, typically 0-100) |
+| `grade` | Letter grade or category (e.g., "A+", "B-", "Gold") |
+| `label` | Human-readable summary (e.g., "85% compliant") |
+| `methodology_url` | URL explaining how the aggregate was calculated |
+
+The `aggregate` field is optional and agent-specific. Consumers should not assume a particular format - always check `methodology_url` for interpretation.
+
+## Calculating Your Own Rates
+
+The response always includes raw counts. Calculate rates as needed:
+
+```python
+# Compliance rate (exclude unverifiable from denominator)
+unverifiable = summary.not_covered_impressions + summary.unidentified_impressions
+verifiable = summary.total_impressions - unverifiable
+compliance_rate = summary.compliant_impressions / verifiable if verifiable > 0 else None
+```
+
+In the example above:
+- Compliant impressions: 103
+- Non-compliant impressions: 47
+- not_covered + unidentified impressions: 50 (excluded)
+- Compliance rate: 103 / (200 - 50) = 103 / 150 = 68.7%
+
+## Violation Codes
+
+| Code | Description |
+|------|-------------|
+| `not_in_list` | Identifier not found in the resolved property list |
+| `excluded` | Identifier explicitly excluded via `exclude_identifiers` filter |
+| `country_mismatch` | Property lacks feature data for required countries |
+| `channel_mismatch` | Property doesn't support required channels |
+| `feature_failed` | Property failed a `feature_requirements` filter |
+
+### Feature Violation Details
+
+When a property fails a feature requirement, the violation includes the feature details:
+
+```json
+{
+  "identifier": { "type": "domain", "value": "low-quality-site.example" },
+  "status": "non_compliant",
+  "impressions": 150,
+  "violations": [
+    {
+      "code": "feature_failed",
+      "message": "Property failed consent_quality requirement (min: 85)",
+      "feature_id": "consent_quality",
+      "requirement": {
+        "min_value": 85
+      }
+    }
+  ]
+}
+```
+
+The `feature_id` and `requirement` fields are optional - they're included when the violation is due to a feature requirement filter.
+
+## Supply Path Authorization
+
+When `sales_agent_url` is provided in delivery records, the governance agent validates that the sales agent is authorized to sell the property by checking the publisher's `adagents.json`.
+
+### Request with Authorization
+
+```json
+{
+  "list_id": "pl_abc123",
+  "records": [
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "impressions": 103,
+      "sales_agent_url": "https://legitimate-ssp.example.com"
+    },
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "impressions": 50,
+      "sales_agent_url": "https://unauthorized-reseller.example.com"
+    }
+  ]
+}
+```
+
+### Response with Authorization
+
+When authorization is validated, each result includes an `authorization` field:
+
+```json
+{
+  "list_id": "pl_abc123",
+  "summary": {
+    "total_records": 2,
+    "total_impressions": 153,
+    "compliant_records": 2,
+    "compliant_impressions": 153,
+    "non_compliant_records": 0,
+    "non_compliant_impressions": 0,
+    "unknown_records": 0,
+    "unknown_impressions": 0
+  },
+  "authorization_summary": {
+    "records_checked": 2,
+    "impressions_checked": 153,
+    "authorized_records": 1,
+    "authorized_impressions": 103,
+    "unauthorized_records": 1,
+    "unauthorized_impressions": 50,
+    "unknown_records": 0,
+    "unknown_impressions": 0
+  },
+  "results": [
+    {
+      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "status": "compliant",
+      "impressions": 50,
+      "authorization": {
+        "status": "unauthorized",
+        "publisher_domain": "nytimes.com",
+        "sales_agent_url": "https://unauthorized-reseller.example.com",
+        "violation": {
+          "code": "agent_not_authorized",
+          "message": "Sales agent not listed in nytimes.com/.well-known/adagents.json"
+        }
+      }
+    }
+  ],
+  "validated_at": "2026-01-04T19:00:00Z"
+}
+```
+
+### Authorization Statuses
+
+| Status | Meaning | Included in authorization_rate? |
+|--------|---------|--------------------------------|
+| `authorized` | Sales agent is listed in publisher's adagents.json | Yes (numerator) |
+| `unauthorized` | Sales agent is NOT listed in publisher's adagents.json | Yes (denominator only) |
+| `unknown` | Could not fetch or parse adagents.json | No (excluded) |
+
+### Authorization Violation Codes
+
+| Code | Description |
+|------|-------------|
+| `agent_not_authorized` | Sales agent URL not found in publisher's authorized_agents list |
+| `adagents_not_found` | Publisher's adagents.json could not be fetched (404, timeout, etc.) |
+| `adagents_invalid` | Publisher's adagents.json exists but is malformed |
+| `property_not_declared` | Property identifier not declared in publisher's adagents.json |
+
+### Two Independent Checks
+
+Property compliance and authorization are **independent checks**. A record can be:
+
+| Property Status | Authorization Status | Meaning |
+|-----------------|---------------------|---------|
+| compliant | authorized | Fully valid - property in list, sold by authorized agent |
+| compliant | unauthorized | Property is approved but sold by unauthorized reseller |
+| non_compliant | authorized | Authorized agent sold property outside your list |
+| non_compliant | unauthorized | Neither property nor agent validated |
+
+Both checks use the same "unknown excludes from rate" pattern - you cannot penalize for detection gaps.
+
+## Best Practices
+
+### Batch Validation
+
+For large-scale validation, batch records up to the 10,000 limit:
+
+```python
+def validate_delivery_batch(records, list_id, governance_agent):
+    """Validate delivery records in batches."""
+    batch_size = 10000
+    all_results = []
+
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i + batch_size]
+        response = governance_agent.validate_property_delivery(
+            list_id=list_id,
+            records=batch
+        )
+        all_results.extend(response.results)
+
+    return all_results
+```
+
+### Sampling Strategy
+
+For real-time monitoring during campaign execution, validate a statistical sample rather than all records:
+
+```python
+import random
+
+def sample_and_validate(records, sample_size=1000):
+    """Validate a random sample for real-time monitoring."""
+    sample = random.sample(records, min(sample_size, len(records)))
+    return governance_agent.validate_property_delivery(
+        list_id=list_id,
+        records=sample
+    )
+```
+
+### Handling Unknown Records
+
+Track unknown rates separately to identify detection gaps:
+
+```python
+def analyze_validation(response):
+    """Analyze validation results with unknown handling."""
+    summary = response.summary
+
+    # Core compliance metric
+    compliance_rate = summary.compliance_rate
+
+    # Detection quality metric
+    unknown_rate = summary.unknown_impressions / summary.total_impressions
+
+    if unknown_rate > 0.1:
+        print(f"Warning: {unknown_rate:.1%} of impressions unresolvable")
+
+    return {
+        "compliance_rate": compliance_rate,
+        "unknown_rate": unknown_rate,
+        "non_compliant_impressions": summary.non_compliant_impressions
+    }
+```
+
+## Related Tasks
+
+- [create_property_list](/docs/governance/property/tasks/property_lists#create_property_list) - Create the list to validate against
+- [get_property_list](/docs/governance/property/tasks/property_lists#get_property_list) - Retrieve current list membership
+- [list_property_features](/docs/governance/property/tasks/list_property_features) - Discover available filter features

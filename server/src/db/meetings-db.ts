@@ -32,8 +32,8 @@ export class MeetingsDatabase {
       `INSERT INTO meeting_series (
         working_group_id, title, description, topic_slugs,
         recurrence_rule, default_start_time, duration_minutes,
-        timezone, invite_mode, created_by_user_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        timezone, invite_mode, invite_slack_channel_id, created_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *`,
       [
         input.working_group_id,
@@ -45,6 +45,7 @@ export class MeetingsDatabase {
         input.duration_minutes ?? 60,
         input.timezone ?? 'America/New_York',
         input.invite_mode ?? 'topic_subscribers',
+        input.invite_slack_channel_id || null,
         input.created_by_user_id || null,
       ]
     );
@@ -81,6 +82,7 @@ export class MeetingsDatabase {
       google_calendar_id: 'google_calendar_id',
       google_event_series_id: 'google_event_series_id',
       invite_mode: 'invite_mode',
+      invite_slack_channel_id: 'invite_slack_channel_id',
       status: 'status',
     };
 
@@ -202,6 +204,17 @@ export class MeetingsDatabase {
   }
 
   /**
+   * Get meeting by Zoom meeting ID
+   */
+  async getMeetingByZoomId(zoomMeetingId: string): Promise<Meeting | null> {
+    const result = await query<Meeting>(
+      'SELECT * FROM meetings WHERE zoom_meeting_id = $1',
+      [zoomMeetingId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
    * Get meeting with working group info
    */
   async getMeetingWithGroup(id: string): Promise<MeetingWithGroup | null> {
@@ -301,6 +314,9 @@ export class MeetingsDatabase {
     if (options.working_group_id) {
       conditions.push(`m.working_group_id = $${paramIndex++}`);
       params.push(options.working_group_id);
+    } else if (options.working_group_ids && options.working_group_ids.length > 0) {
+      conditions.push(`m.working_group_id = ANY($${paramIndex++})`);
+      params.push(options.working_group_ids);
     }
 
     if (options.series_id) {
@@ -549,12 +565,14 @@ export class MeetingsDatabase {
 
     if (topicSlugs && topicSlugs.length > 0) {
       // Invite only members subscribed to these topics
+      // Join with users table to get email (working_group_memberships.user_email is often NULL)
       memberQuery = `
         SELECT
           wgm.workos_user_id,
-          wgm.user_email as email,
-          wgm.user_name as name
+          COALESCE(u.email, wgm.user_email) as email,
+          COALESCE(u.first_name || ' ' || u.last_name, wgm.user_name) as name
         FROM working_group_memberships wgm
+        LEFT JOIN users u ON u.workos_user_id = wgm.workos_user_id
         LEFT JOIN working_group_topic_subscriptions wgts
           ON wgts.working_group_id = wgm.working_group_id
           AND wgts.workos_user_id = wgm.workos_user_id
@@ -565,13 +583,15 @@ export class MeetingsDatabase {
       memberParams = [workingGroupId, topicSlugs];
     } else {
       // Invite all members
+      // Join with users table to get email (working_group_memberships.user_email is often NULL)
       memberQuery = `
         SELECT
-          workos_user_id,
-          user_email as email,
-          user_name as name
-        FROM working_group_memberships
-        WHERE working_group_id = $1 AND status = 'active'
+          wgm.workos_user_id,
+          COALESCE(u.email, wgm.user_email) as email,
+          COALESCE(u.first_name || ' ' || u.last_name, wgm.user_name) as name
+        FROM working_group_memberships wgm
+        LEFT JOIN users u ON u.workos_user_id = wgm.workos_user_id
+        WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
       `;
       memberParams = [workingGroupId];
     }
@@ -723,5 +743,67 @@ export class MeetingsDatabase {
        WHERE id = $1`,
       [workingGroupId, topicSlug]
     );
+  }
+
+  /**
+   * Add attendees from a Slack channel to a meeting.
+   * Looks up channel members in slack_user_mappings and adds those with WorkOS mappings.
+   * @param meetingId The meeting to add attendees to
+   * @param slackChannelMembers Array of Slack user IDs from the channel
+   * @returns Number of attendees added
+   */
+  async addAttendeesFromSlackChannel(
+    meetingId: string,
+    slackChannelMembers: string[]
+  ): Promise<number> {
+    if (slackChannelMembers.length === 0) {
+      return 0;
+    }
+
+    // Look up Slack users who have WorkOS mappings and get their user info
+    const result = await query<{
+      workos_user_id: string;
+      email: string;
+      name: string;
+    }>(
+      `SELECT
+        m.workos_user_id,
+        COALESCE(u.email, m.slack_email) as email,
+        COALESCE(u.first_name || ' ' || u.last_name, m.slack_real_name, m.slack_display_name) as name
+      FROM slack_user_mappings m
+      LEFT JOIN users u ON u.workos_user_id = m.workos_user_id
+      WHERE m.slack_user_id = ANY($1)
+        AND m.workos_user_id IS NOT NULL
+        AND m.slack_is_bot = false
+        AND m.slack_is_deleted = false`,
+      [slackChannelMembers]
+    );
+
+    if (result.rows.length === 0) {
+      return 0;
+    }
+
+    // Bulk insert attendees
+    const values = result.rows.map((_, i) => {
+      const base = i * 4;
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, 'pending', 'auto')`;
+    }).join(', ');
+
+    const insertParams = result.rows.flatMap(m => [
+      meetingId,
+      m.workos_user_id,
+      m.email,
+      m.name,
+    ]);
+
+    const insertResult = await query(
+      `INSERT INTO meeting_attendees (meeting_id, workos_user_id, email, name, rsvp_status, invite_source)
+       VALUES ${values}
+       ON CONFLICT (meeting_id, workos_user_id) DO NOTHING`,
+      insertParams
+    );
+
+    // Return actual number of rows inserted (accounts for conflicts)
+    return insertResult.rowCount || 0;
   }
 }

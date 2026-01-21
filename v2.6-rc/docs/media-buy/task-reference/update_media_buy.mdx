@@ -149,10 +149,24 @@ asyncio.run(create_and_pause_campaign())
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
-| `creatives` | CreativeAsset[] | No | Upload and assign new creative assets inline |
-| `creative_assignments` | CreativeAssignment[] | No | Update creative rotation weights and placement targeting |
+| `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
+| `push_notification_config` | object | No | Webhook for async operation notifications |
 
 *Either `media_buy_id` OR `buyer_ref` is required (not both)
+
+### Reporting Webhook Object
+
+Configure automated delivery reporting for this media buy:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | Webhook endpoint URL |
+| `authentication` | object | Yes | Auth config with `schemes` and `credentials` |
+| `reporting_frequency` | string | Yes | `hourly`, `daily`, or `monthly` |
+| `requested_metrics` | string[] | No | Specific metrics to include (defaults to all) |
+| `token` | string | No | Client token for validation (min 16 chars) |
+
+**Note**: `reporting_webhook` configures ongoing campaign reporting. `push_notification_config` is for async operation notifications (e.g., "notify me when this update completes").
 
 ### Package Update Object
 
@@ -162,10 +176,12 @@ asyncio.run(create_and_pause_campaign())
 | `buyer_ref` | string | Your reference for the package to update |
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `budget` | number | Updated budget allocation |
+| `impressions` | number | Updated impression goal for this package |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
-| `creative_ids` | string[] | Replace assigned creatives |
+| `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
+| `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
 
 *Either `package_id` OR `buyer_ref` is required for each package update
 
@@ -371,7 +387,7 @@ asyncio.run(update_targeting())
 
 ### Replace Creatives
 
-Swap out creative assets for a package:
+Swap out creative assignments for a package:
 
 <CodeGroup>
 
@@ -383,7 +399,10 @@ const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
     buyer_ref: 'ctv_package',
-    creative_ids: ['creative_video_v2', 'creative_display_v2']
+    creative_assignments: [
+      { creative_id: 'creative_video_v2' },
+      { creative_id: 'creative_display_v2', weight: 60 }
+    ]
   }]
 });
 
@@ -414,7 +433,10 @@ async def replace_creatives():
             packages=[
                 {
                     'buyer_ref': 'ctv_package',
-                    'creative_ids': ['creative_video_v2', 'creative_display_v2']
+                    'creative_assignments': [
+                        {'creative_id': 'creative_video_v2'},
+                        {'creative_id': 'creative_display_v2', 'weight': 60}
+                    ]
                 }
             ]
         )
@@ -512,6 +534,7 @@ asyncio.run(update_multiple_packages())
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
 - Campaign status (active/paused)
+- Reporting webhook configuration (URL, frequency, metrics)
 
 ❌ **Cannot update:**
 - Media buy ID
@@ -547,6 +570,7 @@ Common errors and resolutions:
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
 | `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 
 Example error response:
 
@@ -595,13 +619,16 @@ Only specified fields are updated - omitted fields remain unchanged:
 }
 ```
 
-**Array replacement**: When updating arrays (like `creative_ids`), provide the complete new array:
+**Array replacement**: When updating arrays (like `creative_assignments`), provide the complete new array:
 
 ```json
 {
   "packages": [{
     "buyer_ref": "ctv_package",
-    "creative_ids": ["creative_video_v2", "creative_display_v2"]
+    "creative_assignments": [
+      { "creative_id": "creative_video_v2" },
+      { "creative_id": "creative_display_v2", "weight": 60 }
+    ]
   }]
 }
 ```
@@ -677,13 +704,14 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
 
 ## Next Steps
 
 After updating a media buy:
 
 1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
-2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative_ids changed
+2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative assignments changed
 3. **Monitor Performance**: Track impact of changes on campaign metrics
 4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
 

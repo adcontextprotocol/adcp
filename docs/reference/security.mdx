@@ -21,24 +21,84 @@ AdCP operates in a high-stakes environment where:
 
 This document provides security requirements and best practices for AdCP implementations.
 
+## Threat Model
+
+Understanding the specific threats that AdCP implementations face helps choose appropriate mitigations. Different authentication mechanisms address different threats.
+
+### Threat Categories
+
+| Threat | Description | Primary Mitigations |
+|--------|-------------|---------------------|
+| **Credential Theft** | Attacker obtains valid tokens through phishing, malware, or database breach | Short token expiry, credential rotation, anomaly detection |
+| **Token Replay** | Attacker intercepts and reuses a valid token | Short expiry, request signing, one-time-use tokens |
+| **Domain Hijacking** | Attacker takes control of a domain (expiry, DNS hijack, BGP hijack) and receives tokens intended for legitimate server | Certificate pinning, domain monitoring, out-of-band verification |
+| **Man-in-the-Middle** | Attacker intercepts traffic between client and server | TLS, certificate pinning, mTLS |
+| **Privilege Escalation** | Authenticated principal accesses another principal's data | Principal isolation, row-level security, authorization checks |
+| **Budget Fraud** | Attacker creates unauthorized financial commitments | Approval workflows, spending limits, anomaly detection |
+
+### Domain Trust Assumption
+
+AdCP, like most APIs, operates on the assumption that the domain you're connecting to is controlled by the intended party. This is the **domain trust assumption**.
+
+<Warning>
+**Critical**: OAuth 2.0 does not protect against domain hijacking. If an attacker controls `api.adplatform.com`, they can complete OAuth authorization flows just as easily as they can accept bearer tokens. The client trusts the domain, regardless of authentication mechanism.
+</Warning>
+
+**What OAuth provides:**
+- Delegated access (user authorizes agent to act on their behalf)
+- Scoped permissions (limit what the token can do)
+- Token revocation without rotating credentials
+- Separation of authentication from authorization
+
+**What OAuth does NOT provide:**
+- Protection against compromised domains
+- Verification that the server is the intended recipient
+- Protection against man-in-the-middle attacks (beyond what TLS provides)
+
+**Mitigations for domain trust threats:**
+
+| Mitigation | How It Helps |
+|------------|--------------|
+| **TLS Certificate Pinning** | Rejects connections even if attacker has valid cert for the domain |
+| **DNSSEC** | Protects against DNS spoofing |
+| **Domain Monitoring** | Alerts when domain registration changes or expires |
+| **Out-of-Band Verification** | Verify platform identity through secondary channel before large commitments |
+| **ads.txt/sellers.json** | Industry-standard publisher authorization verification |
+
+### Authentication Mechanism Selection
+
+Choose authentication based on the threats you need to address:
+
+| Scenario | Recommended Auth | Rationale |
+|----------|------------------|-----------|
+| Server-to-server integration | API keys with IP allowlist | Simple, server identity verified by IP |
+| Agent acting on user's behalf | OAuth 2.0 with PKCE | User controls delegation, scoped permissions |
+| High-value financial operations | Request signing + short-lived tokens | Integrity verification beyond auth |
+| Zero-trust environment | mTLS | Cryptographic verification of both parties |
+
 ## Risk Classification
 
 AdCP operations fall into three risk categories based on their potential impact:
 
 ### High-Risk Operations (Financial)
 
-These operations commit real advertising budgets and require the strongest authentication:
+These operations commit real advertising budgets and require strong controls:
 
-| Operation | Risk | Recommended Auth |
-|-----------|------|------------------|
-| `create_media_buy` | Creates financial commitments | OAuth 2.0 or mTLS |
-| `update_media_buy` | Modifies budgets and campaign parameters | OAuth 2.0 or mTLS |
+| Operation | Risk | Primary Threat |
+|-----------|------|----------------|
+| `create_media_buy` | Creates financial commitments | Budget fraud, credential theft |
+| `update_media_buy` | Modifies budgets and campaign parameters | Unauthorized modifications |
 
 **Requirements for High-Risk Operations**:
-- Implementations SHOULD use OAuth 2.0 with proper token validation or mutual TLS
-- Bearer tokens alone provide weaker security guarantees (see [Bearer Token Risks](#bearer-token-risks))
-- Multi-factor authentication or approval workflows recommended for large budgets
-- All requests must be logged with full audit trail
+- Short-lived credentials (tokens expiring in ≤15 minutes)
+- Request signing for transaction integrity (see [Request Signing](#request-signing-for-financial-operations))
+- Multi-factor authentication or approval workflows for large budgets
+- Spending limits and anomaly detection
+- Full audit trail with immutable logging
+
+<Info>
+**Authentication mechanism alone does not determine security level.** A properly implemented bearer token system with short expiry, request signing, and spending limits provides stronger protection than a long-lived OAuth token without additional controls.
+</Info>
 
 ### Medium-Risk Operations (Data Access)
 
@@ -196,30 +256,38 @@ function verifyWebhookSignature(
 
 ### Bearer Token Risks
 
-While bearer tokens (including JWT) are widely used across the industry, they carry specific risks that implementations should understand, particularly for [high-risk financial operations](#high-risk-operations-financial):
+Bearer tokens are the industry standard for API authentication (Google Ads, Meta Marketing API, The Trade Desk, etc.). Understanding their specific risks helps implement appropriate mitigations. See [Threat Model](#threat-model) for context.
 
-**Token Interception Risks**:
-- **Domain Hijacking**: If a domain expires or is compromised, attackers could receive valid bearer tokens intended for legitimate endpoints. Unlike OAuth flows, there's no bilateral verification that the server is the intended recipient.
-- **Man-in-the-Middle**: Without certificate pinning, compromised certificate authorities could enable token interception even over HTTPS.
-- **Token Replay**: Stolen tokens can be replayed until expiration.
+**Inherent Risks of Bearer Tokens**:
 
-**Mitigations for Bearer Token Usage**:
+| Risk | Description | Impact |
+|------|-------------|--------|
+| **Token Replay** | Stolen tokens can be reused until expiration | Unauthorized access for token lifetime |
+| **Credential Theft** | Tokens extracted from logs, memory, or storage | Full account access until detected |
+| **No Request Binding** | Token authorizes any request, not specific operations | Attacker can perform any authorized action |
 
-| Risk | Mitigation |
-|------|------------|
-| Domain hijacking | Certificate pinning, domain monitoring, short token expiry |
-| Token interception | mTLS, OAuth 2.0 with PKCE, token binding |
-| Token replay | Short expiration (15 min), one-time-use tokens, request signing |
-| Credential theft | Hardware security modules, secure enclaves |
+**Mitigations**:
 
-**When to Use Stronger Authentication**:
+| Risk | Mitigation | Implementation |
+|------|------------|----------------|
+| Token replay | Short expiration | ≤15 minute token lifetime |
+| Token replay | Request signing | HMAC signature on payload + timestamp |
+| Credential theft | Secure storage | HSM, secure enclaves, encrypted at rest |
+| Credential theft | Anomaly detection | Alert on unusual access patterns |
+| No request binding | Request signing | Signature covers specific operation parameters |
 
-For high-risk operations (`create_media_buy`, `update_media_buy`), consider:
-- **OAuth 2.0 with PKCE**: Provides bilateral verification through the authorization flow
-- **Mutual TLS (mTLS)**: Cryptographically verifies both client and server identity
-- **Request Signing**: HMAC or asymmetric signatures on request payloads
+<Warning>
+**Common Misconception**: OAuth 2.0 does not protect against domain hijacking. See [Domain Trust Assumption](#domain-trust-assumption) for why switching to OAuth doesn't address this threat.
+</Warning>
 
-**Example: Request Signing for Financial Operations**:
+**When to Add Request Signing**:
+
+For financial operations, request signing provides transaction integrity regardless of authentication mechanism:
+- Proves the request wasn't modified in transit
+- Binds the token to specific operation parameters
+- Provides non-repudiation for audit purposes
+
+### Request Signing for Financial Operations
 ```typescript
 // Additional security layer for high-value transactions
 interface SignedRequest {

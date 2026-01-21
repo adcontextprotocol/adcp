@@ -193,16 +193,16 @@ export function setupStatsRoutes(apiRouter: Router): void {
           WHERE engagement_score IS NOT NULL
         `),
 
-        // Org lifecycle stats
+        // Org lifecycle stats (using subscription status, not deprecated org_lifecycle_stage)
         pool.query(`
           SELECT
             COUNT(*) as total_orgs,
-            COUNT(CASE WHEN subscription_status = 'active' THEN 1 END) as active_orgs,
-            COUNT(CASE WHEN org_lifecycle_stage = 'prospect' THEN 1 END) as prospects,
-            COUNT(CASE WHEN org_lifecycle_stage = 'evaluating' THEN 1 END) as evaluating,
-            COUNT(CASE WHEN org_lifecycle_stage = 'trial' THEN 1 END) as trials,
-            COUNT(CASE WHEN org_lifecycle_stage = 'paying' THEN 1 END) as paying,
-            COUNT(CASE WHEN org_lifecycle_stage IN ('evaluating', 'trial') AND engagement_score >= 50 THEN 1 END) as engaged_prospects
+            COUNT(CASE WHEN ${MEMBER_FILTER} THEN 1 END) as active_orgs,
+            COUNT(CASE WHEN engagement_score >= 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as prospects,
+            COUNT(CASE WHEN engagement_score >= 30 AND engagement_score < 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as evaluating,
+            COUNT(CASE WHEN engagement_score > 0 AND engagement_score < 30 AND NOT (${MEMBER_FILTER}) THEN 1 END) as trials,
+            COUNT(CASE WHEN ${MEMBER_FILTER} THEN 1 END) as paying,
+            COUNT(CASE WHEN engagement_score >= 50 AND NOT (${MEMBER_FILTER}) THEN 1 END) as engaged_prospects
           FROM organizations
         `),
 

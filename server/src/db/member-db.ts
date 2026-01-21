@@ -34,8 +34,8 @@ export class MemberDatabase {
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
         offerings, agents, publishers, headquarters, markets, metadata, tags,
-        is_public, show_in_carousel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        is_public, show_in_carousel, is_founding_member
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW() < '2026-04-01'::timestamptz)
       RETURNING *`,
       [
         input.workos_organization_id,

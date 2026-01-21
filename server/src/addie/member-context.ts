@@ -11,6 +11,7 @@ import { OrganizationDatabase } from '../db/organization-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
@@ -23,6 +24,7 @@ const orgDb = new OrganizationDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 const emailPrefsDb = new EmailPreferencesDatabase();
 const addieDb = new AddieDatabase();
+const joinRequestDb = new JoinRequestDatabase();
 
 /**
  * Get pending content count for a user
@@ -157,6 +159,7 @@ export interface MemberContext {
   member_profile?: {
     display_name: string;
     tagline?: string;
+    logo_url?: string;
     offerings: string[];
     headquarters?: string;
   };
@@ -229,6 +232,9 @@ export interface MemberContext {
     total: number;
     by_committee: Record<string, number>;
   };
+
+  /** Pending join requests for the organization (admins only) */
+  pending_join_requests_count?: number;
 }
 
 /**
@@ -404,6 +410,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
+        logo_url: profile.logo_url,
         offerings: profile.offerings,
         headquarters: profile.headquarters,
       };
@@ -478,6 +485,18 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         }
       } catch (error) {
         logger.warn({ error, workosUserId }, 'Addie: Failed to get pending content');
+      }
+    }
+
+    // Get pending join requests count for org admins
+    if (userIsAdmin && organizationId) {
+      try {
+        const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
+        if (pendingJoinRequestsCount > 0) {
+          context.pending_join_requests_count = pendingJoinRequestsCount;
+        }
+      } catch (error) {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get pending join requests count');
       }
     }
 
@@ -627,6 +646,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
+        logo_url: profile.logo_url,
         offerings: profile.offerings,
         headquarters: profile.headquarters,
       };
@@ -744,6 +764,18 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         }
       } catch (error) {
         logger.warn({ error, workosUserId }, 'Addie Web: Failed to get pending content');
+      }
+    }
+
+    // Step 14: Get pending join requests count for org admins
+    if (webUserIsAdmin && organizationId) {
+      try {
+        const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
+        if (pendingJoinRequestsCount > 0) {
+          context.pending_join_requests_count = pendingJoinRequestsCount;
+        }
+      } catch (error) {
+        logger.warn({ error, organizationId }, 'Addie Web: Failed to get pending join requests count');
       }
     }
 

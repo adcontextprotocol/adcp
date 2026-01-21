@@ -789,12 +789,8 @@
 
     async function loadStats() {
       try {
-        const response = await fetch('/api/admin/stats');
+        const response = await AdminSidebar.fetch('/api/admin/stats');
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
-            return;
-          }
           throw new Error('Failed to load stats');
         }
 

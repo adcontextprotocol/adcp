@@ -228,8 +228,13 @@ export async function processFeedsToFetch(): Promise<{
   }
 
   // Only log when there's something notable
-  if (totalNewPerspectives > 0 || errorCount > 0) {
+  if (errorCount > 0) {
     logger.info(
+      { feedsProcessed: feeds.length, newPerspectives: totalNewPerspectives, errors: errorCount },
+      'RSS feed processing complete with errors'
+    );
+  } else if (totalNewPerspectives > 0) {
+    logger.debug(
       { feedsProcessed: feeds.length, newPerspectives: totalNewPerspectives, errors: errorCount },
       'RSS feed processing complete'
     );

@@ -35,10 +35,10 @@ The Signals Activation Protocol operates within the broader [AdCP Ecosystem Laye
 Every signal discovery request involves two key roles:
 
 #### Orchestrator
-The platform or system making the API request to the signal platform:
+The platform or system making the API request to the signal agent:
 - **Examples**: Scope3, Claude AI assistant, trading desk platform, campaign management tool
 - **Responsibilities**: Makes API calls, handles authentication, manages the technical interaction
-- **Account**: Has technical credentials and API access to the signal platform
+- **Account**: Has technical credentials and API access to the signal agent
 
 #### Principal  
 The entity on whose behalf the request is being made:
@@ -48,7 +48,7 @@ The entity on whose behalf the request is being made:
 
 #### How This Works in Practice
 
-1. **Request Flow**: Orchestrator → Signal Platform (on behalf of Principal) → Decisioning Platform
+1. **Request Flow**: Orchestrator → Signal Agent (on behalf of Principal) → Decisioning Platform
 2. **Authentication**: Orchestrator authenticates with technical credentials
 3. **Authorization**: Principal's identity determines available signals and pricing
 4. **Activation**: Signals are activated for Principal's account on the decisioning platform
@@ -95,7 +95,7 @@ The entity on whose behalf the request is being made:
 
 #### Private Signal Agents
 Agents owned by the principal with exclusive access:
-- **Examples**: Walmart's internal signal platform, retailer first-party data, weather APIs, location providers
+- **Examples**: Walmart's internal data systems, retailer first-party data, weather APIs, location providers
 - **Business Model**: No signal costs (workflow orchestration only)
 - **Access**: Only visible and accessible to the owning principal
 - **Discovery**: Not discoverable by other principals
@@ -146,9 +146,9 @@ The identifier assigned by the decisioning platform after activation:
 - **Timing**: Only available after successful activation
 - **Variability**: May differ by platform and account for the same signal
 
-### Agent vs Data Provider
+### Signal Agent vs Data Provider
 
-- **Agent**: The signal platform facilitating access (e.g., LiveRamp, Experian)
+- **Signal Agent**: The MCP server facilitating signal access (e.g., LiveRamp, Experian)
 - **Data Provider**: The original source of the signal data (e.g., Polk, Acxiom, Peer39, weather services, location providers)
 
 A signal agent may host segments from multiple data providers in their marketplace.
@@ -268,14 +268,14 @@ Some operations (like signal activation) are asynchronous and include:
 Each MCP session involves two levels of identification:
 
 #### Orchestrator Authentication
-The technical credentials used by the orchestrator to authenticate with the signal platform:
+The technical credentials used by the orchestrator to authenticate with the signal agent:
 - **API Keys**: Technical access credentials for the orchestrator platform
 - **Session Scope**: Determines what operations the orchestrator can perform
-- **Platform Permissions**: What signal platforms the orchestrator can access
+- **Agent Permissions**: What signal agents the orchestrator can access
 
-#### Principal Authorization  
+#### Principal Authorization
 The principal's identity determines business-level access and pricing:
-- **Account Relationship**: Whether the principal has a direct relationship with the signal platform
+- **Account Relationship**: Whether the principal has a direct relationship with the signal agent
 - **Pricing Tier**: Negotiated rates, marketplace rates, or enterprise discounts
 - **Signal Access**: Private signals, premium segments, or marketplace-only access
 - **Billing Account**: Where usage charges are applied

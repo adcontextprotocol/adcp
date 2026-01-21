@@ -717,21 +717,55 @@ export class AddieDatabase {
 
   /**
    * Search Slack messages stored locally using PostgreSQL full-text search
+   *
+   * @param accessiblePrivateChannelIds - List of private channel IDs the user has access to.
+   *   If provided, results will only include public channels OR private channels in this list.
+   *   If not provided (undefined), no access filtering is applied (use for internal/admin queries).
    */
   async searchSlackMessages(searchQuery: string, options: {
     limit?: number;
     channel?: string;
+    accessiblePrivateChannelIds?: string[];
   } = {}): Promise<SlackSearchResult[]> {
     const limit = options.limit ?? 10;
     const channel = options.channel;
+    const accessiblePrivateChannelIds = options.accessiblePrivateChannelIds;
 
-    // Build query with optional channel filter
-    const channelFilter = channel
-      ? `AND LOWER(slack_channel_name) LIKE LOWER($3)`
-      : '';
-    const params: (string | number)[] = [searchQuery, limit];
+    // Build dynamic query with optional filters
+    const params: (string | number | string[])[] = [searchQuery, limit];
+    let paramIndex = 3;
+
+    // Channel name filter
+    let channelFilter = '';
     if (channel) {
+      channelFilter = `AND LOWER(slack_channel_name) LIKE LOWER($${paramIndex})`;
       params.push(`%${channel}%`);
+      paramIndex++;
+    }
+
+    // Access control filter for private channels
+    // Only include messages from:
+    // 1. Public channels (those without a working group - tracked via slack_channel_id)
+    // 2. Private channels the user has access to (in accessiblePrivateChannelIds)
+    let accessFilter = '';
+    if (accessiblePrivateChannelIds !== undefined) {
+      if (accessiblePrivateChannelIds.length > 0) {
+        // Include public channels (not in any working group) OR accessible private channels
+        accessFilter = `AND (
+          NOT EXISTS (
+            SELECT 1 FROM working_groups wg
+            WHERE wg.slack_channel_id = addie_knowledge.slack_channel_id
+          )
+          OR slack_channel_id = ANY($${paramIndex}::text[])
+        )`;
+        params.push(accessiblePrivateChannelIds);
+      } else {
+        // User has no private channel access - only show public channels
+        accessFilter = `AND NOT EXISTS (
+          SELECT 1 FROM working_groups wg
+          WHERE wg.slack_channel_id = addie_knowledge.slack_channel_id
+        )`;
+      }
     }
 
     const result = await query<SlackSearchResult>(
@@ -749,6 +783,7 @@ export class AddieDatabase {
          AND source_type = 'slack'
          AND search_vector @@ websearch_to_tsquery('english', $1)
          ${channelFilter}
+         ${accessFilter}
        ORDER BY rank DESC
        LIMIT $2`,
       params
@@ -768,6 +803,7 @@ export class AddieDatabase {
 
   /**
    * Get recent messages from a channel (no keyword search, just by recency)
+   * Uses the actual Slack message timestamp (slack_ts) for filtering, not the DB record creation time
    */
   async getChannelActivity(channel: string, options: {
     days?: number;
@@ -794,13 +830,14 @@ export class AddieDatabase {
         slack_channel_name as channel_name,
         slack_username as username,
         slack_permalink as permalink,
-        created_at
+        TO_TIMESTAMP(slack_ts::numeric) as created_at
        FROM addie_knowledge
        WHERE is_active = TRUE
          AND source_type = 'slack'
          AND LOWER(slack_channel_name) LIKE LOWER($1)
-         AND created_at >= NOW() - INTERVAL '1 day' * $2
-       ORDER BY created_at DESC
+         AND slack_ts IS NOT NULL
+         AND TO_TIMESTAMP(slack_ts::numeric) >= NOW() - INTERVAL '1 day' * $2
+       ORDER BY slack_ts::numeric DESC
        LIMIT $3`,
       [`%${channel}%`, days, limit]
     );
@@ -3154,6 +3191,7 @@ export class AddieDatabase {
       `SELECT
          cv.version_id,
          cv.config_hash,
+         cv.code_version,
          cv.created_at,
          array_length(cv.active_rule_ids, 1) as rule_count,
          cv.message_count,
@@ -3176,6 +3214,7 @@ export class AddieDatabase {
       `SELECT
          cv.version_id,
          cv.config_hash,
+         cv.code_version,
          cv.created_at,
          array_length(cv.active_rule_ids, 1) as rule_count,
          cv.message_count,
@@ -3196,6 +3235,7 @@ export class AddieDatabase {
 export interface ConfigVersionInfo {
   version_id: number;
   config_hash: string;
+  code_version: string | null;
   created_at: Date;
   rule_count: number;
   message_count: number;

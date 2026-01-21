@@ -26,6 +26,7 @@ import {
   type CompanyType,
   type RevenueTier,
   type Organization,
+  VALID_REVENUE_TIERS,
 } from "../db/organization-db.js";
 import {
   mapIndustryToCompanyType,
@@ -636,28 +637,18 @@ export function createPublicBillingRouter(): Router {
         const { orgId } = req.params;
         const { company_type, revenue_tier } = req.body;
 
-        // Validate inputs - use centralized company types config
-        const validCompanyTypes = COMPANY_TYPE_VALUES;
-        const validRevenueTiers = [
-          "under_1m",
-          "1m_5m",
-          "5m_50m",
-          "50m_250m",
-          "250m_1b",
-          "1b_plus",
-        ];
-
-        if (company_type && !validCompanyTypes.includes(company_type)) {
+        // Validate inputs - use centralized constants
+        if (company_type && !COMPANY_TYPE_VALUES.includes(company_type)) {
           return res.status(400).json({
             error: "Invalid company_type",
-            message: `company_type must be one of: ${validCompanyTypes.join(", ")}`,
+            message: `company_type must be one of: ${COMPANY_TYPE_VALUES.join(", ")}`,
           });
         }
 
-        if (revenue_tier && !validRevenueTiers.includes(revenue_tier)) {
+        if (revenue_tier && !VALID_REVENUE_TIERS.includes(revenue_tier as any)) {
           return res.status(400).json({
             error: "Invalid revenue_tier",
-            message: `revenue_tier must be one of: ${validRevenueTiers.join(", ")}`,
+            message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(", ")}`,
           });
         }
 

@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
-import { ADDIE_SYSTEM_PROMPT, buildMessageTurnsWithMetadata } from './prompts.js';
+import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
@@ -205,8 +205,14 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Get the system prompt, either from database rules or fallback to hardcoded
-   * Caches the prompt for CACHE_TTL_MS to avoid database hits on every message
+   * Get the system prompt from database rules, with tool reference always appended.
+   *
+   * Architecture:
+   * - Database rules (addie_rules) contain behavioral guidelines (editable without deploys)
+   * - Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied to code)
+   * - Fallback prompt used only when database is unavailable
+   *
+   * Caches the prompt for CACHE_TTL_MS to avoid database hits on every message.
    */
   private async getSystemPrompt(): Promise<{ prompt: string; ruleIds: number[]; rulesSnapshot: RuleSnapshot[] }> {
     const now = Date.now();
@@ -225,7 +231,9 @@ export class AddieClaudeClient {
 
       // If we have rules from the database, build prompt from them
       if (rules.length > 0) {
-        const prompt = await this.addieDb.buildSystemPrompt();
+        const basePrompt = await this.addieDb.buildSystemPrompt();
+        // Always append tool reference - tools are defined in code, not DB
+        const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
         const ruleIds = rules.map(r => r.id);
         const rulesSnapshot = rules.map(r => this.ruleToSnapshot(r));
 
@@ -241,8 +249,9 @@ export class AddieClaudeClient {
       logger.warn({ error }, 'Addie: Failed to load rules from database, using fallback prompt');
     }
 
-    // Fallback to hardcoded prompt if database unavailable or empty
-    return { prompt: ADDIE_SYSTEM_PROMPT, ruleIds: [], rulesSnapshot: [] };
+    // Fallback: minimal prompt + tool reference (database unavailable or empty)
+    const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+    return { prompt: fallbackPrompt, ruleIds: [], rulesSnapshot: [] };
   }
 
   /**
@@ -685,13 +694,21 @@ export class AddieClaudeClient {
               }
             } else {
               // Regular text result
+              // Log if the result indicates an error (tool returned error string rather than throwing)
+              const looksLikeError = result.startsWith('Error:') ||
+                result.startsWith('Failed to') ||
+                result.includes('not found') ||
+                result.includes('need to be logged in');
+              if (looksLikeError) {
+                logger.warn({ toolName, toolInput, result: result.substring(0, 500), durationMs }, 'Addie: Tool returned error result');
+              }
               toolResults.push({ tool_use_id: toolUseId, content: result });
               toolExecutions.push({
                 tool_name: toolName,
                 parameters: toolInput,
                 result,
                 result_summary: this.summarizeToolResult(toolName, result),
-                is_error: false,
+                is_error: looksLikeError,
                 duration_ms: durationMs,
                 sequence: executionSequence,
               });
@@ -699,6 +716,7 @@ export class AddieClaudeClient {
           } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw exception');
             toolResults.push({
               tool_use_id: toolUseId,
               content: `Error: ${errorMessage}`,
@@ -796,6 +814,12 @@ export class AddieClaudeClient {
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
+    // Determine effective model (support precision mode override for billing/financial)
+    const effectiveModel = options?.modelOverride ?? this.model;
+    if (options?.modelOverride && options.modelOverride !== this.model) {
+      logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
+    }
+
     // Combine global tools with per-request tools
     // Calculate tool count first to inform token budget for conversation history
     const allTools = [...this.tools, ...(requestTools?.tools || [])];
@@ -807,7 +831,7 @@ export class AddieClaudeClient {
     // Token-aware: automatically trims older messages if conversation exceeds limits
     // Pass tool count for more accurate token budget calculation
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
-      model: this.model,
+      model: effectiveModel,
       toolCount,
     });
 
@@ -816,7 +840,7 @@ export class AddieClaudeClient {
         {
           messagesRemoved: messageTurnsResult.messagesRemoved,
           estimatedTokens: formatTokenCount(messageTurnsResult.estimatedTokens),
-          tokenLimit: formatTokenCount(getConversationTokenLimit(this.model, toolCount)),
+          tokenLimit: formatTokenCount(getConversationTokenLimit(effectiveModel, toolCount)),
           toolCount,
         },
         'Addie Stream: Trimmed conversation history to fit context limit'
@@ -859,7 +883,7 @@ export class AddieClaudeClient {
           try {
             // Use streaming API
             const stream = this.client.messages.stream({
-              model: this.model,
+              model: effectiveModel,
               max_tokens: 4096,
               system: systemPrompt,
               tools: customTools,
