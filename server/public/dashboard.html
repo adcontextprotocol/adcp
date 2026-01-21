@@ -3071,7 +3071,7 @@
     // Format agreement type for display
     function formatAgreementType(type) {
       const types = {
-        'terms_of_service': 'Terms of Service',
+        'terms_of_service': 'Terms of Use',
         'privacy_policy': 'Privacy Policy',
         'membership': 'Membership Agreement'
       };
@@ -3323,7 +3323,7 @@
             }
           });
         } else {
-          // Terms of Service & Privacy Policy - just acknowledgment
+          // Terms of Use & Privacy Policy - just acknowledgment
           buttonsDiv.innerHTML = `
             <div style="display: flex; gap: 10px; width: 100%; justify-content: flex-end;">
               <button class="btn btn-primary" onclick="acceptAgreement('${type}', '${version}')">I Understand</button>

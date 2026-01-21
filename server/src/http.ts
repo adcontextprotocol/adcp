@@ -5210,7 +5210,7 @@ Disallow: /api/admin/
         const htmlContent = await marked(agreement.text);
 
         const typeLabels: Record<string, string> = {
-          terms_of_service: 'Terms of Service',
+          terms_of_service: 'Terms of Use',
           privacy_policy: 'Privacy Policy',
           membership: 'Membership Agreement'
         };

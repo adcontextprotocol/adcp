@@ -601,7 +601,7 @@ export async function requireSignedAgreement(req: Request, res: Response, next: 
   if (!company.agreement_signed_at) {
     return res.status(403).json({
       error: 'Agreement not signed',
-      message: 'Please review and sign the AdCP Terms of Service before continuing',
+      message: 'Please review and sign the AdCP Terms of Use before continuing',
       agreement_url: '/api/agreement/current',
     });
   }
