@@ -21,6 +21,7 @@
     "email",
     "gaming",
     "influencer",
+    "affiliate",
     "ai_agents",
     "sponsorship",
     "commerce_media"
@@ -42,6 +43,7 @@
     "email": "Email advertising and sponsored newsletter content",
     "gaming": "In-game advertising across platforms",
     "influencer": "Creator and influencer marketing partnerships",
+    "affiliate": "Affiliate networks, comparison sites, and performance-based publisher partnerships",
     "ai_agents": "AI assistants, chatbots, and voice interfaces",
     "sponsorship": "Sponsorships, product placement, and branded content integrations",
     "commerce_media": "Retail media networks and transactional marketplaces (Amazon, Instacart, etc.)"

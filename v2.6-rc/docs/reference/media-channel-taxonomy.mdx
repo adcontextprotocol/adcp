@@ -136,6 +136,7 @@ The following channels MUST be supported. Implementations MAY extend with additi
 | `email` | Email advertising and sponsored newsletter content |
 | `gaming` | In-game advertising across platforms |
 | `influencer` | Creator and influencer marketing partnerships |
+| `affiliate` | Affiliate networks, comparison sites, and performance-based publisher partnerships |
 | `ai_agents` | AI assistants, chatbots, and voice interfaces |
 | `sponsorship` | Sponsorships, product placement, and branded content integrations |
 | `commerce_media` | Retail media networks and transactional marketplaces |
@@ -417,6 +418,29 @@ Creator and influencer marketing partnerships.
 
 **Note**: `influencer` describes the BUYING MODEL (creator partnership) rather than where content appears. Influencer content may be distributed across `social`, `web`, `podcast`, and other channels.
 
+#### `affiliate`
+
+Affiliate networks, comparison sites, and performance-based publisher partnerships.
+
+**Includes**:
+- Affiliate networks (CJ, Rakuten, Impact, Awin, ShareASale)
+- Comparison shopping engines (NerdWallet, Bankrate, The Points Guy)
+- Review and recommendation sites
+- Coupon and deal sites (RetailMeNot, Honey)
+- Content commerce (editorial with affiliate links)
+- Lead generation sites
+- Cashback and loyalty programs
+
+**Excludes**:
+- Standard display ads on affiliate publisher sites (use `web`)
+- Influencer partnerships (use `influencer`)
+- Retail media sponsored products (use `commerce_media`)
+- Search ads on comparison engines (use `search`)
+
+**Typical Formats**: native, display, text
+
+**Note**: `affiliate` describes the BUYING MODEL (performance-based publisher partnerships, typically CPA/CPC/rev-share) rather than where content appears. Affiliate placements typically appear on `website` property types.
+
 #### `ai_agents`
 
 AI assistants, chatbots, and voice interface advertising purchased through AI platform ad tools or integrations.
@@ -504,6 +528,7 @@ The following channels do not have corresponding property types because they lac
 - `cinema` - Theater inventory management systems
 - `email` - Email list ownership differs from property authorization
 - `influencer` - Creator relationships rather than property ownership
+- `affiliate` - Performance-based publisher partnerships, placements appear on partner websites
 - `ai_agents` - Emerging channel, property model TBD
 - `sponsorship` - Event/content relationships rather than properties
 - `commerce_media` - Platform-managed inventory within retail/marketplace ecosystems
@@ -526,7 +551,8 @@ The following channels do not have corresponding property types because they lac
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │   + linear_tv, ooh, print, cinema, email, gaming, influencer,  │
-│     ai_agents, sponsorship, commerce_media, search, social│
+│     affiliate, ai_agents, sponsorship, commerce_media, search, │
+│     social                                                      │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -579,6 +605,7 @@ Channels are defined in the AdCP schema at:
     "email",
     "gaming",
     "influencer",
+    "affiliate",
     "ai_agents",
     "sponsorship",
     "commerce_media"
@@ -757,7 +784,7 @@ The distinction is buying context, not whether AI is involved in generating resu
 ### 1.0.0-draft (2026-01-19)
 
 - Initial draft specification
-- 19 channels defined
+- 20 channels defined
 - 8 property types defined (including `desktop_app`)
 - Clear distinction between channel, property_type, and format_category
 - Added "Understanding Channels vs Property Types" section clarifying buying context
