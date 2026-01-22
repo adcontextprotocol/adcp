@@ -1565,17 +1565,36 @@
       if (a.members && a.members.length > 0) {
         // Show migrate button if there are members
         document.getElementById('migrateMembersBtn').style.display = 'inline-flex';
+
+        // Check if org has an owner
+        const hasOwner = a.members.some(m => m.role === 'owner');
+
         let membersHtml = '';
+
+        // Show warning if no owner
+        if (!hasOwner) {
+          membersHtml += `<li class="no-owner-warning" role="alert" style="background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);">
+            <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-warning-700);">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <strong>No owner assigned</strong>
+            </div>
+            <p style="margin: var(--space-2) 0 0 0; font-size: var(--text-sm); color: var(--color-warning-600);">
+              This organization has no owner. Use the dropdown below to assign one.
+            </p>
+          </li>`;
+        }
+
         for (const m of a.members) {
           const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
           const role = m.role || 'member';
-          const isOwner = role === 'owner';
-          membersHtml += `<li>
-            <span class="member-name-link" onclick="viewMemberContext('${m.id}')">${escapeHtml(name)}</span>
-            <select class="role-select" onchange="updateUserRole('${m.id}', this.value)" ${isOwner ? 'disabled' : ''}>
+          membersHtml += `<li data-member-id="${escapeHtml(m.id)}" data-current-role="${escapeHtml(role)}">
+            <span class="member-name-link" onclick="viewMemberContext(this.parentElement.dataset.memberId)">${escapeHtml(name)}</span>
+            <select class="role-select" onchange="updateUserRole(this.parentElement.dataset.memberId, this.value, this.parentElement.dataset.currentRole)">
               <option value="member" ${role === 'member' ? 'selected' : ''}>Member</option>
               <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
-              <option value="owner" ${role === 'owner' ? 'selected' : ''} disabled>Owner</option>
+              <option value="owner" ${role === 'owner' ? 'selected' : ''}>Owner</option>
             </select>
             <div style="color: var(--color-text-muted); font-size: var(--text-xs);">${escapeHtml(m.email)}</div>
           </li>`;
@@ -3218,8 +3237,17 @@
     }
 
     // Update user role
-    async function updateUserRole(userId, newRole) {
-      if (!confirm(`Change this user's role to ${newRole}?`)) {
+    async function updateUserRole(userId, newRole, currentRole) {
+      // Build appropriate confirmation message
+      let confirmMsg = `Change this user's role to ${newRole}?`;
+
+      if (newRole === 'owner') {
+        confirmMsg = `WARNING: You are about to make this user the OWNER.\n\nOwners have full control including:\n- Deleting the organization\n- Managing billing\n- Removing other members\n\nThis will transfer ownership from any existing owner.\n\nAre you sure you want to proceed?`;
+      } else if (currentRole === 'owner') {
+        confirmMsg = `WARNING: You are demoting the OWNER to ${newRole}.\n\nThis will leave the organization without an owner unless you assign another member first.\n\nProceed?`;
+      }
+
+      if (!confirm(confirmMsg)) {
         location.reload(); // Reset dropdown
         return;
       }

@@ -435,14 +435,16 @@ export function setupMembersRoutes(
             role: updatedMembership.role?.slug || "member",
           },
         });
-      } catch (error) {
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         logger.error(
-          { err: error, orgId, membershipId },
+          { err: error, errorMessage, orgId, membershipId },
           "Admin update membership role error"
         );
-        res.status(500).json({
-          error: "Failed to update membership role",
-          message: error instanceof Error ? error.message : "Unknown error",
+        return res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update membership role. Please try again or contact support.",
         });
       }
     }
