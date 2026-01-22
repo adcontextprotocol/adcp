@@ -17,7 +17,7 @@ import {
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, MembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -1009,7 +1009,7 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier, corporate_domain } = req.body;
+      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain } = req.body;
 
       // Validate required fields
       if (!organization_name) {
@@ -1042,6 +1042,34 @@ export function createOrganizationsRouter(): Router {
           error: 'Invalid revenue tier',
           message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
         });
+      }
+
+      // Validate membership_tier if provided
+      if (membership_tier && !(VALID_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
+        return res.status(400).json({
+          error: 'Invalid membership tier',
+          message: `membership_tier must be one of: ${VALID_MEMBERSHIP_TIERS.join(', ')}`,
+        });
+      }
+
+      // Validate membership_tier matches organization type
+      if (membership_tier) {
+        const individualTiers = ['individual_professional', 'individual_academic'];
+        const companyTiers = ['company_standard', 'company_icl'];
+
+        if (is_personal && companyTiers.includes(membership_tier)) {
+          return res.status(400).json({
+            error: 'Invalid membership tier for organization type',
+            message: 'Individual memberships cannot use company membership tiers',
+          });
+        }
+
+        if (!is_personal && individualTiers.includes(membership_tier)) {
+          return res.status(400).json({
+            error: 'Invalid membership tier for organization type',
+            message: 'Company memberships cannot use individual membership tiers',
+          });
+        }
       }
 
       // For non-personal organizations, validate the corporate domain
@@ -1135,6 +1163,7 @@ export function createOrganizationsRouter(): Router {
         is_personal: is_personal || false,
         company_type: company_type || undefined,
         revenue_tier: revenue_tier || undefined,
+        membership_tier: membership_tier || undefined,
       });
 
       logger.info({

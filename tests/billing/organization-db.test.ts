@@ -53,7 +53,7 @@ describe('organization-db', () => {
 
       expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO organizations'),
-        ['org_123', 'Test Org', false, null, null]
+        ['org_123', 'Test Org', false, null, null, null]
       );
       expect(result).toMatchObject({
         workos_organization_id: 'org_123',
