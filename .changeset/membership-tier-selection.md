@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": minor
 ---
 
 Add membership tier selection to onboarding flow
