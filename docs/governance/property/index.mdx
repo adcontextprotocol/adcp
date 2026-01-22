@@ -48,7 +48,7 @@ Publishers declare their properties and authorize sales agents via `/.well-known
 }
 ```
 
-See the [adagents.json Tech Spec](/docs/governance/property/adagents) for complete documentation.
+See the [adagents.json Tech Spec](./adagents) for complete documentation.
 
 ## Buyer Side: Property Data and Selection
 
@@ -197,14 +197,14 @@ Both protocols operate on properties but serve different purposes:
 
 ### Discovery
 
-- **[list_property_features](/docs/governance/property/tasks/list_property_features)**: Discover what data a governance agent can provide about properties
+- **[list_property_features](./tasks/list_property_features)**: Discover what data a governance agent can provide about properties
 
 ### Property List Management
 
-- **[create_property_list](/docs/governance/property/tasks/property_lists#create_property_list)**: Create a new property list on a governance agent
-- **[get_property_list](/docs/governance/property/tasks/property_lists#get_property_list)**: Retrieve resolved properties (with caching guidance)
-- **[update_property_list](/docs/governance/property/tasks/property_lists#update_property_list)**: Modify filters or base properties
-- **[delete_property_list](/docs/governance/property/tasks/property_lists#delete_property_list)**: Remove a property list
+- **[create_property_list](./tasks/property_lists#create_property_list)**: Create a new property list on a governance agent
+- **[get_property_list](./tasks/property_lists#get_property_list)**: Retrieve resolved properties (with caching guidance)
+- **[update_property_list](./tasks/property_lists#update_property_list)**: Modify filters or base properties
+- **[delete_property_list](./tasks/property_lists#delete_property_list)**: Remove a property list
 
 ## Getting Started
 
@@ -222,6 +222,6 @@ Both protocols operate on properties but serve different purposes:
 1. Implement `list_property_features` to advertise your capabilities
 2. Implement property list CRUD operations
 3. Support webhooks to notify buyers when evaluations change
-4. See the [Protocol Specification](/docs/governance/property/specification) for implementation details
+4. See the [Protocol Specification](./specification) for implementation details
 
-See the [Protocol Specification](/docs/governance/property/specification) for detailed implementation guidance.
+See the [Protocol Specification](./specification) for detailed implementation guidance.

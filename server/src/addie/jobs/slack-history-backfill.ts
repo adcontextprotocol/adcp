@@ -14,6 +14,7 @@
 
 import { logger } from '../../logger.js';
 import { AddieDatabase } from '../../db/addie-db.js';
+import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import {
   getSlackChannels,
   getFullChannelHistory,
@@ -24,13 +25,13 @@ import {
 } from '../../slack/client.js';
 
 const addieDb = new AddieDatabase();
+const workingGroupDb = new WorkingGroupDatabase();
 
 /**
  * Default channels to exclude from indexing (sensitive/admin channels)
  * These contain billing info, admin discussions, etc. that shouldn't be searchable
  */
 const DEFAULT_EXCLUDED_CHANNELS = [
-  'aao-admin',
   'aao-billing',
   'admin',
   'billing',
@@ -65,7 +66,7 @@ export interface BackfillOptions {
   maxMessagesPerChannel?: number;
   /** Specific channel IDs to backfill (default: all accessible channels) */
   channelIds?: string[];
-  /** Include private channels (default: false) */
+  /** Include private channels (default: true, access controlled at query time) */
   includePrivateChannels?: boolean;
   /** Channel names to exclude (default: admin/billing channels) */
   excludeChannelNames?: string[];
@@ -94,7 +95,7 @@ export async function runSlackHistoryBackfill(options: BackfillOptions = {}): Pr
     daysBack = 90,
     maxMessagesPerChannel = 1000,
     channelIds,
-    includePrivateChannels = false,
+    includePrivateChannels = true, // Access controlled at query time via membership checks
     excludeChannelNames = DEFAULT_EXCLUDED_CHANNELS,
     minMessageLength = 20,
     includeThreadReplies = true,
@@ -172,11 +173,33 @@ export async function runSlackHistoryBackfill(options: BackfillOptions = {}): Pr
       }));
   }
 
+  // Filter private channels to only include those with working groups
+  // (enables fast local access checks without Slack API calls)
+  const privateChannelsBefore = channels.filter(c => c.isPrivate).length;
+  const filteredChannels: typeof channels = [];
+  for (const channel of channels) {
+    if (!channel.isPrivate) {
+      // Public channels - always include
+      filteredChannels.push(channel);
+    } else {
+      // Private channels - only include if they have a working group
+      const workingGroup = await workingGroupDb.getWorkingGroupBySlackChannelId(channel.id);
+      if (workingGroup) {
+        filteredChannels.push(channel);
+      } else {
+        logger.debug({ channelId: channel.id, channelName: channel.name }, 'Skipping private channel without working group');
+      }
+    }
+  }
+  channels = filteredChannels;
+  const privateChannelsAfter = channels.filter(c => c.isPrivate).length;
+
   logger.info({
     channelCount: channels.length,
     publicCount: channels.filter(c => !c.isPrivate).length,
-    privateCount: channels.filter(c => c.isPrivate).length,
-  }, 'Backfilling channels');
+    privateCount: privateChannelsAfter,
+    privateChannelsSkipped: privateChannelsBefore - privateChannelsAfter,
+  }, 'Backfilling channels (private channels without working groups skipped)');
 
   // User cache to avoid repeated lookups
   const userCache = new Map<string, { displayName: string } | null>();

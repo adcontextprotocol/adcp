@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/create-content-standards-response.json",
+  "title": "Create Content Standards Response",
+  "description": "Response payload for creating a content standards configuration",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response - returns the created standards identifier",
+      "properties": {
+        "standards_id": {
+          "type": "string",
+          "description": "Unique identifier for the created standards configuration"
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["standards_id"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "conflicting_standards_id": {
+          "type": "string",
+          "description": "If the error is a scope conflict, the ID of the existing standards that conflict"
+        },
+        "standards_id": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

@@ -996,7 +996,7 @@
 
         if (!groupsResponse.ok) {
           if (groupsResponse.status === 401) {
-            window.AdminNav.redirectToLogin();
+            window.AdminSidebar.redirectToLogin();
             return;
           }
           throw new Error('Failed to load working groups');

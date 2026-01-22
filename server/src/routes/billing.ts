@@ -1053,6 +1053,333 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   });
 
   /**
+   * Helper to get customer activity data from Stripe
+   */
+  async function getCustomerActivity(customerId: string): Promise<{
+    customer_id: string;
+    name: string | null;
+    email: string | null;
+    created: number;
+    has_payment_method: boolean;
+    active_subscriptions: number;
+    open_invoice_count: number;
+    open_invoice_total: number;
+    paid_invoice_count: number;
+    total_paid: number;
+    has_activity: boolean;
+  } | null> {
+    if (!stripe) return null;
+
+    try {
+      const customer = await stripe.customers.retrieve(customerId, {
+        expand: ["subscriptions"],
+      });
+
+      if (customer.deleted) {
+        return null;
+      }
+
+      // Count paid invoices and total paid
+      let paidInvoiceCount = 0;
+      let totalPaid = 0;
+      for await (const invoice of stripe.invoices.list({
+        customer: customerId,
+        status: "paid",
+        limit: 100,
+      })) {
+        paidInvoiceCount++;
+        totalPaid += invoice.amount_paid;
+      }
+
+      // Count open invoices
+      let openInvoiceCount = 0;
+      let openInvoiceTotal = 0;
+      for await (const invoice of stripe.invoices.list({
+        customer: customerId,
+        status: "open",
+        limit: 100,
+      })) {
+        openInvoiceCount++;
+        openInvoiceTotal += invoice.amount_due;
+      }
+
+      const activeSubscriptions =
+        customer.subscriptions?.data.filter((s) => s.status === "active" || s.status === "trialing").length ?? 0;
+
+      const hasPaymentMethod = !!customer.default_source || !!customer.invoice_settings?.default_payment_method;
+
+      // Customer has activity if: active subs, open invoices, or paid invoices
+      const hasActivity = activeSubscriptions > 0 || openInvoiceCount > 0 || paidInvoiceCount > 0;
+
+      return {
+        customer_id: customerId,
+        name: customer.name ?? null,
+        email: customer.email ?? null,
+        created: customer.created,
+        has_payment_method: hasPaymentMethod,
+        active_subscriptions: activeSubscriptions,
+        open_invoice_count: openInvoiceCount,
+        open_invoice_total: openInvoiceTotal,
+        paid_invoice_count: paidInvoiceCount,
+        total_paid: totalPaid,
+        has_activity: hasActivity,
+      };
+    } catch (error) {
+      logger.warn({ err: error, customerId }, "Failed to fetch customer activity");
+      return null;
+    }
+  }
+
+  /**
+   * GET /api/admin/stripe-mismatches
+   * List Stripe customer mismatches where an org has a different customer ID in the DB
+   * than what Stripe metadata says it should have.
+   *
+   * This detects orgs that appear to have multiple Stripe customers.
+   * Returns activity data for both customers and suggests which one to keep.
+   */
+  apiRouter.get("/stripe-mismatches", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const orgDb = new OrganizationDatabase();
+      const baseMismatches = await orgDb.findStripeCustomerMismatches();
+
+      // Enrich each mismatch with activity data from Stripe
+      const mismatches = await Promise.all(
+        baseMismatches.map(async (mismatch) => {
+          const [dbCustomerActivity, metadataCustomerActivity] = await Promise.all([
+            getCustomerActivity(mismatch.db_customer_id),
+            getCustomerActivity(mismatch.stripe_metadata_customer_id),
+          ]);
+
+          // Determine suggested action based on activity
+          let suggested_action: 'use_db' | 'use_stripe_metadata' | 'manual_review' | null = null;
+          let can_auto_resolve = false;
+
+          if (dbCustomerActivity && metadataCustomerActivity) {
+            if (dbCustomerActivity.has_activity && !metadataCustomerActivity.has_activity) {
+              // DB customer has activity, metadata customer doesn't - archive metadata customer
+              suggested_action = 'use_db';
+              can_auto_resolve = true;
+            } else if (!dbCustomerActivity.has_activity && metadataCustomerActivity.has_activity) {
+              // Metadata customer has activity, DB customer doesn't - use metadata customer
+              suggested_action = 'use_stripe_metadata';
+              can_auto_resolve = true;
+            } else if (dbCustomerActivity.has_activity && metadataCustomerActivity.has_activity) {
+              // Both have activity - needs manual review
+              suggested_action = 'manual_review';
+              can_auto_resolve = false;
+            } else {
+              // Neither has activity - prefer keeping the DB one (it's already linked)
+              suggested_action = 'use_db';
+              can_auto_resolve = true;
+            }
+          }
+
+          return {
+            ...mismatch,
+            db_customer: dbCustomerActivity,
+            metadata_customer: metadataCustomerActivity,
+            suggested_action,
+            can_auto_resolve,
+          };
+        })
+      );
+
+      const autoResolvable = mismatches.filter((m) => m.can_auto_resolve).length;
+
+      res.json({
+        mismatches,
+        count: mismatches.length,
+        auto_resolvable: autoResolvable,
+        message: mismatches.length > 0
+          ? `Found ${mismatches.length} org(s) with multiple Stripe customers. ${autoResolvable} can be auto-resolved.`
+          : "No Stripe customer mismatches found",
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error finding Stripe customer mismatches");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to find mismatches",
+      });
+    }
+  });
+
+  /**
+   * POST /api/admin/stripe-mismatches/resolve
+   * Resolve a Stripe customer mismatch by choosing which customer to keep for an org.
+   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean }
+   *
+   * - use_db: Keep the customer currently in DB, archive/delete the other customer
+   * - use_stripe_metadata: Use the customer from Stripe metadata, archive/delete the DB customer
+   * - delete_inactive: If true, delete the inactive customer in Stripe (only if it has no activity)
+   *
+   * Safety: Will refuse to proceed if both customers have activity (open invoices, subscriptions, paid invoices)
+   */
+  apiRouter.post("/stripe-mismatches/resolve", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { org_id, action, delete_inactive } = req.body;
+
+      if (!org_id || !action) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          message: "Required: org_id, action ('use_db' or 'use_stripe_metadata')",
+        });
+      }
+
+      if (!["use_db", "use_stripe_metadata"].includes(action)) {
+        return res.status(400).json({
+          error: "Invalid action",
+          message: "action must be 'use_db' or 'use_stripe_metadata'",
+        });
+      }
+
+      const orgDb = new OrganizationDatabase();
+      const org = await orgDb.getOrganization(org_id);
+
+      if (!org) {
+        return res.status(404).json({
+          error: "Organization not found",
+          message: `Organization ${org_id} not found`,
+        });
+      }
+
+      if (!org.stripe_customer_id) {
+        return res.status(400).json({
+          error: "No customer to resolve",
+          message: `Organization ${org_id} has no Stripe customer linked`,
+        });
+      }
+
+      // Find the mismatch for this org
+      const mismatches = await orgDb.findStripeCustomerMismatches();
+      const mismatch = mismatches.find(m => m.org_id === org_id);
+
+      if (!mismatch) {
+        return res.status(404).json({
+          error: "No mismatch found",
+          message: `Organization ${org_id} has no Stripe customer mismatch`,
+        });
+      }
+
+      // Get activity data for both customers
+      const [dbCustomerActivity, metadataCustomerActivity] = await Promise.all([
+        getCustomerActivity(mismatch.db_customer_id),
+        getCustomerActivity(mismatch.stripe_metadata_customer_id),
+      ]);
+
+      // Safety check: refuse if both have activity
+      if (dbCustomerActivity?.has_activity && metadataCustomerActivity?.has_activity) {
+        return res.status(400).json({
+          error: "Both customers have activity",
+          message: "Both Stripe customers have activity (invoices/subscriptions). Manual review required - resolve in Stripe dashboard.",
+          db_customer: dbCustomerActivity,
+          metadata_customer: metadataCustomerActivity,
+        });
+      }
+
+      // Determine which customer to keep and which to remove
+      const keepCustomerId = action === "use_db" ? mismatch.db_customer_id : mismatch.stripe_metadata_customer_id;
+      const removeCustomerId = action === "use_db" ? mismatch.stripe_metadata_customer_id : mismatch.db_customer_id;
+      const removeCustomerActivity = action === "use_db" ? metadataCustomerActivity : dbCustomerActivity;
+
+      // Safety check: if requesting deletion, ensure we could fetch activity data
+      if (delete_inactive && !removeCustomerActivity) {
+        return res.status(400).json({
+          error: "Unable to verify customer activity",
+          message: `Could not fetch activity data for ${removeCustomerId}. Cannot safely proceed with deletion.`,
+        });
+      }
+
+      // Safety check: don't delete a customer that has activity
+      if (delete_inactive && removeCustomerActivity?.has_activity) {
+        return res.status(400).json({
+          error: "Cannot delete customer with activity",
+          message: `Customer ${removeCustomerId} has activity (${removeCustomerActivity.paid_invoice_count} paid invoices, ${removeCustomerActivity.active_subscriptions} subscriptions). Cannot auto-delete.`,
+          customer_activity: removeCustomerActivity,
+        });
+      }
+
+      // Perform the resolution
+      if (action === "use_db") {
+        // Keep the DB customer (already linked), remove the metadata customer
+        if (stripe) {
+          if (delete_inactive && !removeCustomerActivity?.has_activity) {
+            // Delete the inactive customer
+            await stripe.customers.del(removeCustomerId);
+            logger.info(
+              { orgId: org_id, keptCustomer: keepCustomerId, deletedCustomer: removeCustomerId, adminEmail: (req as any).user?.email },
+              "Resolved Stripe customer mismatch - kept DB customer, deleted inactive metadata customer"
+            );
+          } else {
+            // Just clear the metadata
+            await stripe.customers.update(removeCustomerId, {
+              metadata: { workos_organization_id: "" },
+            });
+            logger.info(
+              { orgId: org_id, keptCustomer: keepCustomerId, clearedMetadata: removeCustomerId, adminEmail: (req as any).user?.email },
+              "Resolved Stripe customer mismatch - kept DB customer, cleared metadata from other"
+            );
+          }
+        }
+
+        res.json({
+          success: true,
+          message: delete_inactive && !removeCustomerActivity?.has_activity
+            ? `Kept ${keepCustomerId} for "${org.name}". Deleted inactive customer ${removeCustomerId}.`
+            : `Kept ${keepCustomerId} for "${org.name}". Cleared metadata from ${removeCustomerId}.`,
+          action_taken: "use_db",
+          kept_customer: keepCustomerId,
+          removed_customer: removeCustomerId,
+          deleted: delete_inactive && !removeCustomerActivity?.has_activity,
+        });
+
+      } else if (action === "use_stripe_metadata") {
+        // Switch to metadata customer, remove the DB customer
+        await orgDb.updateOrganization(org_id, {
+          stripe_customer_id: keepCustomerId,
+        });
+
+        if (stripe) {
+          if (delete_inactive && !removeCustomerActivity?.has_activity) {
+            // Delete the inactive customer
+            await stripe.customers.del(removeCustomerId);
+            logger.info(
+              { orgId: org_id, newCustomer: keepCustomerId, deletedCustomer: removeCustomerId, adminEmail: (req as any).user?.email },
+              "Resolved Stripe customer mismatch - switched to metadata customer, deleted inactive DB customer"
+            );
+          } else {
+            // Just clear the metadata
+            await stripe.customers.update(removeCustomerId, {
+              metadata: { workos_organization_id: "" },
+            });
+            logger.info(
+              { orgId: org_id, newCustomer: keepCustomerId, clearedMetadata: removeCustomerId, adminEmail: (req as any).user?.email },
+              "Resolved Stripe customer mismatch - switched to metadata customer, cleared metadata from old"
+            );
+          }
+        }
+
+        res.json({
+          success: true,
+          message: delete_inactive && !removeCustomerActivity?.has_activity
+            ? `Switched "${org.name}" to ${keepCustomerId}. Deleted inactive customer ${removeCustomerId}.`
+            : `Switched "${org.name}" to ${keepCustomerId}. Cleared metadata from ${removeCustomerId}.`,
+          action_taken: "use_stripe_metadata",
+          kept_customer: keepCustomerId,
+          removed_customer: removeCustomerId,
+          deleted: delete_inactive && !removeCustomerActivity?.has_activity,
+        });
+      }
+    } catch (error) {
+      logger.error({ err: error }, "Error resolving Stripe customer mismatch");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to resolve mismatch",
+      });
+    }
+  });
+
+  /**
    * POST /api/admin/stripe-customer/unlink
    * Unlink a Stripe customer from an organization (without deleting the customer in Stripe)
    * Body: { org_id }

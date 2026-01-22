@@ -27,8 +27,11 @@ export interface MergeSummary {
   }[];
   prospect_notes_merged: boolean;
   enrichment_data_preserved: boolean;
+  stripe_customer_action: 'kept_primary' | 'moved_from_secondary' | 'none' | 'conflict_unresolved' | null;
   warnings: string[];
 }
+
+export type StripeCustomerResolution = 'keep_primary' | 'use_secondary' | 'keep_both_unlinked';
 
 /**
  * Merge two organizations, moving all data from secondary to primary
@@ -36,12 +39,16 @@ export interface MergeSummary {
  * @param primaryOrgId - The organization to keep (merge into)
  * @param secondaryOrgId - The organization to remove (merge from)
  * @param mergedBy - WorkOS user ID of person initiating the merge
+ * @param options.stripeCustomerResolution - How to handle stripe_customer_id conflict
  * @returns Summary of the merge operation
  */
 export async function mergeOrganizations(
   primaryOrgId: string,
   secondaryOrgId: string,
-  mergedBy: string
+  mergedBy: string,
+  options?: {
+    stripeCustomerResolution?: StripeCustomerResolution;
+  }
 ): Promise<MergeSummary> {
   const pool = getPool();
   const client = await pool.connect();
@@ -54,6 +61,7 @@ export async function mergeOrganizations(
     tables_merged: [],
     prospect_notes_merged: false,
     enrichment_data_preserved: false,
+    stripe_customer_action: null,
     warnings: [],
   };
 
@@ -69,6 +77,7 @@ export async function mergeOrganizations(
     // Validate both organizations exist and fetch all needed fields
     const orgsResult = await client.query(
       `SELECT workos_organization_id, name, is_personal, prospect_notes,
+              stripe_customer_id,
               enrichment_at, enrichment_industry, enrichment_sub_industry,
               enrichment_employee_count, enrichment_revenue, enrichment_revenue_range,
               enrichment_country, enrichment_city, enrichment_description
@@ -97,6 +106,80 @@ export async function mergeOrganizations(
       { primary: primaryOrg.name, secondary: secondaryOrg.name },
       'Merging organizations'
     );
+
+    // =====================================================
+    // 0. Handle Stripe customer ID
+    // =====================================================
+    const primaryHasStripe = !!primaryOrg.stripe_customer_id;
+    const secondaryHasStripe = !!secondaryOrg.stripe_customer_id;
+
+    if (primaryHasStripe && secondaryHasStripe) {
+      // Both orgs have Stripe customers - require explicit resolution
+      const resolution = options?.stripeCustomerResolution;
+      if (!resolution) {
+        throw new Error(
+          `Both organizations have Stripe customers (primary: ${primaryOrg.stripe_customer_id}, secondary: ${secondaryOrg.stripe_customer_id}). ` +
+          `Provide stripeCustomerResolution option: 'keep_primary', 'use_secondary', or 'keep_both_unlinked'`
+        );
+      }
+
+      if (resolution === 'keep_primary') {
+        // Keep primary's customer, unlink secondary's (will be deleted with the org)
+        summary.stripe_customer_action = 'kept_primary';
+        summary.warnings.push(
+          `Secondary org's Stripe customer ${secondaryOrg.stripe_customer_id} will be orphaned - may need manual cleanup in Stripe`
+        );
+        logger.info(
+          { primaryCustomer: primaryOrg.stripe_customer_id, orphanedCustomer: secondaryOrg.stripe_customer_id },
+          'Keeping primary Stripe customer, secondary customer will be orphaned'
+        );
+      } else if (resolution === 'use_secondary') {
+        // Replace primary's customer with secondary's
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
+          [secondaryOrg.stripe_customer_id, primaryOrgId]
+        );
+        summary.stripe_customer_action = 'moved_from_secondary';
+        summary.warnings.push(
+          `Primary org's previous Stripe customer ${primaryOrg.stripe_customer_id} was replaced - may need manual cleanup in Stripe`
+        );
+        logger.info(
+          { newCustomer: secondaryOrg.stripe_customer_id, orphanedCustomer: primaryOrg.stripe_customer_id },
+          'Replaced primary Stripe customer with secondary'
+        );
+      } else if (resolution === 'keep_both_unlinked') {
+        // Unlink primary's customer, don't transfer secondary's
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = NULL WHERE workos_organization_id = $1`,
+          [primaryOrgId]
+        );
+        summary.stripe_customer_action = 'conflict_unresolved';
+        summary.warnings.push(
+          `Both Stripe customers (${primaryOrg.stripe_customer_id}, ${secondaryOrg.stripe_customer_id}) were unlinked - manual linking required`
+        );
+        logger.info(
+          { orphanedCustomers: [primaryOrg.stripe_customer_id, secondaryOrg.stripe_customer_id] },
+          'Both Stripe customers unlinked, manual resolution required'
+        );
+      }
+    } else if (secondaryHasStripe && !primaryHasStripe) {
+      // Only secondary has Stripe - move it to primary
+      await client.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
+        [secondaryOrg.stripe_customer_id, primaryOrgId]
+      );
+      summary.stripe_customer_action = 'moved_from_secondary';
+      logger.info(
+        { stripeCustomerId: secondaryOrg.stripe_customer_id },
+        'Moved Stripe customer from secondary to primary org'
+      );
+    } else if (primaryHasStripe) {
+      // Only primary has Stripe - keep it
+      summary.stripe_customer_action = 'kept_primary';
+    } else {
+      // Neither has Stripe
+      summary.stripe_customer_action = 'none';
+    }
 
     // =====================================================
     // 1. Merge organization_memberships
@@ -137,24 +220,24 @@ export async function mergeOrganizations(
     // =====================================================
     // 2. Merge organization_domains
     // =====================================================
-    const domainsResult = await client.query(
-      `INSERT INTO organization_domains (
-        workos_organization_id, domain, is_primary, verified, source,
-        created_at, updated_at
-      )
-      SELECT
-        $1, domain, false, verified, source, created_at, updated_at
-      FROM organization_domains
-      WHERE workos_organization_id = $2
-      ON CONFLICT (domain) DO NOTHING
-      RETURNING domain`,
-      [primaryOrgId, secondaryOrgId]
-    );
-
+    // Count domains before transfer for summary
     const totalDomains = await client.query(
       `SELECT COUNT(*) as count FROM organization_domains
        WHERE workos_organization_id = $1`,
       [secondaryOrgId]
+    );
+
+    // Transfer domains by updating the organization_id directly
+    // The UNIQUE(domain) constraint ensures each domain belongs to only one org,
+    // so we just update the org_id rather than insert/delete
+    const domainsResult = await client.query(
+      `UPDATE organization_domains
+       SET workos_organization_id = $1,
+           is_primary = false,
+           updated_at = NOW()
+       WHERE workos_organization_id = $2
+       RETURNING domain`,
+      [primaryOrgId, secondaryOrgId]
     );
 
     summary.tables_merged.push({
@@ -162,12 +245,6 @@ export async function mergeOrganizations(
       rows_moved: domainsResult.rows.length,
       rows_skipped_duplicate: parseInt(totalDomains.rows[0].count, 10) - domainsResult.rows.length,
     });
-
-    // Delete secondary org domains
-    await client.query(
-      `DELETE FROM organization_domains WHERE workos_organization_id = $1`,
-      [secondaryOrgId]
-    );
 
     // =====================================================
     // 3. Merge organization_join_requests
@@ -663,13 +740,19 @@ export async function previewMerge(
     table_name: string;
     rows_to_move: number;
   }[];
+  stripe_customer_conflict: {
+    has_conflict: boolean;
+    primary_customer_id: string | null;
+    secondary_customer_id: string | null;
+    requires_resolution: boolean;
+  };
   warnings: string[];
 }> {
   const pool = getPool();
 
-  // Get organization names and personal workspace status
+  // Get organization names, personal workspace status, and stripe info
   const orgsResult = await pool.query(
-    `SELECT workos_organization_id, name, is_personal FROM organizations
+    `SELECT workos_organization_id, name, is_personal, stripe_customer_id FROM organizations
      WHERE workos_organization_id = ANY($1)`,
     [[primaryOrgId, secondaryOrgId]]
   );
@@ -804,9 +887,19 @@ export async function previewMerge(
     warnings.push('Both organizations have member profiles - secondary profile will be deleted');
   }
 
-  // Stripe-specific warnings (these need manual handling regardless of which is primary)
-  if (secondaryData?.stripe_customer_id) {
-    warnings.push(`⚠️ STRIPE: Secondary org has Stripe customer ${secondaryData.stripe_customer_id} - this will NOT be merged automatically. Manual Stripe cleanup required.`);
+  // Build Stripe customer conflict info
+  const primaryCustomerId = primaryData?.stripe_customer_id || primaryOrg.stripe_customer_id || null;
+  const secondaryCustomerId = secondaryData?.stripe_customer_id || secondaryOrg.stripe_customer_id || null;
+  const bothHaveStripe = !!primaryCustomerId && !!secondaryCustomerId;
+
+  // Stripe-specific warnings
+  if (bothHaveStripe) {
+    warnings.push(
+      `🔴 STRIPE CONFLICT: Both orgs have Stripe customers (primary: ${primaryCustomerId}, secondary: ${secondaryCustomerId}). ` +
+      `You must specify stripeCustomerResolution: 'keep_primary', 'use_secondary', or 'keep_both_unlinked'`
+    );
+  } else if (secondaryCustomerId && !primaryCustomerId) {
+    warnings.push(`⚠️ STRIPE: Secondary org's Stripe customer ${secondaryCustomerId} will be moved to primary org`);
   }
 
   if (secondaryData?.stripe_subscription_id) {
@@ -828,6 +921,12 @@ export async function previewMerge(
     primary_org: { id: primaryOrg.workos_organization_id, name: primaryOrg.name },
     secondary_org: { id: secondaryOrg.workos_organization_id, name: secondaryOrg.name },
     estimated_changes: estimatedChanges,
+    stripe_customer_conflict: {
+      has_conflict: bothHaveStripe,
+      primary_customer_id: primaryCustomerId,
+      secondary_customer_id: secondaryCustomerId,
+      requires_resolution: bothHaveStripe,
+    },
     warnings,
   };
 }

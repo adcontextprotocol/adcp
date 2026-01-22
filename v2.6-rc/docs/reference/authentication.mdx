@@ -38,36 +38,31 @@ These operations require valid credentials:
 
 **Rationale**: These operations involve financial commitments, access to proprietary data, or modifications to active campaigns.
 
-## Authentication Methods
+## Authentication Method
 
-AdCP supports multiple authentication methods. Implementations must support at least one method:
+AdCP uses Bearer token authentication, consistent with the MCP specification:
 
-### JWT Bearer Token
-```http
-Authorization: Bearer <jwt_token>
+```
+Authorization: Bearer <token>
 ```
 
-JWT tokens must include standard claims:
+Tokens may be:
+- **Opaque tokens**: Server-validated strings mapped to principals
+- **JWT tokens**: Self-contained tokens with embedded claims
+
+### JWT Token Claims
+
+When using JWT tokens, include these standard claims:
+
 ```json
 {
   "sub": "principal_123",
   "exp": 1706745600,
-  "iat": 1706742000,
-  "permissions": {
-    "products": ["read"],
-    "media_buys": ["read", "write"],
-    "creatives": ["read", "write"],
-    "reports": ["read"]
-  }
+  "iat": 1706742000
 }
 ```
 
-### API Key
-```http
-X-API-Key: <api_key>
-```
-
-API keys are mapped to principals and their associated permissions.
+Sales agents may require additional claims for authorization.
 
 ## Principal Model
 
@@ -85,25 +80,84 @@ interface Principal {
 type Permission = 'read' | 'write' | 'delete' | 'approve';
 ```
 
-## Required Headers by Protocol
+## Protocol Configuration
 
-### MCP
+Both MCP and A2A protocols use the same authentication header. Configure your client with:
+
 ```json
 {
-  "headers": {
-    "Authorization": "Bearer <token>"
+  "auth": {
+    "type": "bearer",
+    "token": "<your_token>"
   }
 }
 ```
 
-### A2A
-```json
-{
-  "headers": {
-    "Authorization": "Bearer <token>"
+The client library handles adding the `Authorization: Bearer <token>` header to requests.
+
+## MCP Client Configuration
+
+When using the MCP protocol, authentication is handled by the transport layer, not by adding HTTP headers manually.
+
+### Using MCP Client Libraries
+
+The recommended approach is to use an MCP client library:
+
+<CodeGroup>
+
+```typescript TypeScript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const transport = new StreamableHTTPClientTransport(
+  new URL('https://test-agent.adcontextprotocol.org/mcp'),
+  {
+    requestInit: {
+      headers: {
+        'Authorization': 'Bearer YOUR_TOKEN_HERE'
+      }
+    }
   }
-}
+);
+
+const client = new Client({ name: 'my-client', version: '1.0.0' });
+await client.connect(transport);
 ```
+
+```python Python
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async with streamablehttp_client(
+    "https://test-agent.adcontextprotocol.org/mcp",
+    headers={"Authorization": "Bearer YOUR_TOKEN_HERE"}
+) as (read, write):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+```
+
+</CodeGroup>
+
+### Common Mistake: Raw HTTP Headers
+
+A common mistake is trying to add authentication headers to raw HTTP requests:
+
+```http
+# This won't work for MCP endpoints
+GET /mcp HTTP/1.1
+Authorization: Bearer YOUR_TOKEN
+```
+
+MCP uses a streaming protocol over HTTP. The authentication must be configured in the MCP client transport layer, which handles the protocol negotiation and message framing.
+
+### Troubleshooting Authentication
+
+If you're getting "authentication required" errors:
+
+1. **Verify you're using an MCP client library** - not making raw HTTP calls
+2. **Check the token format** - should be passed to the transport configuration
+3. **Test with the public test agent** - verify your setup works before testing custom agents
+4. **Check protocol version** - ensure client and server protocol versions are compatible
 
 ## Obtaining Credentials
 
@@ -189,11 +243,17 @@ Consider using aggregation platforms (like Scope3) that manage credentials and r
 
 ## Testing Authentication
 
-Use dry run mode to test authenticated operations without affecting production:
+Use the public test agent to validate your authentication setup:
 
-```http
-X-Dry-Run: true
-Authorization: Bearer <token>
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/mcp",
+  "protocol": "mcp",
+  "auth": {
+    "type": "bearer",
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+  }
+}
 ```
 
-See [Testing & Development Guide](/docs/media-buy/advanced-topics/testing) for complete testing capabilities.
+See [Testing & Development Guide](/docs/media-buy/advanced-topics/testing) for complete testing capabilities including dry run mode and time simulation.

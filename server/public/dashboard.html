@@ -634,7 +634,63 @@
           background: var(--color-gray-100);
         }
 
+        /* Setup alerts banner styles */
+        .setup-alert {
+          background: var(--color-warning-50);
+          border: 1px solid var(--color-warning-200);
+          border-left: 4px solid var(--color-warning-500);
+          border-radius: var(--radius-md);
+          padding: var(--space-4);
+          margin-bottom: var(--space-4);
+          display: flex;
+          align-items: flex-start;
+          gap: var(--space-3);
+        }
+        .setup-alert-icon {
+          font-size: 18px;
+          line-height: 1;
+          flex-shrink: 0;
+        }
+        .setup-alert-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .setup-alert-title {
+          font-weight: 600;
+          color: var(--color-warning-800);
+          margin: 0 0 2px 0;
+          font-size: 14px;
+        }
+        .setup-alert-message {
+          color: var(--color-warning-700);
+          margin: 0;
+          font-size: 13px;
+        }
+        .setup-alert-action {
+          flex-shrink: 0;
+        }
+        .setup-alert-action .btn {
+          font-size: 12px;
+          padding: 6px 12px;
+        }
+        .setup-alert-dismiss {
+          background: none;
+          border: none;
+          color: var(--color-warning-500);
+          cursor: pointer;
+          padding: 4px;
+          font-size: 16px;
+          line-height: 1;
+          opacity: 0.7;
+        }
+        .setup-alert-dismiss:hover {
+          opacity: 1;
+        }
+
       </style>
+
+      <!-- ========== SETUP ALERTS ========== -->
+      <div id="setupAlerts" style="display: none;"></div>
 
       <!-- ========== PROMO BANNER ========== -->
       <div id="promoBanner" style="display: none;"></div>
@@ -1289,6 +1345,9 @@
 
         // Show member promo banner (e.g., for upcoming events)
         renderMemberPromoBanner(org);
+
+        // Show setup alerts for incomplete profile items
+        renderSetupAlerts(org);
       } else {
         // Hide the small membership card and show CTA section
         membershipCard.style.display = 'none';
@@ -1576,6 +1635,125 @@
       //   </div>
       // `;
       // promoBanner.style.display = 'block';
+    }
+
+    // Render setup alerts for incomplete profile items (members only)
+    async function renderSetupAlerts(org) {
+      const setupAlerts = document.getElementById('setupAlerts');
+      if (!setupAlerts) return;
+
+      // Only show for active members
+      if (org.billing?.status !== 'active') {
+        setupAlerts.style.display = 'none';
+        return;
+      }
+
+      // Get dismissed alerts from session storage
+      const dismissedAlerts = JSON.parse(sessionStorage.getItem('dismissedSetupAlerts') || '[]');
+
+      // Fetch member profile to check for missing items
+      try {
+        const response = await fetch(`/api/member-profiles/org/${org.id}`);
+        if (!response.ok) {
+          setupAlerts.style.display = 'none';
+          return;
+        }
+
+        const profile = await response.json();
+        const alerts = [];
+
+        // Check for missing logo
+        if (!profile.logo_url && !dismissedAlerts.includes('missing-logo')) {
+          alerts.push({
+            id: 'missing-logo',
+            icon: '🖼️',
+            title: 'Add Your Company Logo',
+            message: 'Upload a logo so your company appears in the member directory and on the homepage.',
+            actionLabel: 'Add Logo',
+            actionUrl: '/dashboard-settings#logo'
+          });
+        }
+
+        // Check for missing tagline
+        if (!profile.tagline && !dismissedAlerts.includes('missing-tagline')) {
+          alerts.push({
+            id: 'missing-tagline',
+            icon: '✏️',
+            title: 'Add a Company Description',
+            message: 'Help others learn about your organization by adding a tagline.',
+            actionLabel: 'Add Description',
+            actionUrl: '/dashboard-settings#profile'
+          });
+        }
+
+        // Check for pending join requests (admins only)
+        try {
+          const pendingResponse = await fetch(`/api/organizations/${org.id}/join-requests`);
+          if (pendingResponse.ok) {
+            const pendingData = await pendingResponse.json();
+            const pendingCount = pendingData.requests?.length || 0;
+            if (pendingCount > 0 && !dismissedAlerts.includes('pending-join-requests')) {
+              alerts.push({
+                id: 'pending-join-requests',
+                icon: '👋',
+                title: `${pendingCount} Pending Join Request${pendingCount > 1 ? 's' : ''}`,
+                message: `${pendingCount} ${pendingCount > 1 ? 'people are' : 'person is'} waiting to join your team.`,
+                actionLabel: 'Review Requests',
+                actionUrl: `/team?org=${org.id}`
+              });
+            }
+          }
+        } catch (e) {
+          // Ignore errors - user may not be admin
+        }
+
+        // If no alerts, hide the container
+        if (alerts.length === 0) {
+          setupAlerts.style.display = 'none';
+          return;
+        }
+
+        // Render alerts
+        setupAlerts.innerHTML = alerts.map(alert => `
+          <div class="setup-alert" data-alert-id="${escapeHtml(alert.id)}">
+            <div class="setup-alert-icon">${alert.icon}</div>
+            <div class="setup-alert-content">
+              <h4 class="setup-alert-title">${escapeHtml(alert.title)}</h4>
+              <p class="setup-alert-message">${escapeHtml(alert.message)}</p>
+            </div>
+            <div class="setup-alert-action">
+              <a href="${escapeHtml(alert.actionUrl)}" class="btn btn-primary">${escapeHtml(alert.actionLabel)}</a>
+            </div>
+            <button class="setup-alert-dismiss" onclick="dismissSetupAlert('${escapeHtml(alert.id)}')" title="Dismiss">×</button>
+          </div>
+        `).join('');
+
+        setupAlerts.style.display = 'block';
+      } catch (error) {
+        console.error('Error fetching member profile for setup alerts:', error);
+        setupAlerts.style.display = 'none';
+      }
+    }
+
+    // Dismiss a setup alert for the current session
+    function dismissSetupAlert(alertId) {
+      const dismissedAlerts = JSON.parse(sessionStorage.getItem('dismissedSetupAlerts') || '[]');
+      if (!dismissedAlerts.includes(alertId)) {
+        dismissedAlerts.push(alertId);
+        sessionStorage.setItem('dismissedSetupAlerts', JSON.stringify(dismissedAlerts));
+      }
+
+      // Remove the alert from the DOM
+      const alertEl = document.querySelector(`.setup-alert[data-alert-id="${alertId}"]`);
+      if (alertEl) {
+        alertEl.remove();
+      }
+
+      // Hide container if no more alerts
+      const setupAlerts = document.getElementById('setupAlerts');
+      if (setupAlerts && setupAlerts.children.length === 0) {
+        setupAlerts.style.display = 'none';
+      }
     }
 
     // Load team count for status card

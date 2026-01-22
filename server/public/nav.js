@@ -204,7 +204,7 @@
             </svg>
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${latestBaseUrl}/research" class="navbar__dropdown-item ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>
+            <a href="${latestBaseUrl}/perspectives" class="navbar__dropdown-item ${currentPath === '/latest/perspectives' ? 'active' : ''}">Perspectives</a>
             <a href="${latestBaseUrl}/industry-news" class="navbar__dropdown-item ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>
             <a href="${latestBaseUrl}/learning" class="navbar__dropdown-item ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>
             <a href="${latestBaseUrl}/announcements" class="navbar__dropdown-item ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>
@@ -290,7 +290,7 @@
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
-          ${membershipEnabled ? `<a href="${latestBaseUrl}/research" class="navbar__link navbar__link--indent ${currentPath === '/latest/research' ? 'active' : ''}">Research & Ideas</a>` : ''}
+          ${membershipEnabled ? `<a href="${latestBaseUrl}/perspectives" class="navbar__link navbar__link--indent ${currentPath === '/latest/perspectives' ? 'active' : ''}">Perspectives</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/learning" class="navbar__link navbar__link--indent ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}

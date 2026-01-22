@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.3/core/assets/video-asset.json",
+  "title": "Video Asset",
+  "description": "Video asset with URL and specifications",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the video asset"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Width in pixels"
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Height in pixels"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Video duration in milliseconds",
+      "minimum": 1
+    },
+    "format": {
+      "type": "string",
+      "description": "Video file format (mp4, webm, mov, etc.)"
+    },
+    "bitrate_kbps": {
+      "type": "integer",
+      "description": "Video bitrate in kilobits per second",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "url",
+    "width",
+    "height"
+  ],
+  "additionalProperties": true
+}

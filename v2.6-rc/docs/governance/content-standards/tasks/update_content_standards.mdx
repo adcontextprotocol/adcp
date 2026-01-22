@@ -1,0 +1,72 @@
+---
+title: update_content_standards
+sidebar_position: 6
+---
+
+# update_content_standards
+
+Update an existing content standards configuration. Creates a new version.
+
+**Response time**: < 1s
+
+## Request
+
+**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/update-content-standards-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | ID of the standards configuration to update |
+| `scope` | object | No | Updated scope |
+| `policy` | string | No | Updated policy prompt |
+| `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
+
+### Example Request
+
+```json
+{
+  "standards_id": "nike_emea_safety",
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid violence, controversial politics, adult themes. Block hate speech and illegal activities.",
+  "calibration_exemplars": {
+    "pass": [
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" },
+      { "type": "url", "value": "https://runnersworld.com/training/marathon-tips", "language": "en" }
+    ],
+    "fail": [
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
+      { "type": "url", "value": "https://gambling.example.com/betting-guide", "language": "en" }
+    ]
+  }
+}
+```
+
+## Response
+
+**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/update-content-standards-response.json)
+
+### Success Response
+
+```json
+{
+  "standards_id": "nike_emea_safety"
+}
+```
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [get_content_standards](/docs/governance/content-standards/tasks/get_content_standards) - Get current configuration
+- [create_content_standards](/docs/governance/content-standards/tasks/create_content_standards) - Create a new configuration
+- [delete_content_standards](/docs/governance/content-standards/tasks/delete_content_standards) - Delete a configuration

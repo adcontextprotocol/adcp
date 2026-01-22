@@ -193,13 +193,33 @@ export function setupDomainRoutes(
           return res.status(500).json({ error: "WorkOS not configured" });
         }
 
+        const pool = getPool();
+        const normalizedDomain = domain.toLowerCase().trim();
+
+        // Check if domain already has an organization
+        const existingResult = await pool.query(
+          `SELECT od.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE LOWER(od.domain) = $1`,
+          [normalizedDomain]
+        );
+
+        if (existingResult.rows.length > 0) {
+          return res.status(409).json({
+            error: "Domain already claimed",
+            message: `Domain ${domain} already belongs to organization "${existingResult.rows[0].name}"`,
+            existing_org_id: existingResult.rows[0].workos_organization_id,
+          });
+        }
+
         // Get the users from this domain for context
         const domainData = await slackDb.getUnmappedDomains({
           excludeFreeEmailProviders: false,
           minUsers: 1,
         });
         const domainInfo = domainData.find(
-          (d) => d.domain.toLowerCase() === domain.toLowerCase()
+          (d) => d.domain.toLowerCase() === normalizedDomain
         );
 
         if (!domainInfo) {
@@ -229,7 +249,6 @@ export function setupDomainRoutes(
         );
 
         // Create local record
-        const pool = getPool();
         const slackUserNames = domainInfo.users
           .map((u) => u.slack_real_name || u.slack_display_name)
           .filter(Boolean)
@@ -640,16 +659,34 @@ export function setupDomainRoutes(
         }
 
         const pool = getPool();
+        const normalizedDomain = domain.toLowerCase().trim();
+
+        // Check if domain already has an organization
+        const existingResult = await pool.query(
+          `SELECT od.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE LOWER(od.domain) = $1`,
+          [normalizedDomain]
+        );
+
+        if (existingResult.rows.length > 0) {
+          return res.status(409).json({
+            error: "Domain already claimed",
+            message: `Domain ${domain} already belongs to organization "${existingResult.rows[0].name}"`,
+            existing_org_id: existingResult.rows[0].workos_organization_id,
+          });
+        }
 
         // Get the contacts from this domain for context
         const contactsResult = await pool.query(
           `SELECT email, display_name, email_count, last_seen_at
            FROM email_contacts
            WHERE mapping_status = 'unmapped'
-             AND LOWER(domain) = LOWER($1)
+             AND LOWER(domain) = $1
            ORDER BY email_count DESC
            LIMIT 10`,
-          [domain]
+          [normalizedDomain]
         );
 
         if (contactsResult.rows.length === 0) {
@@ -1153,7 +1190,7 @@ export function setupDomainRoutes(
 
         // Check if domain is already claimed by another org locally
         const existingResult = await pool.query(
-          `SELECT od.workos_organization_id, o.name as org_name
+          `SELECT od.workos_organization_id, od.verified, o.name as org_name
            FROM organization_domains od
            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
            WHERE od.domain = $1`,
@@ -1169,12 +1206,16 @@ export function setupDomainRoutes(
               existing_organization_id: existingOrg.workos_organization_id,
             });
           }
-          // Domain already belongs to this org
-          return res.json({
-            success: true,
-            message: "Domain already associated with this organization",
-            domain: normalizedDomain,
-          });
+          // Domain already belongs to this org - but need to verify it if not already
+          if (existingOrg.verified) {
+            return res.json({
+              success: true,
+              message: "Domain already associated with this organization",
+              domain: normalizedDomain,
+            });
+          }
+          // Domain exists but not verified - continue to verify it
+          logger.info({ orgId, domain: normalizedDomain }, "Domain exists but not verified, proceeding to verify");
         }
 
         // Add to WorkOS first - this is the source of truth
@@ -2142,16 +2183,43 @@ export function setupDomainRoutes(
         for (const row of result.rows) {
           const orgId = row.workos_organization_id;
 
-          // Get existing members for this org
+          // Get existing members for this org (paginate through all)
           try {
-            const memberships = await config.workos!.userManagement.listOrganizationMemberships({
-              organizationId: orgId,
-            });
-            const existingMemberUserIds = new Set(memberships.data.map(m => m.userId));
+            const existingMemberUserIds = new Set<string>();
+            let after: string | undefined;
+            do {
+              const memberships = await config.workos!.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+              for (const m of memberships.data) {
+                existingMemberUserIds.add(m.userId);
+              }
+              after = memberships.listMetadata?.after;
+            } while (after);
 
-            // Filter to users who aren't already members
+            // Also get pending invitations (can't add users who have pending invites)
+            const pendingInvitationEmails = new Set<string>();
+            after = undefined;
+            do {
+              const invitations = await config.workos!.userManagement.listInvitations({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+              for (const inv of invitations.data) {
+                if (inv.state === 'pending') {
+                  pendingInvitationEmails.add(inv.email.toLowerCase());
+                }
+              }
+              after = invitations.listMetadata?.after;
+            } while (after);
+
+            // Filter to users who aren't already members and don't have pending invitations
             const usersToAdd = (row.users as Array<{ email: string; name: string | null; workos_user_id: string }>)
-              .filter(u => !existingMemberUserIds.has(u.workos_user_id));
+              .filter(u => !existingMemberUserIds.has(u.workos_user_id) &&
+                          !pendingInvitationEmails.has(u.email.toLowerCase()));
 
             if (usersToAdd.length > 0) {
               orgUsersToAdd.push({
@@ -2263,13 +2331,21 @@ export function setupDomainRoutes(
           let orgSkipped = 0;
           let orgErrors = 0;
 
-          // Get existing members for this org
-          let existingMemberUserIds: Set<string>;
+          // Get existing members for this org (paginate through all)
+          const existingMemberUserIds = new Set<string>();
           try {
-            const memberships = await config.workos!.userManagement.listOrganizationMemberships({
-              organizationId: orgId,
-            });
-            existingMemberUserIds = new Set(memberships.data.map(m => m.userId));
+            let after: string | undefined;
+            do {
+              const memberships = await config.workos!.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+              for (const m of memberships.data) {
+                existingMemberUserIds.add(m.userId);
+              }
+              after = memberships.listMetadata?.after;
+            } while (after);
           } catch (err) {
             logger.warn({ err, orgId }, 'Failed to get memberships for org, skipping');
             continue;
@@ -2297,9 +2373,10 @@ export function setupDomainRoutes(
                 userId: user.workos_user_id,
                 addedBy: adminUser.id,
               }, 'Domain user auto-added to organization via backfill');
-            } catch (err) {
-              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-              if (errorMessage.includes('already a member')) {
+            } catch (err: any) {
+              if (err?.code === 'organization_membership_already_exists' ||
+                  err?.code === 'cannot_reactivate_pending_organization_membership') {
+                // User is already a member or has a pending invitation
                 orgSkipped++;
               } else {
                 logger.warn({ err, orgId, email: user.email }, 'Failed to add domain user');

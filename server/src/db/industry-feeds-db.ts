@@ -256,12 +256,18 @@ function generateSlug(title: string, guid: string): string {
 }
 
 /**
- * Check if RSS article already exists as a perspective
+ * Check if RSS article already exists as a perspective.
+ * Checks both (feed_id, guid) for same-feed duplicates and
+ * external_url for cross-feed duplicates (same article from different feeds).
  */
-export async function rssArticleExists(feedId: number, guid: string): Promise<boolean> {
+export async function rssArticleExists(feedId: number, guid: string, externalUrl: string): Promise<boolean> {
   const result = await query<{ exists: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM perspectives WHERE feed_id = $1 AND guid = $2)`,
-    [feedId, guid]
+    `SELECT EXISTS(
+      SELECT 1 FROM perspectives
+      WHERE (feed_id = $1 AND guid = $2)
+         OR external_url = $3
+    )`,
+    [feedId, guid, externalUrl]
   );
   return result.rows[0].exists;
 }
@@ -271,8 +277,8 @@ export async function rssArticleExists(feedId: number, guid: string): Promise<bo
  * Returns the perspective ID if created, null if it already exists
  */
 export async function createRssPerspective(article: RssArticleInput): Promise<string | null> {
-  // First check if we already have this article (by guid)
-  const existing = await rssArticleExists(article.feed_id, article.guid);
+  // Check if we already have this article (by guid or URL to catch cross-feed duplicates)
+  const existing = await rssArticleExists(article.feed_id, article.guid, article.link);
   if (existing) {
     return null;
   }

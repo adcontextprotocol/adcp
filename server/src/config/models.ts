@@ -25,13 +25,13 @@ export const ModelConfig = {
 
   /**
    * Precision model for high-stakes tasks (billing, financial, legal)
-   * Default: claude-opus-4 (most capable, but more expensive)
+   * Default: claude-opus-4-5 (most capable, but more expensive)
    * Override: CLAUDE_MODEL_PRECISION
    *
    * Use this when accuracy is critical and hallucinations are costly.
    * Examples: sending invoices, quoting prices, handling payments.
    */
-  precision: process.env.CLAUDE_MODEL_PRECISION || 'claude-opus-4',
+  precision: process.env.CLAUDE_MODEL_PRECISION || 'claude-opus-4-5',
 } as const;
 
 /**

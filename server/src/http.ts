@@ -17,7 +17,7 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
-import { isValidAgentType } from "./types.js";
+import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
@@ -61,6 +61,7 @@ import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
+import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
@@ -436,11 +437,13 @@ export class HTTPServer {
       // - Stripe webhooks: need raw body for webhook signature verification
       // - Resend inbound webhooks: need raw body for Svix signature verification
       // - WorkOS webhooks: need raw body for WorkOS signature verification
+      // - Zoom webhooks: need raw body for HMAC signature verification
       // - Slack routes: need raw body for Slack signature verification
       //   (both JSON for events and URL-encoded for commands)
       if (req.path === '/api/webhooks/stripe' ||
           req.path === '/api/webhooks/resend-inbound' ||
           req.path === '/api/webhooks/workos' ||
+          req.path === '/api/webhooks/zoom' ||
           req.path.startsWith('/api/slack/')) {
         next();
       } else {
@@ -810,6 +813,20 @@ export class HTTPServer {
     // Mount organization routes
     const organizationsRouter = createOrganizationsRouter();
     this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
+
+    // Mount member profile routes
+    const memberDb = new MemberDatabase();
+    const orgDb = new OrganizationDatabase();
+    const memberProfileConfig = {
+      workos,
+      memberDb,
+      orgDb,
+      invalidateMemberContextCache,
+    };
+    const memberProfileRouter = createMemberProfileRouter(memberProfileConfig);
+    this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
+    const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
+    this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
@@ -1604,18 +1621,22 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'governance.html');
     });
 
-    // Legacy redirects to The Latest section
+    // Perspectives index redirects to perspectives section
     this.app.get("/perspectives", (req, res) => {
-      res.redirect(301, "/latest/research");
+      res.redirect(301, "/latest/perspectives");
     });
-    this.app.get("/perspectives/:slug", (req, res) => {
-      res.redirect(301, "/latest/research");
+
+    // Perspectives detail page - serves article content
+    this.app.get("/perspectives/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'perspectives/article.html');
     });
+
+    // Legacy redirects
     this.app.get("/insights", (req, res) => {
-      res.redirect(301, "/latest/research");
+      res.redirect(301, "/latest/perspectives");
     });
     this.app.get("/insights/:slug", (req, res) => {
-      res.redirect(301, "/latest/research");
+      res.redirect(301, "/latest/perspectives");
     });
 
     // Events section
@@ -2777,7 +2798,7 @@ export class HTTPServer {
     this.app.post('/api/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { agreement_type, version, effective_date, text } = req.body;
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
+        const validTypes = VALID_LEGAL_DOCUMENT_TYPES;
 
         if (!agreement_type || !version || !effective_date || !text) {
           return res.status(400).json({
@@ -2816,7 +2837,7 @@ export class HTTPServer {
       try {
         const { id } = req.params;
         const { agreement_type, version, effective_date, text } = req.body;
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
+        const validTypes = VALID_LEGAL_DOCUMENT_TYPES;
 
         if (!agreement_type || !version || !effective_date || !text) {
           return res.status(400).json({
@@ -2870,7 +2891,7 @@ export class HTTPServer {
         });
       }
 
-      const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
+      const validTypes = VALID_LEGAL_DOCUMENT_TYPES;
       if (!validTypes.includes(agreement_type)) {
         return res.status(400).json({
           error: 'Invalid agreement type',
@@ -3095,6 +3116,7 @@ export class HTTPServer {
         // This populates subscription_amount, subscription_interval, subscription_current_period_end
         let subscriptionsSynced = 0;
         let subscriptionsFailed = 0;
+        let customersSkipped = 0; // Deleted or missing customers
         if (stripe) {
           for (const [customerId, workosOrgId] of customerOrgMap) {
             try {
@@ -3104,6 +3126,7 @@ export class HTTPServer {
               });
 
               if ('deleted' in customer && customer.deleted) {
+                customersSkipped++;
                 continue;
               }
 
@@ -3160,8 +3183,15 @@ export class HTTPServer {
               subscriptionsSynced++;
               logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
             } catch (subError) {
-              subscriptionsFailed++;
-              logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              // Handle Stripe "resource_missing" errors (deleted customers) gracefully
+              // Use Stripe's error type for better type safety
+              if (subError instanceof Stripe.errors.StripeInvalidRequestError && subError.code === 'resource_missing') {
+                customersSkipped++;
+                logger.debug({ customerId, workosOrgId }, 'Skipped missing/deleted Stripe customer');
+              } else {
+                subscriptionsFailed++;
+                logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              }
               // Continue with other customers
             }
           }
@@ -3173,6 +3203,7 @@ export class HTTPServer {
           processed: imported,
           subscriptionsSynced,
           subscriptionsFailed,
+          customersSkipped,
         }, 'Revenue backfill completed');
 
         res.json({
@@ -3183,6 +3214,7 @@ export class HTTPServer {
           processed: imported,
           subscriptions_synced: subscriptionsSynced,
           subscriptions_failed: subscriptionsFailed,
+          customers_skipped: customersSkipped,
         });
       } catch (error) {
         logger.error({ err: error }, 'Error during revenue backfill');
@@ -3519,6 +3551,10 @@ Disallow: /api/admin/
 
     this.app.get('/admin/settings', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-settings.html');
+    });
+
+    this.app.get('/admin/escalations', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)
@@ -4594,7 +4630,7 @@ Disallow: /api/admin/
           });
         }
 
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
+        const validTypes = VALID_LEGAL_DOCUMENT_TYPES;
         if (!validTypes.includes(agreement_type)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
@@ -5097,12 +5133,11 @@ Disallow: /api/admin/
     this.app.get('/api/agreement/current', async (req, res) => {
       try {
         const type = (req.query.type as string) || 'membership';
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
 
-        if (!validTypes.includes(type)) {
+        if (!VALID_LEGAL_DOCUMENT_TYPES.includes(type as any)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy'
+            message: `Type must be one of: ${VALID_LEGAL_DOCUMENT_TYPES.join(', ')}`
           });
         }
 
@@ -5136,7 +5171,6 @@ Disallow: /api/admin/
         const type = req.query.type as string;
         const version = req.query.version as string;
         const format = req.query.format as string; // 'json' or 'html' (default: html)
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
 
         if (!type) {
           return res.status(400).json({
@@ -5145,10 +5179,10 @@ Disallow: /api/admin/
           });
         }
 
-        if (!validTypes.includes(type)) {
+        if (!VALID_LEGAL_DOCUMENT_TYPES.includes(type as any)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy'
+            message: `Type must be one of: ${VALID_LEGAL_DOCUMENT_TYPES.join(', ')}`
           });
         }
 
@@ -5830,638 +5864,9 @@ Disallow: /api/admin/
       }
     });
 
-    // GET /api/me/member-profile - Get current user's organization's member profile
-    // Supports ?org=org_id query parameter to specify which organization
-    this.app.get('/api/me/member-profile', requireAuth, async (req, res) => {
-      const startTime = Date.now();
-      logger.info({ userId: req.user?.id, org: req.query.org }, 'GET /api/me/member-profile started');
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
+    // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
-        // Dev mode: handle dev organizations without WorkOS
-        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
-        if (isDevUserProfile) {
-          const localOrg = await orgDb.getOrganization(requestedOrgId!);
-          if (!localOrg) {
-            return res.status(404).json({
-              error: 'Organization not found',
-              message: 'The requested organization does not exist',
-            });
-          }
-          const profile = await memberDb.getProfileByOrgId(requestedOrgId!);
-          logger.info({ userId: user.id, orgId: requestedOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
-          return res.json({
-            profile: profile || null,
-            organization_id: requestedOrgId,
-            organization_name: localOrg.name,
-          });
-        }
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          // Verify user is a member of the requested org
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            logger.info({ userId: user.id, requestedOrgId, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: not authorized');
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          // Default to first org
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        const profile = await memberDb.getProfileByOrgId(targetOrgId);
-
-        // Get org name from WorkOS
-        const org = await workos!.organizations.getOrganization(targetOrgId);
-
-        logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
-        res.json({
-          profile: profile || null,
-          organization_id: targetOrgId,
-          organization_name: org.name,
-        });
-      } catch (error) {
-        logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
-        res.status(500).json({
-          error: 'Failed to get member profile',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/me/member-profile - Create member profile for current user's organization
-    // Supports ?org=org_id query parameter to specify which organization
-    this.app.post('/api/me/member-profile', requireAuth, async (req, res) => {
-      const startTime = Date.now();
-      logger.info({ userId: req.user?.id, org: req.query.org }, 'POST /api/me/member-profile started');
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-        const {
-          display_name,
-          slug,
-          tagline,
-          description,
-          logo_url,
-          logo_light_url,
-          logo_dark_url,
-          brand_color,
-          contact_email,
-          contact_website,
-          contact_phone,
-          linkedin_url,
-          twitter_url,
-          offerings,
-          agents,
-          headquarters,
-          markets,
-          tags,
-          is_public,
-          show_in_carousel,
-        } = req.body;
-
-        // Validate required fields
-        if (!display_name || !slug) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'display_name and slug are required',
-          });
-        }
-
-        // Validate slug format and reserved words
-        if (!isValidSlug(slug)) {
-          return res.status(400).json({
-            error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens, cannot start or end with a hyphen, and cannot be a reserved keyword (admin, api, auth, dashboard, members, registry, onboarding)',
-          });
-        }
-
-        // Dev mode: handle dev organizations without WorkOS
-        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
-
-        let targetOrgId: string;
-
-        if (isDevUserProfile) {
-          // Dev mode: use the requested dev org directly
-          const localOrg = await orgDb.getOrganization(requestedOrgId!);
-          if (!localOrg) {
-            return res.status(404).json({
-              error: 'Organization not found',
-              message: 'The requested organization does not exist',
-            });
-          }
-          targetOrgId = requestedOrgId!;
-          logger.info({ userId: user.id, orgId: targetOrgId }, 'POST /api/me/member-profile: dev mode bypass');
-        } else {
-          // Normal mode: check WorkOS memberships
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-
-          if (memberships.data.length === 0) {
-            return res.status(400).json({
-              error: 'No organization',
-              message: 'User must be a member of an organization to create a profile',
-            });
-          }
-
-          if (requestedOrgId) {
-            // Verify user is a member of the requested org
-            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-            if (!isMember) {
-              return res.status(403).json({
-                error: 'Not authorized',
-                message: 'User is not a member of the requested organization',
-              });
-            }
-            targetOrgId = requestedOrgId;
-          } else {
-            // Default to first org
-            targetOrgId = memberships.data[0].organizationId;
-          }
-        }
-
-        // Ensure organization exists in local DB (on-demand sync from WorkOS, skip for dev mode)
-        let org = await orgDb.getOrganization(targetOrgId);
-        if (!org && !isDevUserProfile) {
-          try {
-            const workosOrg = await workos!.organizations.getOrganization(targetOrgId);
-            if (workosOrg) {
-              org = await orgDb.createOrganization({
-                workos_organization_id: workosOrg.id,
-                name: workosOrg.name,
-              });
-              logger.info({ orgId: targetOrgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for member profile');
-            }
-          } catch (syncError) {
-            logger.warn({ orgId: targetOrgId, err: syncError }, 'Failed to sync organization from WorkOS');
-          }
-        }
-
-        if (!org) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'Organization does not exist. Please contact support.',
-          });
-        }
-
-        // Check if profile already exists for this org
-        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
-        if (existingProfile) {
-          return res.status(409).json({
-            error: 'Profile already exists',
-            message: 'Organization already has a member profile. Use PUT to update.',
-          });
-        }
-
-        // Check slug availability
-        const slugAvailable = await memberDb.isSlugAvailable(slug);
-        if (!slugAvailable) {
-          return res.status(409).json({
-            error: 'Slug not available',
-            message: 'This slug is already taken. Please choose a different one.',
-          });
-        }
-
-        // Validate offerings if provided
-        const validOfferings = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'consulting', 'other'];
-        if (offerings && Array.isArray(offerings)) {
-          const invalidOfferings = offerings.filter((o: string) => !validOfferings.includes(o));
-          if (invalidOfferings.length > 0) {
-            return res.status(400).json({
-              error: 'Invalid offerings',
-              message: `Invalid offerings: ${invalidOfferings.join(', ')}. Valid options: ${validOfferings.join(', ')}`,
-            });
-          }
-        }
-
-        const profile = await memberDb.createProfile({
-          workos_organization_id: targetOrgId,
-          display_name,
-          slug,
-          tagline,
-          description,
-          logo_url,
-          logo_light_url,
-          logo_dark_url,
-          brand_color,
-          contact_email,
-          contact_website,
-          contact_phone,
-          linkedin_url,
-          twitter_url,
-          offerings: offerings || [],
-          agents: agents || [],
-          headquarters,
-          markets: markets || [],
-          tags: tags || [],
-          is_public: is_public ?? false,
-          show_in_carousel: show_in_carousel ?? false,
-        });
-
-        // Invalidate Addie's member context cache - organization profile created
-        invalidateMemberContextCache();
-
-        logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
-
-        res.status(201).json({ profile });
-      } catch (error) {
-        logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
-        res.status(500).json({
-          error: 'Failed to create member profile',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/me/member-profile - Update current user's organization's member profile
-    // Supports ?org=org_id query parameter to specify which organization
-    this.app.put('/api/me/member-profile', requireAuth, async (req, res) => {
-      const startTime = Date.now();
-      logger.info({ userId: req.user?.id }, 'PUT /api/me/member-profile started');
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-        const updates = req.body;
-
-        // Dev mode: handle dev organizations without WorkOS
-        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
-
-        let targetOrgId: string;
-
-        if (isDevUserProfile) {
-          // Dev mode: use the requested dev org directly
-          const localOrg = await orgDb.getOrganization(requestedOrgId!);
-          if (!localOrg) {
-            return res.status(404).json({
-              error: 'Organization not found',
-              message: 'The requested organization does not exist',
-            });
-          }
-          targetOrgId = requestedOrgId!;
-          logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile: dev mode bypass');
-        } else {
-          // Normal mode: check WorkOS memberships
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-
-          if (memberships.data.length === 0) {
-            return res.status(400).json({
-              error: 'No organization',
-              message: 'User must be a member of an organization to update a profile',
-            });
-          }
-
-          if (requestedOrgId) {
-            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-            if (!isMember) {
-              return res.status(403).json({
-                error: 'Not authorized',
-                message: 'User is not a member of the requested organization',
-              });
-            }
-            targetOrgId = requestedOrgId;
-          } else {
-            targetOrgId = memberships.data[0].organizationId;
-          }
-        }
-
-        // Check if profile exists
-        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
-        if (!existingProfile) {
-          return res.status(404).json({
-            error: 'Profile not found',
-            message: 'No member profile exists for your organization. Use POST to create one.',
-          });
-        }
-
-        // Validate offerings if provided
-        const validOfferings = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'consulting', 'other'];
-        if (updates.offerings && Array.isArray(updates.offerings)) {
-          const invalidOfferings = updates.offerings.filter((o: string) => !validOfferings.includes(o));
-          if (invalidOfferings.length > 0) {
-            return res.status(400).json({
-              error: 'Invalid offerings',
-              message: `Invalid offerings: ${invalidOfferings.join(', ')}. Valid options: ${validOfferings.join(', ')}`,
-            });
-          }
-        }
-
-        // Remove fields that shouldn't be updated directly
-        delete updates.id;
-        delete updates.workos_organization_id;
-        delete updates.slug; // Slug changes not allowed via this endpoint
-        delete updates.created_at;
-        delete updates.updated_at;
-        delete updates.featured; // Only admins can set featured
-
-        const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
-
-        // Invalidate Addie's member context cache - organization profile updated
-        invalidateMemberContextCache();
-
-        const duration = Date.now() - startTime;
-        logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
-
-        res.json({ profile });
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        logger.error({ err: error, durationMs: duration }, 'Update member profile error');
-        res.status(500).json({
-          error: 'Failed to update member profile',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/me/member-profile/visibility - Update visibility only (with subscription check)
-    // Supports ?org=org_id query parameter to specify which organization
-    this.app.put('/api/me/member-profile/visibility', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-        const { is_public, show_in_carousel } = req.body;
-
-        // Validate request body
-        if (typeof is_public !== 'boolean') {
-          return res.status(400).json({
-            error: 'Invalid request',
-            message: 'is_public must be a boolean',
-          });
-        }
-
-        // Dev mode: handle dev organizations without WorkOS
-        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
-
-        let targetOrgId: string;
-
-        if (isDevUserProfile) {
-          // Dev mode: use the requested dev org directly
-          const localOrg = await orgDb.getOrganization(requestedOrgId!);
-          if (!localOrg) {
-            return res.status(404).json({
-              error: 'Organization not found',
-              message: 'The requested organization does not exist',
-            });
-          }
-          targetOrgId = requestedOrgId!;
-          logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile/visibility: dev mode bypass');
-        } else {
-          // Normal mode: check WorkOS memberships
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-
-          if (memberships.data.length === 0) {
-            return res.status(400).json({
-              error: 'No organization',
-              message: 'User must be a member of an organization to update visibility',
-            });
-          }
-
-          if (requestedOrgId) {
-            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-            if (!isMember) {
-              return res.status(403).json({
-                error: 'Not authorized',
-                message: 'User is not a member of the requested organization',
-              });
-            }
-            targetOrgId = requestedOrgId;
-          } else {
-            targetOrgId = memberships.data[0].organizationId;
-          }
-        }
-
-        // Check if profile exists
-        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
-        if (!existingProfile) {
-          return res.status(404).json({
-            error: 'Profile not found',
-            message: 'No member profile exists for your organization.',
-          });
-        }
-
-        // If trying to make public, check subscription status
-        if (is_public) {
-          const subscriptionInfo = await orgDb.getSubscriptionInfo(targetOrgId);
-          if (!subscriptionInfo || subscriptionInfo.status !== 'active') {
-            return res.status(403).json({
-              error: 'Subscription required',
-              message: 'An active membership subscription is required to make your profile public.',
-            });
-          }
-        }
-
-        // Update visibility
-        const profile = await memberDb.updateProfileByOrgId(targetOrgId, {
-          is_public,
-          show_in_carousel: show_in_carousel ?? is_public, // Default to match is_public
-        });
-
-        // Invalidate Addie's member context cache - organization profile visibility changed
-        invalidateMemberContextCache();
-
-        logger.info({ profileId: profile?.id, orgId: targetOrgId, is_public }, 'Member profile visibility updated');
-
-        res.json({ profile });
-      } catch (error) {
-        logger.error({ err: error }, 'Update member profile visibility error');
-        res.status(500).json({
-          error: 'Failed to update visibility',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/me/member-profile - Delete current user's organization's member profile
-    // Supports ?org=org_id query parameter to specify which organization
-    this.app.delete('/api/me/member-profile', requireAuth, async (req, res) => {
-      const startTime = Date.now();
-      logger.info({ userId: req.user?.id, org: req.query.org }, 'DELETE /api/me/member-profile started');
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-
-        // Dev mode: handle dev organizations without WorkOS
-        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
-
-        let targetOrgId: string;
-
-        if (isDevUserProfile) {
-          // Dev mode: use the requested dev org directly
-          const localOrg = await orgDb.getOrganization(requestedOrgId!);
-          if (!localOrg) {
-            return res.status(404).json({
-              error: 'Organization not found',
-              message: 'The requested organization does not exist',
-            });
-          }
-          targetOrgId = requestedOrgId!;
-          logger.info({ userId: user.id, orgId: targetOrgId }, 'DELETE /api/me/member-profile: dev mode bypass');
-        } else {
-          // Normal mode: check WorkOS memberships
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-
-          if (memberships.data.length === 0) {
-            return res.status(400).json({
-              error: 'No organization',
-              message: 'User must be a member of an organization',
-            });
-          }
-
-          if (requestedOrgId) {
-            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-            if (!isMember) {
-              return res.status(403).json({
-                error: 'Not authorized',
-                message: 'User is not a member of the requested organization',
-              });
-            }
-            targetOrgId = requestedOrgId;
-          } else {
-            targetOrgId = memberships.data[0].organizationId;
-          }
-        }
-
-        // Check if profile exists
-        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
-        if (!existingProfile) {
-          return res.status(404).json({
-            error: 'Profile not found',
-            message: 'No member profile exists for your organization',
-          });
-        }
-
-        await memberDb.deleteProfile(existingProfile.id);
-
-        // Invalidate Addie's member context cache - organization profile deleted
-        invalidateMemberContextCache();
-
-        logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile error');
-        res.status(500).json({
-          error: 'Failed to delete member profile',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // Admin routes for member profiles
-    // GET /api/admin/member-profiles - List all member profiles (admin)
-    this.app.get('/api/admin/member-profiles', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { is_public, search, limit, offset } = req.query;
-
-        const profiles = await memberDb.listProfiles({
-          is_public: is_public === 'true' ? true : is_public === 'false' ? false : undefined,
-          search: search as string,
-          limit: limit ? parseInt(limit as string, 10) : 100,
-          offset: offset ? parseInt(offset as string, 10) : 0,
-        });
-
-        res.json({ profiles });
-      } catch (error) {
-        logger.error({ err: error }, 'Admin list member profiles error');
-        res.status(500).json({
-          error: 'Failed to list member profiles',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/admin/member-profiles/:id - Update any member profile (admin)
-    this.app.put('/api/admin/member-profiles/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const updates = req.body;
-
-        // Remove fields that shouldn't be updated
-        delete updates.id;
-        delete updates.workos_organization_id;
-        delete updates.created_at;
-        delete updates.updated_at;
-
-        const profile = await memberDb.updateProfile(id, updates);
-
-        if (!profile) {
-          return res.status(404).json({
-            error: 'Profile not found',
-            message: `No member profile found with ID: ${id}`,
-          });
-        }
-
-        // Invalidate Addie's member context cache - organization profile updated by admin
-        invalidateMemberContextCache();
-
-        logger.info({ profileId: id, adminUpdate: true }, 'Member profile updated by admin');
-
-        res.json({ profile });
-      } catch (error) {
-        logger.error({ err: error }, 'Admin update member profile error');
-        res.status(500).json({
-          error: 'Failed to update member profile',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/admin/member-profiles/:id - Delete any member profile (admin)
-    this.app.delete('/api/admin/member-profiles/:id', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { id } = req.params;
-
-        const deleted = await memberDb.deleteProfile(id);
-
-        if (!deleted) {
-          return res.status(404).json({
-            error: 'Profile not found',
-            message: `No member profile found with ID: ${id}`,
-          });
-        }
-
-        // Invalidate Addie's member context cache - organization profile deleted by admin
-        invalidateMemberContextCache();
-
-        logger.info({ profileId: id, adminDelete: true }, 'Member profile deleted by admin');
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error }, 'Admin delete member profile error');
-        res.status(500).json({
-          error: 'Failed to delete member profile',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // Note: Prospect management routes are now in routes/admin.ts
+    // Note: Prospect management routes are in routes/admin.ts
     // Routes: GET/POST /api/admin/prospects, POST /api/admin/prospects/bulk,
     //         PUT /api/admin/prospects/:orgId, GET /api/admin/prospects/stats,
     //         GET /api/admin/organizations
@@ -6917,6 +6322,9 @@ Disallow: /api/admin/
     // Start account enrichment job
     jobScheduler.startEnrichment();
 
+    // Start setup nudges job (reminds members about missing logos, taglines, pending requests)
+    jobScheduler.startSetupNudges();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -6942,17 +6350,17 @@ Disallow: /api/admin/
         // Process manually queued resources
         const result = await processPendingResources({ limit: 5 });
         if (result.processed > 0) {
-          logger.info(result, 'Content curator: processed pending resources');
+          logger.debug(result, 'Content curator: processed pending resources');
         }
         // Process RSS perspectives
         const rssResult = await processRssPerspectives({ limit: 5 });
         if (rssResult.processed > 0) {
-          logger.info(rssResult, 'Content curator: processed RSS perspectives');
+          logger.debug(rssResult, 'Content curator: processed RSS perspectives');
         }
         // Process community articles
         const communityResult = await processCommunityArticles({ limit: 5 });
         if (communityResult.processed > 0) {
-          logger.info(communityResult, 'Content curator: processed community articles');
+          logger.debug(communityResult, 'Content curator: processed community articles');
         }
         // Send replies to processed community articles
         const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
@@ -6960,7 +6368,7 @@ Disallow: /api/admin/
           return result.ok;
         });
         if (replyResult.sent > 0) {
-          logger.info(replyResult, 'Content curator: sent community article replies');
+          logger.debug(replyResult, 'Content curator: sent community article replies');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: initial processing failed');
@@ -6973,17 +6381,17 @@ Disallow: /api/admin/
         // Process manually queued resources
         const result = await processPendingResources({ limit: 5 });
         if (result.processed > 0) {
-          logger.info(result, 'Content curator: processed pending resources');
+          logger.debug(result, 'Content curator: processed pending resources');
         }
         // Process RSS perspectives
         const rssResult = await processRssPerspectives({ limit: 5 });
         if (rssResult.processed > 0) {
-          logger.info(rssResult, 'Content curator: processed RSS perspectives');
+          logger.debug(rssResult, 'Content curator: processed RSS perspectives');
         }
         // Process community articles
         const communityResult = await processCommunityArticles({ limit: 5 });
         if (communityResult.processed > 0) {
-          logger.info(communityResult, 'Content curator: processed community articles');
+          logger.debug(communityResult, 'Content curator: processed community articles');
         }
         // Send replies to processed community articles
         const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
@@ -6991,7 +6399,7 @@ Disallow: /api/admin/
           return result.ok;
         });
         if (replyResult.sent > 0) {
-          logger.info(replyResult, 'Content curator: sent community article replies');
+          logger.debug(replyResult, 'Content curator: sent community article replies');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: periodic processing failed');
@@ -7017,7 +6425,7 @@ Disallow: /api/admin/
       try {
         const result = await processFeedsToFetch();
         if (result.feedsProcessed > 0) {
-          logger.info(result, 'Industry monitor: fetched RSS feeds');
+          logger.debug(result, 'Industry monitor: fetched RSS feeds');
         }
       } catch (err) {
         logger.error({ err }, 'Industry monitor: initial feed fetch failed');
@@ -7028,7 +6436,7 @@ Disallow: /api/admin/
       try {
         const result = await processFeedsToFetch();
         if (result.feedsProcessed > 0) {
-          logger.info(result, 'Industry monitor: fetched RSS feeds');
+          logger.debug(result, 'Industry monitor: fetched RSS feeds');
         }
       } catch (err) {
         logger.error({ err }, 'Industry monitor: periodic feed fetch failed');
@@ -7145,10 +6553,7 @@ Disallow: /api/admin/
     // Run after a delay on startup
     setTimeout(async () => {
       try {
-        const result = await runGoalFollowUpJob();
-        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
-          logger.info(result, 'Goal follow-up: initial run completed');
-        }
+        await runGoalFollowUpJob();
       } catch (err) {
         logger.error({ err }, 'Goal follow-up: initial run failed');
       }
@@ -7175,10 +6580,7 @@ Disallow: /api/admin/
           return;
         }
 
-        const result = await runGoalFollowUpJob();
-        if (result.followUpsSent > 0 || result.goalsReconciled > 0) {
-          logger.info(result, 'Goal follow-up: job completed');
-        }
+        await runGoalFollowUpJob();
       } catch (err) {
         logger.error({ err }, 'Goal follow-up: job failed');
       }

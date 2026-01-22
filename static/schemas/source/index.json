@@ -575,7 +575,7 @@
       }
     },
     "governance": {
-      "description": "Governance protocol for property governance, brand standards, and compliance",
+      "description": "Governance protocol for property governance, brand standards, content standards, and compliance",
       "supporting-schemas": {
         "property-feature-definition": {
           "$ref": "/schemas/property/property-feature-definition.json",
@@ -608,6 +608,18 @@
         "base-property-source": {
           "$ref": "/schemas/property/base-property-source.json",
           "description": "A source of properties for a property list - supports publisher+tags, publisher+property_ids, or direct identifiers"
+        },
+        "content-standards": {
+          "$ref": "/schemas/content-standards/content-standards.json",
+          "description": "Reusable content standards configuration - defines brand safety/suitability policies with scope, policy, calibration exemplars, and lifecycle dates"
+        },
+        "content-standards-artifact": {
+          "$ref": "/schemas/content-standards/artifact.json",
+          "description": "Content artifact for evaluation or calibration - represents content context where ad placements occur, identified by property_id + artifact_id"
+        },
+        "artifact-webhook-payload": {
+          "$ref": "/schemas/content-standards/artifact-webhook-payload.json",
+          "description": "Webhook payload for content artifact delivery from sales agents to orchestrators"
         }
       },
       "tasks": {
@@ -669,6 +681,76 @@
           "response": {
             "$ref": "/schemas/property/delete-property-list-response.json",
             "description": "Response payload for delete_property_list task"
+          }
+        },
+        "list-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/list-content-standards-request.json",
+            "description": "Request parameters for listing content standards configurations"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/list-content-standards-response.json",
+            "description": "Response payload with list of content standards configurations"
+          }
+        },
+        "get-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/get-content-standards-request.json",
+            "description": "Request parameters for retrieving a specific standards configuration"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/get-content-standards-response.json",
+            "description": "Response payload with full standards configuration including policy and calibration data"
+          }
+        },
+        "create-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/create-content-standards-request.json",
+            "description": "Request parameters for creating a new content standards configuration"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/create-content-standards-response.json",
+            "description": "Response payload with new standards_id"
+          }
+        },
+        "update-content-standards": {
+          "request": {
+            "$ref": "/schemas/content-standards/update-content-standards-request.json",
+            "description": "Request parameters for updating an existing content standards configuration"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/update-content-standards-response.json",
+            "description": "Response payload confirming update"
+          }
+        },
+        "calibrate-content": {
+          "request": {
+            "$ref": "/schemas/content-standards/calibrate-content-request.json",
+            "description": "Request parameters for collaborative calibration dialogue"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/calibrate-content-response.json",
+            "description": "Response payload with detailed explanations for policy alignment"
+          }
+        },
+        "validate-content-delivery": {
+          "request": {
+            "$ref": "/schemas/content-standards/validate-content-delivery-request.json",
+            "description": "Request parameters for batch validating delivery records"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/validate-content-delivery-response.json",
+            "description": "Response payload with batch validation results"
+          }
+        },
+        "get-media-buy-artifacts": {
+          "request": {
+            "$ref": "/schemas/content-standards/get-media-buy-artifacts-request.json",
+            "description": "Request parameters for retrieving content artifacts from a media buy"
+          },
+          "response": {
+            "$ref": "/schemas/content-standards/get-media-buy-artifacts-response.json",
+            "description": "Response payload with content artifacts for validation"
           }
         }
       }

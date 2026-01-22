@@ -373,7 +373,11 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const { channel, flagged_only, unreviewed_only, has_user_feedback, min_messages, user_id, since, limit, offset } = req.query;
+      const {
+        channel, flagged_only, unreviewed_only, has_user_feedback,
+        min_messages, user_id, since, limit, offset,
+        search, tool, user_search
+      } = req.query;
 
       const threads = await threadService.listThreads({
         channel: channel as ThreadChannel | undefined,
@@ -385,6 +389,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         since: since ? new Date(since as string) : undefined,
         limit: limit ? parseInt(limit as string, 10) : 50,
         offset: offset ? parseInt(offset as string, 10) : undefined,
+        // Search filters (with length limits to prevent performance issues)
+        search_text: typeof search === 'string' && search.length <= 500 ? search : undefined,
+        tool_name: typeof tool === 'string' && tool.length <= 100 ? tool : undefined,
+        user_search: typeof user_search === 'string' && user_search.length <= 200 ? user_search : undefined,
       });
 
       res.json({
@@ -431,19 +439,47 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
 
   // GET /api/admin/addie/threads/performance - Get tool performance metrics
   // NOTE: Must be defined BEFORE /threads/:id to avoid matching "performance" as an ID
+  // Accepts days param (can be fractional, e.g., 0.125 for 3 hours)
   apiRouter.get("/threads/performance", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
       const { days } = req.query;
-      const daysNum = days ? parseInt(days as string, 10) : 7;
+      const daysNum = days ? parseFloat(days as string) : 7;
 
-      const performance = await threadService.getPerformanceMetrics(daysNum);
+      // Validate days parameter
+      if (isNaN(daysNum) || daysNum <= 0 || daysNum > 365) {
+        return res.status(400).json({
+          error: "Invalid parameter",
+          message: "days must be a number between 0 and 365",
+        });
+      }
+
+      // Convert days to hours for the service (supports fractional days)
+      const hours = Math.round(daysNum * 24);
+
+      const performance = await threadService.getPerformanceMetrics(hours);
       res.json(performance);
     } catch (error) {
       logger.error({ err: error }, "Error fetching performance metrics");
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch performance metrics",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/threads/tools - Get list of available tool names for filtering
+  // NOTE: Must be defined BEFORE /threads/:id to avoid matching "tools" as an ID
+  apiRouter.get("/threads/tools", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const tools = await threadService.getAvailableTools();
+      res.json({ tools });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching available tools");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch available tools",
       });
     }
   });
@@ -2196,7 +2232,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         tokens_input: plan.tokens_input,
         tokens_output: plan.tokens_output,
         model: plan.model,
-        ...(plan.action === 'respond' ? { tools: plan.tools } : {}),
+        ...(plan.action === 'respond' ? { tool_sets: plan.tool_sets } : {}),
       };
 
       // Create a test thread and log the message with router decision

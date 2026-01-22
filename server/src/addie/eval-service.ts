@@ -18,6 +18,7 @@ import {
   BILLING_TOOLS,
   createBillingToolHandlers,
 } from './mcp/billing-tools.js';
+import { ADDIE_TOOL_REFERENCE } from './prompts.js';
 
 // Re-export types for convenience
 export type { EvalRun, EvalResult };
@@ -150,8 +151,9 @@ export class EvalService {
         totalInteractions: interactions.length,
       });
 
-      // Build system prompt from proposed rules
-      const systemPrompt = await this.addieDb.buildSystemPromptFromRuleIds(proposedRuleIds);
+      // Build system prompt from proposed rules + tool reference
+      const basePrompt = await this.addieDb.buildSystemPromptFromRuleIds(proposedRuleIds);
+      const systemPrompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
       const rulesOverride: RulesOverride = {
         ruleIds: proposedRuleIds,
         systemPrompt,

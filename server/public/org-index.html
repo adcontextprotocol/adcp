@@ -235,17 +235,6 @@
     .member-logo:hover {
       opacity: 1;
     }
-    .launch-members {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 1rem 2rem;
-      margin-top: 1rem;
-    }
-    .launch-member {
-      font-size: 0.95rem;
-      color: var(--color-text-muted);
-    }
     .all-members-link {
       text-align: center;
       margin-top: 2.5rem;
@@ -273,15 +262,6 @@
     .member-logo-link:hover .member-logo {
       opacity: 1;
     }
-    .member-name-link {
-      color: var(--color-text-muted);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-    .member-name-link:hover {
-      color: var(--color-brand);
-    }
-
     /* Go Agentic Section */
     .go-agentic {
       padding: 2.5rem 2rem;
@@ -518,11 +498,11 @@
       <h2 class="section-title">Our Members</h2>
       <p class="section-subtitle">Industry leaders building the future of advertising together</p>
 
-      <!-- Founding Members with Logos (static until Jan 15, then dynamic) -->
-      <div class="member-tier" id="founding-members-tier">
-        <div class="tier-label">Founding Members</div>
-        <div class="member-logos" id="founding-member-logos">
-          <!-- Static logos - shown until cutoff date -->
+      <!-- Members with Logos -->
+      <div class="member-tier" id="members-tier">
+        <div class="tier-label">Members</div>
+        <div class="member-logos" id="member-logos">
+          <!-- Static logos - shown until cutoff date, then replaced by dynamic list -->
           <a href="/members/ebiquity" class="member-logo-link"><img src="/img/members/ebiquity.png" alt="Ebiquity" class="member-logo"></a>
           <a href="/members/optable" class="member-logo-link"><img src="/img/members/optable.png" alt="Optable" class="member-logo"></a>
           <a href="/members/pubmatic" class="member-logo-link"><img src="/img/members/pubmatic.png" alt="PubMatic" class="member-logo"></a>
@@ -530,34 +510,6 @@
           <a href="/members/swivel" class="member-logo-link"><img src="/img/members/swivel.png" alt="Swivel" class="member-logo"></a>
           <a href="/members/triton-digital" class="member-logo-link"><img src="/img/members/triton-digital.png" alt="Triton Digital" class="member-logo"></a>
           <a href="/members/yahoo" class="member-logo-link"><img src="/img/members/yahoo-purple.png" alt="Yahoo" class="member-logo"></a>
-        </div>
-      </div>
-
-      <!-- Launch Members as Text (static until Jan 15, then dynamic) -->
-      <div class="member-tier" id="other-members-tier">
-        <div class="tier-label">Launch Members</div>
-        <div class="launch-members" id="other-member-names">
-          <a href="/members/accuweather" class="launch-member member-name-link">Accuweather</a>
-          <a href="/members/adgent" class="launch-member member-name-link">Adgent</a>
-          <a href="/members/bidcliq" class="launch-member member-name-link">Bidcliq</a>
-          <a href="/members/butler-till" class="launch-member member-name-link">Butler/Till</a>
-          <a href="/members/classify" class="launch-member member-name-link">Classify</a>
-          <a href="/members/hypd" class="launch-member member-name-link">HYPD</a>
-          <a href="/members/kargo" class="launch-member member-name-link">Kargo</a>
-          <a href="/members/kiln" class="launch-member member-name-link">Kiln</a>
-          <a href="/members/lg-ad-solutions" class="launch-member member-name-link">LG Ad Solutions</a>
-          <a href="/members/locala" class="launch-member member-name-link">Locala</a>
-          <a href="/members/magnite" class="launch-member member-name-link">Magnite</a>
-          <a href="/members/medianet" class="launch-member member-name-link">Media.net</a>
-          <a href="/members/miq" class="launch-member member-name-link">MiQ</a>
-          <a href="/members/nativo" class="launch-member member-name-link">Nativo</a>
-          <a href="/members/newton-research" class="launch-member member-name-link">Newton Research</a>
-          <a href="/members/openads" class="launch-member member-name-link">OpenAds</a>
-          <a href="/members/raptive" class="launch-member member-name-link">Raptive</a>
-          <a href="/members/samba-tv" class="launch-member member-name-link">Samba TV</a>
-          <a href="/members/scribd" class="launch-member member-name-link">Scribd</a>
-          <a href="/members/the-product-counsel" class="launch-member member-name-link">The Product Counsel</a>
-          <a href="/members/the-weather-company" class="launch-member member-name-link">The Weather Company</a>
         </div>
       </div>
 
@@ -608,28 +560,16 @@
       const data = await response.json();
       const members = data.members || [];
 
-      // Separate founding members (with logos) from others
-      const foundingMembers = members.filter(m => m.is_founding_member && m.show_in_carousel && m.logo_url);
-      const otherMembers = members.filter(m => !m.is_founding_member || !m.show_in_carousel || !m.logo_url);
+      // Only show members with logos (organizations, not individuals)
+      const membersWithLogos = members.filter(m => m.show_in_carousel && m.logo_url);
 
-      // Render founding members with logos
-      const foundingLogosEl = document.getElementById('founding-member-logos');
-      if (foundingMembers.length > 0) {
-        foundingLogosEl.innerHTML = foundingMembers.map(member => `
+      // Render members with logos
+      const memberLogosEl = document.getElementById('member-logos');
+      if (membersWithLogos.length > 0) {
+        memberLogosEl.innerHTML = membersWithLogos.map(member => `
           <a href="/members/${encodeURIComponent(member.slug)}" class="member-logo-link" title="${escapeHtml(member.display_name)}">
             <img src="${escapeHtml(member.logo_url)}" alt="${escapeHtml(member.display_name)}" class="member-logo">
           </a>
-        `).join('');
-      }
-
-      // Render other members as text links
-      const otherNamesEl = document.getElementById('other-member-names');
-      const otherMembersTier = document.getElementById('other-members-tier');
-      if (otherMembers.length > 0) {
-        // Update tier label to "Members" (not "Launch Members")
-        otherMembersTier.querySelector('.tier-label').textContent = 'Members';
-        otherNamesEl.innerHTML = otherMembers.map(member => `
-          <a href="/members/${encodeURIComponent(member.slug)}" class="launch-member member-name-link">${escapeHtml(member.display_name)}</a>
         `).join('');
       }
     } catch (error) {

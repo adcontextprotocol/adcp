@@ -475,7 +475,7 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
   // Update user's last_outreach_at
   await updateLastOutreach(candidate.slack_user_id);
 
-  logger.info({
+  logger.debug({
     outreachId: outreach.id,
     slackUserId: candidate.slack_user_id,
     goalId: plannedAction.goal.id,
@@ -579,17 +579,17 @@ export async function runOutreachScheduler(options: {
     return { processed: 0, sent: 0, skipped: 0, errors: 0 };
   }
 
-  logger.info({ limit, usePlanner }, 'Running outreach scheduler');
+  logger.debug({ limit, usePlanner }, 'Running outreach scheduler');
 
   // Get candidates (we'll check business hours per-user based on their timezone)
   const candidates = await getEligibleCandidates(limit * 3); // Fetch more since some may be outside business hours
 
   if (candidates.length === 0) {
-    logger.info('Outreach scheduler: No eligible candidates');
+    logger.debug('Outreach scheduler: No eligible candidates');
     return { processed: 0, sent: 0, skipped: 0, errors: 0 };
   }
 
-  logger.info({ count: candidates.length }, 'Found outreach candidates');
+  logger.debug({ count: candidates.length }, 'Found outreach candidates');
 
   let sent = 0;
   let skipped = 0;
@@ -634,7 +634,11 @@ export async function runOutreachScheduler(options: {
     }
   }
 
-  logger.info({ sent, skipped, errors }, 'Outreach scheduler completed');
+  if (errors > 0) {
+    logger.info({ sent, skipped, errors }, 'Outreach scheduler completed with errors');
+  } else if (sent > 0) {
+    logger.debug({ sent, skipped, errors }, 'Outreach scheduler completed');
+  }
   return { processed: candidates.length, sent, skipped, errors };
 }
 
