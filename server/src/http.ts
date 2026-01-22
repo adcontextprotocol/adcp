@@ -49,7 +49,6 @@ import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRou
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
-import { createStripeWebhooksRouter } from "./routes/stripe-webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter, createAdminSettingsRouter } from "./routes/admin/index.js";
 import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
 import { processAlerts } from "./addie/services/industry-alerts.js";
@@ -840,8 +839,6 @@ export class HTTPServer {
     this.app.use('/api/webhooks', webhooksRouter);      // Webhooks: /api/webhooks/resend-inbound
     const workosWebhooksRouter = createWorkOSWebhooksRouter();
     this.app.use('/api/webhooks', workosWebhooksRouter); // WorkOS: /api/webhooks/workos
-    const stripeWebhooksRouter = createStripeWebhooksRouter({ workos: workos! });
-    this.app.use('/api/webhooks/stripe', stripeWebhooksRouter); // Stripe: /api/webhooks/stripe
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -1827,6 +1824,901 @@ export class HTTPServer {
           error: error instanceof Error ? error.message : 'Unknown error',
           timestamp: new Date().toISOString(),
         });
+      }
+    });
+
+    // Stripe Webhooks (independent of WorkOS auth)
+    // POST /api/webhooks/stripe - Handle Stripe webhooks
+    this.app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+      if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+        logger.warn('Stripe not configured for webhooks');
+        return res.status(400).json({ error: 'Stripe not configured' });
+      }
+
+      const sig = req.headers['stripe-signature'];
+      if (!sig) {
+        return res.status(400).json({ error: 'Missing stripe-signature header' });
+      }
+
+      let event: Stripe.Event;
+
+      try {
+        event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+      } catch (err) {
+        logger.error({ err }, 'Webhook signature verification failed');
+        return res.status(400).json({ error: 'Webhook signature verification failed' });
+      }
+
+      logger.info({ eventType: event.type }, 'Stripe webhook event received');
+
+      // Initialize database clients
+      const orgDb = new OrganizationDatabase();
+      const pool = getPool();
+
+      try {
+        switch (event.type) {
+          case 'customer.subscription.created':
+          case 'customer.subscription.updated':
+          case 'customer.subscription.deleted': {
+            const subscription = event.data.object as Stripe.Subscription;
+            logger.info({
+              customer: subscription.customer,
+              status: subscription.status,
+              eventType: event.type,
+            }, 'Processing subscription event');
+
+            // For subscription created, record agreement acceptance atomically
+            if (event.type === 'customer.subscription.created') {
+              const customerId = subscription.customer as string;
+
+              // Try to find org by stripe_customer_id first
+              let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+              // If not found, look up by workos_organization_id in Stripe customer metadata
+              if (!org) {
+                logger.info({ customerId }, 'Org not found by customer ID, checking Stripe metadata');
+                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+                const workosOrgId = customer.metadata?.workos_organization_id;
+
+                if (workosOrgId) {
+                  org = await orgDb.getOrganization(workosOrgId);
+                  if (org) {
+                    // Link the Stripe customer ID to the organization
+                    await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                    logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization');
+                  }
+                }
+              }
+
+              if (org) {
+                // Get agreement info from organization's pending fields
+                // (set when user checked the agreement checkbox)
+                let agreementVersion = org.pending_agreement_version || '1.0';
+                let agreementAcceptedAt = org.pending_agreement_accepted_at || new Date();
+
+                // If no pending agreement, use current version
+                if (!org.pending_agreement_version) {
+                  const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+                  if (currentAgreement) {
+                    agreementVersion = currentAgreement.version;
+                  }
+                }
+
+                // Get customer info from Stripe to find user email
+                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+                const userEmail = customer.email || 'unknown@example.com';
+
+                // Warn if using fallback email - indicates missing customer data
+                if (!customer.email) {
+                  logger.warn({
+                    customerId,
+                    subscriptionId: subscription.id,
+                    orgId: org.workos_organization_id,
+                  }, 'Using fallback email for subscription - customer has no email address');
+                }
+
+                // Get WorkOS user ID from email
+                // Note: In production, we'd need a more robust way to link Stripe customer to WorkOS user
+                // For now, we'll use the email from the customer record
+                try {
+                  const users = await workos!.userManagement.listUsers({ email: userEmail });
+                  const workosUser = users.data[0];
+
+                  if (workosUser) {
+                    // Record membership agreement acceptance
+                    try {
+                      await orgDb.recordUserAgreementAcceptance({
+                        workos_user_id: workosUser.id,
+                        email: userEmail,
+                        agreement_type: 'membership',
+                        agreement_version: agreementVersion,
+                        workos_organization_id: org.workos_organization_id,
+                        // Note: IP and user-agent not available in webhook context
+                      });
+                    } catch (agreementError) {
+                      // CRITICAL: Agreement recording failed but subscription already exists
+                      // This needs manual intervention to fix the inconsistent state
+                      logger.error({
+                        error: agreementError,
+                        orgId: org.workos_organization_id,
+                        subscriptionId: subscription.id,
+                        userEmail,
+                        agreementVersion,
+                      }, 'CRITICAL: Failed to record agreement acceptance - subscription exists but agreement not recorded. Manual intervention required.');
+                      throw agreementError; // Re-throw to prevent further operations
+                    }
+
+                    // Update organization record
+                    await orgDb.updateOrganization(org.workos_organization_id, {
+                      agreement_signed_at: agreementAcceptedAt,
+                      agreement_version: agreementVersion,
+                    });
+
+                    // Store agreement metadata in Stripe subscription
+                    await stripe.subscriptions.update(subscription.id, {
+                      metadata: {
+                        workos_organization_id: org.workos_organization_id,
+                        membership_agreement_version: agreementVersion,
+                        membership_agreement_accepted_at: agreementAcceptedAt.toISOString(),
+                      }
+                    });
+
+                    logger.info({
+                      orgId: org.workos_organization_id,
+                      subscriptionId: subscription.id,
+                      agreementVersion,
+                      userEmail,
+                    }, 'Subscription created - membership agreement recorded atomically');
+
+                    // Record audit log for subscription creation
+                    await orgDb.recordAuditLog({
+                      workos_organization_id: org.workos_organization_id,
+                      workos_user_id: workosUser.id,
+                      action: 'subscription_created',
+                      resource_type: 'subscription',
+                      resource_id: subscription.id,
+                      details: {
+                        status: subscription.status,
+                        agreement_version: agreementVersion,
+                        stripe_customer_id: customerId,
+                      },
+                    });
+
+                    // Send Slack notification for new subscription
+                    // Get subscription details for notification
+                    const subItems = subscription.items?.data || [];
+                    const firstItem = subItems[0];
+                    let productName: string | undefined;
+                    let amount: number | undefined;
+                    let interval: string | undefined;
+
+                    if (firstItem?.price) {
+                      amount = firstItem.price.unit_amount || undefined;
+                      interval = firstItem.price.recurring?.interval;
+                      if (firstItem.price.product) {
+                        try {
+                          const product = await stripe.products.retrieve(firstItem.price.product as string);
+                          productName = product.name;
+                        } catch (e) {
+                          // Ignore product fetch errors
+                        }
+                      }
+                    }
+
+                    notifyNewSubscription({
+                      organizationName: org.name || 'Unknown Organization',
+                      customerEmail: userEmail,
+                      productName,
+                      amount,
+                      currency: subscription.currency,
+                      interval,
+                    }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
+
+                    // Send thank you to org admin group DM (fire-and-forget)
+                    (async () => {
+                      try {
+                        // Get org admins/owners
+                        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+                          organizationId: org.workos_organization_id,
+                        });
+                        const adminEmails: string[] = [];
+                        for (const membership of orgMemberships.data) {
+                          if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                            try {
+                              const adminUser = await workos!.userManagement.getUser(membership.userId);
+                              if (adminUser.email) {
+                                adminEmails.push(adminUser.email);
+                              }
+                            } catch {
+                              // Skip if can't fetch user
+                            }
+                          }
+                        }
+
+                        if (adminEmails.length > 0) {
+                          await notifySubscriptionThankYou({
+                            orgId: org.workos_organization_id,
+                            orgName: org.name || 'Organization',
+                            adminEmails,
+                          });
+                        }
+                      } catch (err) {
+                        logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send thank you to admin group DM');
+                      }
+                    })();
+
+                    // Send welcome email to new member
+                    sendWelcomeEmail({
+                      to: userEmail,
+                      organizationName: org.name || 'Unknown Organization',
+                      productName,
+                      workosUserId: workosUser.id,
+                      workosOrganizationId: org.workos_organization_id,
+                      isPersonal: org.is_personal || false,
+                      firstName: workosUser.firstName || undefined,
+                    }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+
+                    // Record to org_activities for prospect tracking
+                    const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
+                    const intervalStr = interval ? `/${interval}` : '';
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription',
+                        `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
+                        workosUser.id,
+                        userEmail,
+                      ]
+                    );
+                  } else {
+                    logger.error({
+                      userEmail,
+                      customerId,
+                      subscriptionId: subscription.id,
+                      orgId: org.workos_organization_id,
+                    }, 'Could not find WorkOS user for Stripe customer - subscription exists but no user found');
+                  }
+                } catch (userError) {
+                  logger.error({
+                    error: userError,
+                    customerId,
+                    subscriptionId: subscription.id,
+                    orgId: org.workos_organization_id,
+                  }, 'Failed to record agreement acceptance in webhook');
+                }
+              }
+            }
+
+            // Update database with subscription status, period end, and pricing details
+            // This allows admin dashboard to display data without querying Stripe API
+            try {
+              const customerId = subscription.customer as string;
+              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+              if (org) {
+                // Calculate period end from subscription or invoice
+                let periodEnd: Date | null = null;
+
+                if ((subscription as any).current_period_end) {
+                  periodEnd = new Date((subscription as any).current_period_end * 1000);
+                }
+
+                // Extract pricing details from subscription items
+                const priceData = subscription.items?.data?.[0]?.price;
+                const amount = priceData?.unit_amount ?? null;
+                const currency = priceData?.currency ?? null;
+                const interval = priceData?.recurring?.interval ?? null;
+
+                await pool.query(
+                  `UPDATE organizations
+                   SET subscription_status = $1,
+                       stripe_subscription_id = $2,
+                       subscription_current_period_end = $3,
+                       subscription_amount = COALESCE($4, subscription_amount),
+                       subscription_currency = COALESCE($5, subscription_currency),
+                       subscription_interval = COALESCE($6, subscription_interval),
+                       updated_at = NOW()
+                   WHERE workos_organization_id = $7`,
+                  [
+                    subscription.status,
+                    subscription.id,
+                    periodEnd,
+                    amount,
+                    currency,
+                    interval,
+                    org.workos_organization_id
+                  ]
+                );
+
+                logger.info({
+                  orgId: org.workos_organization_id,
+                  subscriptionId: subscription.id,
+                  status: subscription.status,
+                  periodEnd: periodEnd?.toISOString(),
+                  amount,
+                  currency,
+                  interval,
+                }, 'Subscription data synced to database');
+
+                // Invalidate member context cache for all users in this org
+                // (subscription status affects is_member and subscription fields)
+                invalidateMemberContextCache();
+
+                // Send Slack notification for subscription cancellation
+                if (event.type === 'customer.subscription.deleted') {
+                  // Record audit log for subscription cancellation (use system user since webhook context)
+                  await orgDb.recordAuditLog({
+                    workos_organization_id: org.workos_organization_id,
+                    workos_user_id: SYSTEM_USER_ID,
+                    action: 'subscription_cancelled',
+                    resource_type: 'subscription',
+                    resource_id: subscription.id,
+                    details: {
+                      status: subscription.status,
+                      stripe_customer_id: customerId,
+                    },
+                  });
+
+                  notifySubscriptionCancelled({
+                    organizationName: org.name || 'Unknown Organization',
+                  }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
+
+                  // Record to org_activities for prospect tracking
+                  await pool.query(
+                    `INSERT INTO org_activities (
+                      organization_id,
+                      activity_type,
+                      description,
+                      logged_by_user_id,
+                      logged_by_name,
+                      activity_date
+                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                    [
+                      org.workos_organization_id,
+                      'subscription_cancelled',
+                      'Subscription cancelled',
+                      SYSTEM_USER_ID,
+                      'System',
+                    ]
+                  );
+                }
+              }
+            } catch (syncError) {
+              logger.error({ error: syncError }, 'Failed to sync subscription data to database');
+              // Don't throw - let webhook succeed even if sync fails
+            }
+            break;
+          }
+
+          // Invoice lifecycle events - cache for prospects page (avoids Stripe API calls)
+          case 'invoice.created':
+          case 'invoice.updated':
+          case 'invoice.finalized':
+          case 'invoice.voided': {
+            const invoice = event.data.object as Stripe.Invoice;
+            logger.debug({
+              invoiceId: invoice.id,
+              status: invoice.status,
+              eventType: event.type,
+            }, 'Invoice lifecycle event');
+
+            // Find org by customer ID
+            const customerId = invoice.customer as string;
+            const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            // Get product name from line items if available
+            let productName: string | null = null;
+            if (invoice.lines?.data && invoice.lines.data.length > 0) {
+              const primaryLine = invoice.lines.data[0] as any;
+              const productId = primaryLine.price?.product as string;
+              if (productId && stripe) {
+                try {
+                  const product = await stripe.products.retrieve(productId);
+                  productName = product.name;
+                } catch (err) {
+                  logger.debug({ err, productId, invoiceId: invoice.id }, 'Failed to retrieve product name, using fallback');
+                  productName = primaryLine.description || null;
+                }
+              }
+            }
+
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              productName
+            );
+            break;
+          }
+
+          case 'invoice.payment_succeeded':
+          case 'invoice.paid': {
+            const invoice = event.data.object as Stripe.Invoice;
+            logger.info({
+              customer: invoice.customer,
+              invoiceId: invoice.id,
+              amount: invoice.amount_paid,
+              eventType: event.type,
+            }, 'Invoice paid');
+
+            // Get organization from customer ID
+            const customerId = invoice.customer as string;
+
+            // Try to find org by stripe_customer_id first
+            let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            // If not found, look up by workos_organization_id in Stripe customer metadata
+            if (!org) {
+              logger.info({ customerId, invoiceId: invoice.id }, 'Org not found by customer ID, checking Stripe metadata');
+              const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+              const workosOrgId = customer.metadata?.workos_organization_id;
+
+              if (workosOrgId) {
+                org = await orgDb.getOrganization(workosOrgId);
+                if (org) {
+                  // Link the Stripe customer ID to the organization
+                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization from invoice webhook');
+                }
+              }
+            }
+
+            if (!org) {
+              logger.warn({
+                customerId,
+                invoiceId: invoice.id,
+                amount: invoice.amount_paid,
+              }, 'Invoice payment received but no organization found for Stripe customer');
+            } else if (invoice.amount_paid === 0) {
+              logger.debug({
+                customerId,
+                invoiceId: invoice.id,
+              }, 'Skipping zero-amount invoice');
+            }
+
+            if (org && invoice.amount_paid > 0) {
+              // Determine revenue type
+              let revenueType = 'one_time';
+              if ((invoice as any).subscription) {
+                revenueType = invoice.billing_reason === 'subscription_create'
+                  ? 'subscription_initial'
+                  : 'subscription_recurring';
+              }
+
+              // Extract primary product details (first line item)
+              let productId: string | null = null;
+              let productName: string | null = null;
+              let priceId: string | null = null;
+              let billingInterval: string | null = null;
+              let priceLookupKey: string | null = null;
+              let productCategory: string | null = null;
+
+              if (invoice.lines?.data && invoice.lines.data.length > 0) {
+                const primaryLine = invoice.lines.data[0] as any;
+                productId = primaryLine.price?.product as string || null;
+                priceId = primaryLine.price?.id || null;
+                billingInterval = primaryLine.price?.recurring?.interval || null;
+                priceLookupKey = primaryLine.price?.lookup_key || null;
+
+                // Fetch product name and category if we have product ID
+                if (productId) {
+                  try {
+                    const product = await stripe.products.retrieve(productId);
+                    productName = product.name;
+                    productCategory = product.metadata?.category || null;
+                  } catch (err) {
+                    logger.error({ err, productId }, 'Failed to retrieve product details');
+                    // Fallback to line item description (useful for tests)
+                    productName = primaryLine.description || null;
+                  }
+                }
+              }
+
+              // Determine if this is a membership invoice
+              // Membership products have lookup keys starting with aao_membership_ or aao_invoice_
+              // or have category='membership' in product metadata
+              const isMembershipInvoice =
+                productCategory === 'membership' ||
+                priceLookupKey?.startsWith('aao_membership_') ||
+                priceLookupKey?.startsWith('aao_invoice_');
+
+              // For membership invoices without a subscription, update subscription_status
+              // This handles manual invoices and one-time membership payments
+              if (isMembershipInvoice && !(invoice as any).subscription) {
+                const periodEnd = invoice.period_end
+                  ? new Date(invoice.period_end * 1000)
+                  : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Default to 1 year
+
+                await pool.query(
+                  `UPDATE organizations
+                   SET subscription_status = 'active',
+                       subscription_current_period_end = $1,
+                       updated_at = NOW()
+                   WHERE workos_organization_id = $2
+                     AND (subscription_status IS NULL OR subscription_status != 'active')`,
+                  [periodEnd, org.workos_organization_id]
+                );
+
+                logger.info({
+                  orgId: org.workos_organization_id,
+                  invoiceId: invoice.id,
+                  periodEnd: periodEnd.toISOString(),
+                  priceLookupKey,
+                  productCategory,
+                }, 'Activated membership from invoice payment (no subscription)');
+
+                // Invalidate member context cache
+                invalidateMemberContextCache();
+              }
+
+              // Record revenue event
+              try {
+                await pool.query(
+                  `INSERT INTO revenue_events (
+                    workos_organization_id,
+                    stripe_invoice_id,
+                    stripe_subscription_id,
+                    stripe_payment_intent_id,
+                    stripe_charge_id,
+                    amount_paid,
+                    currency,
+                    revenue_type,
+                    billing_reason,
+                    product_id,
+                    product_name,
+                    price_id,
+                    billing_interval,
+                    paid_at,
+                    period_start,
+                    period_end,
+                    metadata
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                  [
+                    org.workos_organization_id,
+                    invoice.id,
+                    (invoice as any).subscription || null,
+                    (invoice as any).payment_intent || null,
+                    (invoice as any).charge || null,
+                    invoice.amount_paid, // in cents
+                    invoice.currency,
+                    revenueType,
+                    invoice.billing_reason || null,
+                    productId,
+                    productName,
+                    priceId,
+                    billingInterval,
+                    new Date(invoice.status_transitions.paid_at! * 1000),
+                    invoice.period_start ? new Date(invoice.period_start * 1000) : null,
+                    invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+                    JSON.stringify({
+                      invoice_number: invoice.number,
+                      hosted_invoice_url: invoice.hosted_invoice_url,
+                      invoice_pdf: invoice.invoice_pdf,
+                      metadata: invoice.metadata,
+                    }),
+                  ]
+                );
+              } catch (revenueError) {
+                logger.error({
+                  err: revenueError,
+                  orgId: org.workos_organization_id,
+                  invoiceId: invoice.id,
+                }, 'Failed to insert revenue event');
+                // Continue processing - don't fail the webhook
+              }
+
+              // Store subscription line items for subscriptions
+              if (invoice.subscription && invoice.lines?.data) {
+                const subscriptionId = invoice.subscription as string;
+
+                for (const line of invoice.lines.data) {
+                  if (line.type === 'subscription') {
+                    const lineProductId = line.price?.product as string || null;
+                    let lineProductName: string | null = null;
+
+                    // Fetch product name
+                    if (lineProductId) {
+                      try {
+                        const product = await stripe.products.retrieve(lineProductId);
+                        lineProductName = product.name;
+                      } catch (err) {
+                        logger.error({ err, productId: lineProductId }, 'Failed to retrieve line product');
+                        // Fallback to line item description (useful for tests)
+                        lineProductName = line.description || null;
+                      }
+                    }
+
+                    // Upsert line item (update if exists, insert if new)
+                    await pool.query(
+                      `INSERT INTO subscription_line_items (
+                        workos_organization_id,
+                        stripe_subscription_id,
+                        stripe_subscription_item_id,
+                        price_id,
+                        product_id,
+                        product_name,
+                        quantity,
+                        amount,
+                        billing_interval,
+                        usage_type,
+                        metadata
+                      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                      ON CONFLICT (stripe_subscription_item_id)
+                      DO UPDATE SET
+                        price_id = EXCLUDED.price_id,
+                        product_id = EXCLUDED.product_id,
+                        product_name = EXCLUDED.product_name,
+                        quantity = EXCLUDED.quantity,
+                        amount = EXCLUDED.amount,
+                        billing_interval = EXCLUDED.billing_interval,
+                        usage_type = EXCLUDED.usage_type,
+                        metadata = EXCLUDED.metadata,
+                        updated_at = NOW()`,
+                      [
+                        org.workos_organization_id,
+                        subscriptionId,
+                        line.subscription_item || null,
+                        line.price?.id || null,
+                        lineProductId,
+                        lineProductName,
+                        line.quantity || 1,
+                        line.amount, // in cents
+                        line.price?.recurring?.interval || null,
+                        line.price?.recurring?.usage_type || 'licensed',
+                        JSON.stringify(line.metadata || {}),
+                      ]
+                    );
+                  }
+                }
+              }
+
+              // Update organization subscription details cache
+              if (invoice.subscription) {
+                await pool.query(
+                  `UPDATE organizations
+                   SET subscription_product_id = $1,
+                       subscription_product_name = $2,
+                       subscription_price_id = $3,
+                       subscription_amount = $4,
+                       subscription_currency = $5,
+                       subscription_interval = $6,
+                       subscription_metadata = $7,
+                       updated_at = NOW()
+                   WHERE workos_organization_id = $8`,
+                  [
+                    productId,
+                    productName,
+                    priceId,
+                    invoice.amount_paid,
+                    invoice.currency,
+                    billingInterval,
+                    JSON.stringify(invoice.metadata || {}),
+                    org.workos_organization_id,
+                  ]
+                );
+              }
+
+              logger.info({
+                orgId: org.workos_organization_id,
+                invoiceId: invoice.id,
+                amount: invoice.amount_paid,
+                revenueType,
+                productName,
+              }, 'Revenue event recorded');
+
+              // Send Slack notification for payment
+              notifyPaymentSucceeded({
+                organizationName: org.name || 'Unknown Organization',
+                amount: invoice.amount_paid,
+                currency: invoice.currency,
+                productName: productName || undefined,
+                isRecurring: revenueType === 'subscription_recurring',
+              }).catch(err => logger.error({ err }, 'Failed to send Slack payment notification'));
+
+              // Record to org_activities for prospect tracking (for recurring payments)
+              if (revenueType === 'subscription_recurring') {
+                const amountFormatted = `$${(invoice.amount_paid / 100).toFixed(2)}`;
+                await pool.query(
+                  `INSERT INTO org_activities (
+                    organization_id,
+                    activity_type,
+                    description,
+                    logged_by_user_id,
+                    logged_by_name,
+                    activity_date
+                  ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                  [
+                    org.workos_organization_id,
+                    'payment',
+                    `Renewal payment ${amountFormatted} for ${productName || 'membership'}`,
+                    SYSTEM_USER_ID,
+                    'System',
+                  ]
+                );
+              }
+            }
+
+            // Update invoice cache (for prospects page - avoids Stripe API calls)
+            // Get product name for cache even if we didn't process revenue above
+            let cachedProductName: string | null = null;
+            if (invoice.lines?.data && invoice.lines.data.length > 0) {
+              const primaryLine = invoice.lines.data[0] as any;
+              const cachedProductId = primaryLine.price?.product as string;
+              if (cachedProductId && stripe) {
+                try {
+                  const product = await stripe.products.retrieve(cachedProductId);
+                  cachedProductName = product.name;
+                } catch (err) {
+                  logger.debug({ err, productId: cachedProductId, invoiceId: invoice.id }, 'Failed to retrieve product name for cache, using fallback');
+                  cachedProductName = primaryLine.description || null;
+                }
+              }
+            }
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              cachedProductName
+            );
+            break;
+          }
+
+          case 'invoice.payment_failed': {
+            const invoice = event.data.object as Stripe.Invoice;
+            logger.warn({
+              customer: invoice.customer,
+              invoiceId: invoice.id,
+              attemptCount: invoice.attempt_count,
+            }, 'Invoice payment failed');
+
+            // Get organization from customer ID
+            const customerId = invoice.customer as string;
+            const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            if (org) {
+              // Record failed payment event
+              try {
+                await pool.query(
+                  `INSERT INTO revenue_events (
+                    workos_organization_id,
+                    stripe_invoice_id,
+                    stripe_subscription_id,
+                    stripe_payment_intent_id,
+                    amount_paid,
+                    currency,
+                    revenue_type,
+                    billing_reason,
+                    paid_at,
+                    metadata
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                  [
+                    org.workos_organization_id,
+                    invoice.id,
+                    invoice.subscription || null,
+                    invoice.payment_intent || null,
+                    0, // No payment received
+                    invoice.currency,
+                    'payment_failed',
+                    invoice.billing_reason || null,
+                    new Date(),
+                    JSON.stringify({
+                      attempt_count: invoice.attempt_count,
+                      next_payment_attempt: invoice.next_payment_attempt,
+                      last_finalization_error: invoice.last_finalization_error,
+                      metadata: invoice.metadata,
+                    }),
+                  ]
+                );
+
+                logger.info({
+                  orgId: org.workos_organization_id,
+                  invoiceId: invoice.id,
+                }, 'Failed payment event recorded');
+              } catch (revenueError) {
+                logger.error({
+                  err: revenueError,
+                  orgId: org.workos_organization_id,
+                  invoiceId: invoice.id,
+                }, 'Failed to insert failed payment event');
+                // Continue processing - don't fail the webhook
+              }
+
+              // Send Slack notification for failed payment
+              notifyPaymentFailed({
+                organizationName: org.name || 'Unknown Organization',
+                amount: invoice.amount_due,
+                currency: invoice.currency,
+                attemptCount: invoice.attempt_count || 1,
+              }).catch(err => logger.error({ err }, 'Failed to send Slack failed payment notification'));
+            }
+
+            // Update invoice cache (keeps status in sync for prospects page)
+            await upsertInvoiceCache(
+              pool,
+              invoice,
+              org?.workos_organization_id || null,
+              null
+            );
+            break;
+          }
+
+          case 'charge.refunded': {
+            const charge = event.data.object as Stripe.Charge;
+            logger.info({
+              chargeId: charge.id,
+              amountRefunded: charge.amount_refunded,
+            }, 'Charge refunded');
+
+            // Get organization from customer ID
+            if (charge.customer) {
+              const customerId = charge.customer as string;
+              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+              if (org && charge.amount_refunded > 0) {
+                // Record refund as negative revenue event
+                try {
+                  await pool.query(
+                    `INSERT INTO revenue_events (
+                      workos_organization_id,
+                      stripe_charge_id,
+                      stripe_payment_intent_id,
+                      amount_paid,
+                      currency,
+                      revenue_type,
+                      paid_at,
+                      metadata
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [
+                      org.workos_organization_id,
+                      charge.id,
+                      charge.payment_intent || null,
+                      -charge.amount_refunded, // Negative amount for refund
+                      charge.currency,
+                      'refund',
+                      new Date(),
+                      JSON.stringify({
+                        refund_reason: charge.refunds?.data[0]?.reason || null,
+                        original_charge_amount: charge.amount,
+                        refunded_amount: charge.amount_refunded,
+                        metadata: charge.metadata,
+                      }),
+                    ]
+                  );
+
+                  logger.info({
+                    orgId: org.workos_organization_id,
+                    chargeId: charge.id,
+                    refundAmount: charge.amount_refunded,
+                  }, 'Refund event recorded');
+                } catch (revenueError) {
+                  logger.error({
+                    err: revenueError,
+                    orgId: org.workos_organization_id,
+                    chargeId: charge.id,
+                  }, 'Failed to insert refund event');
+                  // Continue processing - don't fail the webhook
+                }
+              }
+            }
+            break;
+          }
+
+          default:
+            logger.debug({ eventType: event.type }, 'Unhandled webhook event type');
+        }
+
+        res.json({ received: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Error processing webhook');
+        res.status(500).json({ error: 'Webhook processing failed' });
       }
     });
 
