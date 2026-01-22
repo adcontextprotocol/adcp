@@ -169,6 +169,7 @@ export function setupAccountRoutes(
           renewals,
           members,
           disqualified,
+          missingOwner,
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
@@ -197,10 +198,16 @@ export function setupAccountRoutes(
                   )
                 )
                 OR
-                -- Members: only show if they have a real problem (expiring soon)
+                -- Members: show if they have a real problem (expiring soon OR missing owner)
                 (
                   ${MEMBER_FILTER_ALIASED}
-                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                  AND (
+                    o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                    OR (
+                      EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id)
+                      AND NOT EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner')
+                    )
+                  )
                 )
               )
           `),
@@ -286,6 +293,21 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.prospect_status = 'disqualified'
           `),
+
+          // Missing owner - orgs with members but no owner role
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner'
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `),
         ]);
 
         res.json({
@@ -298,6 +320,7 @@ export function setupAccountRoutes(
           renewals: parseInt(renewals.rows[0].count),
           members: parseInt(members.rows[0].count),
           disqualified: parseInt(disqualified.rows[0].count),
+          missing_owner: parseInt(missingOwner.rows[0].count),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
@@ -832,7 +855,7 @@ export function setupAccountRoutes(
       switch (viewName) {
         case "needs_attention":
           // Accounts needing action: prospects with overdue tasks/invoices/high engagement,
-          // OR members with real problems (expiring soon)
+          // OR members with real problems (expiring soon, missing owner)
           query = `
             ${selectFields},
             na.next_step_due_date as next_step_due,
@@ -846,6 +869,11 @@ export function setupAccountRoutes(
               WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
+              WHEN EXISTS (
+                SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id
+              ) AND NOT EXISTS (
+                SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner'
+              ) THEN 'missing_owner'
               ELSE 'needs_review'
             END as attention_reason
             FROM organizations o
@@ -872,10 +900,17 @@ export function setupAccountRoutes(
                   )
                 )
                 OR
-                -- Members: only show if they have a real problem
+                -- Members: show if they have a real problem (expiring soon OR missing owner)
                 (
                   ${MEMBER_FILTER_ALIASED}
-                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                  AND (
+                    o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                    OR (
+                      -- Has members but no owner role
+                      EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id)
+                      AND NOT EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner')
+                    )
+                  )
                 )
               )
           `;
@@ -1061,6 +1096,24 @@ export function setupAccountRoutes(
               AND o.is_personal = false
           `;
           orderBy = ` ORDER BY computed_user_count DESC, o.engagement_score DESC NULLS LAST`;
+          break;
+
+        case "missing_owner":
+          // Organizations with members but no owner role
+          query = `
+            ${selectFields}
+            FROM organizations o
+            WHERE EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner'
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `;
+          orderBy = ` ORDER BY o.name ASC`;
           break;
 
         default:
