@@ -193,7 +193,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
           WHERE engagement_score IS NOT NULL
         `),
 
-        // Org lifecycle stats (using subscription status, not deprecated org_lifecycle_stage)
+        // Org lifecycle stats (derived from subscription_status and engagement_score)
         pool.query(`
           SELECT
             COUNT(*) as total_orgs,
