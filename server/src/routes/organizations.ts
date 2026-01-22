@@ -2290,11 +2290,12 @@ export function createOrganizationsRouter(): Router {
           status: updatedMembership.status,
         },
       });
-    } catch (error) {
-      logger.error({ err: error }, 'Update member role error');
-      res.status(500).json({
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ err: error, errorMessage }, 'Update member role error');
+      return res.status(500).json({
         error: 'Failed to update member role',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: 'Unable to update member role. Please try again or contact support.',
       });
     }
   });

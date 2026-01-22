@@ -22,7 +22,6 @@ import {
   NOT_MEMBER_ALIASED,
   type OrgTier,
 } from "../../db/org-filters.js";
-import { VALID_ASSIGNABLE_ROLES } from "../../types.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
@@ -1782,9 +1781,11 @@ export function setupAccountRoutes(
         return res.status(400).json({ error: "Role is required" });
       }
 
-      if (!VALID_ASSIGNABLE_ROLES.includes(role)) {
+      // Admin endpoint allows owner assignment (regular endpoints use VALID_ASSIGNABLE_ROLES which excludes owner)
+      const ADMIN_ASSIGNABLE_ROLES = ["owner", "admin", "member"] as const;
+      if (!ADMIN_ASSIGNABLE_ROLES.includes(role)) {
         return res.status(400).json({
-          error: `Invalid role. Must be one of: ${VALID_ASSIGNABLE_ROLES.join(", ")}`,
+          error: `Invalid role. Must be one of: ${ADMIN_ASSIGNABLE_ROLES.join(", ")}`,
         });
       }
 
@@ -1812,6 +1813,19 @@ export function setupAccountRoutes(
           });
         }
 
+        // Validate membership ID format (WorkOS membership IDs start with 'om_')
+        const membershipId = membership.workos_membership_id;
+        if (!membershipId.startsWith("om_")) {
+          logger.error(
+            { orgId, userId, membershipId },
+            "Invalid WorkOS membership ID format"
+          );
+          return res.status(400).json({
+            error: "Invalid membership data",
+            message: "Unable to update role due to invalid membership data. Please contact support.",
+          });
+        }
+
         // Update role via WorkOS API
         const { workos } = await import("../../auth/workos-client.js");
         if (!workos) {
@@ -1820,9 +1834,7 @@ export function setupAccountRoutes(
 
         // Verify membership belongs to the specified organization via WorkOS
         const existingMembership =
-          await workos.userManagement.getOrganizationMembership(
-            membership.workos_membership_id
-          );
+          await workos.userManagement.getOrganizationMembership(membershipId);
         if (existingMembership.organizationId !== orgId) {
           return res.status(400).json({
             error: "Invalid membership",
@@ -1830,10 +1842,9 @@ export function setupAccountRoutes(
           });
         }
 
-        await workos.userManagement.updateOrganizationMembership(
-          membership.workos_membership_id,
-          { roleSlug: role }
-        );
+        await workos.userManagement.updateOrganizationMembership(membershipId, {
+          roleSlug: role,
+        });
 
         // Update local cache
         await pool.query(
@@ -1855,20 +1866,46 @@ export function setupAccountRoutes(
           "Updated member role"
         );
 
+        // Record audit log for admin actions
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: req.user?.id || "admin",
+          action: "admin_member_role_changed",
+          resource_type: "membership",
+          resource_id: membershipId,
+          details: {
+            target_user_id: userId,
+            target_email: membership.email,
+            old_role: previousRole,
+            new_role: role,
+            admin_email: req.user?.email,
+          },
+        });
+
         res.json({
           success: true,
           message: `Role updated to ${role}`,
           user_id: userId,
           role,
         });
-      } catch (error) {
+      } catch (error: unknown) {
+        // Extract error details for logging
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        const errorDetails =
+          error && typeof error === "object" && "rawData" in error
+            ? (error as { rawData?: unknown }).rawData
+            : undefined;
+
         logger.error(
-          { err: error, orgId, userId, role },
+          { err: error, errorMessage, errorDetails, orgId, userId, role },
           "Error updating member role"
         );
-        res.status(500).json({
+
+        // Return a user-friendly error message (never expose internal details)
+        return res.status(500).json({
           error: "Internal server error",
-          message: "Unable to update member role",
+          message: "Unable to update member role. Please try again or contact support.",
         });
       }
     }
