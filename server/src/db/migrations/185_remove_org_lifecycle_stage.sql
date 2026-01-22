@@ -59,8 +59,15 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION update_organization_scores IS 'Aggregates member scores to organization level';
 
--- Step 2: Update organization_profile view to not include org_lifecycle_stage
-CREATE OR REPLACE VIEW organization_profile AS
+-- Step 2: Drop the view that references the column we want to remove
+DROP VIEW IF EXISTS organization_profile;
+
+-- Step 3: Drop the column and its constraint
+ALTER TABLE organizations DROP CONSTRAINT IF EXISTS organizations_lifecycle_stage_check;
+ALTER TABLE organizations DROP COLUMN IF EXISTS org_lifecycle_stage;
+
+-- Step 4: Recreate organization_profile view without org_lifecycle_stage
+CREATE VIEW organization_profile AS
 SELECT
   o.workos_organization_id,
   o.name,
@@ -106,7 +113,3 @@ FROM organizations o
 LEFT JOIN users champion ON champion.workos_user_id = o.champion_workos_user_id;
 
 COMMENT ON VIEW organization_profile IS 'Organization with aggregated member scores and sales flags';
-
--- Step 3: Drop the column and its constraint
-ALTER TABLE organizations DROP CONSTRAINT IF EXISTS organizations_lifecycle_stage_check;
-ALTER TABLE organizations DROP COLUMN IF EXISTS org_lifecycle_stage;
