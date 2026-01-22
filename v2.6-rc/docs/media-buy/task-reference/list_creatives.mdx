@@ -46,10 +46,8 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 ```json
 {
   "filters": {
-    "format": "video",                    // Single format
-    "formats": ["video", "audio"],        // Multiple formats
-    "status": "approved",                 // Single status
-    "statuses": ["approved", "pending_review"] // Multiple statuses
+    "formats": ["video"],                           // Filter by format types
+    "statuses": ["approved", "pending_review"]      // Filter by statuses
   }
 }
 ```
@@ -94,8 +92,7 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 ```json
 {
   "filters": {
-    "assigned_to_package": "pkg_ctv_001",           // Assigned to specific package
-    "assigned_to_packages": ["pkg_001", "pkg_002"], // Assigned to any of these packages
+    "assigned_to_packages": ["pkg_ctv_001"],        // Assigned to any of these packages
     "media_buy_ids": ["mb_123", "mb_456"],          // Assigned to any of these media buys
     "buyer_refs": ["campaign_abc", "campaign_xyz"], // Assigned to media buys with these buyer references
     "unassigned": true                              // Unassigned creatives only
@@ -206,8 +203,8 @@ List all approved video creatives:
 ```json
 {
   "filters": {
-    "format": "video",
-    "status": "approved"
+    "formats": ["video"],
+    "statuses": ["approved"]
   },
   "sort": {
     "field": "created_date",
@@ -246,7 +243,7 @@ Get creatives ready for assignment to new campaigns:
 {
   "filters": {
     "unassigned": true,
-    "status": "approved"
+    "statuses": ["approved"]
   },
   "sort": {
     "field": "created_date",
@@ -265,7 +262,7 @@ Find all creatives assigned to a specific package:
 ```json
 {
   "filters": {
-    "assigned_to_package": "pkg_ctv_premium_001"
+    "assigned_to_packages": ["pkg_ctv_premium_001"]
   },
   "include_assignments": true,
   "include_performance": true,
@@ -285,7 +282,7 @@ Find mobile-optimized creatives across multiple formats:
   "filters": {
     "formats": ["display_320x50", "video_9x16_mobile", "display_300x250"],
     "tags_any": ["mobile_optimized", "responsive"],
-    "status": "approved"
+    "statuses": ["approved"]
   },
   "sort": {
     "field": "updated_date",
@@ -303,7 +300,7 @@ Get minimal creative data for UI dropdown:
   "fields": ["creative_id", "name", "format", "status"],
   "include_assignments": false,
   "filters": {
-    "status": "approved"
+    "statuses": ["approved"]
   },
   "sort": {
     "field": "name",
@@ -358,7 +355,7 @@ Find all creatives used in specific media buys or campaigns:
 {
   "filters": {
     "media_buy_ids": ["mb_summer_2025", "mb_spring_2025"],
-    "status": "approved"
+    "statuses": ["approved"]
   },
   "include_assignments": true,
   "include_performance": true,
@@ -429,7 +426,7 @@ Search creatives across related campaigns by buyer reference:
 ```json
 {
   "filters": {
-    "status": "approved",
+    "statuses": ["approved"],
     "unassigned": true
   },
   "sort": { "field": "created_date", "direction": "desc" }
@@ -502,7 +499,7 @@ For queries returning very large result sets:
 // Get lightweight creative list for dropdown
 const response = await adcp.list_creatives({
   fields: ["creative_id", "name", "format"],
-  filters: { status: "approved" },
+  filters: { statuses: ["approved"] },
   sort: { field: "name", direction: "asc" },
   include_assignments: false
 });
@@ -525,12 +522,12 @@ const response = await adcp.list_creatives({
 
 ### Assignment Management
 
-```javascript  
+```javascript
 // Find unassigned creatives ready for new campaigns
 const response = await adcp.list_creatives({
   filters: {
     unassigned: true,
-    status: "approved",
+    statuses: ["approved"],
     formats: ["video", "display"]
   },
   sort: { field: "created_date", direction: "desc" }
