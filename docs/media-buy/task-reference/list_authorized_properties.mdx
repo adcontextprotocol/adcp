@@ -28,7 +28,7 @@ Discover which publishers a sales agent is authorized to represent. Returns publ
 | Field | Description |
 |-------|-------------|
 | `publisher_domains` | Array of publisher domains this agent represents |
-| `primary_channels` | Optional main advertising channels (ctv, display, video, audio, dooh, etc.) |
+| `primary_channels` | Optional main advertising channels (e.g., `display`, `ctv`, `social`, `streaming_audio`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
 | `primary_countries` | Optional main countries (ISO 3166-1 alpha-2 codes, case-insensitive) |
 | `portfolio_description` | Optional markdown description of portfolio and capabilities |
 | `last_updated` | Optional ISO 8601 timestamp of last publisher list update |
@@ -404,7 +404,7 @@ Optional fields provide high-level portfolio information for quick filtering:
 ### primary_channels
 
 Main advertising channels in portfolio:
-- Values: `display`, `video`, `dooh`, `ctv`, `podcast`, `retail`, etc.
+- Values: `display`, `olv`, `dooh`, `ctv`, `podcast`, `retail_media`, etc.
 - See [Channels enum](https://adcontextprotocol.org/schemas/v2/enums/channels.json)
 - Use case: Filter "Do you have DOOH?" before examining properties
 
@@ -435,7 +435,7 @@ Markdown description:
 **News Publisher**:
 ```json
 {
-  "primary_channels": ["display", "video", "native"],
+  "primary_channels": ["display", "olv"],
   "primary_countries": ["US", "GB", "AU"],
   "portfolio_description": "News and business publisher network. Desktop and mobile web with professional audience."
 }
