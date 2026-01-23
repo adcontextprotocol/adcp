@@ -488,6 +488,7 @@ export function setupMembersRoutes(
                   code: (updateError as { code?: string }).code,
                   errors: (updateError as { errors?: unknown }).errors,
                   requestID: (updateError as { requestID?: string }).requestID,
+                  rawData: (updateError as { rawData?: unknown }).rawData,
                 }
               : undefined;
 
