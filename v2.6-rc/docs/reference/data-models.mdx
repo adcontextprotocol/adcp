@@ -79,7 +79,7 @@ interface CreativeAsset {
   name: string;
   format: string;
   url?: string;
-  status: 'processing' | 'approved' | 'rejected' | 'pending_review';
+  status: 'processing' | 'approved' | 'rejected' | 'pending_review' | 'archived';
   compliance?: {
     status: string;
     issues?: string[];
@@ -166,7 +166,7 @@ type DeliveryType = 'guaranteed' | 'non_guaranteed';
 type MediaBuyStatus = 'pending_activation' | 'active' | 'paused' | 'completed';
 
 // Creative Status - Schema: /schemas/v2/enums/creative-status.json
-type CreativeStatus = 'processing' | 'approved' | 'rejected' | 'pending_review';
+type CreativeStatus = 'processing' | 'approved' | 'rejected' | 'pending_review' | 'archived';
 
 // Pacing - Schema: /schemas/v2/enums/pacing.json
 type Pacing = 'even' | 'asap' | 'front_loaded';

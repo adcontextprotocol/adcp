@@ -293,6 +293,11 @@
       "type": "object",
       "description": "Breakdown of creatives by status",
       "properties": {
+        "processing": {
+          "type": "integer",
+          "description": "Number of creatives being processed",
+          "minimum": 0
+        },
         "approved": {
           "type": "integer",
           "description": "Number of approved creatives",

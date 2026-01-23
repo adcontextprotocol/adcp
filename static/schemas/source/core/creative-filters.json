@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-filters.json",
   "title": "Creative Filters",
-  "description": "Filter criteria for querying creative assets from the centralized library",
+  "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
   "type": "object",
   "properties": {
     "format": {
