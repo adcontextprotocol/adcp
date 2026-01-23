@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/channels.json",
   "title": "Media Channel",
-  "description": "Standardized advertising media channels describing where ads reach audiences. See the Media Channel Taxonomy specification for detailed definitions.",
+  "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
   "type": "string",
   "enum": [
-    "web",
-    "ctv",
-    "mobile_app",
+    "display",
+    "olv",
     "social",
     "search",
+    "ctv",
     "linear_tv",
     "radio",
     "streaming_audio",
@@ -20,18 +20,17 @@
     "cinema",
     "email",
     "gaming",
+    "retail_media",
     "influencer",
     "affiliate",
-    "ai_agents",
-    "sponsorship",
-    "commerce_media"
+    "product_placement"
   ],
   "enumDescriptions": {
-    "web": "Browser-based advertising (desktop and mobile web)",
-    "ctv": "Connected TV applications and streaming on television screens",
-    "mobile_app": "Native applications on smartphones and tablets (excluding CTV and social)",
-    "social": "Social media platforms (may be delivered via web or app)",
-    "search": "Search engine results pages and search advertising networks",
+    "display": "Digital display advertising (banners, native, rich media) across web and app",
+    "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+    "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+    "search": "Search engine advertising and search networks",
+    "ctv": "Connected TV and streaming on television screens",
     "linear_tv": "Traditional broadcast and cable television",
     "radio": "Traditional AM/FM radio broadcast",
     "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
@@ -42,10 +41,9 @@
     "cinema": "Movie theater advertising",
     "email": "Email advertising and sponsored newsletter content",
     "gaming": "In-game advertising across platforms",
+    "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
     "influencer": "Creator and influencer marketing partnerships",
-    "affiliate": "Affiliate networks, comparison sites, and performance-based publisher partnerships",
-    "ai_agents": "AI assistants, chatbots, and voice interfaces",
-    "sponsorship": "Sponsorships, product placement, and branded content integrations",
-    "commerce_media": "Retail media networks and transactional marketplaces (Amazon, Instacart, etc.)"
+    "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+    "product_placement": "Product placement, branded content, and sponsorship integrations"
   }
 }
