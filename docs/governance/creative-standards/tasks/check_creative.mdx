@@ -1,0 +1,174 @@
+---
+title: check_creative
+sidebarTitle: check_creative
+description: Evaluate a single creative asset against brand guidelines
+---
+
+# check_creative
+
+Evaluate a single creative asset against brand guidelines. Returns per-feature evaluation results indicating compliance status.
+
+## Request
+
+```json
+{
+  "standards_id": "acme_global_2024",
+  "creative": {
+    "creative_id": "creative_abc123",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    "assets": [
+      {
+        "asset_id": "hero_image",
+        "url": "https://cdn.example.com/creative_abc123/hero.png",
+        "content_type": "image/png"
+      }
+    ],
+    "metadata": {
+      "headline": "Transform Your Business",
+      "tagline": "ACME - Innovation at Scale",
+      "cta_text": "Learn More"
+    }
+  },
+  "feature_ids": ["logo_present", "color_palette", "typography_family"]
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Standards configuration to evaluate against |
+| `creative` | object | Yes | Creative asset to evaluate |
+| `creative.creative_id` | string | No | Identifier for the creative |
+| `creative.format_id` | object | No | Creative format specification |
+| `creative.assets` | array | Yes | Asset files to evaluate |
+| `creative.metadata` | object | No | Text content and metadata |
+| `feature_ids` | array | No | Specific features to check (defaults to all) |
+
+## Response
+
+```json
+{
+  "summary": {
+    "total_features": 5,
+    "passed_features": 3,
+    "failed_features": 1,
+    "warning_features": 1
+  },
+  "results": [
+    {
+      "feature_id": "logo_present",
+      "status": "passed",
+      "message": "Brand logo detected in creative"
+    },
+    {
+      "feature_id": "logo_clear_space_px",
+      "status": "warning",
+      "value": 15,
+      "message": "Logo clear space is 15px, minimum recommended is 20px",
+      "suggestion": "Increase clear space around logo to at least 20px"
+    },
+    {
+      "feature_id": "color_palette",
+      "status": "passed",
+      "value": "primary",
+      "message": "Creative uses primary brand color palette"
+    },
+    {
+      "feature_id": "typography_family",
+      "status": "passed",
+      "value": "brand_sans",
+      "message": "Creative uses approved ACME Sans font family"
+    },
+    {
+      "feature_id": "approved_tagline",
+      "status": "failed",
+      "message": "Tagline 'Innovation at Scale' is not in approved tagline list",
+      "suggestion": "Use an approved tagline such as 'Innovation Delivered' or 'Scale with Confidence'"
+    }
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary` | object | Aggregate counts |
+| `summary.total_features` | integer | Total features evaluated |
+| `summary.passed_features` | integer | Features that passed |
+| `summary.failed_features` | integer | Features that failed |
+| `summary.warning_features` | integer | Features with warnings |
+| `results` | array | Per-feature results |
+| `results[].feature_id` | string | Which feature was evaluated |
+| `results[].status` | string | `passed`, `failed`, `warning`, or `unevaluated` |
+| `results[].value` | any | The evaluated value (type depends on feature) |
+| `results[].message` | string | Human-readable explanation |
+| `results[].suggestion` | string | Recommended action if failed/warning |
+
+## Feature Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `passed` | Creative meets the requirement |
+| `failed` | Creative violates the requirement |
+| `warning` | Creative is marginally compliant |
+| `unevaluated` | Feature could not be evaluated |
+
+## Creative Asset Structure
+
+The `creative.assets` array should include all relevant files:
+
+```json
+{
+  "assets": [
+    {
+      "asset_id": "main_image",
+      "url": "https://cdn.example.com/main.png",
+      "content_type": "image/png"
+    },
+    {
+      "asset_id": "logo",
+      "url": "https://cdn.example.com/logo.svg",
+      "content_type": "image/svg+xml"
+    },
+    {
+      "asset_id": "video",
+      "url": "https://cdn.example.com/spot.mp4",
+      "content_type": "video/mp4"
+    }
+  ]
+}
+```
+
+## Metadata for Text Evaluation
+
+Include text content in `creative.metadata` for messaging checks:
+
+```json
+{
+  "metadata": {
+    "headline": "Transform Your Business",
+    "subheadline": "Enterprise solutions that scale",
+    "tagline": "Innovation Delivered",
+    "cta_text": "Get Started",
+    "legal_text": "Terms and conditions apply. See website for details."
+  }
+}
+```
+
+## Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "ASSET_UNAVAILABLE",
+      "message": "Could not fetch asset at https://cdn.example.com/main.png"
+    }
+  ]
+}
+```
