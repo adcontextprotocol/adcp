@@ -298,9 +298,11 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
 }
 
 /**
- * Get subscription info from Stripe for an organization
+ * Get subscription info directly from Stripe for a customer.
+ * NOTE: For most use cases, use OrganizationDatabase.getSubscriptionInfo() instead,
+ * which checks both Stripe AND local DB (handles invoice-based memberships).
  */
-export async function getSubscriptionInfo(
+export async function getStripeSubscriptionInfo(
   stripeCustomerId: string
 ): Promise<{
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid' | 'none';

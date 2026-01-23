@@ -1,5 +1,5 @@
 import { getPool } from './client.js';
-import { getSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
+import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
@@ -609,7 +609,7 @@ export class OrganizationDatabase {
 
     // If we have a Stripe customer ID, check for active subscription
     if (org.stripe_customer_id) {
-      const stripeInfo = await getSubscriptionInfo(org.stripe_customer_id);
+      const stripeInfo = await getStripeSubscriptionInfo(org.stripe_customer_id);
 
       // If Stripe has an active subscription, use that
       if (stripeInfo && stripeInfo.status !== 'none') {
@@ -630,6 +630,15 @@ export class OrganizationDatabase {
 
     // No Stripe customer - use local DB or return 'none'
     return localInfo || { status: 'none' };
+  }
+
+  /**
+   * Check if an organization has an active subscription.
+   * Simple boolean helper that checks both Stripe and local DB.
+   */
+  async hasActiveSubscription(workos_organization_id: string): Promise<boolean> {
+    const info = await this.getSubscriptionInfo(workos_organization_id);
+    return info?.status === 'active' || info?.status === 'trialing';
   }
 
   // Agreement Methods
