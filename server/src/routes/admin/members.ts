@@ -16,7 +16,7 @@ import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
-import { stripe, getSubscriptionInfo } from "../../billing/stripe-client.js";
+import { stripe } from "../../billing/stripe-client.js";
 
 const logger = createLogger("admin-members");
 
@@ -532,24 +532,21 @@ export function setupMembersRoutes(
           });
         }
 
-        // Check for active Stripe subscription
-        if (org.stripe_customer_id) {
-          const subscriptionInfo = await getSubscriptionInfo(
-            org.stripe_customer_id
-          );
-          if (
-            subscriptionInfo &&
-            (subscriptionInfo.status === "active" ||
-              subscriptionInfo.status === "past_due")
-          ) {
-            return res.status(400).json({
-              error: "Cannot delete workspace with active subscription",
-              message:
-                "This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.",
-              has_active_subscription: true,
-              subscription_status: subscriptionInfo.status,
-            });
-          }
+        // Check for active subscription (checks both Stripe and local DB)
+        const orgDb = new OrganizationDatabase();
+        const subscriptionInfo = await orgDb.getSubscriptionInfo(orgId);
+        if (
+          subscriptionInfo &&
+          (subscriptionInfo.status === "active" ||
+            subscriptionInfo.status === "past_due")
+        ) {
+          return res.status(400).json({
+            error: "Cannot delete workspace with active subscription",
+            message:
+              "This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.",
+            has_active_subscription: true,
+            subscription_status: subscriptionInfo.status,
+          });
         }
 
         // Require confirmation by typing the organization name
@@ -563,7 +560,6 @@ export function setupMembersRoutes(
         }
 
         // Record audit log before deletion (while org still exists)
-        const orgDb = new OrganizationDatabase();
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: req.user!.id,

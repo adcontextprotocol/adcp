@@ -26,7 +26,6 @@ import { getCompanyDomain } from "../utils/email-domain.js";
 import {
   createStripeCustomer,
   createCustomerPortalSession,
-  getSubscriptionInfo,
 } from "../billing/stripe-client.js";
 import {
   notifyJoinRequest,
@@ -1539,17 +1538,15 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Check for active Stripe subscription
-      if (org.stripe_customer_id) {
-        const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
-        if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
-          return res.status(400).json({
-            error: 'Cannot delete workspace with active subscription',
-            message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
-            has_active_subscription: true,
-            subscription_status: subscriptionInfo.status,
-          });
-        }
+      // Check for active subscription (checks both Stripe and local DB)
+      const subscriptionInfo = await orgDb.getSubscriptionInfo(orgId);
+      if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
+        return res.status(400).json({
+          error: 'Cannot delete workspace with active subscription',
+          message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
+          has_active_subscription: true,
+          subscription_status: subscriptionInfo.status,
+        });
       }
 
       // Require confirmation by typing the organization name
