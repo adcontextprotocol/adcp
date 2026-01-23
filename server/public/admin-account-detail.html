@@ -1479,16 +1479,18 @@
       // Owner
       renderOwner();
 
-      // Pending invoice highlight
-      if (a.has_pending_invoice && a.pending_invoices?.length > 0) {
-        const invoice = a.pending_invoices[0];
+      // Pending invoice highlight - show largest non-zero invoice
+      const pendingInvoice = (a.pending_invoices || [])
+        .filter(inv => inv.amount_due > 0)
+        .sort((x, y) => y.amount_due - x.amount_due)[0];
+      if (pendingInvoice) {
         document.getElementById('pendingInvoiceHighlight').style.display = 'block';
-        document.getElementById('pendingInvoiceAmount').textContent = formatCurrency(invoice.amount_due);
-        if (invoice.due_date) {
-          document.getElementById('pendingInvoiceDate').textContent = ` • due ${formatDate(invoice.due_date)}`;
+        document.getElementById('pendingInvoiceAmount').textContent = formatCurrency(pendingInvoice.amount_due);
+        if (pendingInvoice.due_date) {
+          document.getElementById('pendingInvoiceDate').textContent = ` • due ${formatDate(pendingInvoice.due_date)}`;
         }
-        if (invoice.hosted_invoice_url) {
-          document.getElementById('pendingInvoiceLink').href = invoice.hosted_invoice_url;
+        if (pendingInvoice.hosted_invoice_url) {
+          document.getElementById('pendingInvoiceLink').href = pendingInvoice.hosted_invoice_url;
         }
       }
 

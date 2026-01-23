@@ -1728,7 +1728,12 @@
       const card = document.getElementById('pendingInvoicesCard');
       const container = document.getElementById('pendingInvoicesList');
 
-      if (!orgData.pending_invoices || orgData.pending_invoices.length === 0) {
+      // Filter out $0 invoices and sort by largest amount first
+      const pendingInvoices = (orgData.pending_invoices || [])
+        .filter(inv => inv.amount_due > 0)
+        .sort((a, b) => b.amount_due - a.amount_due);
+
+      if (pendingInvoices.length === 0) {
         card.style.display = 'none';
         return;
       }
@@ -1739,11 +1744,11 @@
       const formatCurrency = (amountCents, currency) => {
         return new Intl.NumberFormat('en-US', {
           style: 'currency',
-          currency: currency.toUpperCase()
+          currency: (currency || 'USD').toUpperCase()
         }).format(amountCents / 100);
       };
 
-      container.innerHTML = orgData.pending_invoices.map(invoice => {
+      container.innerHTML = pendingInvoices.map(invoice => {
         const createdDate = new Date(invoice.created).toLocaleDateString();
         const dueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : 'N/A';
         const statusLabel = invoice.status === 'open' ? 'Sent' : 'Draft';
