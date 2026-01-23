@@ -52,6 +52,10 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 }
 ```
 
+<Note>
+**Archived creatives are excluded by default.** To include archived creatives in results, explicitly filter by `status: "archived"` or include `"archived"` in the `statuses` array.
+</Note>
+
 ### Tag-Based Filtering
 
 ```json
@@ -189,7 +193,8 @@ The response provides comprehensive creative data with optional enrichment:
   "status_summary": {
     "approved": 20,
     "pending_review": 3,
-    "rejected": 2
+    "rejected": 2,
+    "archived": 5
   }
 }
 ```
@@ -377,6 +382,22 @@ Search creatives across related campaigns by buyer reference:
     "formats": ["video", "display"]
   },
   "include_assignments": true,
+  "sort": {
+    "field": "updated_date",
+    "direction": "desc"
+  }
+}
+```
+
+### Example 11: Query Archived Creatives
+
+View archived creatives (excluded from default queries):
+
+```json
+{
+  "filters": {
+    "status": "archived"
+  },
   "sort": {
     "field": "updated_date",
     "direction": "desc"
