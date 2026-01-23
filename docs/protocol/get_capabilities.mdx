@@ -9,15 +9,32 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 **Response Time**: ~2 seconds (configuration lookup)
 
 **Purpose**:
-- **Protocol discovery** - Which AdCP major versions? Which domain protocols?
-- **Media-buy capabilities** - Features, AXE integrations, geo targeting granularity
-- **Future protocols** - Signals and other domain protocols
+- **AdCP discovery** - Does this agent support AdCP? Which versions?
+- **Protocol support** - Which domain protocols (media_buy, signals)?
+- **Detailed capabilities** - Features, AXE integrations, geo targeting, portfolio
 
 **Request Schema**: [`/schemas/v1/protocol/get-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-capabilities-request.json)
 **Response Schema**: [`/schemas/v1/protocol/get-capabilities-response.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-capabilities-response.json)
 
+## Tool-Based Discovery
+
+AdCP uses native MCP/A2A tool discovery. **The presence of `get_capabilities` in an agent's tool list indicates AdCP support.**
+
+```
+Discovery Flow:
+1. Browse agent's tool list (MCP) or skills (A2A)
+2. See 'get_capabilities' tool → Agent supports AdCP
+3. Call get_capabilities → Get version, protocols, features, capabilities
+4. Proceed based on returned capabilities
+```
+
+This approach:
+- Uses standard MCP/A2A mechanisms (no custom extensions)
+- Always returns current capabilities (not stale metadata)
+- Single source of truth for all capability information
+
 :::note
-This is a protocol-level task that works across all AdCP domain protocols. Use it to discover capabilities for media-buy, signals, and future protocols in a single call.
+The agent card extension (`adcp-extension.json`) is deprecated. Use tool-based discovery instead.
 :::
 
 ## Request Parameters

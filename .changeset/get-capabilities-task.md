@@ -4,7 +4,13 @@
 
 Add protocol-level get_capabilities task for cross-protocol capability discovery
 
-Introduces `get_capabilities` as a **protocol-level task** (not media-buy specific) that works across all AdCP domain protocols.
+Introduces `get_capabilities` as a **protocol-level task** that works across all AdCP domain protocols.
+
+**Tool-based discovery:**
+- AdCP discovery now uses native MCP/A2A tool discovery
+- Presence of `get_capabilities` tool indicates AdCP support
+- Call it to get version, protocols, features, and detailed capabilities
+- Deprecates `adcp-extension.json` agent card extension
 
 **Cross-protocol design:**
 - `adcp.major_versions` - Declare supported AdCP major versions

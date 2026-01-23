@@ -791,7 +791,9 @@
       "schemas": {
         "adcp-extension": {
           "$ref": "/schemas/protocols/adcp-extension.json",
-          "description": "AdCP extension for agent cards (MCP and A2A). Declares AdCP version, supported protocol domains, and typed extensions."
+          "deprecated": true,
+          "deprecation_note": "Use tool-based discovery instead. Check for 'get_capabilities' tool, then call it for full capability details.",
+          "description": "DEPRECATED: AdCP extension for agent cards. Use get_capabilities tool for discovery instead."
         }
       }
     },

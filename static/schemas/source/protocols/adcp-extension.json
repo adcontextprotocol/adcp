@@ -1,14 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/protocols/adcp-extension.json",
-  "title": "AdCP Agent Card Extension Params",
-  "description": "Parameters for declaring AdCP support in agent discovery. For A2A, use in extensions[].params. For MCP, use in _meta['adcontextprotocol.org'].",
+  "title": "AdCP Agent Card Extension Params (Deprecated)",
+  "description": "DEPRECATED: Use tool-based discovery instead. Check for 'get_capabilities' tool in the agent's tool list, then call it for full capability details. This extension schema is maintained for backward compatibility only.",
+  "deprecated": true,
+  "deprecation_note": "AdCP discovery now uses native MCP/A2A tool discovery. If an agent has 'get_capabilities' tool, it supports AdCP. Call get_capabilities for version, protocols, features, and capabilities.",
   "type": "object",
   "properties": {
     "adcp_version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Semantic version of the AdCP specification this agent implements (e.g., '2.5.0'). Extension schemas are versioned along with the AdCP spec."
+      "description": "DEPRECATED: Use get_capabilities response adcp.major_versions instead.",
+      "deprecated": true
     },
     "protocols_supported": {
       "type": "array",
@@ -22,17 +25,18 @@
       },
       "minItems": 1,
       "uniqueItems": true,
-      "description": "AdCP protocol domains supported by this agent. At least one must be specified."
+      "description": "DEPRECATED: Use get_capabilities response supported_protocols instead.",
+      "deprecated": true
     },
     "extensions_supported": {
       "type": "array",
-      "description": "Typed extensions this agent supports. Each extension has a formal schema in /schemas/extensions/. Extension version is determined by adcp_version.",
+      "description": "DEPRECATED: Typed extensions can be declared in get_capabilities ext field.",
       "items": {
         "type": "string",
-        "pattern": "^[a-z][a-z0-9_]*$",
-        "description": "Extension namespace (e.g., 'sustainability'). Must be lowercase alphanumeric with underscores."
+        "pattern": "^[a-z][a-z0-9_]*$"
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "deprecated": true
     }
   },
   "required": [
