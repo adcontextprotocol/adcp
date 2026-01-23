@@ -1,5 +1,5 @@
 ---
-title: get_capabilities
+title: get_adcp_capabilities
 sidebar_position: 1
 testable: false
 ---
@@ -13,18 +13,18 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 - **Protocol support** - Which domain protocols (media_buy, signals)?
 - **Detailed capabilities** - Features, AXE integrations, geo targeting, portfolio
 
-**Request Schema**: [`/schemas/v1/protocol/get-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-capabilities-request.json)
-**Response Schema**: [`/schemas/v1/protocol/get-capabilities-response.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-capabilities-response.json)
+**Request Schema**: [`/schemas/v1/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-request.json)
+**Response Schema**: [`/schemas/v1/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-response.json)
 
 ## Tool-Based Discovery
 
-AdCP uses native MCP/A2A tool discovery. **The presence of `get_capabilities` in an agent's tool list indicates AdCP support.**
+AdCP uses native MCP/A2A tool discovery. **The presence of `get_adcp_capabilities` in an agent's tool list indicates AdCP support.**
 
 ```
 Discovery Flow:
 1. Browse agent's tool list (MCP) or skills (A2A)
-2. See 'get_capabilities' tool → Agent supports AdCP
-3. Call get_capabilities → Get version, protocols, features, capabilities
+2. See 'get_adcp_capabilities' tool → Agent supports AdCP
+3. Call get_adcp_capabilities → Get version, protocols, features, capabilities
 4. Proceed based on returned capabilities
 ```
 
@@ -165,7 +165,7 @@ import { AdcpClient } from '@adcp/client';
 const client = new AdcpClient({ baseUrl: 'https://seller.example.com/mcp' });
 
 // Get seller capabilities
-const result = await client.getCapabilities({});
+const result = await client.getAdcpCapabilities({});
 
 if (result.errors) {
   throw new Error(`Request failed: ${result.errors[0].message}`);
@@ -209,7 +209,7 @@ async function findCompatibleSellers(sellers, requirements) {
 
   for (const sellerUrl of sellers) {
     const client = new AdcpClient({ baseUrl: sellerUrl });
-    const caps = await client.getCapabilities({});
+    const caps = await client.getAdcpCapabilities({});
 
     if (caps.errors) continue;
 
@@ -262,7 +262,7 @@ After discovering capabilities, use them to filter `get_products`:
 
 ```javascript
 // First, check capabilities
-const caps = await client.getCapabilities({});
+const caps = await client.getAdcpCapabilities({});
 
 if (!caps.supported_protocols.includes('media_buy')) {
   throw new Error('Seller does not support media_buy protocol');

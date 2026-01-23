@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/protocol/get-capabilities-response.json",
-  "title": "Get Capabilities Response",
-  "description": "Response payload for get_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each domain protocol has its own capability section.",
+  "$id": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "title": "Get AdCP Capabilities Response",
+  "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each domain protocol has its own capability section.",
   "type": "object",
   "properties": {
     "adcp": {

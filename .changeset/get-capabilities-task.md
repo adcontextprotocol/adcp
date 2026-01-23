@@ -2,14 +2,14 @@
 "adcontextprotocol": minor
 ---
 
-Add protocol-level get_capabilities task for cross-protocol capability discovery
+Add protocol-level get_adcp_capabilities task for cross-protocol capability discovery
 
-Introduces `get_capabilities` as a **protocol-level task** that works across all AdCP domain protocols.
+Introduces `get_adcp_capabilities` as a **protocol-level task** that works across all AdCP domain protocols.
 
 **Tool-based discovery:**
-- AdCP discovery now uses native MCP/A2A tool discovery
-- Presence of `get_capabilities` tool indicates AdCP support
-- Call it to get version, protocols, features, and detailed capabilities
+- AdCP discovery uses native MCP/A2A tool discovery
+- Presence of `get_adcp_capabilities` tool indicates AdCP support
+- Distinctive name ensures no collision with other protocols' capability tools
 - Deprecates `adcp-extension.json` agent card extension
 
 **Cross-protocol design:**

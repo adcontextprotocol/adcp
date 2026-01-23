@@ -768,14 +768,14 @@
     "protocol": {
       "description": "Protocol-level tasks that work across all AdCP domain protocols",
       "tasks": {
-        "get-capabilities": {
+        "get-adcp-capabilities": {
           "request": {
-            "$ref": "/schemas/protocol/get-capabilities-request.json",
+            "$ref": "/schemas/protocol/get-adcp-capabilities-request.json",
             "description": "Request parameters for cross-protocol capability discovery"
           },
           "response": {
-            "$ref": "/schemas/protocol/get-capabilities-response.json",
-            "description": "Response payload for get_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
+            "$ref": "/schemas/protocol/get-adcp-capabilities-response.json",
+            "description": "Response payload for get_adcp_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
           }
         }
       }
@@ -792,8 +792,8 @@
         "adcp-extension": {
           "$ref": "/schemas/protocols/adcp-extension.json",
           "deprecated": true,
-          "deprecation_note": "Use tool-based discovery instead. Check for 'get_capabilities' tool, then call it for full capability details.",
-          "description": "DEPRECATED: AdCP extension for agent cards. Use get_capabilities tool for discovery instead."
+          "deprecation_note": "Use tool-based discovery instead. Check for 'get_adcp_capabilities' tool, then call it for full capability details.",
+          "description": "DEPRECATED: AdCP extension for agent cards. Use get_adcp_capabilities tool for discovery instead."
         }
       }
     },
