@@ -1823,7 +1823,7 @@ export function setupAccountRoutes(
    * unlike /members/:orgId/memberships/:membershipId which uses membershipId.
    */
   apiRouter.put(
-    "/api/admin/accounts/:orgId/members/:userId/role",
+    "/accounts/:orgId/members/:userId/role",
     requireAuth,
     requireAdmin,
     async (req: Request, res: Response) => {
