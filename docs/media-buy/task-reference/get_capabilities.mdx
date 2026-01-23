@@ -1,0 +1,370 @@
+---
+title: get_capabilities
+sidebar_position: 1.4
+testable: false
+---
+
+Discover a seller's protocol support, execution capabilities, and portfolio information. This is the first call a buyer should make to understand what a seller supports.
+
+**Response Time**: ~2 seconds (configuration lookup)
+
+**Purpose**:
+- **Protocol discovery** - Which AdCP major versions? Which optional features?
+- **Execution capabilities** - Which AXE integrations? What geo targeting granularity?
+- **Portfolio overview** - Publishers, channels, countries
+
+**Request Schema**: [`/schemas/v1/media-buy/get-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-capabilities-request.json)
+**Response Schema**: [`/schemas/v1/media-buy/get-capabilities-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-capabilities-response.json)
+
+:::note
+`get_capabilities` replaces `list_authorized_properties` with expanded capability declaration. The portfolio section contains equivalent fields.
+:::
+
+## Request Parameters
+
+No required parameters. Pass `context` and `ext` as needed.
+
+## Response Structure
+
+### protocol
+
+Protocol-level capabilities:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `adcp_major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[2, 3]`) |
+| `features` | object | Optional protocol features. **If declared true, seller MUST honor requests using that feature.** |
+
+#### Supported Features
+
+| Feature | Description |
+|---------|-------------|
+| `inline_creative_management` | Accepts creatives inline in `create_media_buy` requests |
+| `property_list_filtering` | Honors `property_list` parameter in `get_products` |
+| `content_standards` | Full support for content standards configuration |
+
+### execution
+
+Technical execution capabilities:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `axe_integrations` | string[] | Agentic ad exchange (AXE) URLs this seller can execute through |
+| `creative_specs` | object | Creative specification support (VAST versions, MRAID, etc.) |
+| `targeting` | object | Targeting capabilities (geo granularity) |
+
+#### creative_specs
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `vast_versions` | string[] | VAST versions supported (e.g., `["4.0", "4.1", "4.2"]`) |
+| `mraid_versions` | string[] | MRAID versions supported |
+| `vpaid` | boolean | VPAID support |
+| `simid` | boolean | SIMID support |
+
+#### targeting
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `geo_countries` | boolean | Country-level targeting using ISO 3166-1 alpha-2 codes |
+| `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
+| `geo_metros` | object | Metro area targeting with system-specific support |
+| `geo_postal_areas` | object | Postal area targeting with country and precision support |
+
+**geo_metros** specifies which metro classification systems are supported:
+
+| System | Description |
+|--------|-------------|
+| `nielsen_dma` | Nielsen DMA codes (US market, e.g., `501` for NYC) |
+| `uk_itl1` | UK ITL Level 1 regions |
+| `uk_itl2` | UK ITL Level 2 regions |
+| `eurostat_nuts2` | Eurostat NUTS Level 2 regions (EU) |
+
+**geo_postal_areas** specifies which postal code systems are supported (consistent with metros):
+
+| System | Description |
+|--------|-------------|
+| `us_zip` | US 5-digit ZIP codes (e.g., `10001`) |
+| `us_zip_plus_four` | US 9-digit ZIP+4 codes (e.g., `10001-1234`) |
+| `gb_outward` | UK postcode district (e.g., `SW1`, `EC1`) |
+| `gb_full` | UK full postcode (e.g., `SW1A 1AA`) |
+| `ca_fsa` | Canadian Forward Sortation Area (e.g., `K1A`) |
+| `ca_full` | Canadian full postal code (e.g., `K1A 0B1`) |
+| `de_plz` | German Postleitzahl (e.g., `10115`) |
+| `fr_code_postal` | French code postal (e.g., `75001`) |
+| `au_postcode` | Australian postcode (e.g., `2000`) |
+
+### portfolio
+
+Inventory portfolio information (equivalent to `list_authorized_properties` response):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `publisher_domains` | string[] | **Required.** Publisher domains this seller represents |
+| `primary_channels` | string[] | Main advertising channels |
+| `primary_countries` | string[] | Main countries (ISO codes) |
+| `description` | string | Markdown portfolio description |
+| `advertising_policies` | string | Content policies and restrictions |
+
+## The Capability Contract
+
+**If a capability is declared, the seller MUST honor it.**
+
+- `geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST target them
+- `geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST target them
+- `content_standards: true` → Seller MUST apply content standards when provided
+- AXE URL in `axe_integrations` → Seller can execute through that exchange
+
+No silent ignoring. If a seller can't support a capability, they should declare `false` or omit it.
+
+## Common Scenarios
+
+### Basic Capability Discovery
+
+```javascript
+import { AdcpClient } from '@adcp/client';
+
+const client = new AdcpClient({ baseUrl: 'https://seller.example.com/mcp' });
+
+// Get seller capabilities
+const result = await client.getCapabilities({});
+
+if (result.errors) {
+  throw new Error(`Request failed: ${result.errors[0].message}`);
+}
+
+// Check protocol support
+console.log(`AdCP versions: ${result.protocol.adcp_major_versions.join(', ')}`);
+
+// Check feature support
+if (result.protocol.features?.content_standards) {
+  console.log('Content standards supported');
+}
+
+// Check AXE integrations
+if (result.execution?.axe_integrations?.includes('https://agentic.scope3.com')) {
+  console.log('Scope3 AXE integration available');
+}
+
+// Check geo targeting
+if (result.execution?.targeting?.geo_postal_areas?.us_zip) {
+  console.log('US ZIP code targeting supported');
+}
+
+// Portfolio overview
+console.log(`Publishers: ${result.portfolio.publisher_domains.length}`);
+console.log(`Channels: ${result.portfolio.primary_channels?.join(', ')}`);
+```
+
+### Filter Sellers by Capability
+
+```javascript
+// Find sellers that support specific requirements
+async function findCompatibleSellers(sellers, requirements) {
+  const compatible = [];
+
+  for (const sellerUrl of sellers) {
+    const client = new AdcpClient({ baseUrl: sellerUrl });
+    const caps = await client.getCapabilities({});
+
+    if (caps.errors) continue;
+
+    // Check AXE integration requirement
+    if (requirements.axeIntegration) {
+      if (!caps.execution?.axe_integrations?.includes(requirements.axeIntegration)) {
+        continue;
+      }
+    }
+
+    // Check geo targeting requirement
+    if (requirements.postalCodeTargeting) {
+      if (!caps.execution?.targeting?.geo_postal_areas?.us_zip) {
+        continue;
+      }
+    }
+
+    // Check feature requirement
+    if (requirements.contentStandards) {
+      if (!caps.protocol.features?.content_standards) {
+        continue;
+      }
+    }
+
+    compatible.push({ url: sellerUrl, capabilities: caps });
+  }
+
+  return compatible;
+}
+
+// Usage
+const sellers = await findCompatibleSellers(
+  ['https://seller1.com/mcp', 'https://seller2.com/mcp'],
+  {
+    axeIntegration: 'https://agentic.scope3.com',
+    postalCodeTargeting: true,
+    contentStandards: true
+  }
+);
+```
+
+### Use Capabilities to Filter Products
+
+After discovering capabilities, use them to filter `get_products`:
+
+```javascript
+// First, check capabilities
+const caps = await client.getCapabilities({});
+
+// Then, request products with capability filters
+const products = await client.getProducts({
+  brief: "Premium video inventory in NYC",
+  filters: {
+    channels: ['video', 'ctv'],
+    // Only include if seller supports US ZIP code targeting
+    ...(caps.execution?.targeting?.geo_postal_areas?.us_zip && {
+      postal_areas: [
+        { system: 'us_zip', code: '10001' },
+        { system: 'us_zip', code: '10002' },
+        { system: 'us_zip', code: '10003' }
+      ]
+    }),
+    // Only include if seller supports this AXE
+    ...(caps.execution?.axe_integrations?.includes('https://agentic.scope3.com') && {
+      required_axe_integrations: ['https://agentic.scope3.com']
+    })
+  }
+});
+```
+
+## Protocol vs Features
+
+**Major versions** indicate breaking compatibility:
+- AdCP 2.x and 3.x may have incompatible schemas
+- Check `adcp_major_versions` to ensure basic compatibility
+
+**Features** indicate optional capabilities within a version:
+- `inline_creative_management` vs separate `sync_creatives` flow
+- `property_list_filtering` for large approved property sets
+- `content_standards` for brand safety filtering
+
+## AXE Integrations
+
+The `axe_integrations` array lists agentic ad exchanges the seller can execute through:
+
+```json
+{
+  "execution": {
+    "axe_integrations": [
+      "https://agentic.scope3.com",
+      "https://axe.thetradedesk.com"
+    ]
+  }
+}
+```
+
+Buyers can filter products to only those executable through specific exchanges using `required_axe_integrations` in `get_products` filters.
+
+## Geo Targeting Granularity
+
+The `targeting` object declares what geo precision the seller supports:
+
+```json
+{
+  "execution": {
+    "targeting": {
+      "geo_countries": true,
+      "geo_regions": true,
+      "geo_metros": {
+        "nielsen_dma": true,
+        "uk_itl2": false,
+        "eurostat_nuts2": false
+      },
+      "geo_postal_areas": {
+        "us_zip": true,
+        "us_zip_plus_four": false,
+        "gb_outward": true,
+        "gb_full": false,
+        "ca_fsa": true
+      }
+    }
+  }
+}
+```
+
+This tells buyers:
+- **Country targeting**: Available (ISO 3166-1 alpha-2: `US`, `GB`, etc.)
+- **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
+- **Metro targeting**: Nielsen DMA only (US market)
+- **Postal targeting**: US ZIP, UK outward codes, Canadian FSA (but not ZIP+4, full UK postcodes, or full Canadian codes)
+
+### Geo Standards Reference
+
+| Level | System | Examples |
+|-------|--------|----------|
+| Country | ISO 3166-1 alpha-2 | `US`, `GB`, `DE`, `CA` |
+| Region | ISO 3166-2 | `US-NY`, `GB-SCT`, `DE-BY`, `CA-ON` |
+| Metro (US) | `nielsen_dma` | `501` (NYC), `803` (LA), `602` (Chicago) |
+| Metro (UK) | `uk_itl2` | `UKI` (London), `UKD` (North West) |
+| Metro (EU) | `eurostat_nuts2` | `DE30` (Berlin), `FR10` (Île-de-France) |
+| Postal (US) | `us_zip` | `10001`, `90210` |
+| Postal (US) | `us_zip_plus_four` | `10001-1234` |
+| Postal (UK) | `gb_outward` | `SW1`, `EC1`, `M1` |
+| Postal (UK) | `gb_full` | `SW1A 1AA` |
+| Postal (CA) | `ca_fsa` | `K1A`, `M5V` |
+
+Buyers should check `geo_postal_areas.<system>` before sending postal filters using that system.
+
+## Migration from list_authorized_properties
+
+If migrating from `list_authorized_properties`:
+
+| Old Field | New Location |
+|-----------|--------------|
+| `publisher_domains` | `portfolio.publisher_domains` |
+| `primary_channels` | `portfolio.primary_channels` |
+| `primary_countries` | `portfolio.primary_countries` |
+| `portfolio_description` | `portfolio.description` |
+| `advertising_policies` | `portfolio.advertising_policies` |
+| `last_updated` | `last_updated` (top level) |
+
+New fields:
+- `protocol.adcp_major_versions` - Version compatibility
+- `protocol.features` - Optional feature support
+- `execution.axe_integrations` - Ad exchange support
+- `execution.creative_specs` - VAST/MRAID versions
+- `execution.targeting` - Geo targeting granularity
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `INTERNAL_ERROR` | Server error | Retry with backoff |
+
+## Best Practices
+
+**1. Cache Capabilities**
+Capabilities rarely change. Cache results and use `last_updated` for staleness detection.
+
+**2. Check Before Requesting**
+Don't send postal areas for a system the seller doesn't support (e.g., don't send `us_zip` codes if `geo_postal_areas.us_zip` is false). Don't request features the seller doesn't support.
+
+**3. Fail Fast on Incompatibility**
+If a seller doesn't support required capabilities, skip them early rather than discovering failures later.
+
+**4. Use Protocol Version for Routing**
+Route requests to appropriate API versions based on `adcp_major_versions`.
+
+## Next Steps
+
+After discovering capabilities:
+
+1. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
+2. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
+3. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
+
+## Learn More
+
+- [adagents.json Specification](/docs/governance/property/adagents) - Publisher authorization files
+- [Product Filters](/docs/media-buy/task-reference/get_products#filters) - Capability-aware filtering
+- [Content Standards](/docs/governance/content-standards) - Brand safety configuration

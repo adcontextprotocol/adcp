@@ -31,7 +31,7 @@
       ]
     }
   },
-  "lastUpdated": "2025-11-22",
+  "lastUpdated": "2025-01-23",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -361,6 +361,14 @@
         "creative-sort-field": {
           "$ref": "/schemas/enums/creative-sort-field.json",
           "description": "Fields available for sorting creative listings"
+        },
+        "metro-system": {
+          "$ref": "/schemas/enums/metro-system.json",
+          "description": "Metro area classification systems for geographic targeting (nielsen_dma, uk_itl1, uk_itl2, eurostat_nuts2)"
+        },
+        "postal-system": {
+          "$ref": "/schemas/enums/postal-system.json",
+          "description": "Postal code systems for geographic targeting. System names encode country and precision (us_zip, gb_outward, ca_fsa, etc.)"
         }
       }
     },
@@ -488,7 +496,19 @@
             "description": "Response payload for get_media_buy_delivery task"
           }
         },
+        "get-capabilities": {
+          "request": {
+            "$ref": "/schemas/media-buy/get-capabilities-request.json",
+            "description": "Request parameters for discovering seller capabilities, protocol support, and portfolio information"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/get-capabilities-response.json",
+            "description": "Response payload for get_capabilities task - includes protocol versions, execution capabilities, and portfolio details. Replaces list_authorized_properties."
+          }
+        },
         "list-authorized-properties": {
+          "deprecated": true,
+          "deprecation_note": "Replaced by get_capabilities which provides expanded capability declaration",
           "request": {
             "$ref": "/schemas/media-buy/list-authorized-properties-request.json",
             "description": "Request parameters for discovering all properties this agent is authorized to represent"

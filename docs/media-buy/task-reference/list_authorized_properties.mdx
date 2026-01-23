@@ -1,9 +1,14 @@
 ---
 title: list_authorized_properties
-sidebar_position: 1.5
+sidebar_position: 1.6
 testable: true
 ---
 
+:::warning Deprecated
+`list_authorized_properties` is deprecated. Use [`get_capabilities`](/docs/media-buy/task-reference/get_capabilities) instead, which provides expanded capability declaration including protocol versions, execution features, and portfolio information.
+
+The portfolio fields from this task are available in the `portfolio` section of `get_capabilities` response.
+:::
 
 Discover which publishers a sales agent is authorized to represent. Returns publisher domains only - buyers fetch full property definitions from each publisher's adagents.json.
 
