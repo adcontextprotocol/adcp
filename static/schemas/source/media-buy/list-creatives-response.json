@@ -182,9 +182,9 @@
                       "type": "string",
                       "description": "Package identifier"
                     },
-                    "package_name": {
+                    "buyer_ref": {
                       "type": "string",
-                      "description": "Human-readable package name"
+                      "description": "Buyer's reference identifier for this package"
                     },
                     "assigned_date": {
                       "type": "string",
@@ -411,7 +411,7 @@
               "assigned_packages": [
                 {
                   "package_id": "pkg_ctv_001",
-                  "package_name": "CTV Prime Time",
+                  "buyer_ref": "ctv_prime_time_q1",
                   "assigned_date": "2024-01-16T09:00:00Z"
                 }
               ]
