@@ -1866,9 +1866,11 @@ export function setupAccountRoutes(
           });
         }
 
-        // Validate membership ID format (WorkOS membership IDs start with 'om_')
+        // Validate membership ID format (WorkOS membership IDs are 'om_' followed by alphanumeric chars)
         const membershipId = membership.workos_membership_id;
-        if (!membershipId.startsWith("om_")) {
+        // WorkOS IDs follow the format: prefix_ulid (e.g., om_01ABCDEF...)
+        const WORKOS_ID_PATTERN = /^om_[A-Za-z0-9]{20,30}$/;
+        if (!WORKOS_ID_PATTERN.test(membershipId)) {
           logger.error(
             { orgId, userId, membershipId },
             "Invalid WorkOS membership ID format"
@@ -1886,8 +1888,21 @@ export function setupAccountRoutes(
         }
 
         // Verify membership belongs to the specified organization via WorkOS
-        const existingMembership =
-          await workos.userManagement.getOrganizationMembership(membershipId);
+        let existingMembership;
+        try {
+          existingMembership =
+            await workos.userManagement.getOrganizationMembership(membershipId);
+        } catch (getMembershipError) {
+          logger.error(
+            { err: getMembershipError, orgId, userId, membershipId },
+            "Failed to get membership from WorkOS"
+          );
+          return res.status(500).json({
+            error: "Unable to verify membership",
+            message: "Unable to update role. Please try again or contact support.",
+          });
+        }
+
         if (existingMembership.organizationId !== orgId) {
           return res.status(400).json({
             error: "Invalid membership",
@@ -1895,9 +1910,82 @@ export function setupAccountRoutes(
           });
         }
 
-        await workos.userManagement.updateOrganizationMembership(membershipId, {
-          roleSlug: role,
-        });
+        // Verify the target role exists in WorkOS for this organization
+        try {
+          const roles = await workos.organizations.listOrganizationRoles({
+            organizationId: orgId,
+          });
+          const roleExists = roles.data.some((r) => r.slug === role);
+          if (!roleExists) {
+            logger.warn(
+              {
+                orgId,
+                role,
+                availableRoles: roles.data.map((r) => r.slug),
+              },
+              "Target role does not exist in WorkOS organization"
+            );
+            return res.status(400).json({
+              error: "Role not available",
+              message: `The '${role}' role is not configured for this organization. Please contact support to set up the role.`,
+            });
+          }
+        } catch (rolesError) {
+          // If we can't list roles, log warning but proceed - the update will fail if role doesn't exist
+          logger.warn(
+            { err: rolesError, orgId, role },
+            "Could not verify role exists - proceeding with update attempt"
+          );
+        }
+
+        try {
+          await workos.userManagement.updateOrganizationMembership(membershipId, {
+            roleSlug: role,
+          });
+        } catch (updateError) {
+          const updateErrorMessage =
+            updateError instanceof Error ? updateError.message : "Unknown error";
+
+          // Extract WorkOS-specific error details for logging
+          const workosErrorDetails =
+            updateError && typeof updateError === "object"
+              ? {
+                  code: (updateError as { code?: string }).code,
+                  errors: (updateError as { errors?: unknown }).errors,
+                  requestID: (updateError as { requestID?: string }).requestID,
+                  rawData: (updateError as { rawData?: unknown }).rawData,
+                }
+              : undefined;
+
+          logger.error(
+            {
+              err: updateError,
+              errorMessage: updateErrorMessage,
+              workosErrorDetails,
+              orgId,
+              userId,
+              membershipId,
+              role,
+            },
+            "Failed to update membership role in WorkOS"
+          );
+
+          // Provide more specific error message based on error type
+          let userMessage =
+            "Unable to update role. Please try again or contact support.";
+          if (
+            updateErrorMessage.includes("pattern") ||
+            updateErrorMessage.includes("validation")
+          ) {
+            userMessage =
+              "Unable to update role due to a configuration issue. Please contact support.";
+          }
+
+          return res.status(500).json({
+            error: "Unable to update role",
+            message: userMessage,
+          });
+        }
 
         // Update local cache
         await pool.query(
