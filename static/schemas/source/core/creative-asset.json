@@ -96,9 +96,9 @@
         "type": "string"
       }
     },
-    "approved": {
-      "type": "boolean",
-      "description": "For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
+    "status": {
+      "$ref": "/schemas/enums/creative-status.json",
+      "description": "For generative creatives: set to 'approved' to finalize, 'rejected' to request regeneration with updated assets/message. Omit for non-generative creatives (system will set based on processing state)."
     },
     "weight": {
       "type": "number",
