@@ -496,16 +496,6 @@
             "description": "Response payload for get_media_buy_delivery task"
           }
         },
-        "get-capabilities": {
-          "request": {
-            "$ref": "/schemas/media-buy/get-capabilities-request.json",
-            "description": "Request parameters for discovering seller capabilities, protocol support, and portfolio information"
-          },
-          "response": {
-            "$ref": "/schemas/media-buy/get-capabilities-response.json",
-            "description": "Response payload for get_capabilities task - includes protocol versions, execution capabilities, and portfolio details. Replaces list_authorized_properties."
-          }
-        },
         "list-authorized-properties": {
           "deprecated": true,
           "deprecation_note": "Replaced by get_capabilities which provides expanded capability declaration",
@@ -771,6 +761,21 @@
           "response": {
             "$ref": "/schemas/content-standards/get-media-buy-artifacts-response.json",
             "description": "Response payload with content artifacts for validation"
+          }
+        }
+      }
+    },
+    "protocol": {
+      "description": "Protocol-level tasks that work across all AdCP domain protocols",
+      "tasks": {
+        "get-capabilities": {
+          "request": {
+            "$ref": "/schemas/protocol/get-capabilities-request.json",
+            "description": "Request parameters for cross-protocol capability discovery"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/get-capabilities-response.json",
+            "description": "Response payload for get_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
           }
         }
       }
