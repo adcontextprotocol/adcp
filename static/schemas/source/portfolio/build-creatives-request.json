@@ -33,6 +33,11 @@
       "description": "If true, built creatives are automatically approved. If false, they require advertiser review.",
       "default": false
     },
+    "dry_run": {
+      "type": "boolean",
+      "description": "If true, returns a preview of what would be built without actually building creatives. Useful for validating configuration before committing to a build.",
+      "default": false
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

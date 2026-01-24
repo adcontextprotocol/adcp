@@ -2,18 +2,59 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/portfolio/build-creatives-response.json",
   "title": "Build Creatives Response",
-  "description": "Response from building creatives. Returns the newly built creatives added to the portfolio.",
+  "description": "Response from building creatives. Returns the newly built creatives added to the portfolio, or a preview if dry_run was true.",
   "type": "object",
   "properties": {
     "portfolio_id": {
       "type": "string",
-      "description": "Creative set the creatives were built into"
+      "description": "Portfolio the creatives were built into"
+    },
+    "dry_run": {
+      "type": "boolean",
+      "description": "True if this is a dry run preview response"
     },
     "creatives": {
       "type": "array",
-      "description": "Newly built creatives",
+      "description": "Newly built creatives (not present in dry_run responses)",
       "items": {
         "$ref": "/schemas/core/portfolio-item.json"
+      }
+    },
+    "preview": {
+      "type": "array",
+      "description": "Preview of what would be built (only present in dry_run responses)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "format_id": {
+            "$ref": "/schemas/core/format-id.json"
+          },
+          "can_build": {
+            "type": "boolean",
+            "description": "Whether this format can be built with available assets"
+          },
+          "reason": {
+            "type": "string",
+            "description": "If can_build is false, explains why"
+          },
+          "assets_used": {
+            "type": "array",
+            "description": "Asset IDs that would be used",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimated_variants": {
+            "type": "integer",
+            "description": "Number of creative variants that would be generated"
+          },
+          "preview_thumbnail": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional low-fidelity preview thumbnail"
+          }
+        },
+        "required": ["format_id", "can_build"]
       }
     },
     "errors": {
@@ -30,6 +71,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["portfolio_id", "creatives"],
+  "required": ["portfolio_id"],
   "additionalProperties": true
 }

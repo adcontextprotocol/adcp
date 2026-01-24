@@ -71,16 +71,31 @@ Retrieves a portfolio with its creatives and ad tags.
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
   ],
   "include_previews": true,
-  "include_ad_tags": true
+  "include_ad_tags": true,
+  "auto_build": false
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `portfolio_id` | string | Yes | Creative set to retrieve |
+| `portfolio_id` | string | Yes | Portfolio to retrieve |
 | `format_ids` | array | No | Filter to specific formats |
 | `include_previews` | boolean | No | Include preview URLs (default: true) |
 | `include_ad_tags` | boolean | No | Include full ad tag markup (default: true) |
+| `auto_build` | boolean | No | If requested formats don't exist, build them on-demand (default: false) |
+
+### Lazy Loading with auto_build
+
+When `auto_build: true`, the creative agent will generate creatives for any requested formats that don't already exist in the portfolio. This enables lazy loading workflows where seller agents can request formats as needed without orchestrator intervention.
+
+**Behavior:**
+- If all requested formats exist: Returns immediately with existing creatives
+- If some formats are missing and `auto_build: true`: Builds missing formats, then returns all creatives
+- If some formats are missing and `auto_build: false`: Returns only existing creatives (no error)
+
+<Note>
+Building creatives takes time. For synchronous responses, the creative agent MAY return a partial response with `building: true` for formats still being generated. The seller agent can poll or wait for a webhook notification.
+</Note>
 
 ### Response
 
@@ -250,7 +265,7 @@ Archives or permanently deletes a portfolio.
 
 ## build_creatives
 
-Builds creatives from a set's source assets for specified formats.
+Builds creatives from a portfolio's source assets for specified formats.
 
 ### Request
 
@@ -263,19 +278,52 @@ Builds creatives from a set's source assets for specified formats.
   ],
   "prompt": "Clean, modern design. Emphasize the 30% discount.",
   "asset_ids": ["hero_image", "logo"],
-  "auto_approve": false
+  "auto_approve": false,
+  "dry_run": false
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `portfolio_id` | string | Yes | Set containing source assets |
+| `portfolio_id` | string | Yes | Portfolio containing source assets |
 | `target_formats` | array | Yes | Formats to build |
-| `prompt` | string | No | Generation guidance (overrides set's `generation_prompt`) |
+| `prompt` | string | No | Generation guidance (overrides portfolio's `generation_prompt`) |
 | `asset_ids` | array | No | Subset of assets to use |
 | `auto_approve` | boolean | No | Auto-approve built creatives (default: false) |
+| `dry_run` | boolean | No | Preview what would be built without actually building (default: false) |
 
-### Response
+### Dry Run Mode
+
+When `dry_run: true`, the creative agent returns a preview of what would be generated without actually building creatives. This lets you validate your configuration before committing to a build.
+
+**Dry run response includes:**
+- Which formats can be built with available assets
+- Which formats would fail and why
+- Estimated creative count per format
+- Optional: Low-fidelity preview thumbnails (agent-dependent)
+
+```json
+{
+  "portfolio_id": "cs_abc123",
+  "dry_run": true,
+  "preview": [
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+      "can_build": true,
+      "assets_used": ["hero_image", "logo"],
+      "estimated_variants": 1,
+      "preview_thumbnail": "https://creative.brand.com/dry-run/preview_300x250.jpg"
+    },
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
+      "can_build": false,
+      "reason": "Format requires video assets not present in portfolio"
+    }
+  ]
+}
+```
+
+### Standard Response
 
 ```json
 {
@@ -291,7 +339,7 @@ Builds creatives from a set's source assets for specified formats.
   "errors": [
     {
       "code": "format_not_supported",
-      "message": "Format display_728x90 requires video assets not present in set"
+      "message": "Format display_728x90 requires video assets not present in portfolio"
     }
   ]
 }

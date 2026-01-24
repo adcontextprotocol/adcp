@@ -26,6 +26,11 @@
       "description": "Include ad_tag field with full markup. Set to false for metadata-only responses.",
       "default": true
     },
+    "auto_build": {
+      "type": "boolean",
+      "description": "If requested formats don't exist, build them on-demand. Enables lazy loading workflows where seller agents can request formats as needed.",
+      "default": false
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
