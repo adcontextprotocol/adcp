@@ -45,6 +45,7 @@ The platform receiving media buys and serving ads:
 - **Responsibilities**: Accept media buys, fetch creatives, expand macros at serve time
 - **Capabilities**: Format discovery, creative requests, approval management
 - **Authentication**: Uses tokens from `portfolio_ref` to access portfolios
+- **Self-hosting**: MAY also implement the creative agent role, allowing buyers to create portfolios directly (see Deployment Modes)
 
 #### Governance Agent
 The platform reviewing creatives for brand safety and compliance:
@@ -57,6 +58,33 @@ The platform coordinating media buying workflows:
 - **Responsibilities**: Create portfolios, build initial creatives, create media buys
 - **Capabilities**: Workflow orchestration, budget management, campaign planning
 - **Authentication**: Has credentials with creative, seller, and governance agents
+
+### Deployment Modes
+
+The protocol supports two deployment modes:
+
+#### External Creative Agent Mode
+
+The buyer creates portfolios on a separate creative agent, then references them in media buys:
+
+1. Buyer calls `create_portfolio` on creative agent
+2. Buyer calls `create_media_buy` on seller with `portfolio_ref` pointing to creative agent
+3. Seller fetches creatives from creative agent via `get_portfolio`
+
+This mode provides maximum portability - the same portfolio can be used across multiple sellers.
+
+#### Self-Hosting Mode (PMax-style)
+
+The seller implements both seller agent AND creative agent protocols. Buyers create portfolios directly on the seller:
+
+1. Buyer calls `create_portfolio` on seller
+2. Buyer calls `create_media_buy` on seller (no `portfolio_ref` needed, or `portfolio_ref` points to seller itself)
+3. Seller uses its own portfolio internally
+
+**Conformance requirement**: A seller implementing self-hosting MUST:
+- Implement all portfolio tasks (`create_portfolio`, `get_portfolio`, `list_portfolios`, `update_portfolio`, `delete_portfolio`, `build_creatives`)
+- Accept media buys that reference portfolios hosted on itself
+- MAY also accept `portfolio_ref` pointing to external creative agents for interoperability
 
 ### Portfolio
 

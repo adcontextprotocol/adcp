@@ -18,6 +18,43 @@ Portfolios solve this by:
 - **Automatic sync**: Webhook-based communication keeps everyone in sync
 - **Governance**: Optional review of creatives before approval
 
+## Deployment Modes
+
+Portfolios support two deployment modes:
+
+### Mode 1: External Creative Agent
+
+The buyer uses a separate creative agent, and the seller fetches creatives via `portfolio_ref`:
+
+```mermaid
+flowchart LR
+    Buyer --> |create_portfolio| CA[Creative Agent]
+    Buyer --> |create_media_buy with portfolio_ref| Seller
+    Seller --> |get_portfolio| CA
+```
+
+**Use when:**
+- Buyer wants to use their own creative tooling
+- Creatives need to be portable across multiple sellers
+- Buyer controls the creative generation process
+
+### Mode 2: Self-Hosting (PMax-style)
+
+The seller implements the creative agent protocol, so buyers create portfolios directly on the seller:
+
+```mermaid
+flowchart LR
+    Buyer --> |create_portfolio| Seller[Seller + Creative Agent]
+    Buyer --> |create_media_buy| Seller
+```
+
+**Use when:**
+- Seller provides integrated creative generation (like Google PMax Asset Groups)
+- Buyer wants a simpler workflow with one endpoint
+- Seller has proprietary creative capabilities
+
+**Implementation note:** A seller supporting self-hosting MUST implement the portfolio tasks (`create_portfolio`, `get_portfolio`, `build_creatives`, etc.) in addition to media buy tasks. The buyer creates the portfolio on the seller first, then references it in `create_media_buy` without needing a `portfolio_ref` (or with a `portfolio_ref` pointing to the seller itself).
+
 ## Relationship to sync_creatives
 
 Portfolios are an **optional enhancement** to the existing `sync_creatives` workflow. For AdCP 3.0, implementations MAY continue using `sync_creatives` for simpler workflows.
@@ -30,13 +67,14 @@ Portfolios are an **optional enhancement** to the existing `sync_creatives` work
 | N/A | `auto_build` for lazy loading |
 | N/A | `dry_run` to preview before building |
 | N/A | Governance agent integration |
+| N/A | Self-hosting mode (seller as creative agent) |
 
 **Use portfolios when:**
 - Seller agents need to request formats on-demand without orchestrator involvement
 - You want lazy loading (`auto_build`) for formats
 - You need dry run preview before building creatives
 - You want separate governance agent integration
-- You need bidirectional webhook communication
+- Seller wants to offer integrated creative generation (self-hosting)
 
 **Continue using sync_creatives when:**
 - Orchestrator controls all creative building
