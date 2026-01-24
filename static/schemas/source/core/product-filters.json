@@ -84,36 +84,10 @@
     },
     "countries": {
       "type": "array",
-      "description": "Filter by target countries using ISO 3166-1 alpha-2 country codes (e.g., ['US', 'CA', 'GB'])",
+      "description": "Filter by target countries using ISO 3166-1 alpha-2 country codes (e.g., ['US', 'CA', 'GB']). Returns products with coverage in these countries.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
-      }
-    },
-    "regions": {
-      "type": "array",
-      "description": "Filter by regions/states using ISO 3166-2 subdivision codes. Format: '{country}-{subdivision}' (e.g., 'US-NY', 'GB-SCT', 'CA-ON', 'DE-BY'). Only returns products that support region-level targeting in these areas.",
-      "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
-      }
-    },
-    "metros": {
-      "type": "array",
-      "description": "Filter by metro area. Only returns products that support metro-level targeting in these areas.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/metro-system.json",
-            "description": "Metro area classification system"
-          },
-          "code": {
-            "type": "string",
-            "description": "Code within the system (e.g., '501' for NYC in Nielsen DMA)"
-          }
-        },
-        "required": ["system", "code"]
       }
     },
     "channels": {

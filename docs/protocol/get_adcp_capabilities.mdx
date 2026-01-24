@@ -303,13 +303,12 @@ if (!caps.supported_protocols.includes('media_buy')) {
 
 const mediaBuy = caps.media_buy;
 
-// Filter products by metro area AND require ZIP targeting capability
+// Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
-  brief: "Premium video inventory in NYC metro area",
+  brief: "Premium video inventory in US for ZIP-targeted campaign",
   filters: {
     channels: ['olv', 'ctv'],
-    // Filter to NYC metro area products (coarse geography)
-    metros: [{ system: 'nielsen_dma', code: '501' }],
+    countries: ['US'],
     // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
     // level = granularity, system = classification taxonomy
     required_geo_targeting: [
@@ -348,8 +347,8 @@ const buy = await client.createMediaBuy({
 ```
 
 **Key distinction:**
-- **Product filters** (get_products): Use coarse geography to find products with coverage in an area
-- **Targeting overlay** (create_media_buy): Use fine-grained geography to restrict where ads actually deliver
+- **Product filters** (get_products): Filter by country coverage AND seller capabilities (like ZIP targeting support)
+- **Targeting overlay** (create_media_buy): Apply fine-grained geography to restrict where ads actually deliver
 
 ## Response Example
 
