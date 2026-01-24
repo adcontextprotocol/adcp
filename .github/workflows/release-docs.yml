@@ -1,0 +1,144 @@
+name: Release Documentation Snapshot
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to snapshot (e.g., 2.6.0)'
+        required: true
+        type: string
+
+jobs:
+  snapshot-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # Extract version from tag (v2.6.0 -> 2.6.0)
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Extract major.minor for docs.json version label (2.6.0 -> 2.6)
+          MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+          echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch release tag
+        if: github.event_name != 'workflow_dispatch'
+        run: git fetch origin tag ${{ github.ref_name }}
+
+      - name: Create docs snapshot
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Determine source ref
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SOURCE_REF="v$VERSION"
+          else
+            SOURCE_REF="${{ github.ref_name }}"
+          fi
+
+          # Create dist/docs directory if it doesn't exist
+          mkdir -p dist/docs
+
+          # Remove existing version if present (allows re-running)
+          rm -rf "dist/docs/$VERSION"
+
+          # Extract docs from the release tag
+          git archive "$SOURCE_REF" -- docs | tar -x -C "dist/docs/$VERSION" --strip-components=1 || {
+            mkdir -p "dist/docs/$VERSION"
+            git archive "$SOURCE_REF" -- docs | tar -x
+            mv docs/* "dist/docs/$VERSION/"
+            rmdir docs 2>/dev/null || true
+          }
+
+          echo "Created docs snapshot at dist/docs/$VERSION"
+          ls -la "dist/docs/$VERSION" | head -10
+
+      - name: Update docs.json
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          MAJOR_MINOR="${{ steps.version.outputs.major_minor }}"
+
+          # Check if this major.minor version already exists in docs.json
+          EXISTING=$(jq -r ".navigation.versions[] | select(.version == \"$MAJOR_MINOR\") | .version" docs.json)
+
+          if [ -n "$EXISTING" ]; then
+            echo "Version $MAJOR_MINOR already exists in docs.json, updating paths to $VERSION"
+            # Update existing version's paths to point to the new patch version
+            jq --arg old_pattern "dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+/" \
+               --arg new_path "dist/docs/$VERSION/" \
+               --arg major_minor "$MAJOR_MINOR" \
+               '
+               def update_paths:
+                 if type == "array" then
+                   map(update_paths)
+                 elif type == "object" then
+                   if has("pages") then
+                     .pages = (.pages | update_paths)
+                   else
+                     .
+                   end
+                 elif type == "string" then
+                   if test("^dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+/") then
+                     sub("^dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+/"; $new_path)
+                   else
+                     .
+                   end
+                 else
+                   .
+                 end;
+
+               .navigation.versions = [
+                 .navigation.versions[] |
+                 if .version == $major_minor then
+                   .groups = (.groups | update_paths)
+                 else
+                   .
+                 end
+               ]
+               ' docs.json > /tmp/updated-docs.json
+            mv /tmp/updated-docs.json docs.json
+          else
+            echo "Version $MAJOR_MINOR is new, adding to docs.json"
+            # This is a new major.minor version - would need manual nav structure
+            # For now, just log a warning
+            echo "::warning::New major.minor version $MAJOR_MINOR requires manual docs.json navigation setup"
+          fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: snapshot docs for v${{ steps.version.outputs.version }}"
+          title: "chore: snapshot docs for v${{ steps.version.outputs.version }}"
+          body: |
+            This PR creates a documentation snapshot for release v${{ steps.version.outputs.version }}.
+
+            **Changes:**
+            - Added `dist/docs/${{ steps.version.outputs.version }}/` with frozen documentation
+            - Updated `docs.json` to reference the new snapshot
+
+            Auto-generated by the release-docs workflow.
+          branch: auto/docs-v${{ steps.version.outputs.version }}
+          delete-branch: true
+          add-paths: |
+            dist/docs/${{ steps.version.outputs.version }}/
+            docs.json
