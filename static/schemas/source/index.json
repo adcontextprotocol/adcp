@@ -633,16 +633,6 @@
         }
       },
       "tasks": {
-        "list-property-features": {
-          "request": {
-            "$ref": "/schemas/property/list-property-features-request.json",
-            "description": "Request parameters for discovering governance agent capabilities"
-          },
-          "response": {
-            "$ref": "/schemas/property/list-property-features-response.json",
-            "description": "Response payload for list_property_features task"
-          }
-        },
         "create-property-list": {
           "request": {
             "$ref": "/schemas/property/create-property-list-request.json",

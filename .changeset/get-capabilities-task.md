@@ -43,6 +43,6 @@ Introduces `get_adcp_capabilities` as a **protocol-level task** that works acros
 **Governance capabilities (governance section):**
 - `property_features` - Array of features this governance agent can evaluate
 - Each feature has: `feature_id`, `type` (binary/quantitative/categorical), optional `range`/`categories`
-- Replaces need for separate `list_property_features` task
+- Deprecates `list_property_features` task (schemas removed, doc page retained with migration guide)
 
 **Capability contract:** If a capability is declared, the seller MUST honor it.
