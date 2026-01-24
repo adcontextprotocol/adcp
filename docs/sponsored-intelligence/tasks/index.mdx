@@ -9,18 +9,26 @@ The Sponsored Intelligence Protocol defines four tasks for managing conversation
 
 ```mermaid
 flowchart LR
-    P[si_check_availability] -.-> A[si_initiate_session]
+    P[si_get_offering] -.-> A[si_initiate_session]
     A --> B[si_send_message]
     B --> B
     B --> C[si_terminate_session]
     A --> C
 ```
 
+### Two Entry Points
+
+**With pre-session lookup** (dotted line): Host calls `si_get_offering` first to show products before consent. The `offering_token` carries what was shown into the session.
+
+**Direct session** (solid line): Host calls `si_initiate_session` directly. Brand agent shows products as part of the conversation and tracks them internally.
+
+Both are valid. Use pre-session lookup for sponsored search results where you want to preview products before asking the user to engage.
+
 ## Tasks
 
 | Task | Description | Initiator |
 |------|-------------|-----------|
-| [`si_check_availability`](./si_check_availability) | Check offer/product availability (anonymous) | Host |
+| [`si_get_offering`](./si_get_offering) | Get offering details, availability, and matching products (anonymous) | Host |
 | [`si_initiate_session`](./si_initiate_session) | Start a conversation with a brand agent | Host |
 | [`si_send_message`](./si_send_message) | Exchange messages within an active session | Host |
 | [`si_terminate_session`](./si_terminate_session) | End the session with appropriate handoff | Either |
@@ -100,7 +108,7 @@ When SI is invoked as part of a media buy:
   "context": "User searching for flights to Boston",
   "media_buy_id": "media_buy_q1_promo",
   "placement": "chatgpt_search",
-  "offer_id": "premium_upgrade_offer",
+  "offering_id": "premium_upgrade_offer",
   "identity": {
     "consent_granted": true,
     "user": { "email": "jane@example.com" }

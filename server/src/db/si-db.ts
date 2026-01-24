@@ -228,7 +228,7 @@ export class SiDatabase {
        SET status = $2,
            termination_reason = $3,
            handoff_data = $4,
-           terminated_at = CASE WHEN $2 IN ('complete', 'timeout', 'error') THEN NOW() ELSE NULL END
+           terminated_at = CASE WHEN $2::VARCHAR IN ('complete', 'timeout', 'error') THEN NOW() ELSE NULL END
        WHERE session_id = $1
        RETURNING *`,
       [
@@ -582,26 +582,31 @@ export class SiDatabase {
     // The token encodes enough info for correlation
     // In the future, we could store this in an si_availability_checks table
 
-    // Log the check for analytics
+    // Persist the availability check for analytics and correlation
     // Note: This is anonymous - no user data included
-    await query(
-      `INSERT INTO si_availability_checks (
-        token, member_profile_id, offer_id, product_id, context, available, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, true, NOW() + INTERVAL '1 hour')
-      ON CONFLICT (token) DO NOTHING`,
-      [
-        token,
-        input.memberProfileId,
-        input.offerId || null,
-        input.productId || null,
-        input.context || null,
-      ]
-    ).catch((error) => {
-      if (!isUndefinedTableError(error)) {
-        logger.warn({ error }, "SI DB: Failed to insert availability check");
+    try {
+      await query(
+        `INSERT INTO si_availability_checks (
+          token, member_profile_id, offer_id, product_id, context, available, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, true, NOW() + INTERVAL '1 hour')
+        ON CONFLICT (token) DO NOTHING`,
+        [
+          token,
+          input.memberProfileId,
+          input.offerId || null,
+          input.productId || null,
+          input.context || null,
+        ]
+      );
+    } catch (error) {
+      if (isUndefinedTableError(error)) {
+        // Table doesn't exist - migrations may not have run
+        // Token still works for correlation, just won't be persisted
+        logger.warn("SI DB: si_availability_checks table does not exist. Run migrations to enable availability tracking.");
+      } else {
+        logger.error({ error }, "SI DB: Failed to insert availability check");
       }
-      // Table may not exist yet - that's OK, token still works
-    });
+    }
 
     return token;
   }
@@ -619,10 +624,11 @@ export class SiDatabase {
       if (result.rows.length === 0) return null;
       return this.deserializeAvailabilityCheck(result.rows[0]);
     } catch (error) {
-      if (!isUndefinedTableError(error)) {
-        logger.warn({ error }, "SI DB: Failed to get availability check");
+      if (isUndefinedTableError(error)) {
+        logger.warn("SI DB: si_availability_checks table does not exist. Run migrations.");
+        return null;
       }
-      // Table may not exist yet
+      logger.error({ error }, "SI DB: Failed to get availability check");
       return null;
     }
   }
@@ -637,10 +643,11 @@ export class SiDatabase {
         [token, sessionId]
       );
     } catch (error) {
-      if (!isUndefinedTableError(error)) {
-        logger.warn({ error }, "SI DB: Failed to mark availability token as used");
+      if (isUndefinedTableError(error)) {
+        logger.warn("SI DB: si_availability_checks table does not exist. Run migrations.");
+        return;
       }
-      // Table may not exist yet - that's OK
+      logger.error({ error }, "SI DB: Failed to mark availability token as used");
     }
   }
 

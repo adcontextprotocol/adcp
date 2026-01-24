@@ -10,7 +10,7 @@ This guide helps AI platforms implement Sponsored Intelligence host capabilities
 An SI host needs to:
 
 1. **Discover** brand agents via SI manifests
-2. **Check availability** before handoff (optional but recommended)
+2. **Get offering details** before handoff (optional but recommended)
 3. **Negotiate** capabilities with brand agents
 4. **Manage** sessions (initiate, message, terminate)
 5. **Render** standard UI components
@@ -34,7 +34,7 @@ flowchart TB
     end
 
     subgraph Brand["Brand Agent (MCP Server)"]
-        T1[si_check_availability]
+        T1[si_get_offering]
         T2[si_initiate_session]
         T3[si_send_message]
         T4[si_terminate_session]
@@ -82,14 +82,14 @@ Hosts must render all standard UI components defined in the SI protocol:
 
 When a user clicks an `action_button`, send an `action_response` via `si_send_message` with the action identifier and any payload.
 
-### 3. Availability Check Flow
+### 3. Offering Lookup Flow
 
 The recommended flow for sponsored results:
 
-1. **Check availability** (anonymous) - Verify the offer is still valid
-2. **Show offer to user** - Display availability details and ask if they want to connect
+1. **Get offering details** (anonymous) - Retrieve offering info and matching products
+2. **Show offering to user** - Display offering details, products, and ask if they want to connect
 3. **Get consent** - If yes, present consent dialog
-4. **Initiate session** - Include availability token from step 1
+4. **Initiate session** - Include offering token from step 1
 
 ### 4. Commerce Handoff
 
@@ -102,7 +102,7 @@ When a session returns `session_status: "pending_handoff"`:
 
 - Implement session timeouts (recommended: 5 minutes of inactivity)
 - Track session state locally and clean up on termination
-- Handle error codes: `session_not_found`, `offer_unavailable`, `rate_limited`
+- Handle error codes: `session_not_found`, `offering_unavailable`, `rate_limited`
 
 ## Testing Your Implementation
 
@@ -118,7 +118,7 @@ npx @adcontextprotocol/si-simulator
 ### Integration Checklist
 
 - [ ] Can discover brand agents via SI manifest
-- [ ] Can check availability (anonymous, no PII)
+- [ ] Can get offering details (anonymous, no PII)
 - [ ] Can initiate sessions with/without identity
 - [ ] Can send messages and receive responses
 - [ ] Can handle all termination reasons

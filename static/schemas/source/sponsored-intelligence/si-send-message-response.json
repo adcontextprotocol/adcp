@@ -34,31 +34,51 @@
     },
     "handoff": {
       "type": "object",
-      "description": "Handoff request if session_status is pending_handoff",
+      "description": "Handoff request when session_status is pending_handoff",
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["transaction", "complete", "exit"],
-          "description": "Type of handoff"
+          "enum": ["transaction", "complete"],
+          "description": "Type of handoff: transaction (ready for ACP checkout) or complete (conversation done)"
         },
-        "transaction_context": {
+        "intent": {
           "type": "object",
-          "description": "Context for ACP checkout (if type is transaction)",
+          "description": "For transaction handoffs: what the user wants to purchase",
           "properties": {
-            "summary": {
+            "action": {
               "type": "string",
-              "description": "Summary of what user wants to purchase"
+              "description": "The commerce action (e.g., 'purchase')"
             },
             "product": {
               "type": "object",
               "description": "Product details for checkout"
+            },
+            "price": {
+              "type": "object",
+              "description": "Price information",
+              "properties": {
+                "amount": { "type": "number" },
+                "currency": { "type": "string" }
+              }
             }
           },
           "additionalProperties": true
         },
-        "summary": {
-          "type": "string",
-          "description": "Conversation summary for complete/exit handoffs"
+        "context_for_checkout": {
+          "type": "object",
+          "description": "Context to pass to ACP for seamless checkout",
+          "properties": {
+            "conversation_summary": {
+              "type": "string",
+              "description": "Summary of the conversation leading to purchase"
+            },
+            "applied_offers": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Offer IDs that were applied during the conversation"
+            }
+          },
+          "additionalProperties": true
         }
       },
       "additionalProperties": true
@@ -73,6 +93,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["session_id"],
+  "required": ["session_id", "session_status"],
   "additionalProperties": true
 }

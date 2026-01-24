@@ -38,7 +38,7 @@ import {
   SI_HOST_TOOLS,
   createSiHostToolHandlers,
 } from "../addie/mcp/si-host-tools.js";
-import { siRetriever } from "../addie/services/si-retriever.js";
+import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
 import {
   getWebMemberContext,
@@ -145,6 +145,7 @@ interface PreparedRequest {
   memberContext: MemberContext | null;
   requestTools: RequestTools;
   siRetrievalTimeMs: number | null;
+  siAgents: RetrievedSIAgent[];
 }
 
 interface SiSessionData {
@@ -269,7 +270,13 @@ async function prepareRequestWithMemberTools(
     handlers: combinedHandlers,
   };
 
-  return { messageToProcess, memberContext, requestTools, siRetrievalTimeMs };
+  return {
+    messageToProcess,
+    memberContext,
+    requestTools,
+    siRetrievalTimeMs,
+    siAgents: siRetrievalResult.agents,
+  };
 }
 
 // CORS configuration for native apps (Tauri desktop, mobile)
@@ -639,7 +646,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }));
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestTools, siAgents } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId
@@ -720,6 +727,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const siSession = extractSiSessionFromToolExecutions(response?.tool_executions);
 
       // Send done event with final metadata
+      // Include available SI agents only if no session was started (for CTA buttons)
       sendEvent("done", {
         conversation_id: externalId,
         message_id: assistantMessage.message_id,
@@ -728,6 +736,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         usage: response?.usage,
         latency_ms: latencyMs,
         si_session: siSession,
+        si_agents: !siSession && siAgents.length > 0 ? siAgents.map(a => ({
+          slug: a.slug,
+          display_name: a.display_name,
+          tagline: a.tagline,
+        })) : undefined,
       });
 
       res.end();

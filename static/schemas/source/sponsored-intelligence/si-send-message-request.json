@@ -33,5 +33,9 @@
     }
   },
   "required": ["session_id"],
+  "anyOf": [
+    { "required": ["message"] },
+    { "required": ["action_response"] }
+  ],
   "additionalProperties": true
 }

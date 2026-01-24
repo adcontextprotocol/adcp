@@ -125,6 +125,14 @@
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
         },
+        "promoted-offerings": {
+          "$ref": "/schemas/core/promoted-offerings.json",
+          "description": "Complete offering specification combining brand manifest, product selectors, and asset filters"
+        },
+        "offering": {
+          "$ref": "/schemas/core/offering.json",
+          "description": "A promotable offering from a brand with optional SI endpoint for conversational experiences"
+        },
         "start-timing": {
           "$ref": "/schemas/core/start-timing.json",
           "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
@@ -803,14 +811,14 @@
         }
       },
       "tasks": {
-        "si-check-availability": {
+        "si-get-offering": {
           "request": {
-            "$ref": "/schemas/sponsored-intelligence/si-check-availability-request.json",
-            "description": "Anonymous pre-flight check for offer/product availability before session handoff"
+            "$ref": "/schemas/sponsored-intelligence/si-get-offering-request.json",
+            "description": "Get offering details, availability, and optionally matching products before session handoff"
           },
           "response": {
-            "$ref": "/schemas/sponsored-intelligence/si-check-availability-response.json",
-            "description": "Availability status with token for session correlation"
+            "$ref": "/schemas/sponsored-intelligence/si-get-offering-response.json",
+            "description": "Offering details, availability status, matching products, and token for session correlation"
           }
         },
         "si-initiate-session": {

@@ -9,7 +9,7 @@ This guide helps brands implement Sponsored Intelligence agents. Once implemente
 
 An SI agent is an MCP or A2A server that implements four tasks:
 
-1. `si_check_availability` - Respond to anonymous availability checks
+1. `si_get_offering` - Respond to offering lookups (details, availability, products)
 2. `si_initiate_session` - Start a conversation
 3. `si_send_message` - Exchange messages
 4. `si_terminate_session` - End the conversation
@@ -22,8 +22,9 @@ First, declare your agent's capabilities in an SI manifest. This can be hosted a
 {
   "$schema": "https://adcontextprotocol.org/schemas/sponsored-intelligence/si-manifest.json",
   "endpoint": {
-    "transport": "mcp",
-    "url": "https://yourbrand.example/si-agent"
+    "transports": [
+      { "type": "mcp", "url": "https://yourbrand.example/si-agent" }
+    ]
   },
   "capabilities": {
     "modalities": {
@@ -66,9 +67,9 @@ server.tool(
     context: { type: "string", description: "Natural language user intent" },
     identity: { type: "object", description: "User identity with consent" },
     media_buy_id: { type: "string", description: "AdCP media buy ID (optional)" },
-    offer_id: { type: "string", description: "Brand-specific offer reference (optional)" },
+    offering_id: { type: "string", description: "Brand-specific offering reference (optional)" },
   },
-  async ({ context, identity, media_buy_id, offer_id }) => {
+  async ({ context, identity, media_buy_id, offering_id }) => {
     // Your implementation here
     return {
       content: [{
@@ -92,7 +93,7 @@ The `context` field in `si_initiate_session` is the host's handoff message - wha
 
 For example, when a user says "I need to fly to Boston next week" in ChatGPT, and the host decides to connect them to Delta's SI agent, the handoff might look like:
 
-> "I'm connecting you with Delta to help with your Boston flight. They can check availability and offers for you."
+> "I'm connecting you with Delta to help with your Boston flight. They can check availability and offerings for you."
 
 Your brand agent receives the context and should respond naturally - as if continuing the conversation:
 

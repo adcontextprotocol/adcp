@@ -301,90 +301,80 @@ export function createSiChatRoutes() {
 
   /**
    * POST /api/si/sessions/:sessionId/messages/stream
-   * Send a message to the SI agent (streaming via SSE)
+   * Send a message to the SI agent with streaming response (SSE)
    */
   apiRouter.post("/sessions/:sessionId/messages/stream", optionalAuth, async (req, res) => {
-    try {
-      const { sessionId } = req.params;
-      const { message, action_response } = req.body;
+    const { sessionId } = req.params;
+    const { message, action_response } = req.body;
 
-      if (!message && !action_response) {
-        return res.status(400).json({ error: "Message or action_response required" });
-      }
+    if (!message && !action_response) {
+      return res.status(400).json({ error: "Message or action_response required" });
+    }
 
-      const session = await siDb.getSession(sessionId);
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
-      }
+    const session = await siDb.getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
 
-      // Verify user has access to this session
-      if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
-        return res.status(403).json({ error: "Not authorized to access this session" });
-      }
+    // Verify user has access to this session
+    if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
+      return res.status(403).json({ error: "Not authorized to access this session" });
+    }
 
-      if (session.status !== "active") {
-        return res.status(400).json({
-          error: "Session is not active",
-          status: session.status,
-        });
-      }
-
-      // Sanitize user message if provided
-      let sanitizedMessage = message;
-      if (message) {
-        const validation = sanitizeInput(message);
-        if (validation.flagged) {
-          logger.warn({ reason: validation.reason }, "SI Chat: Suspicious input detected");
-        }
-        sanitizedMessage = validation.sanitized;
-      }
-
-      // Set up SSE headers
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-
-      const sendEvent = (event: string, data: unknown) => {
-        res.write(`event: ${event}\n`);
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      };
-
-      // Send meta event with session info
-      sendEvent("meta", {
-        session_id: sessionId,
-        brand_name: session.brand_name,
+    if (session.status !== "active") {
+      return res.status(400).json({
+        error: "Session is not active",
+        status: session.status,
       });
+    }
 
-      // For now, use non-streaming and send as single text event
-      // TODO: Add streaming support to siAgentService
-      const response = await siAgentService.sendMessage({
+    // Sanitize user message if provided
+    let sanitizedMessage = message;
+    if (message) {
+      const validation = sanitizeInput(message);
+      if (validation.flagged) {
+        logger.warn({ reason: validation.reason }, "SI Chat: Suspicious input detected");
+      }
+      sanitizedMessage = validation.sanitized;
+    }
+
+    // Set up SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+    res.flushHeaders();
+
+    try {
+      // Stream response
+      for await (const event of siAgentService.sendMessageStream({
         sessionId,
         message: sanitizedMessage,
         actionResponse: action_response,
-      });
-
-      // Send response as text event
-      sendEvent("text", { text: response.message });
-
-      // Send done event with full response data
-      sendEvent("done", {
-        session_id: sessionId,
-        brand_name: session.brand_name,
-        response: {
-          message: response.message,
-          ui_elements: response.ui_elements,
-          session_status: response.session_status,
-          handoff: response.handoff,
-          available_skills: response.available_skills,
-        },
-      });
-
-      res.end();
+      })) {
+        if (event.type === "text") {
+          res.write(`data: ${JSON.stringify({ type: "text", text: event.text })}\n\n`);
+        } else if (event.type === "done") {
+          res.write(`data: ${JSON.stringify({
+            type: "done",
+            session_id: sessionId,
+            brand_name: session.brand_name,
+            response: {
+              message: event.response.message,
+              ui_elements: event.response.ui_elements,
+              session_status: event.response.session_status,
+              handoff: event.response.handoff,
+              available_skills: event.response.available_skills,
+            },
+          })}\n\n`);
+        } else if (event.type === "error") {
+          res.write(`data: ${JSON.stringify({ type: "error", error: event.error })}\n\n`);
+        }
+      }
     } catch (error) {
-      logger.error({ error }, "SI Chat: Error streaming message");
-      res.write(`event: error\n`);
-      res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
+      logger.error({ error }, "SI Chat: Error in streaming response");
+      res.write(`data: ${JSON.stringify({ type: "error", error: "Failed to generate response" })}\n\n`);
+    } finally {
       res.end();
     }
   });

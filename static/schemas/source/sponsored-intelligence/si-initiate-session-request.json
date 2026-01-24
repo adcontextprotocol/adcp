@@ -20,29 +20,17 @@
       "type": "string",
       "description": "Where this session was triggered (e.g., 'chatgpt_search', 'claude_chat')"
     },
-    "offer_id": {
+    "offering_id": {
       "type": "string",
-      "description": "Brand-specific offer identifier to apply"
+      "description": "Brand-specific offering identifier to apply"
     },
     "supported_capabilities": {
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
       "description": "What capabilities the host supports"
     },
-    "availability": {
-      "type": "object",
-      "description": "Pre-flight availability check result (from si_check_availability)",
-      "properties": {
-        "token": {
-          "type": "string",
-          "description": "Availability token from si_check_availability response"
-        },
-        "checked_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "When availability was checked"
-        }
-      },
-      "required": ["token"]
+    "offering_token": {
+      "type": "string",
+      "description": "Token from si_get_offering response for session continuity. Brand uses this to recall what products were shown to the user, enabling natural references like 'the second one' or 'that blue shoe'."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
