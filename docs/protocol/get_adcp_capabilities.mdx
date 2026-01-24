@@ -177,6 +177,28 @@ Array of property features this governance agent can evaluate:
 }
 ```
 
+### extensions_supported
+
+Array of extension namespaces this agent supports. Buyers can expect meaningful data in `ext.{namespace}` fields on responses from this agent.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `extensions_supported` | string[] | Extension namespaces (e.g., `["scope3", "garm"]`) |
+
+Extension schemas are published in the [AdCP extension registry](/docs/reference/extensions-and-context). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
+
+**Example:**
+```json
+{
+  "extensions_supported": ["scope3", "garm", "iab_tcf"]
+}
+```
+
+This tells buyers:
+- Product responses may include `ext.scope3` with Scope3 sustainability data
+- Creative policies may include `ext.garm` with GARM brand safety categorizations
+- Responses may include `ext.iab_tcf` with IAB TCF consent data
+
 ## The Capability Contract
 
 **If a capability is declared, the seller MUST honor it.**
@@ -436,6 +458,7 @@ const buy = await client.createMediaBuy({
       "primary_countries": ["US", "CA"]
     }
   },
+  "extensions_supported": ["scope3"],
   "last_updated": "2025-01-23T10:00:00Z"
 }
 ```
@@ -447,6 +470,7 @@ This tells buyers:
 - **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
 - **Metro targeting**: Nielsen DMA only (US market)
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
+- **Extensions**: Scope3 sustainability data in `ext.scope3`
 
 ### Geo Standards Reference
 

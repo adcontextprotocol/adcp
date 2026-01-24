@@ -15,6 +15,7 @@ Introduces `get_adcp_capabilities` as a **protocol-level task** that works acros
 **Cross-protocol design:**
 - `adcp.major_versions` - Declare supported AdCP major versions
 - `supported_protocols` - Which domain protocols are supported (media_buy, signals)
+- `extensions_supported` - Extension namespaces this agent supports (e.g., `["scope3", "garm"]`)
 - Protocol-specific capability sections nested under protocol name
 
 **Media-buy capabilities (media_buy section):**
