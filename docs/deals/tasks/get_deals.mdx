@@ -1,0 +1,339 @@
+---
+sidebar_position: 1
+title: get_deals
+---
+
+# get_deals
+
+**Task**: Discover deal packages based on natural language description.
+
+**Response Time**: ~30 seconds (discovery with back-end systems)
+
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/deals/get-deals-request.json`](https://adcontextprotocol.org/schemas/v1/deals/get-deals-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/deals/get-deals-response.json`](https://adcontextprotocol.org/schemas/v1/deals/get-deals-response.json)
+
+The `get_deals` task returns available deal packages with pricing, targeting, and platform availability information, allowing buyer agents to evaluate options and select deals for activation.
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brief` | string | No | Natural language description of desired deal package, including filtering criteria (deal type, ad format, pricing, dates, etc.) |
+| `brand_manifest` | object or string (URI) | No | Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest. |
+| `filters` | object | No | Structured filters for deal discovery (see Filters Object below) |
+| `max_results` | number | No | Maximum number of results to return |
+| `context` | object | No | Initiator-provided context for correlation tracking |
+| `ext` | object | No | Extension object for platform-specific or vendor-namespaced parameters |
+
+### Filters Object
+
+The `filters` parameter allows structured filtering of deals:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deal_type` | string[] | Filter by deal types: "PMP", "Curated" |
+| `ad_type` | string[] | Filter by ad format types: "Banner", "Video", "Native" |
+| `platforms` | string[] | Filter by SSP platform identifiers |
+| `start_date` | string | Filter deals available on or after this date (YYYY-MM-DD) |
+| `end_date` | string | Filter deals available on or before this date (YYYY-MM-DD) |
+| `status` | string[] | Filter by deal status: "draft", "active", "inactive" |
+| `countries` | string[] | Filter by target countries (ISO 3166-1 alpha-2 codes, e.g., ["US", "CA", "GB"]) |
+| `devices` | string[] | Filter by device types: "Desktop", "Tablet", "Mobile", "CTV" |
+
+All filter fields are optional and can be used in combination.
+
+## Response Structure
+
+```json
+{
+  "deals": [
+    {
+      "deal_id": "string",
+      "name": "string",
+      "advertiser": "string",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "deal_type": "PMP" | "Curated",
+      "ad_type": "Banner" | "Video" | "Native",
+      "platforms": ["string"],
+      "pricing": { ... },
+      "targeting": { ... },
+      "status": "draft" | "active" | "inactive"
+    }
+  ],
+  "errors": [],
+  "context": {},
+  "ext": {}
+}
+```
+
+### Deal Object Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deal_id` | string | Unique identifier for the deal |
+| `name` | string | Human-readable deal name |
+| `advertiser` | string | Advertiser for whom this deal is available |
+| `start_date` | string | Deal start date (YYYY-MM-DD) |
+| `end_date` | string | Deal end date (YYYY-MM-DD) |
+| `deal_type` | string | "PMP" (Private Marketplace) or "Curated" |
+| `ad_type` | string | "Banner", "Video", or "Native" |
+| `platforms` | string[] | SSP platform identifiers where this deal can be activated (minimum 1) |
+| `pricing` | object | Pricing configuration (see below) |
+| `targeting` | object | Targeting parameters (optional, see below) |
+| `status` | string | "draft", "active", or "inactive" |
+
+### Pricing Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | "Floor", "Fixed", or "Market" |
+| `cpm` | number | CPM price in USD (required for Floor and Fixed types) |
+| `margin` | object | Margin configuration (required for Curated deals) |
+
+**Margin Object** (for Curated deals):
+- `type`: "Percentage" or "CPM"
+- `percentage`: Margin as percentage (0-100) when type is "Percentage"
+- `cpm`: Margin as CPM value when type is "CPM"
+
+### Targeting Object (Optional)
+
+All fields are optional. Omitting fields implies no restrictions for those dimensions.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `geo` | string[] | Geographic targeting (countries, regions, cities, postal codes, metro codes) |
+| `devices` | string[] | Device types: "Desktop", "Tablet", "Mobile", "CTV" |
+| `allow_lists` | string[] | Included domain/app list IDs in the ad decisioning platform |
+| `block_lists` | string[] | Excluded domain/app list IDs in the ad decisioning platform |
+| `include_segments` | string[] | Included segment IDs (can reference signal IDs from Signals Protocol) |
+| `exclude_segments` | string[] | Excluded segment IDs |
+
+## Example Request
+
+### Using Natural Language Brief
+
+```json
+{
+  "brief": "Premium video inventory for automotive brand in the US with viewability guarantee, maximum $25 CPM",
+  "max_results": 10
+}
+```
+
+### Using Structured Filters
+
+```json
+{
+  "brief": "Premium video inventory for automotive brand with viewability guarantee",
+  "filters": {
+    "ad_type": ["Video"],
+    "deal_type": ["Curated"],
+    "countries": ["US"],
+    "status": ["draft", "active"]
+  },
+  "max_results": 10
+}
+```
+
+### With Brand Manifest
+
+```json
+{
+  "brief": "Premium video deals matching our brand",
+  "brand_manifest": "https://example.com/brand-manifest.json",
+  "filters": {
+    "ad_type": ["Video"],
+    "countries": ["US"]
+  }
+}
+```
+
+## Example Response
+
+```json
+{
+  "deals": [
+    {
+      "deal_id": "deal_auto_premium_001",
+      "name": "Premium Automotive Video Bundle",
+      "advertiser": "luxury_auto_brand",
+      "start_date": "2026-01-01",
+      "end_date": "2026-03-31",
+      "deal_type": "Curated",
+      "ad_type": "Video",
+      "platforms": ["magnite", "pubmatic"],
+      "pricing": {
+        "type": "Fixed",
+        "cpm": 18.0,
+        "margin": {
+          "type": "Percentage",
+          "percentage": 15.0
+        }
+      },
+      "targeting": {
+        "geo": ["US"],
+        "devices": ["CTV", "Desktop"],
+        "include_segments": ["luxury_auto_intenders_v2"],
+        "block_lists": ["competitor_automotive_brands"]
+      },
+      "status": "draft"
+    },
+    {
+      "deal_id": "deal_auto_direct_002",
+      "name": "CarContent Direct Video PMP",
+      "advertiser": "luxury_auto_brand",
+      "start_date": "2026-01-15",
+      "end_date": "2026-06-30",
+      "deal_type": "PMP",
+      "ad_type": "Video",
+      "platforms": ["openx", "index-exchange"],
+      "pricing": {
+        "type": "Floor",
+        "cpm": 12.0
+      },
+      "targeting": {
+        "geo": ["US"],
+        "devices": ["CTV", "Desktop", "Mobile"]
+      },
+      "status": "draft"
+    }
+  ],
+  "context": {
+    "request_id": "req_12345"
+  },
+  "ext": {}
+}
+```
+
+## Understanding the Response
+
+### Platform Availability
+
+Each deal includes a `platforms` array listing the SSP platforms where it can be activated:
+- Deals must be available on at least one platform
+- Use the `activate_deal` task to activate the deal on your chosen platform(s)
+- Same deal can be activated on multiple platforms if listed
+
+### Deal Status
+
+- **"draft"**: Deal is proposed but not yet activated (typical for newly discovered deals)
+- **"active"**: Deal is activated and ready to serve
+- **"inactive"**: Deal is no longer available or has been deactivated
+
+### Pricing Types
+
+**Floor Pricing** (`type: "Floor"`):
+- Minimum CPM price
+- Buyers can bid above the floor in auctions
+- Common in PMP deals with competitive bidding
+
+**Fixed Pricing** (`type: "Fixed"`):
+- Exact CPM price, no bidding
+- Predictable costs, guaranteed rate
+- Common in guaranteed deals
+
+**Market Pricing** (`type: "Market"`):
+- Market-rate pricing determined at impression time
+- Dynamic pricing based on demand
+- No fixed CPM in response
+
+### Curated Deal Margins
+
+Curated deals include a margin on top of media costs:
+- **Percentage margin**: Applied as percentage of media cost (e.g., 15% on $15 CPM = $17.25 total)
+- **CPM margin**: Fixed CPM added to media cost (e.g., $2 CPM margin on $15 CPM = $17 total)
+
+## Integration with Signals Protocol
+
+### Signal-Enhanced Targeting
+
+The `include_segments` and `exclude_segments` fields can reference signal IDs obtained by the Deals Agent from Signals Agents:
+
+```json
+{
+  "targeting": {
+    "include_segments": [
+      "luxury_auto_intenders_v2",  // Signal ID from Signals Agent
+      "high_income_households"     // Another signal ID
+    ],
+    "exclude_segments": [
+      "competitor_customers"        // Exclusion signal
+    ]
+  }
+}
+```
+
+**Important**: The Buyer Agent does not directly interact with Signals Agents. The Deals Agent integrates with Signals Agents behind the scenes and includes signal-based targeting in returned deals.
+
+## Use Cases
+
+### Discovery by Objectives
+
+```json
+{
+  "brief": "High-impact display placements for luxury brand awareness in premium environments"
+}
+```
+
+The Deals Agent interprets the objectives and returns appropriate deals (likely curated packages with quality guarantees).
+
+### Discovery with Constraints
+
+You can use natural language in the `brief` field, structured `filters`, or both:
+
+**Natural language approach:**
+```json
+{
+  "brief": "Cost-efficient video scale for product launch, maximum $15 CPM, Q1 2026 availability"
+}
+```
+
+**Structured filters approach:**
+```json
+{
+  "brief": "Cost-efficient video scale for product launch",
+  "filters": {
+    "ad_type": ["Video"],
+    "start_date": "2026-01-01",
+    "end_date": "2026-03-31"
+  }
+}
+```
+
+Both approaches are supported, and you can combine them for maximum flexibility.
+
+### Discovery with Signal Integration
+
+```json
+{
+  "brief": "Premium video deals for automotive with luxury car intender audiences, US only"
+}
+```
+
+The Deals Agent queries Signals Agents for relevant audiences and returns deals with those segments pre-configured in targeting.
+
+## Error Handling
+
+### Common Errors
+
+- **DEAL_NOT_FOUND**: No deals match the specified criteria
+- **INVALID_ADVERTISER**: Advertiser identifier not recognized or not authorized
+- **DATE_CONFLICT**: Requested dates don't align with available deal inventory
+
+### Warnings
+
+- **PARTIAL_AVAILABILITY**: Some deals have limited inventory remaining
+- **PRICING_UNAVAILABLE**: Pricing data temporarily unavailable for some deals
+
+## Best Practices
+
+1. **Use Descriptive Specifications**: Clear natural language descriptions help the agent find the most relevant deals
+2. **Check Platform Availability**: Verify the deal is available on platforms you can access
+3. **Review Targeting**: Understand what targeting is pre-applied before activation
+4. **Verify Dates**: Ensure deal dates align with your campaign timing
+5. **Compare Pricing**: Evaluate pricing types and margins across multiple deals
+6. **Check Status**: Only "draft" or "active" deals can typically be activated
+
+## Next Steps
+
+After discovering deals, use the [`activate_deal`](/docs/deals/tasks/activate_deal) task to activate your selected deal on the appropriate SSP platform(s).
