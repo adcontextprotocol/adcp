@@ -256,9 +256,9 @@ const sellers = await findCompatibleSellers(
 );
 ```
 
-### Use Capabilities to Filter Products
+### Use Capabilities to Build Targeting
 
-After discovering capabilities, use them to filter `get_products`:
+Capabilities tell you what you CAN specify in create_media_buy targeting. Product filtering uses coarser geography (metros), while targeting uses the full precision you need:
 
 ```javascript
 // First, check capabilities
@@ -270,26 +270,50 @@ if (!caps.supported_protocols.includes('media_buy')) {
 
 const mediaBuy = caps.media_buy;
 
-// Then, request products with capability filters
+// Filter products by metro area (coarse geography)
 const products = await client.getProducts({
-  brief: "Premium video inventory in NYC",
+  brief: "Premium video inventory in NYC metro area",
   filters: {
     channels: ['olv', 'ctv'],
-    // Only include if seller supports US ZIP code targeting
-    ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
-      postal_areas: [
-        { system: 'us_zip', code: '10001' },
-        { system: 'us_zip', code: '10002' },
-        { system: 'us_zip', code: '10003' }
-      ]
-    }),
+    // Filter to NYC metro area products
+    metros: [{ system: 'nielsen_dma', code: '501' }],
     // Only include if seller supports this AXE
     ...(mediaBuy.execution?.axe_integrations?.includes('https://agentic.scope3.com') && {
       required_axe_integrations: ['https://agentic.scope3.com']
     })
   }
 });
+
+// Then, create media buy with fine-grained targeting
+// (if seller supports postal areas, we can target specific ZIP codes)
+const buy = await client.createMediaBuy({
+  buyer_ref: 'my-campaign-001',
+  brand_manifest: { url: 'https://mybrand.com' },
+  packages: [{
+    buyer_ref: 'package-001',
+    product_id: products.products[0].product_id,
+    pricing_option_id: products.products[0].pricing_options[0].id,
+    budget: 10000,
+    // Targeting overlay refines delivery within product coverage
+    targeting_overlay: {
+      geo_countries: ['US'],
+      // Only specify ZIP targeting if seller supports it
+      ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
+        geo_postal_areas: [{
+          system: 'us_zip',
+          values: ['10001', '10002', '10003', '10004', '10005']
+        }]
+      })
+    }
+  }],
+  start_time: { type: 'asap' },
+  end_time: '2025-03-01T00:00:00Z'
+});
 ```
+
+**Key distinction:**
+- **Product filters** (get_products): Use coarse geography to find products with coverage in an area
+- **Targeting overlay** (create_media_buy): Use fine-grained geography to restrict where ads actually deliver
 
 ## Response Example
 

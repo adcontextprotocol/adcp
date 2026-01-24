@@ -116,24 +116,6 @@
         "required": ["system", "code"]
       }
     },
-    "postal_areas": {
-      "type": "array",
-      "description": "Filter by postal area. Only returns products that support postal-level targeting in these areas.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/postal-system.json",
-            "description": "Postal code system. System name encodes country and precision."
-          },
-          "code": {
-            "type": "string",
-            "description": "Postal code value (e.g., '10001' for us_zip, 'SW1' for gb_outward, 'K1A' for ca_fsa)"
-          }
-        },
-        "required": ["system", "code"]
-      }
-    },
     "channels": {
       "type": "array",
       "description": "Filter by advertising channels (e.g., ['display', 'video', 'dooh'])",
