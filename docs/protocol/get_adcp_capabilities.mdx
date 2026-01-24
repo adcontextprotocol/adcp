@@ -291,7 +291,7 @@ const sellers = await findCompatibleSellers(
 
 ### Use Capabilities to Build Targeting
 
-Capabilities tell you what you CAN specify in create_media_buy targeting. Use `required_targeting_systems` to filter products to sellers that support specific geo targeting:
+Capabilities tell you what you CAN specify in create_media_buy targeting. Use `required_geo_targeting` to filter products to sellers that support specific geo targeting levels and systems:
 
 ```javascript
 // First, check capabilities
@@ -311,7 +311,10 @@ const products = await client.getProducts({
     // Filter to NYC metro area products (coarse geography)
     metros: [{ system: 'nielsen_dma', code: '501' }],
     // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
-    required_geo_systems: ['us_zip'],
+    // level = granularity, system = classification taxonomy
+    required_geo_targeting: [
+      { level: 'postal_area', system: 'us_zip' }
+    ],
     // Only include if seller supports this AXE
     required_axe_integrations: ['https://agentic.scope3.com']
   }

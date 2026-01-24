@@ -138,11 +138,23 @@
         "type": "string"
       }
     },
-    "required_geo_systems": {
+    "required_geo_targeting": {
       "type": "array",
-      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Values are keys from get_adcp_capabilities.media_buy.execution.targeting: 'geo_countries', 'geo_regions' for boolean capabilities, or system names like 'us_zip', 'nielsen_dma', 'gb_outward' for metros/postal areas.",
+      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems.",
       "items": {
-        "type": "string"
+        "type": "object",
+        "properties": {
+          "level": {
+            "$ref": "/schemas/enums/geo-level.json",
+            "description": "Geographic targeting level (country, region, metro, postal_area)"
+          },
+          "system": {
+            "type": "string",
+            "description": "Classification system within the level. Required for metro (e.g., 'nielsen_dma') and postal_area (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+          }
+        },
+        "required": ["level"],
+        "additionalProperties": false
       }
     }
   },

@@ -32,7 +32,9 @@ Introduces `get_adcp_capabilities` as a **protocol-level task** that works acros
 
 **Product filters:**
 - Added regions, metros filters for coarse geo filtering
-- Added `required_geo_systems` - filter to sellers supporting specific geo capabilities ('geo_regions', 'us_zip', 'nielsen_dma')
+- Added `required_geo_targeting` - filter to sellers supporting specific geo capabilities with two-layer structure:
+  - `level`: targeting granularity (country, region, metro, postal_area)
+  - `system`: classification taxonomy for levels with multiple systems (e.g., 'nielsen_dma' for metro, 'us_zip' for postal_area)
 - Added required_axe_integrations, required_features capability filters
 
 **Targeting schema:**

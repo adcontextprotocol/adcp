@@ -362,6 +362,10 @@
           "$ref": "/schemas/enums/creative-sort-field.json",
           "description": "Fields available for sorting creative listings"
         },
+        "geo-level": {
+          "$ref": "/schemas/enums/geo-level.json",
+          "description": "Geographic targeting granularity levels (country, region, metro, postal_area)"
+        },
         "metro-system": {
           "$ref": "/schemas/enums/metro-system.json",
           "description": "Metro area classification systems for geographic targeting (nielsen_dma, uk_itl1, uk_itl2, eurostat_nuts2)"
