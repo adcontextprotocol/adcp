@@ -1,0 +1,259 @@
+---
+sidebar_position: 7
+title: Authentication
+---
+
+
+AdCP uses a tiered authentication model where some operations are publicly accessible while others require authentication.
+
+## When Authentication is Required
+
+### Public Operations (No Authentication Required)
+
+These operations work without credentials to enable discovery and evaluation:
+
+- **`list_creative_formats`** - Browse available creative formats
+- **`list_authorized_properties`** - See which properties an agent represents
+- **`get_products`** - Discover inventory (returns limited results without auth)
+
+**Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship.
+
+**Important**: Unauthenticated `get_products` may return:
+- Partial catalog (standard products only)
+- No pricing information or CPM details
+- No custom product offerings
+- Generic format support only
+
+### Authenticated Operations (Credentials Required)
+
+These operations require valid credentials:
+
+- **`get_products`** (full access) - Complete catalog with pricing and custom products
+- **`create_media_buy`** - Create advertising campaigns
+- **`update_media_buy`** - Modify existing campaigns
+- **`sync_creatives`** - Upload creative assets
+- **`list_creatives`** - View your creative library
+- **`get_media_buy_delivery`** - Monitor campaign performance and metrics
+- **`provide_performance_feedback`** - Submit optimization signals
+
+**Rationale**: These operations involve financial commitments, access to proprietary data, or modifications to active campaigns.
+
+## Authentication Method
+
+AdCP uses Bearer token authentication, consistent with the MCP specification:
+
+```
+Authorization: Bearer <token>
+```
+
+Tokens may be:
+- **Opaque tokens**: Server-validated strings mapped to principals
+- **JWT tokens**: Self-contained tokens with embedded claims
+
+### JWT Token Claims
+
+When using JWT tokens, include these standard claims:
+
+```json
+{
+  "sub": "principal_123",
+  "exp": 1706745600,
+  "iat": 1706742000
+}
+```
+
+Sales agents may require additional claims for authorization.
+
+## Principal Model
+
+```typescript
+interface Principal {
+  principal_id: string;
+  permissions: {
+    products: Permission[];
+    media_buys: Permission[];
+    creatives: Permission[];
+    reports: Permission[];
+  };
+}
+
+type Permission = 'read' | 'write' | 'delete' | 'approve';
+```
+
+## Protocol Configuration
+
+Both MCP and A2A protocols use the same authentication header. Configure your client with:
+
+```json
+{
+  "auth": {
+    "type": "bearer",
+    "token": "<your_token>"
+  }
+}
+```
+
+The client library handles adding the `Authorization: Bearer <token>` header to requests.
+
+## MCP Client Configuration
+
+When using the MCP protocol, authentication is handled by the transport layer, not by adding HTTP headers manually.
+
+### Using MCP Client Libraries
+
+The recommended approach is to use an MCP client library:
+
+<CodeGroup>
+
+```typescript TypeScript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const transport = new StreamableHTTPClientTransport(
+  new URL('https://test-agent.adcontextprotocol.org/mcp'),
+  {
+    requestInit: {
+      headers: {
+        'Authorization': 'Bearer YOUR_TOKEN_HERE'
+      }
+    }
+  }
+);
+
+const client = new Client({ name: 'my-client', version: '1.0.0' });
+await client.connect(transport);
+```
+
+```python Python
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async with streamablehttp_client(
+    "https://test-agent.adcontextprotocol.org/mcp",
+    headers={"Authorization": "Bearer YOUR_TOKEN_HERE"}
+) as (read, write):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+```
+
+</CodeGroup>
+
+### Common Mistake: Raw HTTP Headers
+
+A common mistake is trying to add authentication headers to raw HTTP requests:
+
+```http
+# This won't work for MCP endpoints
+GET /mcp HTTP/1.1
+Authorization: Bearer YOUR_TOKEN
+```
+
+MCP uses a streaming protocol over HTTP. The authentication must be configured in the MCP client transport layer, which handles the protocol negotiation and message framing.
+
+### Troubleshooting Authentication
+
+If you're getting "authentication required" errors:
+
+1. **Verify you're using an MCP client library** - not making raw HTTP calls
+2. **Check the token format** - should be passed to the transport configuration
+3. **Test with the public test agent** - verify your setup works before testing custom agents
+4. **Check protocol version** - ensure client and server protocol versions are compatible
+
+## Obtaining Credentials
+
+### Account Setup Process
+
+To access authenticated operations, you must establish an account with each sales agent:
+
+1. **Identify Sales Agents**: Discover sales agents via publisher `adagents.json` files
+2. **Contact Sales Team**: Reach out to the agent's sales or partnerships team
+3. **Complete Onboarding**: Provide business information, sign agreements, configure billing
+4. **Receive Credentials**: Get API keys or OAuth client credentials
+
+**Note**: Each sales agent manages their own accounts independently. You need separate credentials for each agent you work with.
+
+### Dynamic Registration (Optional)
+
+Some sales agents support OAuth 2.0 dynamic client registration:
+
+```http
+POST /oauth/register
+Content-Type: application/json
+
+{
+  "client_name": "Your Company Name",
+  "redirect_uris": ["https://yourapp.com/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "scope": "adcp:products adcp:media_buys adcp:creatives"
+}
+```
+
+Check the sales agent's documentation or `adagents.json` for dynamic registration support.
+
+### Aggregation Platforms
+
+Consider using aggregation platforms (like Scope3) that manage credentials and relationships with multiple sales agents on your behalf. This simplifies:
+- Credential management
+- Financial relationships
+- Legal agreements
+- Compliance monitoring
+
+## Error Responses
+
+### Unauthenticated Request to Protected Operation
+
+```json
+{
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required for this operation"
+  }
+}
+```
+
+### Invalid or Expired Credentials
+
+```json
+{
+  "error": {
+    "code": "AUTH_INVALID",
+    "message": "Invalid or expired credentials"
+  }
+}
+```
+
+### Insufficient Permissions
+
+```json
+{
+  "error": {
+    "code": "INSUFFICIENT_PERMISSIONS",
+    "message": "Principal does not have required permissions for this operation"
+  }
+}
+```
+
+## Best Practices
+
+1. **Secure Storage**: Store credentials securely (environment variables, secret managers)
+2. **Rotation**: Implement credential rotation policies
+3. **Scope Limitation**: Request minimum required permissions
+4. **Token Refresh**: Implement automatic token refresh for JWT tokens
+5. **Error Handling**: Handle authentication errors gracefully with retry logic
+
+## Testing Authentication
+
+Use the public test agent to validate your authentication setup:
+
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/mcp",
+  "protocol": "mcp",
+  "auth": {
+    "type": "bearer",
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+  }
+}
+```
+
+See [Testing & Development Guide](/docs/media-buy/advanced-topics/testing) for complete testing capabilities including dry run mode and time simulation.

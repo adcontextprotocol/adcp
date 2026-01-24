@@ -1,0 +1,323 @@
+---
+title: Implementor FAQ
+description: Common questions and answers for AdCP implementers
+sidebar_position: 6
+---
+
+
+Common questions from teams building AdCP sales agents and integrations, with direct answers based on the specification.
+
+## Product Discovery
+
+### Q: Does `get_products` require specific parameters like budget, dates, and objectives?
+
+**A:** Currently, `get_products` only has three parameters: `brief` (natural language string), `brand_manifest`, and `filters` (structured filters). Campaign details like budget, dates, and objectives should be included in the natural language `brief`.
+
+**Future:** Structured parameters for budget, dates, objectives, and targeting are being considered to reduce conversational back-and-forth. Track the roadmap for updates.
+
+**Current Workaround:** Include these details in your brief:
+```json
+{
+  "brand_manifest": {
+    "name": "Acme Corp",
+    "url": "https://acmecorp.com"
+  },
+  "brief": "Tech startup needs display and video inventory to reach IT decision makers. Budget: $25K. Timeline: March 1-31. Objective: Lead generation with 2% conversion target."
+}
+```
+
+### Q: How do I request specific audience targeting in `get_products`?
+
+**A:** All targeting requests currently go in the natural language `brief`. There's no structured targeting filter yet.
+
+**Example:**
+```json
+{
+  "brand_manifest": {
+    "name": "Energy Drink Co",
+    "url": "https://energydrink.com"
+  },
+  "brief": "Target sports fans, ages 18-34, in major US cities for energy drink campaign"
+}
+```
+
+The publisher's AI interprets this and returns relevant products. Future versions may add structured targeting filters.
+
+### Q: What does "no brief = standard catalog" mean? We don't have a standard catalog.
+
+**A:** When buyers omit the `brief` field, they're requesting your standard catalog - baseline products available to all advertisers without custom recommendations.
+
+**If you don't offer a standard catalog**, return an error:
+```json
+{
+  "message": "We require a campaign brief to recommend products. Please provide details about your campaign goals, audience, and objectives.",
+  "products": []
+}
+```
+
+**If you do offer standard catalog**, return standard products matching the provided filters (format types, delivery type, etc.).
+
+### Q: Should buyers call `list_creative_formats` before or after `get_products`?
+
+**A:** **After `get_products`**. The recommended flow is:
+
+1. Call `get_products` with your campaign brief/filters
+2. Review the products returned (they include `format_ids` arrays)
+3. Call `list_creative_formats` for the specific format IDs you need details on
+4. Verify creative requirements match your capabilities
+5. Call `create_media_buy` for selected products
+
+**Why:** You don't know which format IDs you need until you see which products are available. Getting all formats upfront is inefficient.
+
+## Policy Compliance
+
+### Q: How do publishers know if there's an ad policy issue (alcohol, adult content, etc.)?
+
+**A:** Publishers extract advertiser identity from the `brand_manifest` field:
+
+1. **Extract advertiser info** from `brand_manifest.name`, `brand_manifest.url`, and optional `brand_manifest.category`
+2. **Check what's being promoted** from the `brief` text
+3. **Apply policy rules** based on your publisher policies
+4. **Return appropriate response:**
+   - Allowed: Return products normally
+   - Blocked: Return empty products array with policy explanation
+   - Restricted: Indicate manual approval needed
+
+**Example blocked response:**
+```json
+{
+  "message": "I'm unable to offer products for this campaign. Our publisher policy prohibits alcohol advertising without age verification capabilities.",
+  "products": []
+}
+```
+
+See [Policy Compliance](/docs/media-buy/media-buys/policy-compliance) for complete implementation guidance.
+
+### Q: Is the advertiser's name always shared?
+
+**A:** Yes, the `brand_manifest` field is required in both `get_products` and `create_media_buy`. It provides the advertiser identity needed for:
+- Policy compliance checks
+- Business relationship management (KYC)
+- Billing and reporting
+
+Minimal manifests are simple:
+```json
+{
+  "brand_manifest": {
+    "name": "Acme Corp",
+    "url": "https://acmecorp.com"
+  }
+}
+```
+
+The optional `category` field (e.g., `"athletic_apparel"`, `"alcohol"`, `"pharma"`) helps with automated policy filtering.
+
+## Schema and Fields
+
+### Q: Why is the `filters` parameter called an "object"?
+
+**A:** Because it's a nested JSON object with multiple optional fields:
+
+```json
+{
+  "filters": {
+    "delivery_type": "guaranteed",
+    "format_types": ["video", "display"],
+    "standard_formats_only": true,
+    "is_fixed_price": true,
+    "min_exposures": 10000
+  }
+}
+```
+
+It's not a single filter—it's a collection of filter criteria for product catalog search.
+
+### Q: Why is it called `format_ids` instead of `ad_units`?
+
+**A:** AdCP uses protocol-agnostic terminology:
+
+- **`format_ids`**: Structured references to creative format specifications (e.g., `{agent_url: "...", id: "video_30s_hosted"}`)
+- **Ad units**: Platform-specific terminology (like "300x250 banner")
+
+Formats are abstract specifications that work across all ad platforms. The `_ids` suffix indicates these are references—use `list_creative_formats` to get full format objects.
+
+### Q: The old docs mentioned `promoted_offering` - where is that field?
+
+**A:** That was a documentation error from earlier versions. **This field doesn't exist** in the actual API.
+
+The correct mechanism is:
+- **Advertiser identity** → `brand_manifest.name` and `brand_manifest.url` (required)
+- **What's being promoted** → Described in the `brief` field (optional)
+
+Example:
+```json
+{
+  "brand_manifest": {
+    "name": "Nike",
+    "url": "https://nike.com",
+    "category": "athletic_apparel"
+  },
+  "brief": "Nike Air Max 2024 - latest innovation in cushioning technology targeting runners and fitness enthusiasts"
+}
+```
+
+## Brief Processing
+
+### Q: What if buyers provide incomplete briefs?
+
+**A:** Publishers should request clarification when critical information is missing:
+
+```json
+{
+  "message": "I'd be happy to help find the right products for your campaign. To provide the best recommendations, could you share:\n\n• What's your campaign budget?\n• When do you want the campaign to run?\n• Which geographic markets are you targeting?",
+  "products": []
+}
+```
+
+This maintains a conversational, helpful approach while gathering needed context.
+
+### Q: Should we always ask for clarification or just return products?
+
+**A:** It depends on your publisher strategy:
+
+- **High-touch approach**: Request clarification for incomplete briefs, engage conversationally
+- **Self-service approach**: Return best-guess products based on available information
+
+Both are valid. Consider your target buyer personas and automation level.
+
+## Workflow and Integration
+
+### Q: When should `brand_manifest` be required vs optional?
+
+**A:** According to the current spec:
+- **Required in both `get_products` AND `create_media_buy`**
+
+Best practice: Always require it. Policy checking should happen during discovery, not at purchase time.
+
+### Q: Can buyers cache product responses?
+
+**A:** Products represent inventory availability which changes over time. Recommendations:
+- **Brief-based discovery**: Don't cache—products are contextually matched to the brief
+- **Standard catalog**: Can cache for short periods (5-15 minutes) if your catalog is stable
+- **Product details**: Cache `product_id` mappings but revalidate availability before purchase
+
+### Q: How do we handle large product catalogs (1000+ products)?
+
+**A:** Use `property_tags` instead of full `properties` arrays:
+
+```json
+{
+  "product_id": "local_radio_midwest",
+  "property_tags": ["local_radio", "midwest"],
+  "format_ids": [...]
+}
+```
+
+Buyers resolve tags via `list_authorized_properties`. This keeps responses lightweight while maintaining full validation capability.
+
+## Testing and Validation
+
+### Q: How do we test policy compliance?
+
+**A:** Create test cases with known restricted categories:
+
+```javascript
+// Test blocked category
+const response = await get_products({
+  brand_manifest: {
+    name: "Test Alcohol Brand",
+    url: "https://test-alcohol.example.com",
+    category: "alcohol"
+  },
+  brief: "Promote our new craft beer"
+});
+
+assert(response.products.length === 0);
+assert(response.message.includes("policy"));
+```
+
+### Q: What should we test in integration testing?
+
+**A:** Key scenarios to cover:
+
+1. **No brief + filters** → Standard catalog
+2. **Brief provided** → AI-matched products with `brief_relevance`
+3. **Blocked advertiser** → Policy error
+4. **Incomplete brief** → Clarification request
+5. **No products match** → Helpful alternative suggestions
+6. **Format filtering** → Only matching formats returned
+
+## Common Pitfalls
+
+### Q: Why aren't my format filters working?
+
+**A:** Check that you're using structured `format_ids`, not strings:
+
+**Wrong:**
+```json
+{
+  "filters": {
+    "format_ids": ["video_30s"]  // ❌ Strings don't work
+  }
+}
+```
+
+**Correct:**
+```json
+{
+  "filters": {
+    "format_ids": [
+      {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_hosted"
+      }
+    ]
+  }
+}
+```
+
+### Q: Why do my products not include `brief_relevance`?
+
+**A:** `brief_relevance` is only included when a `brief` parameter is provided. Standard catalog requests (no brief) don't include this field since products aren't contextually matched.
+
+### Q: Should I validate authorization in `get_products`?
+
+**A:** **Yes!** Buyer agents must validate sales agent authorization before purchasing:
+
+1. Get properties from products (or resolve `property_tags`)
+2. Fetch `/.well-known/adagents.json` from each `publisher_domain`
+3. Verify the sales agent URL appears in `authorized_agents`
+4. Reject products from unauthorized agents
+
+See [Authorization Validation](/docs/governance/property/adagents#buyer-agent-validation) for complete requirements.
+
+## Terminology
+
+### Q: What's the difference between "product" and "package"?
+
+**A:**
+- **Product**: A sellable unit of inventory from the publisher (returned by `get_products`)
+- **Package**: A buyer's selection from available products, sent in `create_media_buy`
+
+Products describe what's available. Packages describe what you're buying.
+
+### Q: What's the difference between "delivery" and "distribution"?
+
+**A:**
+- **Delivery type**: `"guaranteed"` vs `"non_guaranteed"` (whether impressions are guaranteed)
+- **Distribution**: How creatives are distributed to ad servers (covered by creative agents, not media buying)
+
+### Q: What's "AXE" mentioned in the docs?
+
+**A:** **Agentic eXecution Engine (AXE)** - the real-time execution layer between orchestrators and decisioning platforms. AXE handles dynamic audience targeting (buyers bringing their own segments), brand safety enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for complete details.
+
+## Need More Help?
+
+If your question isn't answered here:
+
+1. Check the [Task Reference](/docs/media-buy/task-reference/) for detailed API documentation
+2. Review [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations) for discovery guidance
+3. See [Media Products](/docs/media-buy/product-discovery/media-products) for product model details
+4. Open a GitHub issue for specification clarifications
+
+This FAQ is updated regularly based on implementer feedback.

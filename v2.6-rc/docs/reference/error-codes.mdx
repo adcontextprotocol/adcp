@@ -1,0 +1,602 @@
+---
+sidebar_position: 2
+title: Error Codes
+---
+
+
+This page documents all standard error codes used across ACP implementations.
+
+## Error Response Patterns
+
+AdCP uses different error handling patterns depending on the severity and context:
+
+### Task-Level Errors (Non-Fatal Warnings)
+
+Use the optional `errors` array in successful responses for warnings and non-blocking issues:
+
+```json
+{
+  "message": "Operation completed with warnings",
+  "context_id": "ctx-123",
+  "errors": [
+    {
+      "code": "ERROR_CODE",
+      "message": "Human-readable description",
+      "field": "field.path.with.issue",
+      "suggestion": "Recommended action",
+      "details": {},
+      "retry_after": 30
+    }
+  ]
+}
+```
+
+Error object fields:
+- `code` (required): Error code for programmatic handling
+- `message` (required): Human-readable description
+- `field` (optional): Field path associated with the error
+- `suggestion` (optional): Recommended action
+- `details` (optional): Additional task-specific context
+- `retry_after` (optional): Seconds to wait before retry
+
+### Protocol-Level Errors (Fatal)
+
+For operations that cannot be completed, use protocol-specific error mechanisms:
+
+**MCP (Model Context Protocol):**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text", 
+        "text": "Failed to process request: Invalid credentials provided"
+      }
+    ],
+    "isError": true
+  }
+}
+```
+
+**A2A (Agent-to-Agent Protocol):**
+```json
+{
+  "taskId": "task_123",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Unable to complete operation: Authentication failed"
+    }]
+  }
+}
+```
+
+## Authentication Errors
+
+### INVALID_CREDENTIALS
+Invalid or malformed authentication credentials.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_CREDENTIALS",
+  "message": "API key is invalid or has been revoked",
+  "details": {
+    "provided_key": "ak_live_123..."
+  }
+}
+```
+
+**Resolution**: Verify API key is correct and active.
+
+### TOKEN_EXPIRED
+Authentication token has expired.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "TOKEN_EXPIRED",
+  "message": "OAuth token expired",
+  "details": {
+    "expired_at": "2025-01-20T10:30:00Z"
+  }
+}
+```
+
+**Resolution**: Refresh OAuth token or re-authenticate.
+
+### INSUFFICIENT_PERMISSIONS
+Account lacks required permissions for the operation.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INSUFFICIENT_PERMISSIONS",
+  "message": "Account does not have activation permissions",
+  "details": {
+    "required_permission": "activate_signal",
+    "account_permissions": ["get_signals", "check_signal_status"]
+  }
+}
+```
+
+**Resolution**: Contact administrator to upgrade account permissions.
+
+## Validation Errors
+
+### MISSING_REQUIRED_FIELD
+Required request parameter is missing.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "MISSING_REQUIRED_FIELD",
+  "message": "prompt is required for signal discovery",
+  "field": "prompt",
+  "details": {
+    "provided_fields": ["platform", "max_results"]
+  }
+}
+```
+
+**Resolution**: Include all required fields in request.
+
+### INVALID_FIELD_VALUE
+Field value doesn't meet validation requirements.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_FIELD_VALUE",
+  "message": "max_results must be between 1 and 50",
+  "field": "max_results",
+  "details": {
+    "provided_value": 100,
+    "valid_range": "1-50"
+  }
+}
+```
+
+**Resolution**: Provide valid field values per specification.
+
+### INVALID_FIELD_FORMAT
+Field format is incorrect.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_FIELD_FORMAT",
+  "message": "reporting_date must be in YYYY-MM-DD format",
+  "field": "reporting_date",
+  "details": {
+    "provided_value": "01/20/2025",
+    "expected_format": "YYYY-MM-DD"
+  }
+}
+```
+
+**Resolution**: Use correct field format as specified.
+
+## Resource Errors
+
+### SEGMENT_NOT_FOUND
+Specified segment ID doesn't exist or is no longer available.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SEGMENT_NOT_FOUND",
+  "message": "Segment ID not found or has expired",
+  "suggestion": "Use get_signals to find current segment IDs",
+  "details": {
+    "segment_id": "seg_invalid_123"
+  }
+}
+```
+
+**Resolution**: Use current segment ID from recent `get_signals` response.
+
+### SIGNAL_UNAVAILABLE
+Signal exists but is not available for the requested platform/seat.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SIGNAL_UNAVAILABLE",
+  "message": "Signal not available for the specified platform",
+  "details": {
+    "segment_id": "seg_12345",
+    "requested_platform": "unavailable_platform",
+    "available_platforms": ["scope3", "thetradedesk"]
+  }
+}
+```
+
+**Resolution**: Use available platform or check with provider.
+
+## Authorization Errors
+
+### PLATFORM_UNAUTHORIZED
+Account lacks access to specified platform.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "PLATFORM_UNAUTHORIZED",
+  "message": "Account not authorized for platform",
+  "details": {
+    "requested_platform": "restricted_platform",
+    "authorized_platforms": ["scope3", "liveramp"]
+  }
+}
+```
+
+**Resolution**: Use authorized platform or upgrade account access.
+
+### SEAT_UNAUTHORIZED
+Account cannot access specified seat.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SEAT_UNAUTHORIZED",
+  "message": "Account cannot access seat",
+  "details": {
+    "requested_seat": "competitor_seat_001",
+    "authorized_seats": ["brand_us_001", "brand_emea_002"]
+  }
+}
+```
+
+**Resolution**: Use authorized seat or request access.
+
+## Operation Errors
+
+### ALREADY_ACTIVATED
+Signal is already active for the specified platform/seat.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "ALREADY_ACTIVATED",
+  "message": "Signal already activated for this platform and seat",
+  "details": {
+    "segment_id": "seg_12345",
+    "platform": "scope3",
+    "seat": "brand_us_001",
+    "activated_at": "2025-01-15T10:30:00Z",
+    "status": "deployed"
+  }
+}
+```
+
+**Resolution**: Use existing activation or check status with `check_signal_status`.
+
+### ACTIVATION_FAILED
+Signal activation process failed.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "ACTIVATION_FAILED",
+  "message": "Failed to activate signal due to provider error",
+  "retry_after": 300,
+  "details": {
+    "segment_id": "seg_12345",
+    "provider_error": "Segment temporarily unavailable",
+    "retry_suggested": true
+  }
+}
+```
+
+**Resolution**: Wait and retry, or contact support if persistent.
+
+### INVALID_PRICING_MODEL
+Requested pricing model is not available for this signal.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_PRICING_MODEL",
+  "message": "CPM pricing not available for this signal",
+  "details": {
+    "segment_id": "seg_12345",
+    "requested_model": "cpm",
+    "available_models": ["revenue_share"]
+  }
+}
+```
+
+**Resolution**: Use available pricing model or choose different signal.
+
+## Schema Version Errors
+
+### UNSUPPORTED_VERSION
+Requested AdCP schema version is not supported by the server.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "UNSUPPORTED_VERSION",
+  "message": "AdCP version '2.1.0' is not supported. Server supports versions compatible with 1.0.0 per semantic versioning.",
+  "details": {
+    "requested_version": "2.1.0",
+    "current_server_version": "1.0.0",
+    "compatibility_info": "Use versions 1.x.x for backward compatibility"
+  }
+}
+```
+
+**Resolution**: Use a compatible schema version or upgrade to a server that supports the requested version.
+
+## Rate Limiting Errors
+
+### RATE_LIMIT_EXCEEDED
+Too many requests within the rate limit window.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "message": "Too many requests. Rate limit: 100 requests per minute",
+  "retry_after": 45,
+  "details": {
+    "limit": 100,
+    "window": "60 seconds",
+    "reset_time": "2025-01-20T15:31:00Z"
+  }
+}
+```
+
+**Resolution**: Wait for rate limit window to reset before retrying.
+
+## System Errors
+
+### INTERNAL_SERVER_ERROR
+Unexpected server error occurred.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An internal error occurred while processing the request",
+  "details": {
+    "request_id": "req_789123456",
+    "timestamp": "2025-01-20T15:30:00Z"
+  }
+}
+```
+
+**Resolution**: Retry request. Contact support if error persists.
+
+### SERVICE_UNAVAILABLE
+External service dependency is temporarily unavailable.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SERVICE_UNAVAILABLE",
+  "message": "Data provider service is temporarily unavailable",
+  "retry_after": 900,
+  "details": {
+    "provider": "LiveRamp",
+    "estimated_recovery": "2025-01-20T16:00:00Z"
+  }
+}
+```
+
+**Resolution**: Wait for service recovery and retry.
+
+### TIMEOUT
+Request exceeded maximum processing time.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "TIMEOUT",
+  "message": "Request exceeded 30 second timeout",
+  "suggestion": "Try a more specific prompt or contact support",
+  "details": {
+    "timeout_seconds": 30
+  }
+}
+```
+
+**Resolution**: Refine request parameters or retry.
+
+## Content Standards Errors
+
+### STANDARDS_NOT_FOUND
+Specified standards ID doesn't exist.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "STANDARDS_NOT_FOUND",
+  "message": "No standards found with ID 'invalid_id'",
+  "details": {
+    "standards_id": "invalid_id"
+  }
+}
+```
+
+**Resolution**: Use `list_content_standards` to find valid standards IDs.
+
+### STANDARDS_IN_USE
+Cannot delete standards that are referenced by active media buys.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "STANDARDS_IN_USE",
+  "message": "Cannot delete standards 'nike_emea_safety' - currently referenced by active media buys",
+  "details": {
+    "standards_id": "nike_emea_safety",
+    "active_media_buy_count": 3
+  }
+}
+```
+
+**Resolution**: Wait for media buys to complete before deleting.
+
+### STANDARDS_SCOPE_CONFLICT
+New standards configuration conflicts with existing standards for the same scope.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "STANDARDS_SCOPE_CONFLICT",
+  "message": "Standards already exist for brand 'nike' in countries ['GB', 'DE']",
+  "details": {
+    "conflicting_standards_id": "nike_emea_safety",
+    "overlapping_countries": ["GB", "DE"]
+  }
+}
+```
+
+**Resolution**: Update existing standards or narrow scope to avoid overlap.
+
+## Data Errors
+
+### DATA_QUALITY_ISSUE
+Data quality problem detected.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "DATA_QUALITY_ISSUE",
+  "message": "Signal size data is stale",
+  "details": {
+    "segment_id": "seg_12345",
+    "last_updated": "2024-12-01T00:00:00Z",
+    "max_age_days": 30
+  }
+}
+```
+
+**Resolution**: Contact provider for updated signal data.
+
+### USAGE_REPORT_REJECTED
+Usage report failed validation.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "USAGE_REPORT_REJECTED",
+  "message": "Negative impression count not allowed",
+  "field": "impressions",
+  "details": {
+    "segment_id": "seg_12345",
+    "provided_value": -1000,
+    "validation_rule": "must be >= 0"
+  }
+}
+```
+
+**Resolution**: Correct data and resubmit usage report.
+
+## Error Handling Best Practices
+
+### Retry Logic
+
+Implement exponential backoff for retryable errors:
+
+```typescript
+async function retryRequest(fn: Function, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error.code === 'RATE_LIMIT_EXCEEDED' && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+### Error Categorization
+
+Group errors by type for appropriate handling:
+
+```typescript
+const RETRYABLE_ERRORS = [
+  'RATE_LIMIT_EXCEEDED',
+  'TIMEOUT', 
+  'SERVICE_UNAVAILABLE',
+  'INTERNAL_SERVER_ERROR'
+];
+
+const PERMANENT_ERRORS = [
+  'INVALID_CREDENTIALS',
+  'INSUFFICIENT_PERMISSIONS',
+  'SEGMENT_NOT_FOUND',
+  'PLATFORM_UNAUTHORIZED',
+  'UNSUPPORTED_VERSION',
+  'STANDARDS_NOT_FOUND',
+  'STANDARDS_IN_USE',
+  'STANDARDS_SCOPE_CONFLICT'
+];
+
+function isRetryable(errorCode: string): boolean {
+  return RETRYABLE_ERRORS.includes(errorCode);
+}
+```
+
+### User-Friendly Messages
+
+Convert technical errors to user-friendly messages:
+
+```typescript
+const USER_MESSAGES = {
+  'SEGMENT_NOT_FOUND': 'This signal is no longer available. Please search for signals again.',
+  'RATE_LIMIT_EXCEEDED': 'Too many requests. Please wait a moment and try again.',
+  'INSUFFICIENT_PERMISSIONS': 'Your account does not have permission for this action. Contact your administrator.',
+  'UNSUPPORTED_VERSION': 'The requested schema version is not supported. Please use a compatible version.',
+  // ... more mappings
+};
+
+function getUserMessage(errorCode: string): string {
+  return USER_MESSAGES[errorCode] || 'An unexpected error occurred. Please try again.';
+}
+```
+
+## Getting Help
+
+If you encounter errors not documented here:
+
+1. **Check the details field** for additional context
+2. **Review request format** against the specification
+3. **Contact platform support** with the request_id if provided
+4. **Report new error patterns** to help improve documentation
+
+For technical support: support@adcontextprotocol.org

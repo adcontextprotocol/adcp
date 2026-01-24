@@ -1,0 +1,306 @@
+---
+sidebar_position: 1
+title: Glossary
+---
+
+
+## A
+
+**Account Type**  
+Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
+
+**Activation**  
+The process of making a signal available for targeting on a specific platform and seat.
+
+**Ad Context Protocol (AdCP)**
+An open standard for AI-powered advertising workflows. AdCP defines domain-specific tasks and schemas that work over MCP and A2A as transports, enabling natural language interfaces for advertising operations.
+
+**Agentic eXecution Engine (AXE)**  
+The real-time execution layer that sits between orchestrators and decisioning platforms, handling dynamic audience targeting, brand safety enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for details.
+
+**Signal Discovery**  
+The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions.
+
+**Signal ID**  
+A unique identifier for a signal within a provider's catalog.
+
+**Signal Type**  
+Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".
+
+## C
+
+**CPC (Cost Per Click)**
+Pricing model based on cost per click on the advertisement.
+
+**CPCV (Cost Per Completed View)**
+Pricing model based on cost per 100% video or audio completion.
+
+**CPM (Cost Per Mille)**
+Pricing model based on cost per thousand impressions. Traditional display advertising pricing.
+
+**CPP (Cost Per Point)**
+Pricing model based on cost per Gross Rating Point (GRP), commonly used in TV and audio advertising.
+
+**CPV (Cost Per View)**
+Pricing model based on cost per view at a publisher-defined threshold (e.g., 50% video completion).
+
+**Completed View**
+A video or audio ad that has been viewed to 100% completion. Used for CPCV pricing and completion rate metrics.
+
+**Completion Rate**
+The percentage of video or audio ads that are viewed to 100% completion (completed_views / impressions).
+
+**Customer Account**
+Direct advertiser or agency account with specific seat access and negotiated rates.
+
+## D
+
+**Daypart**
+Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
+
+**Deployment** (Signals Protocol)
+The availability status of a signal on specific platforms, including activation state and timing.
+
+**Devices** (Signals Protocol)
+Size unit representing unique device identifiers (cookies, mobile IDs) - typically the largest reach metric.
+
+**Device Type** (Media Buy Protocol)
+Targeting dimension for platform types: mobile, desktop, tablet, CTV, audio, DOOH.
+
+**DOOH (Digital Out-of-Home)**
+Digital advertising displayed on screens in public spaces such as billboards, transit stations, airports, and retail locations. Uses CPM or flat_rate pricing with parameters for SOV, duration, and venue targeting.
+
+**DSP (Demand-Side Platform)**
+Technology platform that allows advertisers to buy advertising inventory programmatically.
+
+## E
+
+**Estimated Activation Time**
+Predicted timeframe for signal deployment, typically 24-48 hours for new activations.
+
+## F
+
+**Flat Rate**
+Fixed-cost pricing model where a single payment is made regardless of delivery volume. Common for sponsorships and takeovers.
+
+**Frequency**
+The average number of times an individual is exposed to an advertisement during a campaign.
+
+## G
+
+**GRP (Gross Rating Point)**
+A unit of measurement for television and radio advertising representing 1% of the target audience. Used in CPP pricing models. Total GRPs = Reach % × Average Frequency. Measured by third-party providers such as Nielsen, Comscore, iSpot.tv, or Triton Digital.
+
+## H
+
+**Households**
+Size unit representing unique household addresses, useful for geographic and family-based targeting.
+
+## I
+
+**Impressions** (Media Buy Protocol)  
+The number of times an ad is displayed, used for pricing and delivery tracking.
+
+**Individuals** (Signals Protocol)  
+Size unit representing unique people, best for frequency capping and demographic targeting.
+
+**Inventory**  
+Available advertising space on websites, apps, or other media properties.
+
+## M
+
+**MCP (Model Context Protocol)**  
+The underlying protocol framework that enables AI assistants to interact with external systems.
+
+**Marketplace Signal**  
+Third-party signal available for licensing from data providers.
+
+## N
+
+**Natural Language Processing**  
+The AI capability that allows audience discovery through conversational descriptions rather than technical parameters.
+
+## O
+
+**Owned Signal**  
+First-party signal data belonging to the advertiser or platform.
+
+## P
+
+**Platform Account**
+Master account representing an advertising platform that can syndicate signals to multiple customers.
+
+**Pricing Model**
+The method by which advertising inventory is priced and billed. AdCP supports CPM, CPC, CPCV, CPV, CPA, CPL, CPP, and flat rate models.
+
+**Pricing Option**
+A specific pricing model offered by a publisher for a product, including rate, currency, and parameters.
+
+**Prompt**
+Natural language description used to discover relevant signals (e.g., "high-income sports enthusiasts", "premium automotive content", "users in urban areas during evening hours").
+
+**Provider**
+The company or platform that supplies signal data (e.g., LiveRamp, Experian, Peer39, weather services).
+
+## Q
+
+**Quartile (Video)**
+Milestones in video ad viewing: Q1 (25% viewed), Q2 (50% viewed), Q3 (75% viewed), Q4 (100% complete). Used to measure video engagement.
+
+## R
+
+**Reach**
+The number or percentage of unique individuals exposed to an advertisement at least once during a campaign.
+
+**Relevance Score**
+Numerical rating (0-1) indicating how well a signal matches the discovery prompt.
+
+**Relevance Rationale**
+Human-readable explanation of why an audience received its relevance score.
+
+**Revenue Share**
+Pricing model based on a percentage of media spend rather than fixed CPM.
+
+## S
+
+**Screen Time**
+Total duration an ad was displayed across all DOOH screens, measured in seconds. Used for DOOH delivery reporting.
+
+**Seat**
+A specific advertising account within a platform, typically representing a brand or campaign.
+
+**Segment ID**
+The specific identifier used for signal activation, may differ from signal_id.
+
+**Share of Voice (SOV)**
+Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
+
+**Size Unit** (Signals Protocol)
+The measurement type for signal size: individuals, devices, or households.
+
+## T
+
+**Takeover**
+Exclusive 100% share of voice placement on DOOH inventory for a specific time period. Priced as flat_rate with sov_percentage: 100.
+
+**Third-Party Signal**
+Signal data licensed from external providers, also known as marketplace signals.
+
+**Time-Based Pricing**
+Pricing structure based on duration (hourly, daily, or daypart) rather than impressions. Common in DOOH advertising using flat_rate model.
+
+## U
+
+**Usage Reporting**
+Daily reporting of signal utilization for billing and optimization purposes.
+
+## V
+
+**Venue**
+Physical location where DOOH advertising is displayed (e.g., airport terminal, transit station, retail store). Used for DOOH targeting and delivery reporting.
+
+**Venue Package**
+Named collection of DOOH screens across specific venues (e.g., 'times_square_network', 'airport_terminals'). Used in DOOH pricing parameters.
+
+## B
+
+**Budget**  
+Total monetary allocation for a media buy, which can be distributed across multiple packages.
+
+## F
+
+**Flight**  
+A time-bounded advertising campaign segment, mapped to line items in ad servers.
+
+## H
+
+**Households** (Signals Protocol)  
+Size unit representing unique household addresses, useful for geographic and family-based targeting.
+
+**Human-in-the-Loop (HITL)** (Media Buy Protocol)  
+Protocol feature allowing publishers to require manual approval for operations.
+
+## L
+
+**Line Item**
+The basic unit of inventory in ad servers like Google Ad Manager, represented as packages in AdCP.
+
+**Loop Duration**
+The length of time for a complete rotation of ads in a DOOH display, measured in seconds. Used to calculate frequency and share of voice.
+
+**Loop Plays**
+The number of times an ad was displayed in a DOOH loop rotation. Key metric for DOOH delivery reporting.
+
+## M
+
+**MCP (Model Context Protocol)**  
+The underlying protocol framework that enables AI assistants to interact with external systems.
+
+**Marketplace Signal**  
+Third-party signal available for licensing from data providers.
+
+**Media Buy**  
+A complete advertising campaign containing packages, budget, targeting, and creative assets.
+
+## P
+
+**Package**  
+A specific advertising product within a media buy, representing a flight or line item with its own pricing and targeting.
+
+**Principal**  
+An authenticated entity (advertiser, agency, or brand) with unique access credentials and platform mappings.
+
+**Product**  
+Advertising inventory available for purchase, discovered through natural language queries.
+
+## Acronyms
+
+- **AdCP**: Ad Context Protocol
+- **API**: Application Programming Interface
+- **AXE**: Agentic eXecution Engine
+- **CPM**: Cost Per Mille (thousand)
+- **DSP**: Demand-Side Platform
+- **DMP**: Data Management Platform
+- **MCP**: Model Context Protocol
+- **PII**: Personally Identifiable Information
+- **RTB**: Real-Time Bidding
+- **SSP**: Supply-Side Platform
+- **TTD**: The Trade Desk
+- **UTC**: Coordinated Universal Time
+
+## Units and Measurements
+
+**Time Formats**
+- All timestamps use ISO 8601 format (e.g., "2025-01-20T14:30:00Z")
+- Dates use YYYY-MM-DD format
+- Activation times expressed as human-readable estimates ("24-48 hours")
+
+**Currency**
+- All pricing in specified currency (typically USD)
+- CPM expressed as cost per 1,000 impressions
+- Revenue share expressed as decimal (0.15 = 15%)
+
+**Size Reporting** (Signals Protocol)
+- Counts expressed as integers
+- Units clearly specified (individuals/devices/households)
+- Dated with "as_of" timestamp for freshness
+
+**Impression Reporting** (Media Buy Protocol)
+- Delivery counts by package
+- Pacing metrics for optimization
+- Dimensional breakdowns available
+
+## Error Codes Reference
+
+Common error codes across all AdCP implementations:
+
+- `SEGMENT_NOT_FOUND`: Invalid or expired segment ID
+- `ACTIVATION_FAILED`: Unable to complete activation process
+- `ALREADY_ACTIVATED`: Signal already active for platform/seat
+- `DEPLOYMENT_UNAUTHORIZED`: Insufficient permissions for platform/seat
+- `BUDGET_EXCEEDED`: Operation would exceed allocated budget
+- `CREATIVE_REJECTED`: Creative asset failed platform review
+- `INVALID_PRICING_MODEL`: Requested pricing model unavailable
+- `RATE_LIMIT_EXCEEDED`: Too many requests in time window
+- `AUTHENTICATION_FAILED`: Invalid or expired credentials
+- `VALIDATION_ERROR`: Request format or parameter errors
