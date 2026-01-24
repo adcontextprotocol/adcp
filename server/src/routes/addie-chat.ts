@@ -38,6 +38,7 @@ import {
   SI_HOST_TOOLS,
   createSiHostToolHandlers,
 } from "../addie/mcp/si-host-tools.js";
+import { siRetriever } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
 import {
   getWebMemberContext,
@@ -143,6 +144,7 @@ interface PreparedRequest {
   messageToProcess: string;
   memberContext: MemberContext | null;
   requestTools: RequestTools;
+  siRetrievalTimeMs: number | null;
 }
 
 interface SiSessionData {
@@ -186,6 +188,7 @@ function extractSiSessionFromToolExecutions(
 /**
  * Prepare a request with member context and per-request tools
  * Creates member tools and SI host tools with the user's actual context
+ * Also retrieves relevant SI agents for RAG-style context injection
  */
 async function prepareRequestWithMemberTools(
   sanitizedInput: string,
@@ -194,28 +197,60 @@ async function prepareRequestWithMemberTools(
 ): Promise<PreparedRequest> {
   let messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
+  let siRetrievalTimeMs: number | null = null;
 
-  try {
-    if (userId) {
-      memberContext = await getWebMemberContext(userId);
-      const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
-      if (memberContextText) {
-        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
-        logger.debug(
-          { userId, hasContext: true, orgName: memberContext.organization?.name },
-          "Addie Chat: Added member context to message"
-        );
+  // Run member context fetch and SI retrieval in parallel
+  const [memberContextResult, siRetrievalResult] = await Promise.all([
+    // Get member context
+    (async () => {
+      try {
+        if (userId) {
+          return await getWebMemberContext(userId);
+        }
+        return null;
+      } catch (error) {
+        logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+        return null;
       }
-    } else {
-      const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
-      const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
-      if (memberContextText) {
-        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
-        logger.debug("Addie Chat: Added anonymous web context to message");
-      }
+    })(),
+    // Retrieve relevant SI agents
+    siRetriever.retrieve(sanitizedInput),
+  ]);
+
+  memberContext = memberContextResult;
+  siRetrievalTimeMs = siRetrievalResult.retrieval_time_ms;
+
+  // Build message with member context
+  if (memberContext) {
+    const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
+    if (memberContextText) {
+      messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+      logger.debug(
+        { userId, hasContext: true, orgName: memberContext.organization?.name },
+        "Addie Chat: Added member context to message"
+      );
     }
-  } catch (error) {
-    logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+  } else {
+    const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
+    const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
+    if (memberContextText) {
+      messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+      logger.debug("Addie Chat: Added anonymous web context to message");
+    }
+  }
+
+  // Inject SI agent context if relevant agents were found
+  if (siRetrievalResult.agents.length > 0) {
+    const siContext = siRetriever.formatContext(siRetrievalResult.agents);
+    messageToProcess = `${messageToProcess}\n\n${siContext}`;
+    logger.debug(
+      {
+        agentCount: siRetrievalResult.agents.length,
+        topAgents: siRetrievalResult.agents.map((a) => a.display_name),
+        retrievalTimeMs: siRetrievalResult.retrieval_time_ms,
+      },
+      "Addie Chat: Injected SI agent context"
+    );
   }
 
   // Create per-request member tools
@@ -234,7 +269,7 @@ async function prepareRequestWithMemberTools(
     handlers: combinedHandlers,
   };
 
-  return { messageToProcess, memberContext, requestTools };
+  return { messageToProcess, memberContext, requestTools, siRetrievalTimeMs };
 }
 
 // CORS configuration for native apps (Tauri desktop, mobile)

@@ -655,6 +655,8 @@ export class SiDatabase {
       slug: string;
       tagline: string | null;
       description: string | null;
+      offerings: string[];
+      brand_color: string | null;
       si_enabled: boolean;
       si_endpoint_url: string | null;
       si_capabilities: Record<string, unknown>;
@@ -665,6 +667,7 @@ export class SiDatabase {
   > {
     const result = await query(
       `SELECT mp.id, mp.display_name, mp.slug, mp.tagline, mp.description,
+              mp.offerings, mp.brand_color,
               mp.si_enabled, mp.si_endpoint_url, mp.si_capabilities, mp.si_skills,
               mp.contact_email, mp.contact_website
        FROM member_profiles mp
@@ -677,6 +680,7 @@ export class SiDatabase {
 
     return result.rows.map((row) => ({
       ...row,
+      offerings: row.offerings || [],
       si_capabilities: row.si_capabilities || {},
       si_skills: row.si_skills || [],
     }));
