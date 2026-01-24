@@ -277,6 +277,11 @@
               "description": {
                 "type": "string",
                 "description": "Human-readable description of what this feature measures"
+              },
+              "methodology_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
               }
             },
             "required": ["feature_id", "type"]
