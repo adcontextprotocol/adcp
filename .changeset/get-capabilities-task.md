@@ -31,7 +31,8 @@ Introduces `get_adcp_capabilities` as a **protocol-level task** that works acros
 - Postal areas with named systems encoding country and precision (us_zip, gb_outward, ca_fsa, etc.)
 
 **Product filters:**
-- Added regions, metros filters (postal_areas removed - too granular for discovery)
+- Added regions, metros filters for coarse geo filtering
+- Added `required_targeting_systems` - filter to sellers that support specific targeting (e.g., 'us_zip', 'nielsen_dma')
 - Added required_axe_integrations, required_features capability filters
 
 **Targeting schema:**

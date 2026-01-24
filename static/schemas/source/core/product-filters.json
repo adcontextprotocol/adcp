@@ -137,6 +137,13 @@
       "items": {
         "type": "string"
       }
+    },
+    "required_targeting_systems": {
+      "type": "array",
+      "description": "Filter to products from sellers supporting specific geo targeting systems. System names match keys in get_adcp_capabilities.media_buy.execution.targeting (e.g., 'us_zip', 'nielsen_dma', 'gb_outward'). Use this to find products where you can later apply fine-grained targeting.",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "additionalProperties": true
