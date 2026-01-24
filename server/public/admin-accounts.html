@@ -194,6 +194,7 @@
     .attention-high_engagement_unowned { background: var(--color-warning-100); color: var(--color-warning-700); }
     .attention-needs_review { background: var(--color-gray-200); color: var(--color-text-secondary); }
     .attention-expiring_soon { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .attention-missing_owner { background: var(--color-error-100); color: var(--color-error-700); }
 
     /* Activity date coloring */
     .activity-recent { color: var(--color-success-600); }
@@ -580,6 +581,9 @@
       <button class="view-tab" data-view="most_users">
         Most Users
       </button>
+      <button class="view-tab" data-view="missing_owner">
+        No Owner <span class="badge" id="count-missing_owner">-</span>
+      </button>
       <button class="view-tab" data-view="all">
         All
       </button>
@@ -646,7 +650,7 @@
 
     const viewDescriptions = {
       activity: 'Recent activity across the community: Slack, emails, events, payments',
-      needs_attention: 'Accounts needing action: overdue tasks, open invoices, unowned hot prospects',
+      needs_attention: 'Accounts needing action: overdue tasks, open invoices, unowned hot prospects, missing owners',
       new_insights: 'Prospects with recent Slack activity from their team',
       hot: 'High engagement prospects ready to convert',
       new_prospects: 'Recently created prospect accounts',
@@ -654,6 +658,7 @@
       my_accounts: 'Accounts you own or are watching',
       renewals: 'Members with subscriptions ending soon',
       members: 'All paying member organizations',
+      missing_owner: 'Organizations with members but no designated owner',
       all: 'All accounts',
       disqualified: 'Accounts marked as not viable'
     };
@@ -805,7 +810,8 @@
             recent_activity: 'Active',
             high_engagement_unowned: 'Unowned',
             needs_review: 'Review',
-            expiring_soon: 'Expiring'
+            expiring_soon: 'Expiring',
+            missing_owner: 'No Owner'
           };
           extraColumnHtml = `<td><span class="attention-badge attention-${account.attention_reason}">${reasonLabels[account.attention_reason] || account.attention_reason}</span></td>`;
         } else if (showExtraColumn) {

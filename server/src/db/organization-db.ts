@@ -1,5 +1,5 @@
 import { getPool } from './client.js';
-import { getSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
+import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
@@ -26,6 +26,7 @@ export class StripeCustomerConflictError extends Error {
 
 export type CompanyType = CompanyTypeValue;
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
+export type MembershipTier = 'individual_professional' | 'individual_academic' | 'company_standard' | 'company_icl';
 
 /**
  * Valid revenue tier values for runtime validation
@@ -39,6 +40,20 @@ export const VALID_REVENUE_TIERS: readonly RevenueTier[] = [
   '1b_plus',
 ] as const;
 
+/**
+ * Valid membership tier values for runtime validation
+ * - individual_professional: $250/year for industry professionals
+ * - individual_academic: $50/year for students, academics, and non-profits
+ * - company_standard: $2,500/year (<$5M revenue) or $10,000/year (>=$5M revenue)
+ * - company_icl: $50,000/year Industry Council Leader
+ */
+export const VALID_MEMBERSHIP_TIERS: readonly MembershipTier[] = [
+  'individual_professional',
+  'individual_academic',
+  'company_standard',
+  'company_icl',
+] as const;
+
 export interface Organization {
   workos_organization_id: string;
   name: string;
@@ -46,6 +61,7 @@ export interface Organization {
   company_type: CompanyType | null; // Deprecated: use company_types
   company_types: CompanyType[] | null;
   revenue_tier: RevenueTier | null;
+  membership_tier: MembershipTier | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   agreement_signed_at: Date | null;
@@ -110,11 +126,12 @@ export class OrganizationDatabase {
     is_personal?: boolean;
     company_type?: CompanyType;
     revenue_tier?: RevenueTier;
+    membership_tier?: MembershipTier;
   }): Promise<Organization> {
     const pool = getPool();
     const result = await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [
         data.workos_organization_id,
@@ -122,6 +139,7 @@ export class OrganizationDatabase {
         data.is_personal || false,
         data.company_type || null,
         data.revenue_tier || null,
+        data.membership_tier || null,
       ]
     );
     return result.rows[0];
@@ -153,6 +171,7 @@ export class OrganizationDatabase {
       is_personal: 'is_personal',
       company_type: 'company_type',
       revenue_tier: 'revenue_tier',
+      membership_tier: 'membership_tier',
       stripe_customer_id: 'stripe_customer_id',
       agreement_signed_at: 'agreement_signed_at',
       agreement_version: 'agreement_version',
@@ -565,8 +584,8 @@ export class OrganizationDatabase {
 
   /**
    * Get subscription info for an organization
-   * Tries Stripe first if customer ID is available, falls back to local DB fields
-   * This allows local development without Stripe webhooks
+   * Checks both Stripe and local DB fields, preferring active status from either source.
+   * Local DB is authoritative for invoice-based payments (no Stripe subscription).
    */
   async getSubscriptionInfo(workos_organization_id: string): Promise<SubscriptionInfo | null> {
     const org = await this.getOrganization(workos_organization_id);
@@ -575,28 +594,51 @@ export class OrganizationDatabase {
       return { status: 'none' };
     }
 
-    // If we have a Stripe customer ID, try to get info from Stripe
+    // Build local DB info first (source of truth for invoice-based payments)
+    const localInfo: SubscriptionInfo | null = org.subscription_status
+      ? {
+          status: org.subscription_status as SubscriptionInfo['status'],
+          product_name: org.subscription_product_name || undefined,
+          product_id: org.subscription_product_id || undefined,
+          current_period_end: org.subscription_current_period_end
+            ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
+            : undefined,
+          cancel_at_period_end: org.subscription_canceled_at !== null,
+        }
+      : null;
+
+    // If we have a Stripe customer ID, check for active subscription
     if (org.stripe_customer_id) {
-      const stripeInfo = await getSubscriptionInfo(org.stripe_customer_id);
+      const stripeInfo = await getStripeSubscriptionInfo(org.stripe_customer_id);
+
+      // If Stripe has an active subscription, use that
+      if (stripeInfo && stripeInfo.status !== 'none') {
+        return stripeInfo;
+      }
+
+      // Stripe has no subscription - prefer local DB if it shows active
+      // This handles invoice-based payments where there's no Stripe subscription
+      if (localInfo && localInfo.status === 'active') {
+        return localInfo;
+      }
+
+      // Return Stripe's response (which may be 'none')
       if (stripeInfo) {
         return stripeInfo;
       }
     }
 
-    // Fall back to local database fields (useful for local dev without Stripe)
-    if (org.subscription_status) {
-      return {
-        status: org.subscription_status as SubscriptionInfo['status'],
-        product_name: org.subscription_product_name || undefined,
-        product_id: org.subscription_product_id || undefined,
-        current_period_end: org.subscription_current_period_end
-          ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
-          : undefined,
-        cancel_at_period_end: org.subscription_canceled_at !== null,
-      };
-    }
+    // No Stripe customer - use local DB or return 'none'
+    return localInfo || { status: 'none' };
+  }
 
-    return { status: 'none' };
+  /**
+   * Check if an organization has an active subscription.
+   * Simple boolean helper that checks both Stripe and local DB.
+   */
+  async hasActiveSubscription(workos_organization_id: string): Promise<boolean> {
+    const info = await this.getSubscriptionInfo(workos_organization_id);
+    return info?.status === 'active' || info?.status === 'trialing';
   }
 
   // Agreement Methods

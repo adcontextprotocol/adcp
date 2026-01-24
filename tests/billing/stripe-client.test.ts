@@ -12,16 +12,16 @@ describe('stripe-client', () => {
     jest.resetModules();
   });
 
-  describe('getSubscriptionInfo', () => {
+  describe('getStripeSubscriptionInfo', () => {
     test('returns null when Stripe is not initialized', async () => {
       // Set environment variable to undefined to disable Stripe
       const originalEnv = process.env.STRIPE_SECRET_KEY;
       delete process.env.STRIPE_SECRET_KEY;
 
       // Re-import module after changing env var
-      const { getSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
-      const result = await getSubscriptionInfo('cus_test123');
+      const result = await getStripeSubscriptionInfo('cus_test123');
 
       expect(result).toBeNull();
 
@@ -47,9 +47,9 @@ describe('stripe-client', () => {
       StripeMock.mockImplementation(() => mockStripeInstance as any);
 
       // Re-import module to get mocked version
-      const { getSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
-      const result = await getSubscriptionInfo('cus_deleted');
+      const result = await getStripeSubscriptionInfo('cus_deleted');
 
       expect(result).toEqual({ status: 'none' });
       expect(mockStripeInstance.customers.retrieve).toHaveBeenCalledWith(
@@ -74,9 +74,9 @@ describe('stripe-client', () => {
       };
       StripeMock.mockImplementation(() => mockStripeInstance as any);
 
-      const { getSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
-      const result = await getSubscriptionInfo('cus_nosubs');
+      const result = await getStripeSubscriptionInfo('cus_nosubs');
 
       expect(result).toEqual({ status: 'none' });
     });
@@ -120,9 +120,9 @@ describe('stripe-client', () => {
       };
       StripeMock.mockImplementation(() => mockStripeInstance as any);
 
-      const { getSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
-      const result = await getSubscriptionInfo('cus_active');
+      const result = await getStripeSubscriptionInfo('cus_active');
 
       expect(result).toEqual({
         status: 'active',
@@ -144,9 +144,9 @@ describe('stripe-client', () => {
       };
       StripeMock.mockImplementation(() => mockStripeInstance as any);
 
-      const { getSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
+      const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
 
-      const result = await getSubscriptionInfo('cus_error');
+      const result = await getStripeSubscriptionInfo('cus_error');
 
       expect(result).toBeNull();
     });

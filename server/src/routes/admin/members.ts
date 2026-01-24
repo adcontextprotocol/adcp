@@ -16,7 +16,7 @@ import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
-import { stripe, getSubscriptionInfo } from "../../billing/stripe-client.js";
+import { stripe } from "../../billing/stripe-client.js";
 
 const logger = createLogger("admin-members");
 
@@ -272,10 +272,72 @@ export function setupMembersRoutes(
                   };
                   syncResults.updated = true;
                 } else {
-                  syncResults.stripe = {
-                    success: true,
-                    error: "No active subscription found",
-                  };
+                  // No subscription - check for paid membership invoices
+                  // This handles customers who paid via manual invoice
+                  const invoices = await stripe.invoices.list({
+                    customer: org.stripe_customer_id,
+                    status: 'paid',
+                    limit: 10,
+                  });
+
+                  // Find the most recent paid membership invoice
+                  const membershipInvoice = invoices.data.find(inv => {
+                    const lineItem = inv.lines?.data?.[0] as any;
+                    const lookupKey = lineItem?.price?.lookup_key || '';
+                    const productMetadata = lineItem?.price?.product?.metadata || {};
+                    return (
+                      lookupKey.startsWith('aao_membership_') ||
+                      lookupKey.startsWith('aao_invoice_') ||
+                      productMetadata.category === 'membership'
+                    );
+                  });
+
+                  if (membershipInvoice && membershipInvoice.amount_paid > 0) {
+                    // Calculate period end (use invoice period_end or default to 1 year from payment)
+                    const periodEnd = membershipInvoice.period_end
+                      ? new Date(membershipInvoice.period_end * 1000)
+                      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+                    await pool.query(
+                      `UPDATE organizations
+                       SET subscription_status = 'active',
+                           subscription_amount = $1,
+                           subscription_currency = $2,
+                           subscription_current_period_end = $3,
+                           updated_at = NOW()
+                       WHERE workos_organization_id = $4`,
+                      [
+                        membershipInvoice.amount_paid,
+                        membershipInvoice.currency || 'usd',
+                        periodEnd,
+                        orgId,
+                      ]
+                    );
+
+                    syncResults.stripe = {
+                      success: true,
+                      subscription: {
+                        status: 'active',
+                        amount: membershipInvoice.amount_paid,
+                        interval: 'year', // Manual invoices are typically annual
+                        current_period_end: Math.floor(periodEnd.getTime() / 1000),
+                        canceled_at: null,
+                      },
+                    };
+                    syncResults.updated = true;
+
+                    logger.info({
+                      orgId,
+                      invoiceId: membershipInvoice.id,
+                      amount: membershipInvoice.amount_paid,
+                      periodEnd: periodEnd.toISOString(),
+                    }, 'Synced membership status from paid invoice (no subscription)');
+                  } else {
+                    syncResults.stripe = {
+                      success: true,
+                      error: "No active subscription or paid membership invoice found",
+                    };
+                  }
                 }
               }
             } catch (error) {
@@ -339,10 +401,36 @@ export function setupMembersRoutes(
         });
       }
 
+      // Validate membership ID format (WorkOS membership IDs are 'om_' followed by alphanumeric chars)
+      const WORKOS_ID_PATTERN = /^om_[A-Za-z0-9]{20,30}$/;
+      if (!WORKOS_ID_PATTERN.test(membershipId)) {
+        logger.error(
+          { orgId, membershipId },
+          "Invalid WorkOS membership ID format"
+        );
+        return res.status(400).json({
+          error: "Invalid membership ID",
+          message: "Unable to update role due to invalid membership data. Please contact support.",
+        });
+      }
+
       try {
         // Verify membership belongs to this org
-        const membership =
-          await workos.userManagement.getOrganizationMembership(membershipId);
+        let membership;
+        try {
+          membership =
+            await workos.userManagement.getOrganizationMembership(membershipId);
+        } catch (getMembershipError) {
+          logger.error(
+            { err: getMembershipError, orgId, membershipId },
+            "Failed to get membership from WorkOS"
+          );
+          return res.status(500).json({
+            error: "Unable to verify membership",
+            message: "Unable to update role. Please try again or contact support.",
+          });
+        }
+
         if (membership.organizationId !== orgId) {
           return res.status(400).json({
             error: "Invalid membership",
@@ -351,14 +439,87 @@ export function setupMembersRoutes(
           });
         }
 
-        // Update the membership role
-        const updatedMembership =
-          await workos.userManagement.updateOrganizationMembership(
-            membershipId,
-            {
-              roleSlug: role,
-            }
+        // Verify the target role exists in WorkOS for this organization
+        try {
+          const roles = await workos.organizations.listOrganizationRoles({
+            organizationId: orgId,
+          });
+          const roleExists = roles.data.some((r) => r.slug === role);
+          if (!roleExists) {
+            logger.warn(
+              {
+                orgId,
+                role,
+                availableRoles: roles.data.map((r) => r.slug),
+              },
+              "Target role does not exist in WorkOS organization"
+            );
+            return res.status(400).json({
+              error: "Role not available",
+              message: `The '${role}' role is not configured for this organization. Please contact support to set up the role.`,
+            });
+          }
+        } catch (rolesError) {
+          // If we can't list roles, log warning but proceed - the update will fail if role doesn't exist
+          logger.warn(
+            { err: rolesError, orgId, role },
+            "Could not verify role exists - proceeding with update attempt"
           );
+        }
+
+        // Update the membership role
+        let updatedMembership;
+        try {
+          updatedMembership =
+            await workos.userManagement.updateOrganizationMembership(
+              membershipId,
+              {
+                roleSlug: role,
+              }
+            );
+        } catch (updateError) {
+          const updateErrorMessage =
+            updateError instanceof Error ? updateError.message : "Unknown error";
+
+          // Extract WorkOS-specific error details for logging
+          const workosErrorDetails =
+            updateError && typeof updateError === "object"
+              ? {
+                  code: (updateError as { code?: string }).code,
+                  errors: (updateError as { errors?: unknown }).errors,
+                  requestID: (updateError as { requestID?: string }).requestID,
+                  rawData: (updateError as { rawData?: unknown }).rawData,
+                }
+              : undefined;
+
+          logger.error(
+            {
+              err: updateError,
+              errorMessage: updateErrorMessage,
+              workosErrorDetails,
+              orgId,
+              membershipId,
+              role,
+            },
+            "Failed to update membership role in WorkOS"
+          );
+
+          // Provide more specific error message based on error type
+          let userMessage =
+            "Unable to update role. Please try again or contact support.";
+          if (
+            updateErrorMessage.includes("pattern") ||
+            updateErrorMessage.includes("validation")
+          ) {
+            userMessage =
+              "Unable to update role due to a configuration issue. Please contact support.";
+          }
+
+          return res.status(500).json({
+            error: "Unable to update role",
+            message: userMessage,
+          });
+        }
 
         logger.info(
           { orgId, membershipId, role, adminEmail: req.user!.email },
@@ -373,14 +534,16 @@ export function setupMembersRoutes(
             role: updatedMembership.role?.slug || "member",
           },
         });
-      } catch (error) {
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         logger.error(
-          { err: error, orgId, membershipId },
+          { err: error, errorMessage, orgId, membershipId },
           "Admin update membership role error"
         );
-        res.status(500).json({
-          error: "Failed to update membership role",
-          message: error instanceof Error ? error.message : "Unknown error",
+        return res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update membership role. Please try again or contact support.",
         });
       }
     }
@@ -468,24 +631,21 @@ export function setupMembersRoutes(
           });
         }
 
-        // Check for active Stripe subscription
-        if (org.stripe_customer_id) {
-          const subscriptionInfo = await getSubscriptionInfo(
-            org.stripe_customer_id
-          );
-          if (
-            subscriptionInfo &&
-            (subscriptionInfo.status === "active" ||
-              subscriptionInfo.status === "past_due")
-          ) {
-            return res.status(400).json({
-              error: "Cannot delete workspace with active subscription",
-              message:
-                "This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.",
-              has_active_subscription: true,
-              subscription_status: subscriptionInfo.status,
-            });
-          }
+        // Check for active subscription (checks both Stripe and local DB)
+        const orgDb = new OrganizationDatabase();
+        const subscriptionInfo = await orgDb.getSubscriptionInfo(orgId);
+        if (
+          subscriptionInfo &&
+          (subscriptionInfo.status === "active" ||
+            subscriptionInfo.status === "past_due")
+        ) {
+          return res.status(400).json({
+            error: "Cannot delete workspace with active subscription",
+            message:
+              "This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.",
+            has_active_subscription: true,
+            subscription_status: subscriptionInfo.status,
+          });
         }
 
         // Require confirmation by typing the organization name
@@ -499,7 +659,6 @@ export function setupMembersRoutes(
         }
 
         // Record audit log before deletion (while org still exists)
-        const orgDb = new OrganizationDatabase();
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: req.user!.id,

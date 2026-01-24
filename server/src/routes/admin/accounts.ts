@@ -22,7 +22,6 @@ import {
   NOT_MEMBER_ALIASED,
   type OrgTier,
 } from "../../db/org-filters.js";
-import { VALID_ASSIGNABLE_ROLES } from "../../types.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
@@ -170,6 +169,7 @@ export function setupAccountRoutes(
           renewals,
           members,
           disqualified,
+          missingOwner,
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
@@ -198,10 +198,16 @@ export function setupAccountRoutes(
                   )
                 )
                 OR
-                -- Members: only show if they have a real problem (expiring soon)
+                -- Members: show if they have a real problem (expiring soon OR missing owner)
                 (
                   ${MEMBER_FILTER_ALIASED}
-                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                  AND (
+                    o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                    OR (
+                      EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id)
+                      AND NOT EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner')
+                    )
+                  )
                 )
               )
           `),
@@ -287,6 +293,21 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE o.prospect_status = 'disqualified'
           `),
+
+          // Missing owner - orgs with members but no owner role
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner'
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `),
         ]);
 
         res.json({
@@ -299,6 +320,7 @@ export function setupAccountRoutes(
           renewals: parseInt(renewals.rows[0].count),
           members: parseInt(members.rows[0].count),
           disqualified: parseInt(disqualified.rows[0].count),
+          missing_owner: parseInt(missingOwner.rows[0].count),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
@@ -833,7 +855,7 @@ export function setupAccountRoutes(
       switch (viewName) {
         case "needs_attention":
           // Accounts needing action: prospects with overdue tasks/invoices/high engagement,
-          // OR members with real problems (expiring soon)
+          // OR members with real problems (expiring soon, missing owner)
           query = `
             ${selectFields},
             na.next_step_due_date as next_step_due,
@@ -847,6 +869,11 @@ export function setupAccountRoutes(
               WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
+              WHEN EXISTS (
+                SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id
+              ) AND NOT EXISTS (
+                SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner'
+              ) THEN 'missing_owner'
               ELSE 'needs_review'
             END as attention_reason
             FROM organizations o
@@ -873,10 +900,17 @@ export function setupAccountRoutes(
                   )
                 )
                 OR
-                -- Members: only show if they have a real problem
+                -- Members: show if they have a real problem (expiring soon OR missing owner)
                 (
                   ${MEMBER_FILTER_ALIASED}
-                  AND o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                  AND (
+                    o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
+                    OR (
+                      -- Has members but no owner role
+                      EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id)
+                      AND NOT EXISTS (SELECT 1 FROM organization_memberships om WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner')
+                    )
+                  )
                 )
               )
           `;
@@ -1062,6 +1096,24 @@ export function setupAccountRoutes(
               AND o.is_personal = false
           `;
           orderBy = ` ORDER BY computed_user_count DESC, o.engagement_score DESC NULLS LAST`;
+          break;
+
+        case "missing_owner":
+          // Organizations with members but no owner role
+          query = `
+            ${selectFields}
+            FROM organizations o
+            WHERE EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM organization_memberships om
+              WHERE om.workos_organization_id = o.workos_organization_id AND om.role = 'owner'
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `;
+          orderBy = ` ORDER BY o.name ASC`;
           break;
 
         default:
@@ -1771,7 +1823,7 @@ export function setupAccountRoutes(
    * unlike /members/:orgId/memberships/:membershipId which uses membershipId.
    */
   apiRouter.put(
-    "/api/admin/accounts/:orgId/members/:userId/role",
+    "/accounts/:orgId/members/:userId/role",
     requireAuth,
     requireAdmin,
     async (req: Request, res: Response) => {
@@ -1782,9 +1834,11 @@ export function setupAccountRoutes(
         return res.status(400).json({ error: "Role is required" });
       }
 
-      if (!VALID_ASSIGNABLE_ROLES.includes(role)) {
+      // Admin endpoint allows owner assignment (regular endpoints use VALID_ASSIGNABLE_ROLES which excludes owner)
+      const ADMIN_ASSIGNABLE_ROLES = ["owner", "admin", "member"] as const;
+      if (!ADMIN_ASSIGNABLE_ROLES.includes(role)) {
         return res.status(400).json({
-          error: `Invalid role. Must be one of: ${VALID_ASSIGNABLE_ROLES.join(", ")}`,
+          error: `Invalid role. Must be one of: ${ADMIN_ASSIGNABLE_ROLES.join(", ")}`,
         });
       }
 
@@ -1812,6 +1866,21 @@ export function setupAccountRoutes(
           });
         }
 
+        // Validate membership ID format (WorkOS membership IDs are 'om_' followed by alphanumeric chars)
+        const membershipId = membership.workos_membership_id;
+        // WorkOS IDs follow the format: prefix_ulid (e.g., om_01ABCDEF...)
+        const WORKOS_ID_PATTERN = /^om_[A-Za-z0-9]{20,30}$/;
+        if (!WORKOS_ID_PATTERN.test(membershipId)) {
+          logger.error(
+            { orgId, userId, membershipId },
+            "Invalid WorkOS membership ID format"
+          );
+          return res.status(400).json({
+            error: "Invalid membership data",
+            message: "Unable to update role due to invalid membership data. Please contact support.",
+          });
+        }
+
         // Update role via WorkOS API
         const { workos } = await import("../../auth/workos-client.js");
         if (!workos) {
@@ -1819,10 +1888,21 @@ export function setupAccountRoutes(
         }
 
         // Verify membership belongs to the specified organization via WorkOS
-        const existingMembership =
-          await workos.userManagement.getOrganizationMembership(
-            membership.workos_membership_id
+        let existingMembership;
+        try {
+          existingMembership =
+            await workos.userManagement.getOrganizationMembership(membershipId);
+        } catch (getMembershipError) {
+          logger.error(
+            { err: getMembershipError, orgId, userId, membershipId },
+            "Failed to get membership from WorkOS"
           );
+          return res.status(500).json({
+            error: "Unable to verify membership",
+            message: "Unable to update role. Please try again or contact support.",
+          });
+        }
+
         if (existingMembership.organizationId !== orgId) {
           return res.status(400).json({
             error: "Invalid membership",
@@ -1830,10 +1910,82 @@ export function setupAccountRoutes(
           });
         }
 
-        await workos.userManagement.updateOrganizationMembership(
-          membership.workos_membership_id,
-          { roleSlug: role }
-        );
+        // Verify the target role exists in WorkOS for this organization
+        try {
+          const roles = await workos.organizations.listOrganizationRoles({
+            organizationId: orgId,
+          });
+          const roleExists = roles.data.some((r) => r.slug === role);
+          if (!roleExists) {
+            logger.warn(
+              {
+                orgId,
+                role,
+                availableRoles: roles.data.map((r) => r.slug),
+              },
+              "Target role does not exist in WorkOS organization"
+            );
+            return res.status(400).json({
+              error: "Role not available",
+              message: `The '${role}' role is not configured for this organization. Please contact support to set up the role.`,
+            });
+          }
+        } catch (rolesError) {
+          // If we can't list roles, log warning but proceed - the update will fail if role doesn't exist
+          logger.warn(
+            { err: rolesError, orgId, role },
+            "Could not verify role exists - proceeding with update attempt"
+          );
+        }
+
+        try {
+          await workos.userManagement.updateOrganizationMembership(membershipId, {
+            roleSlug: role,
+          });
+        } catch (updateError) {
+          const updateErrorMessage =
+            updateError instanceof Error ? updateError.message : "Unknown error";
+
+          // Extract WorkOS-specific error details for logging
+          const workosErrorDetails =
+            updateError && typeof updateError === "object"
+              ? {
+                  code: (updateError as { code?: string }).code,
+                  errors: (updateError as { errors?: unknown }).errors,
+                  requestID: (updateError as { requestID?: string }).requestID,
+                  rawData: (updateError as { rawData?: unknown }).rawData,
+                }
+              : undefined;
+
+          logger.error(
+            {
+              err: updateError,
+              errorMessage: updateErrorMessage,
+              workosErrorDetails,
+              orgId,
+              userId,
+              membershipId,
+              role,
+            },
+            "Failed to update membership role in WorkOS"
+          );
+
+          // Provide more specific error message based on error type
+          let userMessage =
+            "Unable to update role. Please try again or contact support.";
+          if (
+            updateErrorMessage.includes("pattern") ||
+            updateErrorMessage.includes("validation")
+          ) {
+            userMessage =
+              "Unable to update role due to a configuration issue. Please contact support.";
+          }
+
+          return res.status(500).json({
+            error: "Unable to update role",
+            message: userMessage,
+          });
+        }
 
         // Update local cache
         await pool.query(
@@ -1855,20 +2007,46 @@ export function setupAccountRoutes(
           "Updated member role"
         );
 
+        // Record audit log for admin actions
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: req.user?.id || "admin",
+          action: "admin_member_role_changed",
+          resource_type: "membership",
+          resource_id: membershipId,
+          details: {
+            target_user_id: userId,
+            target_email: membership.email,
+            old_role: previousRole,
+            new_role: role,
+            admin_email: req.user?.email,
+          },
+        });
+
         res.json({
           success: true,
           message: `Role updated to ${role}`,
           user_id: userId,
           role,
         });
-      } catch (error) {
+      } catch (error: unknown) {
+        // Extract error details for logging
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        const errorDetails =
+          error && typeof error === "object" && "rawData" in error
+            ? (error as { rawData?: unknown }).rawData
+            : undefined;
+
         logger.error(
-          { err: error, orgId, userId, role },
+          { err: error, errorMessage, errorDetails, orgId, userId, role },
           "Error updating member role"
         );
-        res.status(500).json({
+
+        // Return a user-friendly error message (never expose internal details)
+        return res.status(500).json({
           error: "Internal server error",
-          message: "Unable to update member role",
+          message: "Unable to update member role. Please try again or contact support.",
         });
       }
     }

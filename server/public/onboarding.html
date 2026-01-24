@@ -686,10 +686,33 @@
             </div>
           </div>
 
+          <!-- Membership Tier Selection -->
+          <div class="form-group" id="companyTierGroup">
+            <label>Select your membership tier *</label>
+            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyTier" value="company_standard" required style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div style="flex: 1;">
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Company Membership</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Full membership benefits including member directory listing, event access, and working group participation</div>
+                </div>
+                <div id="companyStandardPrice" style="font-weight: var(--font-bold); color: var(--color-brand); white-space: nowrap;">$2,500<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyTier" value="company_icl" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div style="flex: 1;">
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Industry Council Leader</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Seat on Industry Council, strategic input on roadmap, speaking opportunities at events, featured recognition, plus all Company Membership benefits</div>
+                </div>
+                <div style="font-weight: var(--font-bold); color: var(--color-brand); white-space: nowrap;">$50,000<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+              </label>
+            </div>
+          </div>
+
           <div class="agreements-checkbox" onclick="document.getElementById('tosAgree').click(); event.stopPropagation();">
             <input type="checkbox" id="tosAgree" required onclick="event.stopPropagation();">
             <label for="tosAgree" onclick="event.stopPropagation();">
-              I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+              I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
             </label>
           </div>
           <button type="submit" class="btn" id="createBtn">Register Company</button>
@@ -716,15 +739,32 @@
             <strong>Joining on behalf of a company?</strong> <a href="#" onclick="showStep1(); return false;" style="color: var(--color-warning-700); text-decoration: underline;">Go back</a> and select "I'm joining on behalf of a company" instead.
           </p>
         </div>
-        <div style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5);">
-          <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Membership fee</div>
-          <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--color-brand);">$250<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
-          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Students, academics & non-profits: $50/year</div>
+        <!-- Membership Tier Selection -->
+        <div class="form-group">
+          <label>Select your membership tier *</label>
+          <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <input type="radio" name="individualTier" value="individual_professional" required style="width: 18px; height: 18px; flex-shrink: 0;">
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Professional</div>
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">For industry professionals, consultants, and freelancers</div>
+              </div>
+              <div style="font-weight: var(--font-bold); color: var(--color-brand); white-space: nowrap;">$250<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <input type="radio" name="individualTier" value="individual_academic" style="width: 18px; height: 18px; flex-shrink: 0;">
+              <div style="flex: 1;">
+                <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Academic, Student, or Non-profit</div>
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">For students, academics, researchers, and non-profit organizations</div>
+              </div>
+              <div style="font-weight: var(--font-bold); color: var(--color-brand); white-space: nowrap;">$50<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+            </label>
+          </div>
         </div>
         <div class="agreements-checkbox" onclick="document.getElementById('tosAgreeIndividual').click(); event.stopPropagation();">
           <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
           <label for="tosAgreeIndividual" onclick="event.stopPropagation();">
-            I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+            I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Use</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
           </label>
         </div>
         <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Join as Individual</button>
@@ -1160,6 +1200,26 @@
       errorDiv.style.display = 'block';
     }
 
+    // Update company standard pricing based on revenue tier
+    function updateCompanyPricing() {
+      var revenueTier = document.querySelector('input[name="revenueTier"]:checked');
+      var priceEl = document.getElementById('companyStandardPrice');
+      if (!revenueTier || !priceEl) return;
+
+      // $5M+ revenue gets $10,000/year, under $5M gets $2,500/year
+      var highRevenueTiers = ['5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+      if (highRevenueTiers.includes(revenueTier.value)) {
+        priceEl.innerHTML = '$10,000<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span>';
+      } else {
+        priceEl.innerHTML = '$2,500<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span>';
+      }
+    }
+
+    // Add listeners to revenue tier radio buttons
+    document.querySelectorAll('input[name="revenueTier"]').forEach(function(radio) {
+      radio.addEventListener('change', updateCompanyPricing);
+    });
+
     // Create organization form
     document.getElementById('createOrgForm').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -1167,6 +1227,7 @@
       var orgName = document.getElementById('orgName').value.trim();
       var companyType = document.querySelector('input[name="companyType"]:checked');
       var revenueTier = document.querySelector('input[name="revenueTier"]:checked');
+      var companyTier = document.querySelector('input[name="companyTier"]:checked');
       var tosAgree = document.getElementById('tosAgree').checked;
       var createBtn = document.getElementById('createBtn');
 
@@ -1185,8 +1246,13 @@
         return;
       }
 
+      if (!companyTier) {
+        showError('Please select your membership tier');
+        return;
+      }
+
       if (!tosAgree) {
-        showError('Please agree to the Terms of Service and Privacy Policy');
+        showError('Please agree to the Terms of Use and Privacy Policy');
         return;
       }
 
@@ -1204,6 +1270,7 @@
             organization_name: orgName,
             company_type: companyType.value,
             revenue_tier: revenueTier.value,
+            membership_tier: companyTier.value,
             corporate_domain: corporateDomain
           }),
         });
@@ -1225,10 +1292,16 @@
     // Create individual workspace
     async function createIndividualWorkspace() {
       var tosAgree = document.getElementById('tosAgreeIndividual').checked;
+      var membershipTier = document.querySelector('input[name="individualTier"]:checked');
       var btn = document.getElementById('individualBtn');
 
+      if (!membershipTier) {
+        showError('Please select a membership tier');
+        return;
+      }
+
       if (!tosAgree) {
-        showError('Please agree to the Terms of Service and Privacy Policy');
+        showError('Please agree to the Terms of Use and Privacy Policy');
         return;
       }
 
@@ -1249,7 +1322,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             organization_name: workspaceName,
-            is_personal: true
+            is_personal: true,
+            membership_tier: membershipTier.value
           }),
         });
 
@@ -1263,7 +1337,7 @@
       } catch (error) {
         showError(error.message);
         btn.disabled = false;
-        btn.textContent = 'Create Personal Workspace';
+        btn.textContent = 'Join as Individual';
       }
     }
 

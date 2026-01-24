@@ -16,7 +16,6 @@ import {
 } from "../middleware/auth.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
-import { getSubscriptionInfo } from "../billing/stripe-client.js";
 import { VALID_MEMBER_OFFERINGS } from "../types.js";
 
 const logger = createLogger("member-profile-routes");
@@ -450,25 +449,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       // Check subscription status before allowing visibility toggle
       // Only allow public profiles for paying members
-      if (is_public === true) {
-        const org = await orgDb.getOrganization(targetOrgId);
-        if (org?.stripe_customer_id) {
-          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
-          if (subscriptionInfo?.status !== 'active' && subscriptionInfo?.status !== 'trialing') {
-            return res.status(402).json({
-              error: 'Subscription required',
-              message: 'An active subscription is required to make your profile public.',
-            });
-          }
-        } else {
-          // No Stripe customer - must be in dev mode or a legacy account
-          // In dev mode, allow it. In production without stripe, deny.
-          if (!isDevModeEnabled()) {
-            return res.status(402).json({
-              error: 'Subscription required',
-              message: 'An active subscription is required to make your profile public.',
-            });
-          }
+      // Uses orgDb.hasActiveSubscription which checks both Stripe AND local DB
+      // (handles invoice-based memberships like Founding Members)
+      if (is_public === true && !isDevModeEnabled()) {
+        if (!await orgDb.hasActiveSubscription(targetOrgId)) {
+          return res.status(402).json({
+            error: 'Subscription required',
+            message: 'An active subscription is required to make your profile public.',
+          });
         }
       }
 

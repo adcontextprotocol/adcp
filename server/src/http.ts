@@ -19,7 +19,7 @@ import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
-import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
+import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -2298,24 +2298,65 @@ export class HTTPServer {
               let productName: string | null = null;
               let priceId: string | null = null;
               let billingInterval: string | null = null;
+              let priceLookupKey: string | null = null;
+              let productCategory: string | null = null;
 
               if (invoice.lines?.data && invoice.lines.data.length > 0) {
                 const primaryLine = invoice.lines.data[0] as any;
                 productId = primaryLine.price?.product as string || null;
                 priceId = primaryLine.price?.id || null;
                 billingInterval = primaryLine.price?.recurring?.interval || null;
+                priceLookupKey = primaryLine.price?.lookup_key || null;
 
-                // Fetch product name if we have product ID
+                // Fetch product name and category if we have product ID
                 if (productId) {
                   try {
                     const product = await stripe.products.retrieve(productId);
                     productName = product.name;
+                    productCategory = product.metadata?.category || null;
                   } catch (err) {
                     logger.error({ err, productId }, 'Failed to retrieve product details');
                     // Fallback to line item description (useful for tests)
                     productName = primaryLine.description || null;
                   }
                 }
+              }
+
+              // Determine if this is a membership invoice
+              // Membership products have lookup keys starting with aao_membership_ or aao_invoice_
+              // or have category='membership' in product metadata
+              const isMembershipInvoice =
+                productCategory === 'membership' ||
+                priceLookupKey?.startsWith('aao_membership_') ||
+                priceLookupKey?.startsWith('aao_invoice_');
+
+              // For membership invoices without a subscription, update subscription_status
+              // This handles manual invoices and one-time membership payments
+              if (isMembershipInvoice && !(invoice as any).subscription) {
+                const periodEnd = invoice.period_end
+                  ? new Date(invoice.period_end * 1000)
+                  : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Default to 1 year
+
+                await pool.query(
+                  `UPDATE organizations
+                   SET subscription_status = 'active',
+                       subscription_current_period_end = $1,
+                       updated_at = NOW()
+                   WHERE workos_organization_id = $2
+                     AND (subscription_status IS NULL OR subscription_status != 'active')`,
+                  [periodEnd, org.workos_organization_id]
+                );
+
+                logger.info({
+                  orgId: org.workos_organization_id,
+                  invoiceId: invoice.id,
+                  periodEnd: periodEnd.toISOString(),
+                  priceLookupKey,
+                  productCategory,
+                }, 'Activated membership from invoice payment (no subscription)');
+
+                // Invalidate member context cache
+                invalidateMemberContextCache();
               }
 
               // Record revenue event
@@ -5210,7 +5251,7 @@ Disallow: /api/admin/
         const htmlContent = await marked(agreement.text);
 
         const typeLabels: Record<string, string> = {
-          terms_of_service: 'Terms of Service',
+          terms_of_service: 'Terms of Use',
           privacy_policy: 'Privacy Policy',
           membership: 'Membership Agreement'
         };

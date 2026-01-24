@@ -7,12 +7,12 @@ jest.mock('../../server/src/db/client.js', () => ({
 
 // Mock the Stripe client
 jest.mock('../../server/src/billing/stripe-client.js', () => ({
-  getSubscriptionInfo: jest.fn(),
+  getStripeSubscriptionInfo: jest.fn(),
 }));
 
 describe('organization-db', () => {
   let mockPool: any;
-  let mockGetSubscriptionInfo: any;
+  let mockGetStripeSubscriptionInfo: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -25,7 +25,7 @@ describe('organization-db', () => {
 
     // Setup mocks
     const { getPool } = require('../../server/src/db/client.js');
-    mockGetSubscriptionInfo = require('../../server/src/billing/stripe-client.js').getSubscriptionInfo;
+    mockGetStripeSubscriptionInfo = require('../../server/src/billing/stripe-client.js').getStripeSubscriptionInfo;
     getPool.mockReturnValue(mockPool);
   });
 
@@ -53,7 +53,7 @@ describe('organization-db', () => {
 
       expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO organizations'),
-        ['org_123', 'Test Org', false, null, null]
+        ['org_123', 'Test Org', false, null, null, null]
       );
       expect(result).toMatchObject({
         workos_organization_id: 'org_123',
@@ -168,7 +168,7 @@ describe('organization-db', () => {
       const result = await orgDb.getSubscriptionInfo('org_123');
 
       expect(result).toEqual({ status: 'none' });
-      expect(mockGetSubscriptionInfo).not.toHaveBeenCalled();
+      expect(mockGetStripeSubscriptionInfo).not.toHaveBeenCalled();
     });
 
     test('returns status "none" when organization does not exist', async () => {
@@ -182,10 +182,10 @@ describe('organization-db', () => {
       const result = await orgDb.getSubscriptionInfo('org_notfound');
 
       expect(result).toEqual({ status: 'none' });
-      expect(mockGetSubscriptionInfo).not.toHaveBeenCalled();
+      expect(mockGetStripeSubscriptionInfo).not.toHaveBeenCalled();
     });
 
-    test('calls Stripe getSubscriptionInfo when stripe_customer_id exists', async () => {
+    test('calls getStripeSubscriptionInfo when stripe_customer_id exists', async () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [{
           workos_organization_id: 'org_123',
@@ -193,7 +193,7 @@ describe('organization-db', () => {
         }],
       });
 
-      mockGetSubscriptionInfo.mockResolvedValueOnce({
+      mockGetStripeSubscriptionInfo.mockResolvedValueOnce({
         status: 'active',
         product_name: 'Test Product',
         current_period_end: 1234567890,
@@ -204,7 +204,7 @@ describe('organization-db', () => {
 
       const result = await orgDb.getSubscriptionInfo('org_123');
 
-      expect(mockGetSubscriptionInfo).toHaveBeenCalledWith('cus_123');
+      expect(mockGetStripeSubscriptionInfo).toHaveBeenCalledWith('cus_123');
       expect(result).toEqual({
         status: 'active',
         product_name: 'Test Product',
@@ -221,7 +221,7 @@ describe('organization-db', () => {
         }],
       });
 
-      mockGetSubscriptionInfo.mockResolvedValueOnce(null);
+      mockGetStripeSubscriptionInfo.mockResolvedValueOnce(null);
 
       const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
       const orgDb = new OrganizationDatabase();
@@ -244,7 +244,7 @@ describe('organization-db', () => {
         }],
       });
 
-      mockGetSubscriptionInfo.mockResolvedValueOnce(null);
+      mockGetStripeSubscriptionInfo.mockResolvedValueOnce(null);
 
       const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
       const orgDb = new OrganizationDatabase();

@@ -1398,15 +1398,16 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
       allProspects = await response.json();
 
-      // Client-side filter for open_invoices view
+      // Client-side filter for open_invoices view - only count invoices with non-zero amounts
+      const hasNonZeroInvoice = (p) => p.pending_invoices?.some(inv => inv.amount_due > 0);
       if (view === 'open_invoices') {
-        filteredProspects = allProspects.filter(p => p.pending_invoices && p.pending_invoices.length > 0);
+        filteredProspects = allProspects.filter(hasNonZeroInvoice);
         // Update badge count
         document.getElementById('count-open_invoices').textContent = filteredProspects.length;
       } else {
         filteredProspects = allProspects;
         // Update open_invoices count when loading other views
-        const openInvoicesCount = allProspects.filter(p => p.pending_invoices && p.pending_invoices.length > 0).length;
+        const openInvoicesCount = allProspects.filter(hasNonZeroInvoice).length;
         document.getElementById('count-open_invoices').textContent = openInvoicesCount;
       }
 
@@ -3077,9 +3078,10 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         // Last activity
         let activityHtml = '<span style="color: var(--color-text-muted);">No activity</span>';
 
-        // Check for open invoices first - this is the most important signal
-        if (prospect.pending_invoices && prospect.pending_invoices.length > 0) {
-          const invoice = prospect.pending_invoices[0];
+        // Check for open invoices first - this is the most important signal (only non-zero amounts, sorted by largest first)
+        const nonZeroInvoices = (prospect.pending_invoices?.filter(inv => inv.amount_due > 0) || []).sort((a, b) => b.amount_due - a.amount_due);
+        if (nonZeroInvoices.length > 0) {
+          const invoice = nonZeroInvoices[0];
           const amount = (invoice.amount_due / 100).toLocaleString('en-US', { style: 'currency', currency: invoice.currency || 'USD' });
           const statusClass = invoice.status === 'draft' ? 'draft' : '';
           const statusLabel = invoice.status === 'draft' ? 'Draft' : 'Open';
@@ -3087,8 +3089,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           activityHtml = `<a href="${invoiceUrl}" target="_blank" class="invoice-badge ${statusClass}" title="Click to view invoice">
             💰 ${statusLabel}: ${amount}
           </a>`;
-          if (prospect.pending_invoices.length > 1) {
-            activityHtml += `<br><small style="color: var(--color-text-muted);">+${prospect.pending_invoices.length - 1} more</small>`;
+          if (nonZeroInvoices.length > 1) {
+            activityHtml += `<br><small style="color: var(--color-text-muted);">+${nonZeroInvoices.length - 1} more</small>`;
           }
         } else if (prospect.last_activity) {
           const activityDate = formatRelativeTime(prospect.last_activity.date);
@@ -3104,8 +3106,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           const dateClass = getActivityDateClass(prospect.last_activity_at);
           activityHtml = `<span class="activity-date ${dateClass}">${activityDate}</span>`;
         }
-        // Add pending tasks indicator (unless we're showing invoice)
-        if (!prospect.pending_invoices?.length && prospect.pending_steps?.pending > 0) {
+        // Add pending tasks indicator (unless we're showing a non-zero invoice)
+        if (!nonZeroInvoices.length && prospect.pending_steps?.pending > 0) {
           const overdueClass = prospect.pending_steps.overdue > 0 ? 'overdue' : '';
           const pendingText = prospect.pending_steps.overdue > 0
             ? `${prospect.pending_steps.overdue} overdue`
