@@ -137,6 +137,60 @@ flowchart TB
     Buyer -->|get_property_list with auth_token| Seller
 ```
 
+## Campaign Lifecycle
+
+Property governance operates across three distinct timing contexts. The key principle: **all governance evaluation happens at setup time**, with bid-time decisions using only cached data.
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant G as Governance Agent
+    participant D as Decisioning Platform
+
+    rect rgb(240, 248, 255)
+    Note over O,D: Phase 1: Campaign Planning (minutes-hours)
+    O->>G: create_property_list(filters, brand_manifest)
+    G-->>O: list_id, auth_token
+    O->>D: Share list_id + auth_token
+    D->>G: get_property_list(list_id, auth_token, resolve=true)
+    G-->>D: identifiers[] (pass/fail list, no scores)
+    D->>G: Register webhook for list updates
+    D->>D: Cache locally (optionally as AXE segments)
+    end
+
+    rect rgb(255, 248, 240)
+    Note over O,D: Phase 2: Bid Time (under 100ms, NO governance calls)
+    D->>D: Check domain against cached allowlist
+    Note right of D: May use AXE axei/axex segments<br/>or direct domain lookup
+    D->>D: Pass → bid, Fail → skip
+    end
+
+    rect rgb(248, 255, 240)
+    Note over O,D: Phase 3: Monitoring (during flight)
+    G-->>D: Webhook: list changed (counts only)
+    D->>G: get_property_list(list_id, auth_token, resolve=true)
+    G-->>D: Updated identifiers[]
+    D->>D: Update cached allowlist
+    end
+```
+
+### Phase 1: Campaign Planning
+
+During campaign setup, the orchestrator creates property lists on governance agents with filters and brand manifests. The governance agent evaluates properties and returns a **pass/fail list of identifiers** (no raw scores are exposed). The orchestrator shares the `list_id` and `auth_token` with the decisioning platform, which fetches and caches the resolved list.
+
+### Phase 2: Bid Time
+
+At bid time, the decisioning platform uses **only its local cache**—no calls to governance agents. Latency requirements (under 100ms) make real-time API calls impractical. The decisioning platform may implement this cache as:
+
+- **Direct domain lookup**: In-memory set of approved domains
+- **AXE segments**: Cache domains as `axei` (include) or `axex` (exclude) segments for impression-level filtering
+
+The choice of caching mechanism is implementation-specific; the protocol only requires that bid-time decisions use cached data.
+
+### Phase 3: Monitoring
+
+During campaign flight, governance agents continue evaluating properties. When a property's compliance status changes, the agent sends a webhook notification to registered subscribers. The webhook contains **change counts only** (not scores or reasons)—the decisioning platform must call `get_property_list` to fetch the updated list and refresh its cache.
+
 ## Sharing Property Lists with Sellers
 
 Once a buyer has a compliant property list, they share it with sellers:
