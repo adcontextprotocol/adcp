@@ -24,13 +24,23 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
           else
-            # Extract version from tag (v2.6.0 -> 2.6.0)
+            # Extract version from tag (v3.0.0-beta.1 -> 3.0.0-beta.1)
             VERSION="${GITHUB_REF_NAME#v}"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Extract major.minor for docs.json version label (2.6.0 -> 2.6)
-          MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+          # Extract major.minor for docs.json version label
+          # For "3.0.0-beta.1" -> "3.0-beta"
+          # For "3.0.1" -> "3.0"
+          if [[ "$VERSION" == *"-"* ]]; then
+            # Has prerelease suffix (e.g., 3.0.0-beta.1 -> 3.0-beta)
+            BASE_VERSION=$(echo "$VERSION" | cut -d- -f1)
+            PRERELEASE_TAG=$(echo "$VERSION" | cut -d- -f2 | cut -d. -f1)
+            MAJOR_MINOR="$(echo "$BASE_VERSION" | cut -d. -f1,2)-$PRERELEASE_TAG"
+          else
+            # Standard version (e.g., 3.0.1 -> 3.0)
+            MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+          fi
           echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
 
       - name: Checkout main branch
@@ -83,7 +93,8 @@ jobs:
           if [ -n "$EXISTING" ]; then
             echo "Version $MAJOR_MINOR already exists in docs.json, updating paths to $VERSION"
             # Update existing version's paths to point to the new patch version
-            jq --arg old_pattern "dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+/" \
+            # Regex matches both standard (3.0.1) and prerelease (3.0.0-beta.1) versions
+            jq --arg old_pattern "dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z]+\\.[0-9]+)?/" \
                --arg new_path "dist/docs/$VERSION/" \
                --arg major_minor "$MAJOR_MINOR" \
                '
@@ -97,8 +108,8 @@ jobs:
                      .
                    end
                  elif type == "string" then
-                   if test("^dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+/") then
-                     sub("^dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+/"; $new_path)
+                   if test("^dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z]+\\.[0-9]+)?/") then
+                     sub("^dist/docs/[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z]+\\.[0-9]+)?/"; $new_path)
                    else
                      .
                    end
