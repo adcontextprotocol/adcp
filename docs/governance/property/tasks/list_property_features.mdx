@@ -196,6 +196,29 @@ await a2a.send({
 }
 ```
 
+## Vendor Extensions
+
+Feature definitions can include vendor-specific data in an `ext` block with vendor-namespaced fields:
+
+```json
+{
+  "feature_id": "carbon_score",
+  "name": "Carbon Emissions Score",
+  "type": "quantitative",
+  "range": { "min": 0, "max": 100 },
+  "methodology_url": "https://scope3.com/methodology",
+  "ext": {
+    "scope3": {
+      "emissions_unit": "gCO2e_per_1000_impressions",
+      "model_version": "2024.1",
+      "sbti_aligned": true
+    }
+  }
+}
+```
+
+Extensions are optional. Buyers should process features normally even if `ext` contains unfamiliar vendors. Each vendor's `methodology_url` documents their extension schema.
+
 ## Integration Pattern
 
 Use `list_property_features` to understand agent capabilities before creating property lists:
@@ -227,9 +250,38 @@ governance_agent.create_property_list(
 )
 ```
 
+## Discovering Governance Agents
+
+Before calling `list_property_features`, you need to know which governance agents to query. There are two discovery mechanisms:
+
+### Via adagents.json (Publisher-Declared)
+
+Publishers declare which governance agents have data about their properties in `property_features` (from their `/.well-known/adagents.json`):
+
+```json
+{
+  "property_features": [
+    {
+      "url": "https://api.scope3.com",
+      "name": "Scope3",
+      "features": ["carbon_score", "sustainability_grade"]
+    }
+  ]
+}
+```
+
+This tells buyers: "Scope3 has carbon data for our properties." The buyer then calls `list_property_features` on Scope3 to get detailed feature definitions.
+
+See the [adagents.json Tech Spec](/docs/governance/property/adagents#governance-agent-discovery) for the complete discovery workflow.
+
+### Via Direct Subscription
+
+Buyers may also have direct relationships with governance agents (e.g., a subscription to a compliance vendor). In this case, the buyer already knows which agents to query.
+
 ## Usage Notes
 
-1. **Call first**: Use this task to discover capabilities before other governance tasks
-2. **Cache results**: Feature definitions change infrequently; cache for hours/days
-3. **Check coverage**: Not all features apply to all property types or countries
-4. **Marketplace discovery**: Use this to understand what different governance agents offer
+1. **Discover first**: Find governance agents via `property_features` in adagents.json before querying
+2. **Call early**: Use this task to understand capabilities before other governance tasks
+3. **Cache results**: Feature definitions change infrequently; cache for hours/days
+4. **Check coverage**: Not all features apply to all property types or countries
+5. **Marketplace discovery**: Use this to understand what different governance agents offer
