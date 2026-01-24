@@ -40,4 +40,9 @@ Introduces `get_adcp_capabilities` as a **protocol-level task** that works acros
 - System names encode country and precision (us_zip, gb_outward, nielsen_dma, etc.)
 - Aligns with capability declarations in get_adcp_capabilities
 
+**Governance capabilities (governance section):**
+- `property_features` - Array of features this governance agent can evaluate
+- Each feature has: `feature_id`, `type` (binary/quantitative/categorical), optional `range`/`categories`
+- Replaces need for separate `list_property_features` task
+
 **Capability contract:** If a capability is declared, the seller MUST honor it.

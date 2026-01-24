@@ -144,6 +144,39 @@ Inventory portfolio information:
 
 Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
 
+### governance
+
+Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents provide property data like compliance scores, brand safety ratings, and sustainability metrics.
+
+#### property_features
+
+Array of property features this governance agent can evaluate:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `feature_id` | string | **Required.** Unique identifier (e.g., `consent_quality`, `coppa_certified`) |
+| `type` | string | **Required.** Data type: `binary`, `quantitative`, or `categorical` |
+| `range` | object | For quantitative: `{ min, max }` |
+| `categories` | string[] | For categorical: valid values |
+| `description` | string | Human-readable description |
+
+**Example governance agent response:**
+
+```json
+{
+  "adcp": { "major_versions": [1] },
+  "supported_protocols": ["governance"],
+  "governance": {
+    "property_features": [
+      { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Quality score for consent collection practices" },
+      { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score" },
+      { "feature_id": "content_category", "type": "categorical", "categories": ["news", "entertainment", "sports", "finance"], "description": "Primary content category" }
+    ]
+  }
+}
+```
+
 ## The Capability Contract
 
 **If a capability is declared, the seller MUST honor it.**
