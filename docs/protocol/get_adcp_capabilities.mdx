@@ -311,7 +311,7 @@ const products = await client.getProducts({
     // Filter to NYC metro area products (coarse geography)
     metros: [{ system: 'nielsen_dma', code: '501' }],
     // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
-    required_targeting_systems: ['us_zip'],
+    required_geo_systems: ['us_zip'],
     // Only include if seller supports this AXE
     required_axe_integrations: ['https://agentic.scope3.com']
   }
