@@ -18,6 +18,31 @@ Portfolios solve this by:
 - **Automatic sync**: Webhook-based communication keeps everyone in sync
 - **Governance**: Optional review of creatives before approval
 
+## Relationship to sync_creatives
+
+Portfolios are an **optional enhancement** to the existing `sync_creatives` workflow. For AdCP 3.0, implementations MAY continue using `sync_creatives` for simpler workflows.
+
+| sync_creatives | Portfolio equivalent |
+|----------------|---------------------|
+| Push creatives to seller | Seller calls `get_portfolio` with `portfolio_ref` |
+| Request specific formats | `format_ids` filter on `get_portfolio` |
+| Get creative updates | Webhook notifications from creative agent |
+| N/A | `auto_build` for lazy loading |
+| N/A | `dry_run` to preview before building |
+| N/A | Governance agent integration |
+
+**Use portfolios when:**
+- Seller agents need to request formats on-demand without orchestrator involvement
+- You want lazy loading (`auto_build`) for formats
+- You need dry run preview before building creatives
+- You want separate governance agent integration
+- You need bidirectional webhook communication
+
+**Continue using sync_creatives when:**
+- Orchestrator controls all creative building
+- Simple push-based workflow is sufficient
+- No on-demand format requests needed
+
 ## Architecture Overview
 
 ```mermaid
