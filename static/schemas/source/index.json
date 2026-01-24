@@ -179,7 +179,7 @@
         },
         "portfolio": {
           "$ref": "/schemas/core/portfolio.json",
-          "description": "A comprehensive collection of creative assets and assembled creatives with source assets, brand context, and trackers"
+          "description": "A collection of creative assets that can hold source assets, assembled creatives, or both - with brand context and trackers"
         },
         "portfolio-ref": {
           "$ref": "/schemas/core/portfolio-ref.json",
@@ -780,7 +780,7 @@
       }
     },
     "portfolio": {
-      "description": "Portfolio management for comprehensive creative collections. Portfolios contain both source assets (images, videos, copy) and assembled creatives. Creatives are built on-demand and synced to seller agents via webhooks.",
+      "description": "Portfolio management for creative collections. Portfolios can contain source assets (images, videos, copy), assembled creatives, or both. Creatives are built on-demand and synced to seller agents via webhooks.",
       "tasks": {
         "create-portfolio": {
           "request": {

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/portfolio.json",
   "title": "Portfolio",
-  "description": "A comprehensive collection of creative assets and assembled creatives. Contains source assets (images, videos, copy), brand context, and trackers. From these, creatives are generated on-demand for specific formats. The portfolio holds both the foundational components AND the assembled creatives - giving buyers full visibility and portability across seller agents.",
+  "description": "A collection of creative assets that can hold source assets (images, videos, copy), assembled creatives, or both. Contains brand context and trackers. Creatives can be generated on-demand for specific formats. Gives buyers full visibility and portability across seller agents.",
   "type": "object",
   "properties": {
     "portfolio_id": {
