@@ -14,7 +14,7 @@ This document defines the Sponsored Intelligence (SI) Protocol specification. Th
 The SI Protocol defines how AI assistants (hosts) invoke and interact with brand agent endpoints to enable conversational brand experiences. The protocol consists of:
 
 1. **Discovery** - How hosts discover brand agents and their capabilities
-2. **Availability** - Anonymous pre-flight checks before session handoff
+2. **Offering Lookup** - Anonymous pre-flight checks before session handoff
 3. **Session Management** - Initiation, messaging, and termination
 4. **Capability Negotiation** - Determining supported features
 5. **UI Components** - Standard visual elements for rendering
@@ -69,39 +69,65 @@ The manifest SHOULD include:
 
 - `brand_manifest_url` - Reference to brand identity assets
 
-## Availability Check
+## Get Offering
 
 ### Purpose
 
-The `si_check_availability` task provides an anonymous pre-flight check before session handoff. This allows hosts to verify offer/product availability without establishing a session.
+The `si_get_offering` task retrieves offering details and availability before session handoff. This allows hosts to show offering information (pricing, product availability) to users before asking for consent to engage with the brand.
 
 ### Requirements
 
-Hosts MAY call `si_check_availability` before initiating a session.
+Hosts MAY call `si_get_offering` before initiating a session.
 
-If a host calls `si_check_availability`:
+If a host calls `si_get_offering`:
 
 1. The request MUST NOT include user PII
-2. The request MUST include at least one of: `offer_id` or `product_id`
-3. Brand agents MUST return an `availability_token` if available
-4. Brand agents SHOULD return a `ttl_seconds` indicating validity duration
+2. The request MUST include `offering_id`
+3. The request MAY include `context` for personalized results (e.g., "mens size 14 near Cincinnati")
+4. The request MAY set `include_products: true` to get matching products
+5. Brand agents MUST return an `offering_token` if available
+6. Brand agents SHOULD return a `ttl_seconds` indicating validity duration
 
-### Availability Token Flow
+### Offering Token Flow
 
-If a host receives an `availability_token`:
+If a host receives an `offering_token`:
 
 1. The host SHOULD include this token in the subsequent `si_initiate_session` request
-2. The brand agent MAY use the token to correlate pre-flight checks with sessions
+2. The brand agent MAY use the token to correlate offering lookups with sessions
 3. The token MUST be treated as opaque by the host
 
 ```json
 {
-  "availability": {
-    "token": "avail_abc123xyz",
-    "checked_at": "2025-01-19T10:00:00Z"
-  }
+  "offering_token": "offering_abc123xyz"
 }
 ```
+
+### Matching Products
+
+When `include_products` is true and `context` is provided, the response MAY include matching products:
+
+```json
+{
+  "available": true,
+  "offering_token": "offering_abc123xyz",
+  "offering": {
+    "title": "Nike Summer Sale",
+    "summary": "Up to 50% off summer collection",
+    "price_hint": "from $89"
+  },
+  "matching_products": [
+    {
+      "product_id": "nike-air-max-90",
+      "name": "Nike Air Max 90",
+      "price": "$129",
+      "availability_summary": "Size 14 in stock"
+    }
+  ],
+  "total_matching": 12
+}
+```
+
+This enables hosts to show rich previews before session initiation.
 
 ## Session Lifecycle
 
@@ -129,12 +155,12 @@ Hosts MUST include:
 Hosts SHOULD include:
 
 - `supported_capabilities` - Host's capability set for negotiation
-- `availability` - Token from pre-flight check if performed
+- `offering_token` - Token from `si_get_offering` if performed
 
 Hosts MAY include:
 
 - `media_buy_id` - AdCP media buy ID if triggered by advertising
-- `offer_id` - Brand-specific offer to apply
+- `offering_id` - Brand-specific offering to apply
 - `placement` - Where this session was triggered
 
 #### Response Requirements

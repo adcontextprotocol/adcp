@@ -770,6 +770,45 @@
       padding: 4px 0;
     }
 
+    /* SI Agent CTA Buttons */
+    .si-cta-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .si-cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .si-cta-button:hover:not(:disabled) {
+      background: var(--color-brand-hover);
+      transform: translateY(-1px);
+    }
+
+    .si-cta-button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .si-cta-icon {
+      font-size: 14px;
+    }
+
     /* Responsive */
     @media (max-width: 600px) {
       .message-content {
@@ -1514,6 +1553,7 @@
 
     .si-message {
       display: flex;
+      flex-wrap: wrap;
       gap: 10px;
       animation: fadeIn 0.2s ease;
     }
@@ -1642,6 +1682,7 @@
       flex-wrap: wrap;
       gap: 8px;
       margin-top: 10px;
+      flex-basis: 100%;
     }
 
     .si-ui-button {
@@ -3386,6 +3427,40 @@
         messageDiv.removeAttribute('id');
       }
 
+      // Render CTA buttons for available SI agents
+      function renderSiAgentCtas(contentDiv, siAgents) {
+        const ctaContainer = document.createElement('div');
+        ctaContainer.className = 'si-cta-container';
+
+        for (const agent of siAgents) {
+          const btn = document.createElement('button');
+          btn.className = 'si-cta-button';
+          btn.innerHTML = `<span class="si-cta-icon">&#128172;</span> Chat with ${escapeHtml(agent.display_name)}`;
+          btn.title = agent.tagline || `Connect with ${agent.display_name}`;
+
+          btn.addEventListener('click', async () => {
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerHTML = `<span class="si-cta-icon">&#8987;</span> Connecting...`;
+
+            // Send message to Addie to connect to this agent
+            const connectMessage = `Connect me to ${agent.display_name}`;
+            chatInput.value = connectMessage;
+            await sendMessage();
+          });
+
+          ctaContainer.appendChild(btn);
+        }
+
+        // Insert before feedback div (if exists) or at the end
+        const feedbackDiv = contentDiv.querySelector('.message-feedback');
+        if (feedbackDiv) {
+          contentDiv.insertBefore(ctaContainer, feedbackDiv);
+        } else {
+          contentDiv.appendChild(ctaContainer);
+        }
+      }
+
       // Show error toast
       function showError(message) {
         const toast = document.createElement('div');
@@ -3463,6 +3538,7 @@
         let fullContent = '';
         let messageId = null;
         let pendingSiSession = null;
+        let pendingSiAgents = null;
 
         try {
           const response = await authFetch('/api/addie/chat/stream', {
@@ -3525,6 +3601,12 @@
                       console.log('SI session detected, will open modal after stream completes:', data.si_session);
                       pendingSiSession = data.si_session;
                     }
+
+                    // Store available SI agents for CTA buttons
+                    if (data.si_agents && data.si_agents.length > 0) {
+                      console.log('SI agents available for CTA:', data.si_agents);
+                      pendingSiAgents = data.si_agents;
+                    }
                   } else if (currentEventType === 'error') {
                     throw new Error(data.error || 'Unknown error');
                   }
@@ -3576,6 +3658,11 @@
                 console.error('Error opening SI modal:', err);
               }
             }, 100);
+          }
+
+          // Render SI agent CTA buttons if available (but no session started)
+          if (pendingSiAgents && pendingSiAgents.length > 0 && !pendingSiSession) {
+            renderSiAgentCtas(contentDiv, pendingSiAgents);
           }
 
           // Update tab state - mark as not loading
@@ -4183,7 +4270,7 @@
         if (typing) typing.remove();
       }
 
-      // Send message through SI API
+      // Send message through SI API with streaming
       async function siSendMessage() {
         const message = siModalInput.value.trim();
         if (!message || siIsLoading || !siSessionId) return;
@@ -4195,39 +4282,98 @@
         // Add user message
         siAddMessage('user', message);
 
-        // Show typing indicator
-        siShowTyping();
+        // Create placeholder for streaming response
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'si-message assistant';
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'si-message-content';
+        messageDiv.appendChild(contentDiv);
+        siModalMessages.appendChild(messageDiv);
+
+        let streamedText = '';
+        let uiElements = null;
+        let sessionStatus = 'active';
+        let hasHandoff = false;
 
         try {
-          const response = await authFetch(`/api/si/sessions/${siSessionId}/messages`, {
+          // Get auth headers
+          const headers = { 'Content-Type': 'application/json' };
+          const token = localStorage.getItem('jwt');
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+
+          const response = await fetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({ message })
           });
-
-          siHideTyping();
 
           if (!response.ok) {
             throw new Error('Failed to send message');
           }
 
-          const data = await response.json();
+          // Process SSE stream
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
 
-          // Add assistant response
-          if (data.response) {
-            siAddMessage('assistant', data.response.message, data.response.ui_elements);
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-            // Check if session should be closed
-            if (data.response.session_status === 'completed' || data.response.handoff) {
-              // Session ended naturally - close modal without sending another end request
-              setTimeout(() => {
-                siCloseModal(false);
-              }, 2000);
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete SSE events from buffer
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const event = JSON.parse(line.slice(6));
+
+                  if (event.type === 'text') {
+                    streamedText += event.text;
+                    // Update content with markdown parsing
+                    if (window.marked) {
+                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText));
+                    } else {
+                      contentDiv.textContent = streamedText;
+                    }
+                    siModalMessages.scrollTop = siModalMessages.scrollHeight;
+                  } else if (event.type === 'done') {
+                    // Store UI elements and session info for final render
+                    uiElements = event.response?.ui_elements;
+                    sessionStatus = event.response?.session_status;
+                    hasHandoff = !!event.response?.handoff;
+                  } else if (event.type === 'error') {
+                    streamedText = event.error || 'Sorry, there was an error processing your message.';
+                    contentDiv.textContent = streamedText;
+                  }
+                } catch (parseError) {
+                  console.warn('SI stream parse error:', parseError);
+                }
+              }
             }
           }
+
+          // Render UI elements after stream completes
+          if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
+            const uiContainer = document.createElement('div');
+            uiContainer.className = 'si-ui-elements';
+            siRenderUiElements(uiContainer, uiElements);
+            messageDiv.appendChild(uiContainer);
+          }
+
+          // Check if session should be closed
+          if (sessionStatus === 'completed' || hasHandoff) {
+            setTimeout(() => {
+              siCloseModal(false);
+            }, 2000);
+          }
         } catch (error) {
-          siHideTyping();
-          siAddMessage('assistant', 'Sorry, there was an error processing your message. Please try again.');
+          contentDiv.textContent = 'Sorry, there was an error processing your message. Please try again.';
           console.error('SI message error:', error);
         } finally {
           siIsLoading = false;

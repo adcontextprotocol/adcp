@@ -54,6 +54,14 @@ interface SiResponse {
   }>;
 }
 
+/**
+ * Streaming events emitted during SI agent response generation
+ */
+export type SiStreamEvent =
+  | { type: "text"; text: string }
+  | { type: "done"; response: SiResponse }
+  | { type: "error"; error: string };
+
 // ============================================================================
 // Service Class
 // ============================================================================
@@ -207,14 +215,23 @@ export class SiAgentService {
       throw new Error(`Session is not active: ${session.status}`);
     }
 
+    // Validate session has required member profile
+    if (!session.member_profile_id) {
+      throw new Error(`Session ${sessionId} is missing member_profile_id`);
+    }
+    const memberProfileId = session.member_profile_id;
+
     // Get member profile
-    const member = await this.getMemberProfile(session.member_profile_id!);
+    const member = await this.getMemberProfile(memberProfileId);
     if (!member) {
-      throw new Error(`Member profile not found: ${session.member_profile_id}`);
+      throw new Error(`Member profile not found: ${memberProfileId}`);
     }
 
-    // Get relationship memory
-    const userIdentifier = session.user_email || session.user_slack_id || session.user_anonymous_id!;
+    // Get relationship memory - require at least one user identifier
+    const userIdentifier = session.user_email || session.user_slack_id || session.user_anonymous_id;
+    if (!userIdentifier) {
+      throw new Error(`Session ${sessionId} has no user identifier`);
+    }
     const userIdentifierType: "email" | "slack_id" | "anonymous" = session.user_email
       ? "email"
       : session.user_slack_id
@@ -224,14 +241,14 @@ export class SiAgentService {
     const relationship = await siDb.getOrCreateRelationship(
       userIdentifier,
       userIdentifierType,
-      session.member_profile_id!
+      memberProfileId
     );
 
     // Get conversation history
     const history = await siDb.getSessionMessages(sessionId, 10);
 
     // Get available skills
-    const skills = await siDb.ensureDefaultSkills(session.member_profile_id!);
+    const skills = await siDb.ensureDefaultSkills(memberProfileId);
 
     // Store user message
     if (message) {
@@ -314,6 +331,166 @@ export class SiAgentService {
     }
 
     return response;
+  }
+
+  /**
+   * Send a message in an active session with streaming response
+   * Yields text chunks as they're generated, then a final done event
+   */
+  async *sendMessageStream(params: {
+    sessionId: string;
+    message?: string;
+    actionResponse?: {
+      action: string;
+      element_id?: string;
+      payload?: Record<string, unknown>;
+    };
+  }): AsyncGenerator<SiStreamEvent> {
+    const { sessionId, message, actionResponse } = params;
+
+    // Get session
+    const session = await siDb.getSession(sessionId);
+    if (!session) {
+      yield { type: "error", error: `Session not found: ${sessionId}` };
+      return;
+    }
+
+    if (session.status !== "active") {
+      yield { type: "error", error: `Session is not active: ${session.status}` };
+      return;
+    }
+
+    // Validate session has required member profile
+    if (!session.member_profile_id) {
+      yield { type: "error", error: `Session ${sessionId} is missing member_profile_id` };
+      return;
+    }
+    const memberProfileId = session.member_profile_id;
+
+    // Get member profile
+    const member = await this.getMemberProfile(memberProfileId);
+    if (!member) {
+      yield { type: "error", error: `Member profile not found: ${memberProfileId}` };
+      return;
+    }
+
+    // Get relationship memory - require at least one user identifier
+    const userIdentifier = session.user_email || session.user_slack_id || session.user_anonymous_id;
+    if (!userIdentifier) {
+      yield { type: "error", error: `Session ${sessionId} has no user identifier` };
+      return;
+    }
+    const userIdentifierType: "email" | "slack_id" | "anonymous" = session.user_email
+      ? "email"
+      : session.user_slack_id
+        ? "slack_id"
+        : "anonymous";
+
+    const relationship = await siDb.getOrCreateRelationship(
+      userIdentifier,
+      userIdentifierType,
+      memberProfileId
+    );
+
+    // Get conversation history
+    const history = await siDb.getSessionMessages(sessionId, 10);
+
+    // Get available skills
+    const skills = await siDb.ensureDefaultSkills(memberProfileId);
+
+    // Store user message
+    if (message) {
+      await siDb.addMessage({
+        session_id: sessionId,
+        role: "user",
+        content: message,
+      });
+    } else if (actionResponse) {
+      await siDb.addMessage({
+        session_id: sessionId,
+        role: "user",
+        content: `[Action: ${actionResponse.action}]`,
+        action_response: actionResponse,
+      });
+    }
+
+    // Check for skill execution - not streamed since these are quick
+    if (actionResponse) {
+      const skillResponse = await this.handleSkillAction(
+        session,
+        skills,
+        actionResponse,
+        relationship
+      );
+      if (skillResponse) {
+        await siDb.addMessage({
+          session_id: sessionId,
+          role: "brand_agent",
+          content: skillResponse.message,
+          ui_elements: skillResponse.ui_elements,
+        });
+        // For skill responses, emit text then done
+        yield { type: "text", text: skillResponse.message };
+        yield { type: "done", response: skillResponse };
+        return;
+      }
+    }
+
+    // Generate response with streaming
+    const identity: UserIdentity = {
+      consent_granted: session.identity_consent_granted,
+      email: session.user_email || undefined,
+      name: session.user_name || undefined,
+      slack_id: session.user_slack_id || undefined,
+    };
+
+    // Use streaming generation
+    let fullText = "";
+    for await (const event of this.generateResponseStream({
+      member,
+      session,
+      relationship,
+      skills,
+      userMessage: message || `[Action: ${actionResponse?.action}]`,
+      isInitialMessage: false,
+      identity,
+      conversationHistory: history,
+    })) {
+      if (event.type === "text") {
+        fullText += event.text;
+        yield event;
+      } else if (event.type === "done") {
+        // Store brand agent message
+        await siDb.addMessage({
+          session_id: sessionId,
+          role: "brand_agent",
+          content: event.response.message,
+          ui_elements: event.response.ui_elements,
+        });
+
+        // Update relationship memory with conversation context
+        const memoryUpdate = this.extractMemoryUpdates(message, event.response);
+        if (Object.keys(memoryUpdate).length > 0) {
+          await siDb.updateRelationship(relationship.id, {
+            memory: memoryUpdate,
+          });
+        }
+
+        // Update session status if handoff
+        if (event.response.session_status !== "active") {
+          await siDb.updateSessionStatus(
+            sessionId,
+            event.response.session_status,
+            event.response.handoff?.type === "transaction" ? "handoff_transaction" : "handoff_complete",
+            event.response.handoff
+          );
+        }
+
+        yield event;
+      } else if (event.type === "error") {
+        yield event;
+      }
+    }
   }
 
   /**
@@ -413,6 +590,92 @@ export class SiAgentService {
       return {
         message: `I'm sorry, I'm having trouble right now. Please try again or contact ${member.display_name} directly at ${member.contact_email || member.contact_website || "their website"}.`,
         session_status: "active",
+      };
+    }
+  }
+
+  /**
+   * Streaming version of generateResponse - yields text chunks as they arrive
+   */
+  private async *generateResponseStream(params: {
+    member: SiMemberProfile;
+    session: SiSession;
+    relationship: SiRelationshipMemory;
+    skills: SiSkill[];
+    userMessage: string;
+    isInitialMessage: boolean;
+    identity: UserIdentity;
+    conversationHistory?: Array<{ role: string; content: string }>;
+  }): AsyncGenerator<SiStreamEvent> {
+    const {
+      member,
+      session,
+      relationship,
+      skills,
+      userMessage,
+      isInitialMessage,
+      identity,
+      conversationHistory,
+    } = params;
+
+    // Build system prompt
+    const systemPrompt = this.buildSystemPrompt(member, skills, relationship, identity);
+
+    // Build messages
+    const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+    // Add conversation history
+    if (conversationHistory && conversationHistory.length > 0) {
+      for (const msg of conversationHistory) {
+        messages.push({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.content,
+        });
+      }
+    }
+
+    // Add current message
+    const userContext = isInitialMessage
+      ? `[New conversation. User context: ${userMessage}]${session.offer_id ? ` [Active offer: ${session.offer_id}]` : ""}`
+      : userMessage;
+
+    messages.push({ role: "user", content: userContext });
+
+    try {
+      // Use streaming API
+      const stream = this.anthropic.messages.stream({
+        model: ModelConfig.primary,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages,
+      });
+
+      const textChunks: string[] = [];
+
+      // Process stream events and yield text chunks
+      for await (const event of stream) {
+        if (event.type === "content_block_delta") {
+          const delta = event.delta;
+          if ("text" in delta && delta.text) {
+            textChunks.push(delta.text);
+            yield { type: "text", text: delta.text };
+          }
+        }
+      }
+
+      // Get the final complete text
+      const rawText = textChunks.join("");
+
+      // Parse the complete response
+      const parsed = this.parseAgentResponse(rawText, member, skills, isInitialMessage);
+
+      yield { type: "done", response: parsed };
+    } catch (error) {
+      logger.error({ error, sessionId: session.session_id }, "SI Agent: Error in streaming response");
+
+      yield {
+        type: "error",
+        error: `I'm sorry, I'm having trouble right now. Please try again or contact ${member.display_name} directly.`,
       };
     }
   }
@@ -554,14 +817,22 @@ For normal conversation, just respond with plain text.`;
       };
     }
 
-    // Check for keywords that should trigger integration options
+    // Check for specific phrases that indicate integration intent
+    // Using precise phrases to avoid false positives (e.g., "mcp" alone could appear in other contexts)
     const lowerText = rawText.toLowerCase();
-    if (
-      lowerText.includes("add me as a tool") ||
-      lowerText.includes("mcp") ||
-      lowerText.includes("integrate") ||
-      lowerText.includes("take me with you")
-    ) {
+    const integrationPhrases = [
+      "add me as a tool",
+      "add as mcp tool",
+      "add as an mcp tool",
+      "take me with you",
+      "install as tool",
+      "add to your workflow",
+      "connect via a2a",
+      "connect via mcp",
+    ];
+    const hasIntegrationIntent = integrationPhrases.some((phrase) => lowerText.includes(phrase));
+
+    if (hasIntegrationIntent) {
       return {
         message: rawText,
         ui_elements: [this.generateIntegrationActions(member)],
