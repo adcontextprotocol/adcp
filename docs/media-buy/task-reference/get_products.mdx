@@ -357,7 +357,8 @@ const result = await testAgent.getProducts({
 });
 
 if (result.success && result.data) {
-  // Products with property_tags in publisher_properties need resolution via list_authorized_properties
+  // Products with property_tags in publisher_properties represent large networks
+  // Use get_adcp_capabilities to discover the agent's portfolio
   const productsWithTags = result.data.products.filter(p =>
     p.publisher_properties?.some(pub => pub.property_tags && pub.property_tags.length > 0)
   );
@@ -379,7 +380,8 @@ async def discover_property_tags():
         }
     )
 
-    # Products with property_tags in publisher_properties need resolution via list_authorized_properties
+    # Products with property_tags in publisher_properties represent large networks
+    # Use get_adcp_capabilities to discover the agent's portfolio
     products_with_tags = [p for p in result.products
         if any(pub.get('property_tags') for pub in p.get('publisher_properties', []))]
     print(f"{len(products_with_tags)} products use property tags (large networks)")

@@ -31,7 +31,7 @@
       ]
     }
   },
-  "lastUpdated": "2025-11-22",
+  "lastUpdated": "2025-01-23",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -361,6 +361,18 @@
         "creative-sort-field": {
           "$ref": "/schemas/enums/creative-sort-field.json",
           "description": "Fields available for sorting creative listings"
+        },
+        "geo-level": {
+          "$ref": "/schemas/enums/geo-level.json",
+          "description": "Geographic targeting granularity levels (country, region, metro, postal_area)"
+        },
+        "metro-system": {
+          "$ref": "/schemas/enums/metro-system.json",
+          "description": "Metro area classification systems for geographic targeting (nielsen_dma, uk_itl1, uk_itl2, eurostat_nuts2)"
+        },
+        "postal-system": {
+          "$ref": "/schemas/enums/postal-system.json",
+          "description": "Postal code systems for geographic targeting. System names encode country and precision (us_zip, gb_outward, ca_fsa, etc.)"
         }
       }
     },
@@ -489,6 +501,8 @@
           }
         },
         "list-authorized-properties": {
+          "deprecated": true,
+          "deprecation_note": "Replaced by get_capabilities which provides expanded capability declaration",
           "request": {
             "$ref": "/schemas/media-buy/list-authorized-properties-request.json",
             "description": "Request parameters for discovering all properties this agent is authorized to represent"
@@ -623,16 +637,6 @@
         }
       },
       "tasks": {
-        "list-property-features": {
-          "request": {
-            "$ref": "/schemas/property/list-property-features-request.json",
-            "description": "Request parameters for discovering governance agent capabilities"
-          },
-          "response": {
-            "$ref": "/schemas/property/list-property-features-response.json",
-            "description": "Response payload for list_property_features task"
-          }
-        },
         "create-property-list": {
           "request": {
             "$ref": "/schemas/property/create-property-list-request.json",
@@ -755,6 +759,21 @@
         }
       }
     },
+    "protocol": {
+      "description": "Protocol-level tasks that work across all AdCP domain protocols",
+      "tasks": {
+        "get-adcp-capabilities": {
+          "request": {
+            "$ref": "/schemas/protocol/get-adcp-capabilities-request.json",
+            "description": "Request parameters for cross-protocol capability discovery"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/get-adcp-capabilities-response.json",
+            "description": "Response payload for get_adcp_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
+          }
+        }
+      }
+    },
     "adagents": {
       "description": "Authorized sales agents file format specification",
       "$ref": "/schemas/adagents.json",
@@ -766,7 +785,9 @@
       "schemas": {
         "adcp-extension": {
           "$ref": "/schemas/protocols/adcp-extension.json",
-          "description": "AdCP extension for agent cards (MCP and A2A). Declares AdCP version, supported protocol domains, and typed extensions."
+          "deprecated": true,
+          "deprecation_note": "Use tool-based discovery instead. Check for 'get_adcp_capabilities' tool, then call it for full capability details.",
+          "description": "DEPRECATED: AdCP extension for agent cards. Use get_adcp_capabilities tool for discovery instead."
         }
       }
     },

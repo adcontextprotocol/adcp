@@ -3,87 +3,15 @@ sidebar_position: 1
 title: list_property_features
 ---
 
-<Info>
-**AdCP 3.0 Proposal** - This task is under development for AdCP 3.0.
-</Info>
+<Warning>
+**Deprecated** - Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) instead. Governance agent capabilities are now declared in the `governance.property_features` section of the capabilities response.
+</Warning>
 
-**Task**: Discover what features a property governance agent can evaluate.
+This task has been superseded by the protocol-level [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) task, which provides capability discovery across all AdCP protocols in a single call.
 
-**Response Time**: ~200ms
+## Migration
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/governance/list-property-features-request.json`](https://adcontextprotocol.org/schemas/v1/governance/list-property-features-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/governance/list-property-features-response.json`](https://adcontextprotocol.org/schemas/v1/governance/list-property-features-response.json)
-
-The `list_property_features` task returns the features a governance agent can evaluate. This is the discovery mechanism for understanding an agent's capabilities before using other governance tasks.
-
-## Request Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `property_types` | string[] | No | Filter to features available for these property types |
-| `countries` | string[] | No | Filter to features available in these countries |
-
-## Response Structure
-
-All AdCP responses include:
-- **message**: Human-readable summary of the operation result
-- **context_id**: Session continuity identifier for follow-up requests
-- **data**: Task-specific payload (see Response Data below)
-
-## Response Data
-
-```json
-{
-  "features": [
-    {
-      "feature_id": "consent_quality",
-      "name": "Consent Quality Score",
-      "description": "Measures the quality of consent implementation including UX, granularity, and compliance",
-      "type": "quantitative",
-      "range": { "min": 0, "max": 100 },
-      "coverage": {
-        "property_types": ["website", "mobile_app"],
-        "countries": []
-      }
-    },
-    {
-      "feature_id": "coppa_certified",
-      "name": "COPPA Certified",
-      "description": "Whether the property has COPPA certification for child-directed content",
-      "type": "binary",
-      "coverage": {
-        "property_types": ["website", "mobile_app", "ctv_app"],
-        "countries": ["US"]
-      }
-    },
-    {
-      "feature_id": "content_category",
-      "name": "Content Category",
-      "description": "IAB content category classification",
-      "type": "categorical",
-      "allowed_values": ["news", "sports", "entertainment", "kids_family", "technology", "business", "adult", "violence"]
-    }
-  ]
-}
-```
-
-### Feature Types
-
-| Type | Description | Schema Fields |
-|------|-------------|---------------|
-| `binary` | True/false values | None additional |
-| `quantitative` | Numeric values within a range | `range: { min, max }` |
-| `categorical` | Enumerated string values | `allowed_values: string[]` |
-
-### Coverage
-
-The `coverage` object indicates where a feature applies:
-- **property_types**: Empty array means all property types
-- **countries**: Empty array means all countries
-
-## Protocol-Specific Examples
-
-### MCP Request
+Instead of calling `list_property_features`:
 
 ```json
 {
@@ -92,67 +20,52 @@ The `coverage` object indicates where a feature applies:
 }
 ```
 
-### MCP Response
+Call `get_adcp_capabilities` and access the `governance.property_features` array:
 
 ```json
 {
-  "message": "This agent evaluates 12 features across consent, brand safety, and sustainability.",
-  "context_id": "ctx-gov-features-123",
-  "features": [
-    {
-      "feature_id": "consent_quality",
-      "name": "Consent Quality Score",
-      "description": "Measures the quality of consent implementation",
-      "type": "quantitative",
-      "range": { "min": 0, "max": 100 }
-    },
-    {
-      "feature_id": "tcf_version",
-      "name": "TCF Version",
-      "description": "IAB Transparency & Consent Framework version supported",
-      "type": "categorical",
-      "allowed_values": ["none", "tcf_1.1", "tcf_2.0", "tcf_2.2"]
-    },
-    {
-      "feature_id": "coppa_certified",
-      "name": "COPPA Certified",
-      "description": "Whether property has COPPA certification",
-      "type": "binary",
-      "coverage": {
-        "property_types": ["website", "mobile_app", "ctv_app"],
-        "countries": ["US"]
-      }
-    }
-  ]
+  "tool": "get_adcp_capabilities",
+  "arguments": {}
 }
 ```
 
-### MCP Request - Filtered by Property Type
+Response:
 
 ```json
 {
-  "tool": "list_property_features",
-  "arguments": {
-    "property_types": ["mobile_app"]
+  "adcp": { "major_versions": [1] },
+  "supported_protocols": ["governance"],
+  "governance": {
+    "property_features": [
+      {
+        "feature_id": "consent_quality",
+        "type": "quantitative",
+        "range": { "min": 0, "max": 100 },
+        "description": "Measures the quality of consent implementation"
+      },
+      {
+        "feature_id": "coppa_certified",
+        "type": "binary",
+        "description": "Whether the property has COPPA certification"
+      },
+      {
+        "feature_id": "content_category",
+        "type": "categorical",
+        "categories": ["news", "sports", "entertainment", "technology"],
+        "description": "IAB content category classification"
+      }
+    ]
   }
 }
 ```
 
-### A2A Request
+## Feature Types
 
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "data",
-      data: {
-        skill: "list_property_features",
-        parameters: {}
-      }
-    }]
-  }
-});
-```
+| Type | Description | Schema Fields |
+|------|-------------|---------------|
+| `binary` | True/false values | None additional |
+| `quantitative` | Numeric values within a range | `range: { min, max }` |
+| `categorical` | Enumerated string values | `categories: string[]` |
 
 ## Example Feature Sets by Agent Type
 
