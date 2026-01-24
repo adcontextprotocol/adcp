@@ -4,7 +4,7 @@ title: Protocol Specification
 ---
 
 <Info>
-**AdCP 2.6 Proposal** - This specification is under development for AdCP 2.6. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+**AdCP 3.0 Proposal** - This specification is under development for AdCP 3.0. Feedback welcome in the [AAO Slack](https://agenticadvertising.org).
 </Info>
 
 **Status**: Request for Comments
@@ -32,12 +32,12 @@ The Portfolio Protocol provides:
 
 ### Agent Roles
 
-The Portfolio Protocol involves three agent roles:
+The Portfolio Protocol involves four agent roles. Note that a single platform may play multiple roles - for instance, a platform that generates creatives and delivers them acts as both creative agent and seller agent.
 
 #### Creative Agent
 The platform hosting portfolios and building creatives:
 - **Responsibilities**: Store source assets, build creatives, serve ad tags
-- **Capabilities**: Format building, creative adaptation, governance enforcement
+- **Capabilities**: Format building, creative adaptation
 - **Authentication**: Issues tokens for seller agent access
 
 #### Seller Agent
@@ -46,11 +46,17 @@ The platform receiving media buys and serving ads:
 - **Capabilities**: Format discovery, creative requests, approval management
 - **Authentication**: Uses tokens from `portfolio_ref` to access portfolios
 
+#### Governance Agent
+The platform reviewing creatives for brand safety and compliance:
+- **Responsibilities**: Review creatives against brand standards, approve or reject
+- **Capabilities**: Content analysis, policy enforcement, compliance reporting
+- **Authentication**: Receives webhooks from creative or seller agents
+
 #### Orchestrator (Buyer Agent)
 The platform coordinating media buying workflows:
 - **Responsibilities**: Create portfolios, build initial creatives, create media buys
 - **Capabilities**: Workflow orchestration, budget management, campaign planning
-- **Authentication**: Has credentials with both creative and seller agents
+- **Authentication**: Has credentials with creative, seller, and governance agents
 
 ### Portfolio
 
