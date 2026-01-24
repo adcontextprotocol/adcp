@@ -793,10 +793,6 @@
     "sponsored-intelligence": {
       "description": "Sponsored Intelligence Protocol for conversational brand experiences in AI assistants",
       "supporting-schemas": {
-        "si-manifest": {
-          "$ref": "/schemas/sponsored-intelligence/si-manifest.json",
-          "description": "Brand's declaration of SI endpoint capabilities (transport, modalities, components, commerce)"
-        },
         "si-capabilities": {
           "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
           "description": "Capability categories that brand or host can support (modalities, components, commerce)"

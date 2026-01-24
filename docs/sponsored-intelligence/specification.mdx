@@ -34,38 +34,39 @@ Brand agents SHOULD support MCP as the preferred transport.
 
 ### Transport Declaration
 
-The SI manifest MUST declare supported transports:
+Brand agents declare supported transports via `get_adcp_capabilities`:
 
 ```json
 {
-  "endpoint": {
-    "transports": [
-      { "type": "mcp", "url": "https://brand.example/mcp" }
-    ],
-    "preferred": "mcp"
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["sponsored_intelligence"],
+  "sponsored_intelligence": {
+    "endpoint": {
+      "transports": [
+        { "type": "mcp", "url": "https://brand.example/mcp" }
+      ],
+      "preferred": "mcp"
+    },
+    "capabilities": { ... },
+    "brand_manifest_url": "https://brand.example/.well-known/brand-manifest.json"
   }
 }
 ```
 
-If multiple transports are declared, the manifest SHOULD include a `preferred` field.
+If multiple transports are declared, the response SHOULD include a `preferred` field.
 
 ## Discovery
 
-### SI Manifest Location
+### Capability Discovery
 
-Brand agents MUST publish their SI manifest at one of the following locations:
+Brand agents MUST implement the `get_adcp_capabilities` task to declare SI support. When a host calls this task, the response MUST include:
 
-1. `/.well-known/si-manifest.json` (RECOMMENDED)
-2. Referenced from `adagents.json` via the `si_manifest_url` field
+- `sponsored_intelligence` in the `supported_protocols` array
+- A `sponsored_intelligence` object containing:
+  - `endpoint` - Transport configuration (REQUIRED)
+  - `capabilities` - Supported modalities and components (REQUIRED)
 
-### SI Manifest Schema
-
-The SI manifest MUST conform to the `si-manifest.json` schema and MUST include:
-
-- `endpoint` - Transport configuration
-- `capabilities` - Supported modalities and components
-
-The manifest SHOULD include:
+The response SHOULD include:
 
 - `brand_manifest_url` - Reference to brand identity assets
 

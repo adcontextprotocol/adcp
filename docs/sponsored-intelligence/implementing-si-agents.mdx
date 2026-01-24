@@ -14,35 +14,41 @@ An SI agent is an MCP or A2A server that implements four tasks:
 3. `si_send_message` - Exchange messages
 4. `si_terminate_session` - End the conversation
 
-## SI Manifest
+## Capability Discovery
 
-First, declare your agent's capabilities in an SI manifest. This can be hosted at `.well-known/si-manifest.json` or referenced from your adagents.json:
+SI agents expose their capabilities through the standard AdCP `get_adcp_capabilities` task. When a host calls this task, your agent returns its SI configuration:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/sponsored-intelligence/si-manifest.json",
-  "endpoint": {
-    "transports": [
-      { "type": "mcp", "url": "https://yourbrand.example/si-agent" }
-    ]
-  },
-  "capabilities": {
-    "modalities": {
-      "voice": false,
-      "video": false,
-      "avatar": false
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["sponsored_intelligence"],
+  "sponsored_intelligence": {
+    "endpoint": {
+      "transports": [
+        { "type": "mcp", "url": "https://yourbrand.example/si-agent" }
+      ]
     },
-    "components": {
-      "standard": ["text", "link", "image", "product_card", "carousel", "action_button"],
-      "extensions": {}
+    "capabilities": {
+      "modalities": {
+        "conversational": true,
+        "voice": false,
+        "video": false,
+        "avatar": false
+      },
+      "components": {
+        "standard": ["text", "link", "image", "product_card", "carousel", "action_button"],
+        "extensions": {}
+      },
+      "commerce": {
+        "acp_checkout": false
+      }
     },
-    "commerce": {
-      "acp_checkout": false
-    }
-  },
-  "brand_manifest_url": "https://yourbrand.example/.well-known/brand-manifest.json"
+    "brand_manifest_url": "https://yourbrand.example/.well-known/brand-manifest.json"
+  }
 }
 ```
+
+This unified discovery mechanism lets hosts discover SI capabilities alongside other AdCP protocols.
 
 ## Reference Implementation
 
@@ -251,8 +257,8 @@ Once your endpoint is registered:
 
 To make your SI agent available through Addy and other hosts:
 
-1. Implement the four SI tasks
-2. Host your SI manifest at a public URL
+1. Implement the five SI tasks (`get_adcp_capabilities` + four SI tasks)
+2. Ensure `get_adcp_capabilities` returns your SI endpoint and capabilities
 3. Contact the AgenticAdvertising.org team to register your endpoint
 4. Test the integration in the staging environment
 
