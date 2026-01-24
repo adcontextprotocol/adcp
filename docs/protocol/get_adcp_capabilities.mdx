@@ -346,9 +346,50 @@ const buy = await client.createMediaBuy({
 });
 ```
 
-**Key distinction:**
-- **Product filters** (get_products): Filter by country coverage AND seller capabilities (like ZIP targeting support)
-- **Targeting overlay** (create_media_buy): Apply fine-grained geography to restrict where ads actually deliver
+**Two models for product geography:**
+
+| Inventory Type | Filter By | Example |
+|----------------|-----------|---------|
+| Digital (display, OLV, CTV) | Capability: `required_geo_targeting` | Products have broad coverage, target at buy time |
+| Local (radio, DOOH, local TV) | Coverage: `metros`, `regions` | Products ARE geographically bound |
+
+- **Digital inventory**: Use `countries` + `required_geo_targeting` (capability), apply fine-grained targeting in `create_media_buy`
+- **Local inventory**: Use `metros`/`regions` (coverage) to find products with coverage in your target markets
+
+### Local Inventory Example (Radio, DOOH)
+
+For locally-bound inventory, products ARE geographically specific. A radio station in NYC DMA only covers NYC.
+
+```javascript
+// Find radio products in specific DMAs
+const radioProducts = await client.getProducts({
+  brief: "Radio inventory in NYC and LA markets",
+  filters: {
+    channels: ['radio'],
+    // Coverage filter: products must cover these metros
+    metros: [
+      { system: 'nielsen_dma', code: '501' },  // NYC
+      { system: 'nielsen_dma', code: '803' }   // LA
+    ]
+  }
+});
+
+// For local inventory, targeting_overlay is optional -
+// the product's coverage IS the geography
+const buy = await client.createMediaBuy({
+  buyer_ref: 'radio-campaign-001',
+  brand_manifest: { url: 'https://mybrand.com' },
+  packages: [{
+    buyer_ref: 'package-001',
+    product_id: radioProducts.products[0].product_id,
+    pricing_option_id: radioProducts.products[0].pricing_options[0].id,
+    budget: 5000
+    // No targeting_overlay needed - product covers NYC DMA
+  }],
+  start_time: { type: 'asap' },
+  end_time: '2025-03-01T00:00:00Z'
+});
+```
 
 ## Response Example
 

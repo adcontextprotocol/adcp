@@ -84,10 +84,37 @@
     },
     "countries": {
       "type": "array",
-      "description": "Filter by target countries using ISO 3166-1 alpha-2 country codes (e.g., ['US', 'CA', 'GB']). Returns products with coverage in these countries.",
+      "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Works for all inventory types.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "regions": {
+      "type": "array",
+      "description": "Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-SCT']). Use for locally-bound inventory (regional OOH, local TV) where products have region-specific coverage.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
+      }
+    },
+    "metros": {
+      "type": "array",
+      "description": "Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Use when products have DMA/metro-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/enums/metro-system.json",
+            "description": "Metro classification system"
+          },
+          "code": {
+            "type": "string",
+            "description": "Metro code within the system (e.g., '501' for NYC DMA)"
+          }
+        },
+        "required": ["system", "code"],
+        "additionalProperties": false
       }
     },
     "channels": {

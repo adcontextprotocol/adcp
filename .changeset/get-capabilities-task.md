@@ -30,12 +30,22 @@ Introduces `get_adcp_capabilities` as a **protocol-level task** that works acros
 - Metros with named systems (nielsen_dma, uk_itl1, uk_itl2, eurostat_nuts2)
 - Postal areas with named systems encoding country and precision (us_zip, gb_outward, ca_fsa, etc.)
 
-**Product filters:**
-- Added `required_geo_targeting` - filter to sellers supporting specific geo capabilities with two-layer structure:
+**Product filters - two models for geography:**
+
+*Coverage filters (for locally-bound inventory like radio, OOH, local TV):*
+- `countries` - country coverage (ISO 3166-1 alpha-2)
+- `regions` - region coverage (ISO 3166-2) for regional OOH, local TV
+- `metros` - metro coverage ({ system, code }) for radio, DOOH, DMA-based inventory
+
+*Capability filters (for digital inventory with broad coverage):*
+- `required_geo_targeting` - filter by seller capability with two-layer structure:
   - `level`: targeting granularity (country, region, metro, postal_area)
-  - `system`: classification taxonomy for levels with multiple systems (e.g., 'nielsen_dma' for metro, 'us_zip' for postal_area)
-- Added required_axe_integrations, required_features capability filters
-- Product filters use `countries` for coverage and `required_geo_targeting` for capability discovery (no metros/regions filters - products don't have metro-specific coverage)
+  - `system`: classification taxonomy (e.g., 'nielsen_dma', 'us_zip')
+- `required_axe_integrations` - filter by AXE support
+- `required_features` - filter by protocol feature support
+
+Use coverage filters when products ARE geographically bound (radio station = DMA).
+Use capability filters when products have broad coverage and you'll target at buy time.
 
 **Targeting schema:**
 - Updated `targeting.json` with structured geo systems
