@@ -92,15 +92,19 @@ MCP responses use a **flat structure** where task-specific fields are at the top
 
 All AdCP tasks are available as MCP tools:
 
+### Protocol Tools
+```javascript
+await mcp.call('get_adcp_capabilities', {...});  // Discover agent capabilities (start here)
+```
+
 ### Media Buy Tools
 ```javascript
 await mcp.call('get_products', {...});           // Discover inventory
 await mcp.call('list_creative_formats', {...});  // Get format specs
-await mcp.call('create_media_buy', {...});       // Create campaigns  
+await mcp.call('create_media_buy', {...});       // Create campaigns
 await mcp.call('update_media_buy', {...});       // Modify campaigns
 await mcp.call('sync_creatives', {...});         // Manage creative assets
 await mcp.call('get_media_buy_delivery', {...}); // Performance metrics
-await mcp.call('list_authorized_properties', {...}); // Available properties
 await mcp.call('provide_performance_feedback', {...}); // Share outcomes
 ```
 
@@ -633,6 +637,10 @@ const adcpTools = tools.filter(t => t.name.startsWith('adcp_') ||
 ```
 
 ### AdCP Extension via MCP Server Card
+
+<Note>
+**Recommended**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for runtime capability discovery. The server card extension provides static metadata for tool catalogs and registries.
+</Note>
 
 MCP servers can declare AdCP support via a server card at `/.well-known/mcp.json` (or `/.well-known/server.json`). AdCP-specific metadata goes in the `_meta` field using the `adcontextprotocol.org` namespace.
 

@@ -119,9 +119,9 @@ These operations are publicly accessible to enable discovery:
 
 | Operation | Risk | Auth Required |
 |-----------|------|---------------|
+| `get_adcp_capabilities` | Agent capability discovery | None |
 | `get_products` | Public inventory discovery | Optional (limited results without auth) |
 | `list_creative_formats` | Public format catalog | None |
-| `list_authorized_properties` | Public property listing | None |
 
 ## Authentication & Authorization
 
@@ -167,7 +167,7 @@ AdCP implementations should implement fine-grained authorization:
 
 | Scope | Description | Example Operations |
 |-------|-------------|-------------------|
-| `read:products` | Discover available inventory | `get_products`, `list_creative_formats`, `list_authorized_properties` |
+| `read:products` | Discover available inventory | `get_adcp_capabilities`, `get_products`, `list_creative_formats` |
 | `read:campaigns` | View campaign details | `list_creatives`, `get_media_buy_delivery` |
 | `write:campaigns` | Create and modify campaigns | `create_media_buy`, `update_media_buy` |
 | `read:creatives` | Preview and inspect creatives | `preview_creative` |
@@ -960,9 +960,9 @@ Implement multi-tiered rate limiting to prevent abuse while allowing legitimate 
 ```typescript
 const RATE_LIMITS = {
   // Discovery tasks (read-only, cacheable)
+  'get_adcp_capabilities': { requests: 100, window: '1m' },
   'get_products': { requests: 100, window: '1m' },
   'list_creative_formats': { requests: 100, window: '1m' },
-  'list_authorized_properties': { requests: 100, window: '1m' },
 
   // Campaign management (state-changing, expensive)
   'create_media_buy': { requests: 10, window: '1m' },

@@ -17,8 +17,7 @@ Property Governance addresses five distinct concerns:
 |---------|----------|-------|-----------|
 | **Property Identity** | What properties exist? | Publishers | `adagents.json` properties array |
 | **Sales Authorization** | Who can sell this property? | Publishers | `adagents.json` authorized_agents |
-| **Governance Agent Discovery** | Who has data about this property? | Publishers | `adagents.json` property_features |
-| **Property Data** | What do we know about this property? | Data providers | Governance agents via `list_property_features` |
+| **Property Data** | What do we know about this property? | Data providers | Governance agents via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) |
 | **Property Selection** | Which properties meet my requirements? | Buyers | Property lists with filters |
 
 The first three are **publisher-side declarations** via adagents.json. The last two are **buyer-side operations** that consume property data from governance agents.
@@ -87,15 +86,17 @@ See the [adagents.json Tech Spec](/docs/governance/property/adagents) for comple
 
 ### Property Data Providers
 
-Governance agents provide data about properties - compliance scores, brand safety ratings, sustainability metrics, etc. They advertise their capabilities via `list_property_features`:
+Governance agents provide data about properties - compliance scores, brand safety ratings, sustainability metrics, etc. They advertise their capabilities via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `governance.property_features` section:
 
 ```json
 {
-  "features": [
-    { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
-    { "feature_id": "coppa_certified", "type": "binary" },
-    { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } }
-  ]
+  "governance": {
+    "property_features": [
+      { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+      { "feature_id": "coppa_certified", "type": "binary" },
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } }
+    ]
+  }
 }
 ```
 
@@ -248,7 +249,8 @@ Both protocols operate on properties but serve different purposes:
 
 ### Discovery
 
-- **[list_property_features](/docs/governance/property/tasks/list_property_features)**: Discover what data a governance agent can provide about properties
+- **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**: Discover governance capabilities including property features (protocol-level task)
+- **[list_property_features](./tasks/list_property_features)**: Discover what data a governance agent can provide (deprecated - use `get_adcp_capabilities`)
 
 ### Property List Management
 
@@ -272,7 +274,7 @@ Both protocols operate on properties but serve different purposes:
 5. Share property list references with sellers (with auth tokens)
 
 **Governance Agent Implementers:**
-1. Implement `list_property_features` to advertise your capabilities
+1. Implement [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to advertise your capabilities in `governance.property_features`
 2. Implement property list CRUD operations
 3. Support webhooks to notify buyers when evaluations change
 4. Work with publishers to get listed in their `property_features`

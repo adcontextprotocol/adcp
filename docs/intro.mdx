@@ -260,6 +260,14 @@ AdCP's task-first architecture means you can access the same functionality throu
 - **Using A2A**: Perfect for complex workflows with approvals and multi-agent collaboration
 - **Protocol Agnostic**: Implementers write tasks once, support all protocols automatically
 
+### Capability Discovery
+
+Every AdCP agent supports [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) as the primary entry point for discovering what the agent supports. This single call returns:
+- Protocol versions and supported domains (media_buy, signals, governance)
+- Portfolio information for sales agents
+- Geo targeting capabilities and execution features
+- Supported extensions for rich metadata
+
 Learn more in the [Protocols section](/docs/protocols/getting-started).
 
 ## Next Steps

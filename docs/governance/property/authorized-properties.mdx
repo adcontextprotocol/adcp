@@ -34,7 +34,7 @@ AdCP faces similar challenges as AI agents begin to buy and sell advertising pro
 AdCP prevents unauthorized resale through a two-part system:
 
 1. **Publisher Authorization**: Publishers explicitly authorize sales agents via `adagents.json`
-2. **Agent Discovery**: Sales agents declare their authorized properties via `list_authorized_properties`
+2. **Agent Discovery**: Sales agents declare their portfolio via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `media_buy.portfolio` section
 
 This creates a verifiable chain of authorization that buyer agents can validate.
 
@@ -93,11 +93,15 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
 
 ## How Sales Agents Share Authorized Properties
 
-Sales agents use the [`list_authorized_properties`](../../media-buy/task-reference/list_authorized_properties) task to declare all properties they are authorized to represent. This serves multiple purposes:
+Sales agents use the [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) task to declare their portfolio information in the `media_buy.portfolio` section. This serves multiple purposes:
 
-1. **Transparency**: Buyers can see what properties an agent represents
-2. **Validation enablement**: Provides the data buyers need to verify authorization
-3. **Tag resolution**: Enables efficient grouping of properties by tags
+1. **Transparency**: Buyers can see what publishers an agent represents
+2. **Validation enablement**: Provides publisher domains for buyers to verify authorization via `adagents.json`
+3. **Portfolio overview**: Includes primary channels, countries, and portfolio description
+
+<Note>
+The [`list_authorized_properties`](../../media-buy/task-reference/list_authorized_properties) task is deprecated. Use `get_adcp_capabilities` for portfolio information and fetch detailed property definitions from publisher `adagents.json` files.
+</Note>
 
 ### Property Declaration Example
 
@@ -143,8 +147,8 @@ Sales agents use the [`list_authorized_properties`](../../media-buy/task-referen
 For large networks representing thousands of properties, AdCP supports **property tags** to make the system manageable:
 
 - **Products** can reference `["local_radio", "midwest"]` instead of listing hundreds of stations
-- **Buyers** use `list_authorized_properties` to resolve tags to actual properties
-- **Authorization validation** works on the resolved properties
+- **Buyers** use `get_adcp_capabilities` to discover the agent's portfolio and validate authorization
+- **Authorization validation** works on the resolved properties via `adagents.json`
 
 ## Authorization Validation Workflow
 
@@ -152,15 +156,15 @@ Here's how a buyer agent validates that a sales agent is authorized to represent
 
 ### 1. One-Time Setup
 ```javascript
-// Get all properties the sales agent claims to represent
-const response = await salesAgent.call('list_authorized_properties');
-const allProperties = response.properties;
+// Get portfolio information from capabilities
+const capabilities = await salesAgent.call('get_adcp_capabilities');
+const portfolio = capabilities.media_buy?.portfolio;
+const publisherDomains = portfolio?.publisher_domains || [];
 
-// For each unique publisher domain, fetch and cache adagents.json
-const domains = [...new Set(allProperties.map(p => p.publisher_domain))];
+// For each publisher domain, fetch and cache adagents.json
 const authorizationCache = {};
 
-for (const domain of domains) {
+for (const domain of publisherDomains) {
   try {
     const adagents = await fetch(`https://${domain}/.well-known/adagents.json`);
     authorizationCache[domain] = await adagents.json();
@@ -174,7 +178,8 @@ for (const domain of domains) {
 ### 2. Product Validation
 ```javascript
 // When evaluating a product
-const product = await salesAgent.call('get_products', {brief: "Chicago radio ads"});
+const result = await salesAgent.call('get_products', {brief: "Chicago radio ads"});
+const product = result.products[0];
 
 // Validate authorization for each publisher in publisher_properties
 const authorized = product.publisher_properties.every(pubProp => {
@@ -183,19 +188,10 @@ const authorized = product.publisher_properties.every(pubProp => {
 
   if (!adagents) return false; // No adagents.json found
 
-  // Get properties from this publisher
-  const publisherProps = allProperties.filter(p => p.publisher_domain === domain);
-
-  // Resolve property_tags to actual properties if needed
-  let propertiesToCheck = pubProp.property_ids
-    ? publisherProps.filter(p => pubProp.property_ids.includes(p.property_id))
-    : publisherProps.filter(p => pubProp.property_tags.every(tag => p.tags.includes(tag)));
-
-  // Validate authorization for these properties
-  return propertiesToCheck.every(property =>
-    adagents.authorized_agents.some(agent =>
-      agent.agent_id === salesAgent.id && 
-    isCurrentlyAuthorized(agent.authorization_scope)
+  // Verify the sales agent is in publisher's authorized_agents
+  return adagents.authorized_agents.some(agent =>
+    agent.url === salesAgent.url &&
+    isAuthorizedForProperties(agent, pubProp)
   );
 });
 
@@ -273,7 +269,8 @@ See the **[adagents.json Tech Spec](./adagents)** for complete implementation gu
 
 ## Related Documentation
 
-- **[`list_authorized_properties`](../../media-buy/task-reference/list_authorized_properties)** - API reference for property discovery
+- **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities and portfolio information
+- **[`list_authorized_properties`](../../media-buy/task-reference/list_authorized_properties)** - Property discovery (deprecated - use `get_adcp_capabilities`)
 - **[Product Discovery](../../media-buy/product-discovery/)** - How authorization integrates with product discovery
 - **[Properties Schema](https://adcontextprotocol.org/schemas/v2/core/property.json)** - Technical property data model
 - **[adagents.json Tech Spec](./adagents)** - Complete `adagents.json` implementation guide
