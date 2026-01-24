@@ -93,6 +93,7 @@ import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
+import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
@@ -2577,14 +2578,24 @@ async function handleChannelMessage({
 
     // Quick match first (no API call for obvious cases)
     let plan = addieRouter.quickMatch(routingCtx);
+    let siRetrievalResult: SIRetrievalResult | null = null;
 
-    // If no quick match, use the full router
+    // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
-      plan = await addieRouter.route(routingCtx);
+      const [routerPlan, siResult] = await Promise.all([
+        addieRouter.route(routingCtx),
+        siRetriever.retrieve(messageText),
+      ]);
+      plan = routerPlan;
+      siRetrievalResult = siResult;
     }
 
-    logger.debug({ channelId, action: plan.action, reason: plan.reason },
-      'Addie Bolt: Router decision for channel message');
+    logger.debug({
+      channelId,
+      action: plan.action,
+      reason: plan.reason,
+      siAgentsFound: siRetrievalResult?.agents.length ?? 0,
+    }, 'Addie Bolt: Router decision for channel message');
 
     // Build external ID for Slack channel messages: channel_id:thread_ts
     const externalId = `${channelId}:${threadTs}`;
@@ -2672,10 +2683,15 @@ async function handleChannelMessage({
     const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
     const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin);
 
-    // Append unavailable sets hint to message context so Sonnet knows what's not loaded
-    const messageWithHint = unavailableHint
-      ? `${messageWithContext}\n\n${unavailableHint}`
-      : messageWithContext;
+    // Build SI context from retrieved agents
+    const siContext = siRetrievalResult?.agents.length
+      ? siRetriever.formatContext(siRetrievalResult.agents)
+      : '';
+
+    // Append unavailable sets hint and SI context to message
+    const messageWithHint = [messageWithContext, unavailableHint, siContext]
+      .filter(Boolean)
+      .join('\n\n');
 
     // Use precision model (Opus) for billing/financial queries
     const effectiveModel = plan.requires_precision ? ModelConfig.precision : AddieModelConfig.chat;
