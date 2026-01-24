@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/delete-creative-set-response.json",
-  "title": "Delete Creative Set Response",
-  "description": "Response payload for delete_creative_set task",
+  "$id": "/schemas/portfolio/delete-portfolio-response.json",
+  "title": "Delete Portfolio Response",
+  "description": "Response payload for delete_portfolio task",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the deleted creative set"
+      "description": "Unique identifier for the deleted portfolio"
     },
     "mode": {
       "type": "string",
@@ -33,6 +33,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "mode"],
+  "required": ["portfolio_id", "mode"],
   "additionalProperties": true
 }

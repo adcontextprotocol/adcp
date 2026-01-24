@@ -1,38 +1,38 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/get-creative-set-response.json",
-  "title": "Get Creative Set Response",
-  "description": "Response payload for get_creative_set task. Returns creative set details with ad tags containing embedded trackers and macro placeholders.",
+  "$id": "/schemas/portfolio/get-portfolio-response.json",
+  "title": "Get Portfolio Response",
+  "description": "Response payload for get_portfolio task. Returns portfolio details with ad tags containing embedded trackers and macro placeholders.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the creative set"
+      "description": "Unique identifier for the portfolio"
     },
     "name": {
       "type": "string",
-      "description": "Name of the creative set"
+      "description": "Name of the portfolio"
     },
     "description": {
       "type": "string",
-      "description": "Description of the creative set"
+      "description": "Description of the portfolio"
     },
     "archived": {
       "type": "boolean",
-      "description": "Whether this creative set is archived",
+      "description": "Whether this portfolio is archived",
       "default": false
     },
     "creatives": {
       "type": "array",
-      "description": "Creatives in this set, filtered by format_ids if specified",
+      "description": "Creatives in this portfolio, filtered by format_ids if specified",
       "items": {
-        "$ref": "/schemas/core/creative-set-item.json"
+        "$ref": "/schemas/core/portfolio-item.json"
       }
     },
     "updated_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this creative set was last modified"
+      "description": "When this portfolio was last modified"
     },
     "errors": {
       "type": "array",
@@ -48,6 +48,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "name", "creatives"],
+  "required": ["portfolio_id", "name", "creatives"],
   "additionalProperties": true
 }

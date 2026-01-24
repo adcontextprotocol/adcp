@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/list-creative-sets-response.json",
-  "title": "List Creative Sets Response",
-  "description": "Response payload for list_creative_sets task",
+  "$id": "/schemas/portfolio/list-portfolios-response.json",
+  "title": "List Portfolios Response",
+  "description": "Response payload for list_portfolios task",
   "type": "object",
   "properties": {
-    "creative_sets": {
+    "portfolios": {
       "type": "array",
       "description": "Creative sets matching the query (metadata only, no ad_tags)",
       "items": {
         "type": "object",
         "properties": {
-          "creative_set_id": {
+          "portfolio_id": {
             "type": "string"
           },
           "name": {
@@ -22,15 +22,15 @@
           },
           "archived": {
             "type": "boolean",
-            "description": "Whether this creative set is archived"
+            "description": "Whether this portfolio is archived"
           },
           "creative_count": {
             "type": "integer",
-            "description": "Number of creatives in this set"
+            "description": "Number of creatives in this portfolio"
           },
           "format_ids": {
             "type": "array",
-            "description": "Formats represented in this set",
+            "description": "Formats represented in this portfolio",
             "items": {
               "$ref": "/schemas/core/format-id.json"
             }
@@ -44,13 +44,13 @@
             "format": "date-time"
           }
         },
-        "required": ["creative_set_id", "name"],
+        "required": ["portfolio_id", "name"],
         "additionalProperties": true
       }
     },
     "total_count": {
       "type": "integer",
-      "description": "Total number of creative sets matching the filter (for pagination)"
+      "description": "Total number of portfolios matching the filter (for pagination)"
     },
     "errors": {
       "type": "array",
@@ -66,6 +66,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_sets"],
+  "required": ["portfolios"],
   "additionalProperties": true
 }

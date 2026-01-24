@@ -12,7 +12,7 @@ title: Protocol Specification
 
 ## Abstract
 
-The Creative Set Protocol defines a standard Model Context Protocol (MCP) and Agent-to-Agent (A2A) interface for stateful creative management. This protocol enables creative agents to maintain persistent creative workspaces, seller agents to fetch and request creatives on-demand, and both parties to stay synchronized through webhook-based communication.
+The Portfolio Protocol defines a standard Model Context Protocol (MCP) and Agent-to-Agent (A2A) interface for stateful creative management. This protocol enables creative agents to maintain persistent creative workspaces, seller agents to fetch and request creatives on-demand, and both parties to stay synchronized through webhook-based communication.
 
 ## Conformance
 
@@ -20,7 +20,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ## Overview
 
-The Creative Set Protocol provides:
+The Portfolio Protocol provides:
 
 - **Stateful workspaces**: Persistent storage for source assets, brand context, and built creatives
 - **On-demand building**: Seller agents can request new formats without orchestrator intervention
@@ -32,10 +32,10 @@ The Creative Set Protocol provides:
 
 ### Agent Roles
 
-The Creative Set Protocol involves three agent roles:
+The Portfolio Protocol involves three agent roles:
 
 #### Creative Agent
-The platform hosting creative sets and building creatives:
+The platform hosting portfolios and building creatives:
 - **Responsibilities**: Store source assets, build creatives, serve ad tags
 - **Capabilities**: Format building, creative adaptation, governance enforcement
 - **Authentication**: Issues tokens for seller agent access
@@ -44,21 +44,21 @@ The platform hosting creative sets and building creatives:
 The platform receiving media buys and serving ads:
 - **Responsibilities**: Accept media buys, fetch creatives, expand macros at serve time
 - **Capabilities**: Format discovery, creative requests, approval management
-- **Authentication**: Uses tokens from `creative_set_ref` to access creative sets
+- **Authentication**: Uses tokens from `portfolio_ref` to access portfolios
 
 #### Orchestrator (Buyer Agent)
 The platform coordinating media buying workflows:
-- **Responsibilities**: Create creative sets, build initial creatives, create media buys
+- **Responsibilities**: Create portfolios, build initial creatives, create media buys
 - **Capabilities**: Workflow orchestration, budget management, campaign planning
 - **Authentication**: Has credentials with both creative and seller agents
 
-### Creative Set
+### Portfolio
 
-A creative set is a workspace containing:
+A portfolio is a workspace containing:
 
 | Component | Description | Required |
 |-----------|-------------|----------|
-| `creative_set_id` | Unique identifier | REQUIRED |
+| `portfolio_id` | Unique identifier | REQUIRED |
 | `name` | Human-readable name | REQUIRED |
 | `brand_manifest_url` | URL to live brand manifest | REQUIRED for building |
 | `assets` | Source assets (images, videos, copy) | OPTIONAL |
@@ -66,14 +66,14 @@ A creative set is a workspace containing:
 | `creatives` | Built creatives with ad tags | Generated |
 | `generation_prompt` | Default prompt for building | OPTIONAL |
 
-### Creative Set Reference
+### Portfolio Reference
 
-A `creative_set_ref` in a media buy provides seller agents with access to fetch creatives:
+A `portfolio_ref` in a media buy provides seller agents with access to fetch creatives:
 
 ```json
 {
   "agent_url": "https://creative.example.com",
-  "creative_set_id": "cs_abc123",
+  "portfolio_id": "cs_abc123",
   "authentication": {
     "schemes": ["bearer"],
     "credentials": "eyJ..."
@@ -81,7 +81,7 @@ A `creative_set_ref` in a media buy provides seller agents with access to fetch 
 }
 ```
 
-The seller agent MUST use these credentials when calling `get_creative_set`.
+The seller agent MUST use these credentials when calling `get_portfolio`.
 
 ### Tracker Configuration
 
@@ -117,20 +117,20 @@ The creative agent MUST embed these trackers in built creatives. The seller agen
 
 ### Setup Phase
 
-1. **Orchestrator** calls `create_creative_set` on creative agent
-2. **Creative agent** creates workspace, returns `creative_set_id`
+1. **Orchestrator** calls `create_portfolio` on creative agent
+2. **Creative agent** creates workspace, returns `portfolio_id`
 3. **Orchestrator** calls `build_creatives` for initial formats
 4. **Creative agent** builds creatives, embeds trackers in ad tags
 
 ### Media Buy Phase
 
-5. **Orchestrator** calls `create_media_buy` on seller agent with `creative_set_ref`
-6. **Seller agent** sends `creative-set-attached` webhook to creative agent
+5. **Orchestrator** calls `create_media_buy` on seller agent with `portfolio_ref`
+6. **Seller agent** sends `portfolio-attached` webhook to creative agent
 7. **Creative agent** registers seller as subscriber for updates
 
 ### Fetch Phase
 
-8. **Seller agent** calls `get_creative_set` to fetch creatives
+8. **Seller agent** calls `get_portfolio` to fetch creatives
 9. **Creative agent** returns creatives filtered by requested `format_ids`
 10. **Seller agent** stores ad tags for serving
 
@@ -139,20 +139,20 @@ The creative agent MUST embed these trackers in built creatives. The seller agen
 11. **Seller agent** sends `format-request` webhook for missing format
 12. **Creative agent** builds format using `generation_prompt`
 13. **Creative agent** sends `format-response` webhook when ready
-14. **Seller agent** fetches new creative via `get_creative_set`
+14. **Seller agent** fetches new creative via `get_portfolio`
 
 ### Detachment Phase
 
-15. **Seller agent** sends `creative-set-detached` webhook when media buy ends
+15. **Seller agent** sends `portfolio-detached` webhook when media buy ends
 16. **Creative agent** unsubscribes seller from updates
 
 ## Tasks
 
-### create_creative_set
+### create_portfolio
 
-Creates a new creative set workspace.
+Creates a new portfolio workspace.
 
-**Request**: See `/schemas/creative-set/create-creative-set-request.json`
+**Request**: See `/schemas/portfolio/create-portfolio-request.json`
 
 **Required Fields**:
 - `name`: Human-readable name
@@ -163,50 +163,50 @@ Creates a new creative set workspace.
 - `trackers`: Tracker URL templates
 - `push_notification_config`: Webhook config for updates
 
-**Response**: Returns `creative_set_id` and initial state.
+**Response**: Returns `portfolio_id` and initial state.
 
-### get_creative_set
+### get_portfolio
 
-Retrieves a creative set with its creatives.
+Retrieves a portfolio with its creatives.
 
-**Request**: See `/schemas/creative-set/get-creative-set-request.json`
+**Request**: See `/schemas/portfolio/get-portfolio-request.json`
 
 **Required Fields**:
-- `creative_set_id`: Set to retrieve
+- `portfolio_id`: Set to retrieve
 
 **Optional Fields**:
 - `format_ids`: Filter to specific formats
 - `include_previews`: Include preview URLs (default: true)
 - `include_ad_tags`: Include full markup (default: true)
 
-**Response**: Returns creative set with filtered creatives. Each creative includes a `manifest` with the ad tag as an asset.
+**Response**: Returns portfolio with filtered creatives. Each creative includes a `manifest` with the ad tag as an asset.
 
 **Behavior**:
 - If `format_ids` is provided, response MUST include only matching creatives
 - If a requested format doesn't exist but `allow_format_requests` is true, creative agent MAY auto-build it
 - Creative agent MUST NOT return creatives with `advertiser_status` of `rejected`
 
-### list_creative_sets
+### list_portfolios
 
-Queries creative sets with filtering and pagination.
+Queries portfolios with filtering and pagination.
 
-**Request**: See `/schemas/creative-set/list-creative-sets-request.json`
+**Request**: See `/schemas/portfolio/list-portfolios-request.json`
 
 **Optional Fields**:
 - `filter`: Search, archived status, date range
 - `sort`: Field and direction
 - `pagination`: Limit and offset
 
-**Response**: Returns array of creative set summaries (metadata only, no ad tags).
+**Response**: Returns array of portfolio summaries (metadata only, no ad tags).
 
-### update_creative_set
+### update_portfolio
 
-Modifies a creative set.
+Modifies a portfolio.
 
-**Request**: See `/schemas/creative-set/update-creative-set-request.json`
+**Request**: See `/schemas/portfolio/update-portfolio-request.json`
 
 **Required Fields**:
-- `creative_set_id`: Set to update
+- `portfolio_id`: Set to update
 
 **Optional Fields**:
 - `name`, `description`: Update metadata
@@ -221,14 +221,14 @@ Modifies a creative set.
 - Creative agent MUST NOT archive a set connected to an active media buy
 - Creative agent SHOULD notify subscribed sellers of changes
 
-### delete_creative_set
+### delete_portfolio
 
-Archives or permanently deletes a creative set.
+Archives or permanently deletes a portfolio.
 
-**Request**: See `/schemas/creative-set/delete-creative-set-request.json`
+**Request**: See `/schemas/portfolio/delete-portfolio-request.json`
 
 **Required Fields**:
-- `creative_set_id`: Set to delete
+- `portfolio_id`: Set to delete
 
 **Optional Fields**:
 - `mode`: `"archive"` (default) or `"permanent"`
@@ -242,10 +242,10 @@ Archives or permanently deletes a creative set.
 
 Builds creatives from source assets for specified formats.
 
-**Request**: See `/schemas/creative-set/build-creatives-request.json`
+**Request**: See `/schemas/portfolio/build-creatives-request.json`
 
 **Required Fields**:
-- `creative_set_id`: Set containing source assets
+- `portfolio_id`: Set containing source assets
 - `target_formats`: Formats to build
 
 **Optional Fields**:
@@ -259,12 +259,12 @@ Builds creatives from source assets for specified formats.
 
 ### Seller → Creative Agent
 
-#### creative-set-attached
+#### portfolio-attached
 
-Sent when seller receives a media buy with `creative_set_ref`.
+Sent when seller receives a media buy with `portfolio_ref`.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `media_buy_id`
 - `seller_agent_url`
 
@@ -273,16 +273,16 @@ Sent when seller receives a media buy with `creative_set_ref`.
 - `callback_url`: URL for creative agent notifications
 
 **Creative Agent Behavior**:
-- MUST register seller as subscriber for this creative set
+- MUST register seller as subscriber for this portfolio
 - SHOULD store `callback_url` for sending notifications
 - MAY auto-build missing formats if `allow_format_requests` is true
 
-#### creative-set-detached
+#### portfolio-detached
 
-Sent when media buy ends or creative set is replaced.
+Sent when media buy ends or portfolio is replaced.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `media_buy_id`
 - `seller_agent_url`
 
@@ -292,10 +292,10 @@ Sent when media buy ends or creative set is replaced.
 
 #### format-request
 
-Sent when seller needs a format not in the creative set.
+Sent when seller needs a format not in the portfolio.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `format_id`
 - `media_buy_id`
 - `seller_agent_url`
@@ -311,7 +311,7 @@ Sent when seller needs a format not in the creative set.
 Sent when seller needs a variation of an existing creative.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `source_creative_id`
 - `media_buy_id`
 - `seller_agent_url`
@@ -327,7 +327,7 @@ Sent when seller needs a variation of an existing creative.
 Sent when seller's approval status changes for a creative.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `creative_id`
 - `media_buy_id`
 - `seller_agent_url`
@@ -344,7 +344,7 @@ Sent when seller's approval status changes for a creative.
 Sent after processing a `format-request`.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `format_id`
 - `media_buy_id`
 - `status`
@@ -355,7 +355,7 @@ Sent after processing a `format-request`.
 - `pending_approval`: Built but awaiting approval
 
 **Seller Behavior**:
-- If `ready`, SHOULD fetch creative via `get_creative_set`
+- If `ready`, SHOULD fetch creative via `get_portfolio`
 - If `failed`, SHOULD handle gracefully or retry
 
 #### adaptation-response
@@ -363,7 +363,7 @@ Sent after processing a `format-request`.
 Sent after processing an `adaptation-request`.
 
 **Required Fields**:
-- `creative_set_id`
+- `portfolio_id`
 - `source_creative_id`
 - `adaptation_type`
 - `media_buy_id`
@@ -380,7 +380,7 @@ Sent after processing an `adaptation-request`.
 | `FORMAT_NOT_SUPPORTED` | Format cannot be built from available assets |
 | `FORMAT_REQUESTS_DISABLED` | `allow_format_requests` is false |
 | `ADAPTATION_REQUESTS_DISABLED` | `allow_adaptation_requests` is false |
-| `SET_ARCHIVED` | Cannot modify archived creative set |
+| `SET_ARCHIVED` | Cannot modify archived portfolio |
 | `SET_HAS_ACTIVE_MEDIA_BUYS` | Cannot archive/delete set with active media buys |
 | `AUTHENTICATION_FAILED` | Invalid or expired credentials |
 | `GOVERNANCE_REJECTED` | Creative rejected by governance agent |
@@ -399,15 +399,15 @@ Seller agents SHOULD respond with 2xx status to acknowledge receipt. Non-2xx res
 
 ### Authentication
 
-Creative agents MUST authenticate seller access using the credentials in `creative_set_ref.authentication`. Supported schemes:
+Creative agents MUST authenticate seller access using the credentials in `portfolio_ref.authentication`. Supported schemes:
 - `bearer`: Bearer token in Authorization header
 - `basic`: HTTP Basic authentication
 - `api_key`: API key in custom header
 
 ### Token Scope
 
-Tokens in `creative_set_ref` SHOULD be scoped to:
-- The specific `creative_set_id`
+Tokens in `portfolio_ref` SHOULD be scoped to:
+- The specific `portfolio_id`
 - Read-only access (cannot modify the set)
 - The specific media buy duration
 
@@ -429,12 +429,12 @@ Webhook endpoints SHOULD be authenticated. Options:
 ### Idempotency
 
 - Webhook receivers MUST handle duplicate deliveries
-- Use `creative_set_id` + `media_buy_id` + timestamp for deduplication
+- Use `portfolio_id` + `media_buy_id` + timestamp for deduplication
 
 ### Performance
 
-- `get_creative_set` with `format_ids` filter SHOULD be optimized for seller polling
-- Large creative sets SHOULD support pagination
+- `get_portfolio` with `format_ids` filter SHOULD be optimized for seller polling
+- Large portfolios SHOULD support pagination
 - Ad tags SHOULD be pre-rendered for fast serving
 
 ## Related Specifications

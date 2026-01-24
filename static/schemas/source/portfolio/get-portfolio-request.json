@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/get-creative-set-request.json",
-  "title": "Get Creative Set Request",
-  "description": "Request parameters for retrieving a creative set. Used by both orchestrators and seller agents to fetch creative set details and ad tags.",
+  "$id": "/schemas/portfolio/get-portfolio-request.json",
+  "title": "Get Portfolio Request",
+  "description": "Request parameters for retrieving a portfolio. Used by both orchestrators and seller agents to fetch portfolio details and ad tags.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the creative set"
+      "description": "Unique identifier for the portfolio"
     },
     "format_ids": {
       "type": "array",
@@ -33,6 +33,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id"],
+  "required": ["portfolio_id"],
   "additionalProperties": true
 }

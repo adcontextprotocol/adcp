@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/webhooks/format-request.json",
+  "$id": "/schemas/portfolio/webhooks/format-request.json",
   "title": "Format Request Webhook",
-  "description": "Webhook payload sent by seller agent to request a new format be built from the creative set's assets. Only processed if creative set has allow_format_requests enabled.",
+  "description": "Webhook payload sent by seller agent to request a new format be built from the portfolio's assets. Only processed if portfolio has allow_format_requests enabled.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "The creative set to build from"
+      "description": "The portfolio to build from"
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
@@ -42,6 +42,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "format_id", "media_buy_id", "seller_agent_url"],
+  "required": ["portfolio_id", "format_id", "media_buy_id", "seller_agent_url"],
   "additionalProperties": true
 }

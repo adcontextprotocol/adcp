@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/build-creatives-request.json",
+  "$id": "/schemas/portfolio/build-creatives-request.json",
   "title": "Build Creatives Request",
-  "description": "Request to build creatives from a creative set's source assets. Creative agent uses the set's assets, brand manifest, and trackers to generate ready-to-serve ad tags.",
+  "description": "Request to build creatives from a portfolio's source assets. Creative agent uses the portfolio's assets, brand manifest, and trackers to generate ready-to-serve ad tags.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
       "description": "Creative set containing source assets and trackers"
     },
@@ -19,7 +19,7 @@
     },
     "prompt": {
       "type": "string",
-      "description": "Optional natural language guidance for creative generation. If omitted, uses the creative set's generation_prompt."
+      "description": "Optional natural language guidance for creative generation. If omitted, uses the portfolio's generation_prompt."
     },
     "asset_ids": {
       "type": "array",
@@ -40,6 +40,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "target_formats"],
+  "required": ["portfolio_id", "target_formats"],
   "additionalProperties": true
 }

@@ -1,18 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/creative-set-ref.json",
-  "title": "Creative Set Reference",
-  "description": "Reference to a creative set for use in media buys. Includes authentication for the seller to fetch creatives from the creative agent. Does not include trackers or macro values - those are embedded in the creative tags and expanded by the seller at serve time.",
+  "$id": "/schemas/core/portfolio-ref.json",
+  "title": "Portfolio Reference",
+  "description": "Reference to a portfolio for use in media buys. Includes authentication for the seller to fetch creatives from the creative agent. Does not include trackers or macro values - those are embedded in the creative tags and expanded by the seller at serve time.",
   "type": "object",
   "properties": {
     "agent_url": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the creative agent that owns this creative set"
+      "description": "URL of the creative agent that owns this portfolio"
     },
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the creative set within the creative agent"
+      "description": "Unique identifier for the portfolio within the creative agent"
     },
     "authentication": {
       "type": "object",
@@ -37,6 +37,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["agent_url", "creative_set_id", "authentication"],
+  "required": ["agent_url", "portfolio_id", "authentication"],
   "additionalProperties": true
 }

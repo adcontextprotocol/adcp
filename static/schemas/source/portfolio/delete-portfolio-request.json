@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/delete-creative-set-request.json",
-  "title": "Delete Creative Set Request",
-  "description": "Request parameters for archiving or permanently deleting a creative set",
+  "$id": "/schemas/portfolio/delete-portfolio-request.json",
+  "title": "Delete Portfolio Request",
+  "description": "Request parameters for archiving or permanently deleting a portfolio",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the creative set to delete"
+      "description": "Unique identifier for the portfolio to delete"
     },
     "mode": {
       "type": "string",
@@ -22,6 +22,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id"],
+  "required": ["portfolio_id"],
   "additionalProperties": true
 }

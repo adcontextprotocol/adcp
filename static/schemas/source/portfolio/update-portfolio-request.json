@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/update-creative-set-request.json",
-  "title": "Update Creative Set Request",
-  "description": "Request parameters for modifying a creative set. Can update metadata, trackers, add/remove creatives, or regenerate existing creatives.",
+  "$id": "/schemas/portfolio/update-portfolio-request.json",
+  "title": "Update Portfolio Request",
+  "description": "Request parameters for modifying a portfolio. Can update metadata, trackers, add/remove creatives, or regenerate existing creatives.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the creative set to update"
+      "description": "Unique identifier for the portfolio to update"
     },
     "name": {
       "type": "string",
-      "description": "Updated name for the creative set"
+      "description": "Updated name for the portfolio"
     },
     "description": {
       "type": "string",
@@ -23,11 +23,11 @@
     },
     "archived": {
       "type": "boolean",
-      "description": "Archive or unarchive the creative set. Cannot archive if connected to an active media buy."
+      "description": "Archive or unarchive the portfolio. Cannot archive if connected to an active media buy."
     },
     "add_creatives": {
       "type": "array",
-      "description": "New creatives to add to the set",
+      "description": "New creatives to add to the portfolio",
       "items": {
         "type": "object",
         "properties": {
@@ -52,7 +52,7 @@
     },
     "remove_creative_ids": {
       "type": "array",
-      "description": "Creative IDs to remove from the set",
+      "description": "Creative IDs to remove from the portfolio",
       "items": {
         "type": "string"
       }
@@ -82,6 +82,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id"],
+  "required": ["portfolio_id"],
   "additionalProperties": true
 }

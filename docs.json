@@ -226,12 +226,12 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               {
-                "group": "Creative Sets",
+                "group": "Portfolios",
                 "pages": [
-                  "docs/creative/creative-sets/index",
-                  "docs/creative/creative-sets/specification",
-                  "docs/creative/creative-sets/tasks",
-                  "docs/creative/creative-sets/webhooks"
+                  "docs/creative/portfolios/index",
+                  "docs/creative/portfolios/specification",
+                  "docs/creative/portfolios/tasks",
+                  "docs/creative/portfolios/webhooks"
                 ]
               },
               {
@@ -411,12 +411,12 @@
               "v2.6-rc/docs/creative/implementing-creative-agents",
               "v2.6-rc/docs/creative/generative-creative",
               {
-                "group": "Creative Sets",
+                "group": "Portfolios",
                 "pages": [
-                  "docs/creative/creative-sets/index",
-                  "docs/creative/creative-sets/specification",
-                  "docs/creative/creative-sets/tasks",
-                  "docs/creative/creative-sets/webhooks"
+                  "docs/creative/portfolios/index",
+                  "docs/creative/portfolios/specification",
+                  "docs/creative/portfolios/tasks",
+                  "docs/creative/portfolios/webhooks"
                 ]
               },
               {

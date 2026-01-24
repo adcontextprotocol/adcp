@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/create-creative-set-request.json",
-  "title": "Create Creative Set Request",
-  "description": "Request parameters for creating a creative set workspace on a creative agent. The set holds source assets and brand context; creatives are built separately via build_creatives.",
+  "$id": "/schemas/portfolio/create-portfolio-request.json",
+  "title": "Create Portfolio Request",
+  "description": "Request parameters for creating a portfolio workspace on a creative agent. The portfolio holds source assets and brand context; creatives are built separately via build_creatives.",
   "type": "object",
   "properties": {
     "name": {
       "type": "string",
-      "description": "Human-readable name for this creative set"
+      "description": "Human-readable name for this portfolio"
     },
     "description": {
       "type": "string",
-      "description": "Description of the creative set's purpose"
+      "description": "Description of the portfolio's purpose"
     },
     "brand_manifest_url": {
       "type": "string",
@@ -26,7 +26,7 @@
         "properties": {
           "asset_id": {
             "type": "string",
-            "description": "Identifier for this asset within the set"
+            "description": "Identifier for this asset within the portfolio"
           },
           "url": {
             "type": "string",
@@ -57,7 +57,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Webhook configuration for notifications when creative set state changes"
+      "description": "Webhook configuration for notifications when portfolio state changes"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/webhooks/creative-approval-update.json",
+  "$id": "/schemas/portfolio/webhooks/creative-approval-update.json",
   "title": "Creative Approval Update Webhook",
   "description": "Webhook payload sent by seller agent when the approval status of a creative changes for a specific media buy.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "The creative set containing the creative"
+      "description": "The portfolio containing the creative"
     },
     "creative_id": {
       "type": "string",
@@ -40,6 +40,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "creative_id", "media_buy_id", "seller_agent_url", "status"],
+  "required": ["portfolio_id", "creative_id", "media_buy_id", "seller_agent_url", "status"],
   "additionalProperties": true
 }

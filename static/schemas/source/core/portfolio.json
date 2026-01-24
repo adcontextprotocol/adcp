@@ -1,21 +1,21 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/creative-set.json",
-  "title": "Creative Set",
-  "description": "A workspace for building and managing related creatives. Contains source assets, built creatives, and brand context. Can be referenced by media buys for dynamic sync between creative agent and seller agent.",
+  "$id": "/schemas/core/portfolio.json",
+  "title": "Portfolio",
+  "description": "A comprehensive collection of creative assets and assembled creatives. Contains source assets (images, videos, copy), brand context, and trackers. From these, creatives are generated on-demand for specific formats. The portfolio holds both the foundational components AND the assembled creatives - giving buyers full visibility and portability across seller agents.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for this creative set"
+      "description": "Unique identifier for this portfolio"
     },
     "name": {
       "type": "string",
-      "description": "Human-readable name for this creative set"
+      "description": "Human-readable name for this portfolio"
     },
     "description": {
       "type": "string",
-      "description": "Description of the creative set's purpose"
+      "description": "Description of the portfolio's purpose"
     },
     "brand_manifest_url": {
       "type": "string",
@@ -28,7 +28,7 @@
     },
     "allow_format_requests": {
       "type": "boolean",
-      "description": "Whether seller agents can request new formats to be built from this set's assets",
+      "description": "Whether seller agents can request new formats to be built from this portfolio's assets",
       "default": false
     },
     "allow_adaptation_requests": {
@@ -48,7 +48,7 @@
         "properties": {
           "asset_id": {
             "type": "string",
-            "description": "Identifier for this asset within the set"
+            "description": "Identifier for this asset within the portfolio"
           },
           "url": {
             "type": "string",
@@ -79,30 +79,30 @@
     },
     "creatives": {
       "type": "array",
-      "description": "Built creatives in this set",
+      "description": "Built creatives in this portfolio",
       "items": {
-        "$ref": "/schemas/core/creative-set-item.json"
+        "$ref": "/schemas/core/portfolio-item.json"
       }
     },
     "archived": {
       "type": "boolean",
-      "description": "Whether this creative set is archived. Cannot archive if connected to an active media buy.",
+      "description": "Whether this portfolio is archived. Cannot archive if connected to an active media buy.",
       "default": false
     },
     "created_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this creative set was created"
+      "description": "When this portfolio was created"
     },
     "updated_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this creative set was last modified"
+      "description": "When this portfolio was last modified"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "name"],
+  "required": ["portfolio_id", "name"],
   "additionalProperties": true
 }

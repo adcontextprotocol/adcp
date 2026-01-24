@@ -1,18 +1,18 @@
 ---
-title: Creative Sets
-description: Stateful creative workspaces for dynamic sync between creative agents and seller agents
+title: Portfolios
+description: Comprehensive creative collections containing both source assets and assembled creatives - portable across seller agents
 ---
 
-Creative Sets enable **stateful creative management** where creatives are built on-demand and synced between creative agents and seller agents. Instead of uploading static creatives to each media buy, advertisers maintain a central creative workspace that seller agents can pull from and request new formats as needed.
+Portfolios are **comprehensive creative collections** that contain both source assets (images, videos, copy) and assembled creatives (the built ads). Unlike platforms that hide assembled creatives (Google PMax) or only store static assets (traditional libraries), AdCP portfolios give buyers **full visibility and portability** - you see both the ingredients AND the dishes, and can take them anywhere.
 
-## Why Creative Sets?
+## Why Portfolios?
 
 Traditional creative workflows require advertisers to:
 1. Build all creative formats upfront
 2. Upload them to each sales agent separately
 3. Manually rebuild when formats change or new formats are needed
 
-Creative Sets solve this by:
+Portfolios solve this by:
 - **Central workspace**: One source of truth for source assets, brand context, and trackers
 - **On-demand building**: Seller agents can request formats they need
 - **Automatic sync**: Webhook-based communication keeps everyone in sync
@@ -27,7 +27,7 @@ flowchart TB
     end
 
     subgraph CreativeAgent["Creative Agent"]
-        CS[Creative Set]
+        CS[Portfolio]
         Assets[Source Assets]
         Built[Built Creatives]
         CS --> Assets
@@ -40,11 +40,11 @@ flowchart TB
         MB --> AdServer
     end
 
-    O -->|1. create_creative_set| CS
+    O -->|1. create_portfolio| CS
     O -->|2. build_creatives| Built
-    O -->|3. create_media_buy with creative_set_ref| MB
-    MB -->|4. creative-set-attached webhook| CS
-    CS -.->|5. get_creative_set| MB
+    O -->|3. create_media_buy with portfolio_ref| MB
+    MB -->|4. portfolio-attached webhook| CS
+    CS -.->|5. get_portfolio| MB
     MB -->|6. format-request webhook| CS
     CS -.->|7. format-response webhook| MB
 ```
@@ -53,10 +53,10 @@ flowchart TB
 
 ### Phase 1: Setup
 
-The buying orchestrator creates a creative set on a creative agent:
+The buying orchestrator creates a portfolio on a creative agent:
 
 ```json
-// create_creative_set request
+// create_portfolio request
 {
   "name": "Spring Campaign 2025",
   "brand_manifest_url": "https://brand.com/manifest.json",
@@ -81,7 +81,7 @@ The orchestrator builds creatives for known formats:
 ```json
 // build_creatives request
 {
-  "creative_set_id": "cs_spring2025",
+  "portfolio_id": "cs_spring2025",
   "target_formats": [
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
     { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" }
@@ -92,14 +92,14 @@ The orchestrator builds creatives for known formats:
 
 ### Phase 3: Create Media Buy
 
-When creating a media buy, include the `creative_set_ref`:
+When creating a media buy, include the `portfolio_ref`:
 
 ```json
 // create_media_buy request (partial)
 {
-  "creative_set_ref": {
+  "portfolio_ref": {
     "agent_url": "https://creative.brand.com",
-    "creative_set_id": "cs_spring2025",
+    "portfolio_id": "cs_spring2025",
     "authentication": {
       "schemes": ["bearer"],
       "credentials": "eyJ..."
@@ -111,12 +111,12 @@ When creating a media buy, include the `creative_set_ref`:
 
 ### Phase 4: Seller Attachment
 
-When the seller agent receives the media buy, it sends a `creative-set-attached` webhook:
+When the seller agent receives the media buy, it sends a `portfolio-attached` webhook:
 
 ```json
-// creative-set-attached webhook
+// portfolio-attached webhook
 {
-  "creative_set_id": "cs_spring2025",
+  "portfolio_id": "cs_spring2025",
   "media_buy_id": "mb_12345",
   "seller_agent_url": "https://seller.example.com",
   "format_ids": [
@@ -134,7 +134,7 @@ If the seller needs a format that doesn't exist, they send a `format-request` we
 ```json
 // format-request webhook
 {
-  "creative_set_id": "cs_spring2025",
+  "portfolio_id": "cs_spring2025",
   "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
   "media_buy_id": "mb_12345",
   "seller_agent_url": "https://seller.example.com",
@@ -147,7 +147,7 @@ The creative agent builds the format and responds:
 ```json
 // format-response webhook
 {
-  "creative_set_id": "cs_spring2025",
+  "portfolio_id": "cs_spring2025",
   "creative_id": "cr_new_728x90",
   "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
   "media_buy_id": "mb_12345",
@@ -157,15 +157,15 @@ The creative agent builds the format and responds:
 
 ## Key Concepts
 
-### Creative Set Reference
+### Portfolio Reference
 
-The `creative_set_ref` in a media buy tells the seller agent where to fetch creatives:
+The `portfolio_ref` in a media buy tells the seller agent where to fetch creatives:
 
 | Field | Description |
 |-------|-------------|
-| `agent_url` | Creative agent hosting the set |
-| `creative_set_id` | Unique identifier for the set |
-| `authentication` | Credentials for the seller to access the set |
+| `agent_url` | Creative agent hosting the portfolio |
+| `portfolio_id` | Unique identifier for the portfolio |
+| `authentication` | Credentials for the seller to access the portfolio |
 
 ### Tracker Configuration
 
@@ -198,8 +198,8 @@ Optional governance agents review creatives before approval:
 
 | Webhook | When | Purpose |
 |---------|------|---------|
-| `creative-set-attached` | Media buy created | Register interest, list required formats |
-| `creative-set-detached` | Media buy ended | Unsubscribe from updates |
+| `portfolio-attached` | Media buy created | Register interest, list required formats |
+| `portfolio-detached` | Media buy ended | Unsubscribe from updates |
 | `format-request` | Format needed | Request new format build |
 | `adaptation-request` | Variant needed | Request CTA change, localization, etc. |
 | `creative-approval-update` | Approval changed | Notify creative agent of seller's approval decision |
@@ -215,28 +215,28 @@ Optional governance agents review creatives before approval:
 
 ### For Creative Agent Implementers
 
-- [ ] Implement `create_creative_set` task
-- [ ] Implement `get_creative_set` task with format filtering
+- [ ] Implement `create_portfolio` task
+- [ ] Implement `get_portfolio` task with format filtering
 - [ ] Implement `build_creatives` task
-- [ ] Handle `creative-set-attached` webhook
+- [ ] Handle `portfolio-attached` webhook
 - [ ] Handle `format-request` webhook (if `allow_format_requests`)
 - [ ] Handle `adaptation-request` webhook (if `allow_adaptation_requests`)
 - [ ] Send `format-response` and `adaptation-response` webhooks
 
 ### For Seller Agent Implementers
 
-- [ ] Parse `creative_set_ref` from `create_media_buy`
-- [ ] Send `creative-set-attached` webhook on media buy creation
-- [ ] Call `get_creative_set` to fetch creatives
+- [ ] Parse `portfolio_ref` from `create_media_buy`
+- [ ] Send `portfolio-attached` webhook on media buy creation
+- [ ] Call `get_portfolio` to fetch creatives
 - [ ] Send `format-request` for missing formats
 - [ ] Handle `format-response` webhooks
-- [ ] Send `creative-set-detached` on media buy end
+- [ ] Send `portfolio-detached` on media buy end
 
 ## Related Documentation
 
-- [Protocol Specification](/docs/creative/creative-sets/specification) - RFC 2119 formal specification
-- [Task Reference](/docs/creative/creative-sets/tasks) - API documentation for creative set tasks
-- [Webhooks](/docs/creative/creative-sets/webhooks) - Webhook payload reference
+- [Protocol Specification](/docs/creative/portfolios/specification) - RFC 2119 formal specification
+- [Task Reference](/docs/creative/portfolios/tasks) - API documentation for portfolio tasks
+- [Webhooks](/docs/creative/portfolios/webhooks) - Webhook payload reference
 - [Creative Manifests](/docs/creative/creative-manifests) - Structure of built creatives
 - [Universal Macros](/docs/creative/universal-macros) - Macro reference
 - [Brand Manifest](/docs/creative/brand-manifest) - Brand context specification

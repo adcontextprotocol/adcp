@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/build-creatives-response.json",
+  "$id": "/schemas/portfolio/build-creatives-response.json",
   "title": "Build Creatives Response",
-  "description": "Response from building creatives. Returns the newly built creatives added to the set.",
+  "description": "Response from building creatives. Returns the newly built creatives added to the portfolio.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
       "description": "Creative set the creatives were built into"
     },
@@ -13,7 +13,7 @@
       "type": "array",
       "description": "Newly built creatives",
       "items": {
-        "$ref": "/schemas/core/creative-set-item.json"
+        "$ref": "/schemas/core/portfolio-item.json"
       }
     },
     "errors": {
@@ -30,6 +30,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "creatives"],
+  "required": ["portfolio_id", "creatives"],
   "additionalProperties": true
 }

@@ -1,34 +1,34 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/create-creative-set-response.json",
-  "title": "Create Creative Set Response",
-  "description": "Response payload for create_creative_set task",
+  "$id": "/schemas/portfolio/create-portfolio-response.json",
+  "title": "Create Portfolio Response",
+  "description": "Response payload for create_portfolio task",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the created creative set"
+      "description": "Unique identifier for the created portfolio"
     },
     "name": {
       "type": "string",
-      "description": "Name of the creative set"
+      "description": "Name of the portfolio"
     },
     "archived": {
       "type": "boolean",
-      "description": "Whether this creative set is archived",
+      "description": "Whether this portfolio is archived",
       "default": false
     },
     "creatives": {
       "type": "array",
       "description": "Initial creatives (may be empty or in 'processing' status)",
       "items": {
-        "$ref": "/schemas/core/creative-set-item.json"
+        "$ref": "/schemas/core/portfolio-item.json"
       }
     },
     "created_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this creative set was created"
+      "description": "When this portfolio was created"
     },
     "errors": {
       "type": "array",
@@ -44,6 +44,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "name"],
+  "required": ["portfolio_id", "name"],
   "additionalProperties": true
 }

@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/webhooks/creative-set-detached.json",
-  "title": "Creative Set Detached Webhook",
-  "description": "Webhook payload sent by seller agent when a creative set is detached from a media buy.",
+  "$id": "/schemas/portfolio/webhooks/portfolio-detached.json",
+  "title": "Portfolio Detached Webhook",
+  "description": "Webhook payload sent by seller agent when a portfolio is detached from a media buy.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "The creative set being detached"
+      "description": "The portfolio being detached"
     },
     "media_buy_id": {
       "type": "string",
-      "description": "The media buy this set was detached from"
+      "description": "The media buy this portfolio was detached from"
     },
     "seller_agent_url": {
       "type": "string",
@@ -21,7 +21,7 @@
     "reason": {
       "type": "string",
       "enum": ["media_buy_ended", "media_buy_cancelled", "creative_replaced", "manual"],
-      "description": "Why the creative set was detached"
+      "description": "Why the portfolio was detached"
     },
     "detached_at": {
       "type": "string",
@@ -32,6 +32,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "media_buy_id", "seller_agent_url"],
+  "required": ["portfolio_id", "media_buy_id", "seller_agent_url"],
   "additionalProperties": true
 }

@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/webhooks/format-response.json",
+  "$id": "/schemas/portfolio/webhooks/format-response.json",
   "title": "Format Response Webhook",
   "description": "Webhook payload sent by creative agent to notify seller that a requested format is ready or failed.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "The creative set the format was built in"
+      "description": "The portfolio the format was built in"
     },
     "creative_id": {
       "type": "string",
@@ -39,6 +39,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "format_id", "media_buy_id", "status"],
+  "required": ["portfolio_id", "format_id", "media_buy_id", "status"],
   "additionalProperties": true
 }

@@ -1,28 +1,28 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/update-creative-set-response.json",
-  "title": "Update Creative Set Response",
-  "description": "Response payload for update_creative_set task",
+  "$id": "/schemas/portfolio/update-portfolio-response.json",
+  "title": "Update Portfolio Response",
+  "description": "Response payload for update_portfolio task",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "Unique identifier for the creative set"
+      "description": "Unique identifier for the portfolio"
     },
     "name": {
       "type": "string",
-      "description": "Name of the creative set"
+      "description": "Name of the portfolio"
     },
     "archived": {
       "type": "boolean",
-      "description": "Whether this creative set is archived",
+      "description": "Whether this portfolio is archived",
       "default": false
     },
     "creatives": {
       "type": "array",
-      "description": "Current creatives in the set",
+      "description": "Current creatives in the portfolio",
       "items": {
-        "$ref": "/schemas/core/creative-set-item.json"
+        "$ref": "/schemas/core/portfolio-item.json"
       }
     },
     "changes": {
@@ -63,6 +63,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id"],
+  "required": ["portfolio_id"],
   "additionalProperties": true
 }

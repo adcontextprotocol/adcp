@@ -177,17 +177,17 @@
           "$ref": "/schemas/core/identifier.json",
           "description": "A property identifier with type and value"
         },
-        "creative-set": {
-          "$ref": "/schemas/core/creative-set.json",
-          "description": "A workspace for building and managing related creatives with source assets, brand context, and trackers"
+        "portfolio": {
+          "$ref": "/schemas/core/portfolio.json",
+          "description": "A comprehensive collection of creative assets and assembled creatives with source assets, brand context, and trackers"
         },
-        "creative-set-ref": {
-          "$ref": "/schemas/core/creative-set-ref.json",
-          "description": "Reference to a creative set for use in media buys, includes authentication for seller access"
+        "portfolio-ref": {
+          "$ref": "/schemas/core/portfolio-ref.json",
+          "description": "Reference to a portfolio for use in media buys, includes authentication for seller access"
         },
-        "creative-set-item": {
-          "$ref": "/schemas/core/creative-set-item.json",
-          "description": "A creative within a creative set with approval status and preview URLs"
+        "portfolio-item": {
+          "$ref": "/schemas/core/portfolio-item.json",
+          "description": "A creative within a portfolio with approval status and preview URLs"
         },
         "governance-agent-ref": {
           "$ref": "/schemas/core/governance-agent-ref.json",
@@ -779,101 +779,101 @@
         }
       }
     },
-    "creative-set": {
-      "description": "Creative set management for stateful creative workspaces. Creative sets hold source assets, brand context, and trackers. Creatives are built on-demand and synced to seller agents via webhooks.",
+    "portfolio": {
+      "description": "Portfolio management for comprehensive creative collections. Portfolios contain both source assets (images, videos, copy) and assembled creatives. Creatives are built on-demand and synced to seller agents via webhooks.",
       "tasks": {
-        "create-creative-set": {
+        "create-portfolio": {
           "request": {
-            "$ref": "/schemas/creative-set/create-creative-set-request.json",
-            "description": "Request parameters for creating a creative set workspace"
+            "$ref": "/schemas/portfolio/create-portfolio-request.json",
+            "description": "Request parameters for creating a portfolio workspace"
           },
           "response": {
-            "$ref": "/schemas/creative-set/create-creative-set-response.json",
-            "description": "Response payload for create_creative_set task"
+            "$ref": "/schemas/portfolio/create-portfolio-response.json",
+            "description": "Response payload for create_portfolio task"
           }
         },
-        "get-creative-set": {
+        "get-portfolio": {
           "request": {
-            "$ref": "/schemas/creative-set/get-creative-set-request.json",
-            "description": "Request parameters for retrieving a creative set with optional format filtering"
+            "$ref": "/schemas/portfolio/get-portfolio-request.json",
+            "description": "Request parameters for retrieving a portfolio with optional format filtering"
           },
           "response": {
-            "$ref": "/schemas/creative-set/get-creative-set-response.json",
-            "description": "Response payload for get_creative_set task with ad tags containing embedded trackers"
+            "$ref": "/schemas/portfolio/get-portfolio-response.json",
+            "description": "Response payload for get_portfolio task with ad tags containing embedded trackers"
           }
         },
-        "list-creative-sets": {
+        "list-portfolios": {
           "request": {
-            "$ref": "/schemas/creative-set/list-creative-sets-request.json",
-            "description": "Request parameters for querying creative sets with filtering and pagination"
+            "$ref": "/schemas/portfolio/list-portfolios-request.json",
+            "description": "Request parameters for querying portfolios with filtering and pagination"
           },
           "response": {
-            "$ref": "/schemas/creative-set/list-creative-sets-response.json",
-            "description": "Response payload for list_creative_sets task"
+            "$ref": "/schemas/portfolio/list-portfolios-response.json",
+            "description": "Response payload for list_portfolios task"
           }
         },
-        "update-creative-set": {
+        "update-portfolio": {
           "request": {
-            "$ref": "/schemas/creative-set/update-creative-set-request.json",
-            "description": "Request parameters for modifying a creative set including add/remove/regenerate creatives"
+            "$ref": "/schemas/portfolio/update-portfolio-request.json",
+            "description": "Request parameters for modifying a portfolio including add/remove/regenerate creatives"
           },
           "response": {
-            "$ref": "/schemas/creative-set/update-creative-set-response.json",
-            "description": "Response payload for update_creative_set task"
+            "$ref": "/schemas/portfolio/update-portfolio-response.json",
+            "description": "Response payload for update_portfolio task"
           }
         },
-        "delete-creative-set": {
+        "delete-portfolio": {
           "request": {
-            "$ref": "/schemas/creative-set/delete-creative-set-request.json",
-            "description": "Request parameters for archiving or permanently deleting a creative set"
+            "$ref": "/schemas/portfolio/delete-portfolio-request.json",
+            "description": "Request parameters for archiving or permanently deleting a portfolio"
           },
           "response": {
-            "$ref": "/schemas/creative-set/delete-creative-set-response.json",
-            "description": "Response payload for delete_creative_set task"
+            "$ref": "/schemas/portfolio/delete-portfolio-response.json",
+            "description": "Response payload for delete_portfolio task"
           }
         },
         "build-creatives": {
           "request": {
-            "$ref": "/schemas/creative-set/build-creatives-request.json",
-            "description": "Request to build creatives from a set's source assets for specified formats"
+            "$ref": "/schemas/portfolio/build-creatives-request.json",
+            "description": "Request to build creatives from a portfolio's source assets for specified formats"
           },
           "response": {
-            "$ref": "/schemas/creative-set/build-creatives-response.json",
+            "$ref": "/schemas/portfolio/build-creatives-response.json",
             "description": "Response payload for build_creatives task"
           }
         }
       },
       "webhooks": {
-        "description": "Webhook payloads for creative set lifecycle events and seller-initiated requests",
+        "description": "Webhook payloads for portfolio lifecycle events and seller-initiated requests",
         "seller-to-creative-agent": {
-          "creative-set-attached": {
-            "$ref": "/schemas/creative-set/webhooks/creative-set-attached.json",
-            "description": "Notification when a seller attaches a creative set to a media buy"
+          "portfolio-attached": {
+            "$ref": "/schemas/portfolio/webhooks/portfolio-attached.json",
+            "description": "Notification when a seller attaches a portfolio to a media buy"
           },
-          "creative-set-detached": {
-            "$ref": "/schemas/creative-set/webhooks/creative-set-detached.json",
-            "description": "Notification when a seller detaches a creative set from a media buy"
+          "portfolio-detached": {
+            "$ref": "/schemas/portfolio/webhooks/portfolio-detached.json",
+            "description": "Notification when a seller detaches a portfolio from a media buy"
           },
           "format-request": {
-            "$ref": "/schemas/creative-set/webhooks/format-request.json",
-            "description": "Seller requests a new format to be built from the creative set"
+            "$ref": "/schemas/portfolio/webhooks/format-request.json",
+            "description": "Seller requests a new format to be built from the portfolio"
           },
           "adaptation-request": {
-            "$ref": "/schemas/creative-set/webhooks/adaptation-request.json",
+            "$ref": "/schemas/portfolio/webhooks/adaptation-request.json",
             "description": "Seller requests an adaptation of an existing creative (CTA change, localization, etc.)"
           },
           "creative-approval-update": {
-            "$ref": "/schemas/creative-set/webhooks/creative-approval-update.json",
+            "$ref": "/schemas/portfolio/webhooks/creative-approval-update.json",
             "description": "Seller notifies creative agent of approval status change for a creative"
           }
         },
         "creative-agent-to-seller": {
           "format-response": {
-            "$ref": "/schemas/creative-set/webhooks/format-response.json",
+            "$ref": "/schemas/portfolio/webhooks/format-response.json",
             "description": "Creative agent notifies seller that a requested format is ready or failed"
           },
           "adaptation-response": {
-            "$ref": "/schemas/creative-set/webhooks/adaptation-response.json",
+            "$ref": "/schemas/portfolio/webhooks/adaptation-response.json",
             "description": "Creative agent notifies seller that a requested adaptation is ready or failed"
           }
         }

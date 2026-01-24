@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/creative-set-item.json",
-  "title": "Creative Set Item",
-  "description": "A creative within a creative set. Wraps a creative-manifest with set-specific metadata like approval status and preview URLs.",
+  "$id": "/schemas/core/portfolio-item.json",
+  "title": "Portfolio Item",
+  "description": "A creative within a portfolio. Wraps a creative-manifest with portfolio-specific metadata like approval status and preview URLs.",
   "type": "object",
   "properties": {
     "creative_id": {
       "type": "string",
-      "description": "Unique identifier for this creative within the set"
+      "description": "Unique identifier for this creative within the portfolio"
     },
     "manifest": {
       "$ref": "/schemas/core/creative-manifest.json",

@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/webhooks/adaptation-request.json",
+  "$id": "/schemas/portfolio/webhooks/adaptation-request.json",
   "title": "Adaptation Request Webhook",
-  "description": "Webhook payload sent by seller agent to request an adaptation of an existing creative. Only processed if creative set has allow_adaptation_requests enabled.",
+  "description": "Webhook payload sent by seller agent to request an adaptation of an existing creative. Only processed if portfolio has allow_adaptation_requests enabled.",
   "type": "object",
   "properties": {
-    "creative_set_id": {
+    "portfolio_id": {
       "type": "string",
-      "description": "The creative set containing the source creative"
+      "description": "The portfolio containing the source creative"
     },
     "source_creative_id": {
       "type": "string",
@@ -72,6 +72,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["creative_set_id", "source_creative_id", "media_buy_id", "seller_agent_url", "adaptation_type"],
+  "required": ["portfolio_id", "source_creative_id", "media_buy_id", "seller_agent_url", "adaptation_type"],
   "additionalProperties": true
 }

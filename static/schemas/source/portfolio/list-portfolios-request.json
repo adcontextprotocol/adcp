@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/creative-set/list-creative-sets-request.json",
-  "title": "List Creative Sets Request",
-  "description": "Request parameters for querying creative sets with filtering and pagination",
+  "$id": "/schemas/portfolio/list-portfolios-request.json",
+  "title": "List Portfolios Request",
+  "description": "Request parameters for querying portfolios with filtering and pagination",
   "type": "object",
   "properties": {
     "filter": {
