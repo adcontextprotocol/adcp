@@ -117,6 +117,14 @@
           "$ref": "/schemas/core/promoted-products.json",
           "description": "Product or offering selection for campaigns with multiple selection methods"
         },
+        "proposal": {
+          "$ref": "/schemas/core/proposal.json",
+          "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
+        },
+        "product-allocation": {
+          "$ref": "/schemas/core/product-allocation.json",
+          "description": "A budget allocation for a specific product within a proposal"
+        },
         "start-timing": {
           "$ref": "/schemas/core/start-timing.json",
           "description": "Campaign start timing: 'asap' or ISO 8601 date-time"

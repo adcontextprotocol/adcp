@@ -2,16 +2,40 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-request.json",
   "title": "Create Media Buy Request",
-  "description": "Request parameters for creating a media buy",
+  "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
   "type": "object",
   "properties": {
     "buyer_ref": {
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"
     },
+    "proposal_id": {
+      "type": "string",
+      "description": "ID of a proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array."
+    },
+    "total_budget": {
+      "type": "object",
+      "description": "Total budget for the media buy when executing a proposal. The publisher applies the proposal's allocation percentages to this amount to derive package budgets.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "Total budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
     "packages": {
       "type": "array",
-      "description": "Array of package configurations",
+      "description": "Array of package configurations. Required when not using proposal_id. When executing a proposal, this can be omitted and packages will be derived from the proposal's allocations.",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
       }
@@ -115,10 +139,12 @@
   },
   "required": [
     "buyer_ref",
-    "packages",
     "brand_manifest",
     "start_time",
     "end_time"
   ],
+  "dependencies": {
+    "proposal_id": ["total_budget"]
+  },
   "additionalProperties": true
 }
