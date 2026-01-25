@@ -250,7 +250,10 @@ Protocol-level capability discovery replacing agent card extensions.
   "supported_protocols": ["media_buy", "signals", "governance"],
   "extensions_supported": ["scope3", "garm"],
   "media_buy": {
-    "features": ["inline_creative_management", "property_list_filtering"],
+    "features": {
+      "inline_creative_management": true,
+      "property_list_filtering": true
+    },
     "portfolio": {
       "publisher_domains": ["publisher.com"],
       "channels": ["display", "ctv"],
