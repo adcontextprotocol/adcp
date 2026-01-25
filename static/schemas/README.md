@@ -54,7 +54,6 @@ schemas/
 │   │   └── frequency-cap-scope.json
 │   └── index.json              # Schema registry
 ├── asset-types-v1.json         # Creative asset types (existing)
-├── creative-formats-v1.json    # Creative format definitions (existing)
 └── README.md                   # This file
 ```
 
