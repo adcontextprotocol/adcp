@@ -27,7 +27,7 @@
     },
     "floor_price": {
       "type": "number",
-      "description": "Minimum acceptable bid price. Bids below this value will be rejected.",
+      "description": "Minimum acceptable bid for auction pricing (mutually exclusive with fixed_price). Bids below this value will be rejected.",
       "minimum": 0
     },
     "price_guidance": {

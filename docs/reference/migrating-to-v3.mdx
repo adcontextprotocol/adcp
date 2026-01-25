@@ -132,6 +132,15 @@ Pricing options have been updated for clearer semantics and better separation of
 3. **Update readers** to look for new field names
 4. **Test auction bids** to verify floor enforcement works correctly
 
+<Note>
+**Transition Period Handling**: During migration, readers may encounter both old and new field names. Consider checking for both:
+```javascript
+const price = option.fixed_price ?? option.fixed_rate;
+const floor = option.floor_price ?? option.price_guidance?.floor;
+```
+v3 writers should only emit the new field names. Old field names (`fixed_rate`, `is_fixed`, `price_guidance.floor`) are not recognized by v3 readers.
+</Note>
+
 ---
 
 ### Creative Assignments with Weighting
