@@ -81,6 +81,68 @@ See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) for complet
 
 ---
 
+### Pricing Option Field Renames
+
+Pricing options have been updated for clearer semantics and better separation of hard constraints vs soft hints.
+
+**v2.x:**
+```json
+{
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "price_guidance": {
+    "floor": 10.00,
+    "p50": 15.00,
+    "p75": 18.00
+  }
+}
+```
+
+**v3.x:**
+```json
+{
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "floor_price": 10.00,
+  "price_guidance": {
+    "p50": 15.00,
+    "p75": 18.00
+  }
+}
+```
+
+#### Field Changes
+
+| v2 Field | v3 Field | Notes |
+|----------|----------|-------|
+| `fixed_rate` | `fixed_price` | Renamed for clarity (it's a price, not a rate) |
+| `price_guidance.floor` | `floor_price` | Moved to top level as hard constraint |
+
+#### Semantic Distinction
+
+- **Hard constraints** (`fixed_price`, `floor_price`) - Publisher-enforced prices that cause bid rejection if violated
+- **Soft hints** (`price_guidance.p25`, `.p50`, `.p75`, `.p90`) - Historical percentiles to help buyers calibrate bids
+
+#### Migration Steps
+
+1. **Rename `fixed_rate`** → `fixed_price` in all pricing options
+2. **Move `floor`** from inside `price_guidance` to top-level `floor_price`
+3. **Update readers** to look for new field names
+4. **Test auction bids** to verify floor enforcement works correctly
+
+<Note>
+**Transition Period Handling**: During migration, readers may encounter both old and new field names. Consider checking for both:
+```javascript
+const price = option.fixed_price ?? option.fixed_rate;
+const floor = option.floor_price ?? option.price_guidance?.floor;
+```
+v3 writers should only emit the new field names. Old field names (`fixed_rate`, `is_fixed`, `price_guidance.floor`) are not recognized by v3 readers.
+</Note>
+
+---
+
 ### Creative Assignments with Weighting
 
 Replace `creative_ids` arrays with `creative_assignments` objects.
@@ -433,6 +495,8 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 ### Required Changes
 
 - [ ] Update channel enum values to [new taxonomy](/docs/reference/media-channel-taxonomy)
+- [ ] Rename `fixed_rate` → `fixed_price` in pricing options
+- [ ] Move `price_guidance.floor` → `floor_price` (top-level)
 - [ ] Replace `creative_ids` with `creative_assignments`
 - [ ] Add system specification to metro/postal targeting
 - [ ] Rename `geo_postal_codes` → `geo_postal_areas`
@@ -449,6 +513,7 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 
 - [ ] Validate all requests against v3 schemas
 - [ ] Test channel values in product discovery
+- [ ] Verify pricing option field renames work correctly
 - [ ] Verify geo targeting with named systems
 - [ ] Test creative assignment weighting
 

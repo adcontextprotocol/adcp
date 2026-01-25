@@ -2,38 +2,59 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/pricing-options/cpv-option.json",
   "title": "CPV Pricing Option",
-  "description": "Cost Per View (at publisher-defined threshold) fixed-rate pricing for video/audio",
+  "description": "Cost Per View (at publisher-defined threshold) pricing for video/audio. If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
   "type": "object",
   "properties": {
     "pricing_option_id": {
       "type": "string",
-      "description": "Unique identifier for this pricing option within the product (e.g., 'cpv_usd_50pct')"
+      "description": "Unique identifier for this pricing option within the product"
     },
     "pricing_model": {
       "type": "string",
       "const": "cpv",
       "description": "Cost per view at threshold"
     },
-    "rate": {
-      "type": "number",
-      "description": "Fixed CPV rate (cost per view)",
-      "minimum": 0
-    },
     "currency": {
       "type": "string",
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
-      "examples": [
-        "USD",
-        "EUR",
-        "GBP",
-        "JPY"
-      ]
+      "examples": ["USD", "EUR", "GBP", "JPY"]
     },
-    "is_fixed": {
-      "type": "boolean",
-      "description": "Whether this is a fixed rate (true) or auction-based (false)",
-      "const": true
+    "fixed_price": {
+      "type": "number",
+      "description": "Fixed price per view. If present, this is fixed pricing. If absent, auction-based.",
+      "minimum": 0
+    },
+    "floor_price": {
+      "type": "number",
+      "description": "Minimum acceptable bid for auction pricing (mutually exclusive with fixed_price). Bids below this value will be rejected.",
+      "minimum": 0
+    },
+    "price_guidance": {
+      "type": "object",
+      "description": "Optional pricing guidance for auction-based bidding. Helps buyers calibrate bids with historical percentiles.",
+      "properties": {
+        "p25": {
+          "type": "number",
+          "description": "25th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median of recent winning bids",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th percentile of recent winning bids",
+          "minimum": 0
+        }
+      }
     },
     "parameters": {
       "type": "object",
@@ -43,31 +64,27 @@
           "oneOf": [
             {
               "type": "number",
-              "description": "Percentage completion threshold for CPV pricing (0.0 to 1.0, e.g., 0.5 = 50% completion)",
+              "description": "Percentage completion threshold (0.0 to 1.0, e.g., 0.5 = 50%)",
               "minimum": 0,
               "maximum": 1
             },
             {
               "type": "object",
-              "description": "Time-based view threshold for CPV pricing",
+              "description": "Time-based view threshold",
               "properties": {
                 "duration_seconds": {
                   "type": "integer",
-                  "description": "Seconds of viewing required (e.g., 30 for YouTube-style '30 seconds = view')",
+                  "description": "Seconds of viewing required",
                   "minimum": 1
                 }
               },
-              "required": [
-                "duration_seconds"
-              ],
+              "required": ["duration_seconds"],
               "additionalProperties": true
             }
           ]
         }
       },
-      "required": [
-        "view_threshold"
-      ],
+      "required": ["view_threshold"],
       "additionalProperties": true
     },
     "min_spend_per_package": {
@@ -76,13 +93,6 @@
       "minimum": 0
     }
   },
-  "required": [
-    "pricing_option_id",
-    "pricing_model",
-    "rate",
-    "currency",
-    "is_fixed",
-    "parameters"
-  ],
+  "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],
   "additionalProperties": true
 }

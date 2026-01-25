@@ -2,19 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/pricing-option.json",
   "title": "Pricing Option",
-  "description": "A pricing model option offered by a publisher for a product. Each pricing model has its own schema with model-specific requirements.",
+  "description": "A pricing model option offered by a publisher for a product. Discriminated by pricing_model field. If fixed_price is present, it's fixed pricing. If absent, it's auction-based (floor_price and price_guidance optional).",
   "oneOf": [
     {
-      "$ref": "/schemas/pricing-options/cpm-fixed-option.json"
+      "$ref": "/schemas/pricing-options/cpm-option.json"
     },
     {
-      "$ref": "/schemas/pricing-options/cpm-auction-option.json"
-    },
-    {
-      "$ref": "/schemas/pricing-options/vcpm-fixed-option.json"
-    },
-    {
-      "$ref": "/schemas/pricing-options/vcpm-auction-option.json"
+      "$ref": "/schemas/pricing-options/vcpm-option.json"
     },
     {
       "$ref": "/schemas/pricing-options/cpc-option.json"
