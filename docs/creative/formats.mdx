@@ -3,43 +3,58 @@ title: Creative Formats
 ---
 
 
-Creative formats define the structure, requirements, and delivery methods for advertising creatives. Each format specifies what assets are needed, their technical requirements, and how they should be assembled.
+Creative formats define the structural and technical requirements used to instantiate advertising creatives. A format specifies:
+- Its IAB format classification (e.g., Display, Video, Audio, Native)
+- The creative element roles required to instantiate the format
+- Technical constraints such as duration, dimensions, file types, and limits
+- How the resulting creative is delivered and validated
+
+Formats define requirements and constraints, not brand content or layout logic.
 
 For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](/docs/creative).
 
 ## Standard vs Custom Formats
 
-AdCP defines two categories of formats:
+AdCP supports two categories of formats based on authority and reuse, not capability.
 
 ### Standard Formats
-Pre-defined, industry-standard specifications provided by the **AdCP Reference Creative Agent** (`https://creative.adcontextprotocol.org`):
-- **Simplified**: No platform-specific complexity
-- **Portable**: One creative works everywhere
-- **Validated**: Pre-tested IAB specifications
-- **Discoverable**: Available via `list_creative_formats`
-- **Maintained**: Centrally hosted and updated
 
-Standard formats include common IAB ad units (300x250, 728x90), standard video specs (15s, 30s pre-roll), audio formats, DOOH, and more. See the [Creative Channel Guides](/docs/creative/channels/video) for format documentation.
+Standard formats are predefined specifications provided by the **AdCP Reference Creative Agent** (`https://creative.adcontextprotocol.org`).
 
-**For sales agents:** Before creating custom format definitions, check the reference creative agent to see if your formats already exist. Most publishers support some standard formats and should reference `https://creative.adcontextprotocol.org`. See [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats) for detailed guidance.
+Standard formats are:
+- **Industry-aligned**: Based on IAB format families and widely adopted conventions
+- **Portable**: Designed to work consistently across platforms
+- **Validated**: Pre-tested against known technical constraints
+- **Discoverable**: Returned via `list_creative_formats`
+- **Maintained**: Centrally documented and updated
+
+Standard formats typically cover common use cases such as:
+- Display formats with fixed or responsive dimensions
+- Video formats with standard durations and aspect ratios
+- Audio formats with defined spot lengths
+- Common DOOH display and video executions
+
+**Guidance for sales agents:** Before defining custom formats, check whether an equivalent standard format already exists. Most publishers can reference standard formats for common inventory and reserve custom formats for genuinely differentiated offerings. See [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats) for detailed guidance.
 
 ### Custom Formats
-Publisher-specific formats for unique inventory that doesn't match standard specifications:
-- **Unique requirements**: Custom dimensions, special asset needs, or unique technical specs
-- **Specialized capabilities**: Platform-specific features not available in standard formats
-- **Premium experiences**: Differentiated ad products like takeovers, rich media, or immersive units
-- **Custom validation**: Publisher-specific creative review or assembly logic
 
-**When to create custom formats:** Only when you have truly unique requirements that aren't covered by standard formats. Most publishers will reference standard formats for common ad units (300x250, video pre-roll, etc.) and only define custom formats for premium or specialized inventory.
+Custom formats are defined by publishers or platforms for inventory that cannot be accurately represented by standard formats.
+
+Custom formats may be used when there are:
+- **Unique constraints**: Non-standard dimensions, physical displays, or asset requirements
+- **Specialized capabilities**: Platform-specific rendering or interaction support
+- **Premium inventory**: Differentiated or bespoke ad products
+- **Custom validation logic**: Publisher-specific review or assembly rules
+
+Custom formats should be introduced only when necessary. Where possible, standard formats should be reused to maximize portability and buyer understanding.
 
 ## Discovering Formats
 
-Buyers discover available formats using the `list_creative_formats` task, which returns formats supported by a sales agent.
+Buyers discover supported formats using the `list_creative_formats` task exposed by sales agents.
 
-**Formats can come from two sources:**
-
-1. **Directly from the sales agent** - Custom formats defined by the publisher
-2. **Referenced creative agents** - The sales agent points to other creative agents (like the reference agent) for additional format support
+Formats may be sourced from:
+- **The sales agent itself** - for custom formats
+- **Referenced creative agents** - such as the AdCP reference agent, for standard formats
 
 **Example discovery response:**
 
@@ -64,13 +79,13 @@ Buyers discover available formats using the `list_creative_formats` task, which 
 }
 ```
 
-This tells buyers: "We support our custom homepage takeover format, PLUS all standard formats from the reference creative agent."
+This indicates that the sales agent supports its own custom format and all formats defined by the referenced creative agent.
 
 **For sales agents implementing format support:** See [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats).
 
 ## Format Authority
 
-Each format includes an `agent_url` field pointing to its authoritative source:
+Each format includes an `agent_url` that identifies the authoritative creative agent responsible for the format:
 
 ```json
 {
@@ -82,41 +97,37 @@ Each format includes an `agent_url` field pointing to its authoritative source:
 }
 ```
 
-The creative agent at that URL is the definitive source for:
+The authoritative creative agent provides:
 - Complete format specifications
-- Asset validation rules
+- Creative element requirements and constraints
+- Validation rules
 - Preview generation
-- Format documentation
+- Canonical documentation
 
-Buyers query the agent_url for full format details, validation, and preview capabilities.
+Buyers and sales agents rely on the `agent_url` to retrieve definitive format information.
 
 ## Format Visual Presentation
 
-Formats include two optional fields for visual presentation in format browsing UIs:
+Formats may optionally include metadata to support visual browsing and selection in user interfaces.
 
 ### Preview Image
 **Field**: `preview_image`
-**Purpose**: Thumbnail/card image for format browsing
+**Purpose**: Lightweight thumbnail for format browsing
 **Specifications**:
-- **Dimensions**: 400×300px (4:3 aspect ratio)
-- **Format**: PNG or JPG
-- **Use case**: Quick visual identification in format lists/grids
+- 4:3 aspect ratio
+- PNG or JPG
 
 ### Example Showcase
 **Field**: `example_url`
-**Purpose**: Link to full interactive demo/showcase page
-**Content**: Publisher-controlled page showing:
-- Video walkthroughs of the format
-- Interactive demos
-- Multiple creative examples
-- Technical specifications
-- Best practices
+**Purpose**: Deep link to a publisher-controlled showcase
 
-**Why this approach?**
-- Publishers control how to best showcase complex formats
-- No schema limitations on presentation methods
-- Handles video, interactive demos, DOOH installations, etc.
-- Structured card (preview_image) + deep link (example_url) pattern
+May include:
+- Interactive demos
+- Videos
+- Multiple creative examples
+- Best practices and specifications
+
+This approach allows publishers to present complex formats without constraining presentation in the protocol.
 
 **Example**:
 ```json
@@ -136,7 +147,7 @@ Formats include two optional fields for visual presentation in format browsing U
 
 ## Referencing Formats
 
-**CRITICAL**: AdCP uses structured format ID objects everywhere to avoid parsing ambiguity and handle namespace collisions.
+AdCP uses structured format identifiers everywhere to avoid ambiguity and namespace collisions.
 
 ### Structured Format IDs (Required Everywhere)
 
@@ -150,13 +161,13 @@ Formats include two optional fields for visual presentation in format browsing U
 }
 ```
 
-**Why structured objects everywhere?**
-- **No parsing needed**: Components are explicit
-- **Unambiguous**: Clear separation of namespace and identifier
-- **Handles collisions**: Same format ID from different agents are distinct
-- **No exceptions**: Simpler mental model - one format_id pattern everywhere
-- **Validation-friendly**: Easy to validate with JSON Schema
-- **Extensible**: Can add version or other metadata later
+This approach ensures:
+- Explicit namespacing
+- Collision-safe identifiers
+- Schema validation
+- Extensibility without breaking changes
+
+String-based format identifiers MUST NOT be used in API contracts.
 
 ### Where Structured Format IDs Are Used
 
@@ -310,6 +321,15 @@ This unified approach helps creative tools and AI agents understand the full cap
 
 ### Rendered Outputs and Dimensions
 
+Formats describe one or more rendered outputs, each with defined dimensions and semantic roles.
+
+This supports:
+- Single-render formats
+- Companion creatives
+- Multi-placement outputs
+- Responsive behavior
+- Physical dimensions for non-personal environments
+
 Formats specify their rendered outputs via the `renders` array. Most formats produce a single render, but some (companion ads, adaptive formats, multi-placement) produce multiple renders:
 
 ```json
@@ -440,6 +460,14 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 - Clear semantic roles for each rendered piece
 
 ## Format Categories
+
+Formats are classified under IAB format families:
+- Display
+- Video
+- Audio
+- Native
+
+Additional distinctions such as DOOH, CTV, or mobile describe delivery environments, not format families.
 
 AdCP supports formats across multiple media types:
 
