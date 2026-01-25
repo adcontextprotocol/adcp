@@ -21,7 +21,7 @@ Learn how sales agents can support standard creative formats through the referen
 - Leverage the Standard Creative Agent for standard formats
 - Work with publisher-specific creative agents for custom formats
 
-### [Authorized Properties](/docs/media-buy/capability-discovery/authorized-properties) 🔐
+### [Authorized Properties](/dist/docs/2.5.3/media-buy/capability-discovery/authorized-properties) 🔐
 Learn how AdCP prevents unauthorized resale and ensures sales agents are legitimate. Understand:
 
 - The problem of unauthorized resale in digital advertising
@@ -30,7 +30,7 @@ Learn how AdCP prevents unauthorized resale and ensures sales agents are legitim
 - Property tags and large-scale authorization management
 
 <Note>
-**Cross-Protocol Foundation**: The `adagents.json` authorization system applies across ALL AdCP protocols (Media Buy, Signals, and future Curation). See the [adagents.json specification](/docs/media-buy/capability-discovery/adagents) for complete implementation details.
+**Cross-Protocol Foundation**: The `adagents.json` authorization system applies across ALL AdCP protocols (Media Buy, Signals, and future Curation). See the [adagents.json specification](/dist/docs/2.5.3/media-buy/capability-discovery/adagents) for complete implementation details.
 </Note>
 
 
@@ -38,19 +38,19 @@ Learn how AdCP prevents unauthorized resale and ensures sales agents are legitim
 
 These capability discovery tasks provide the reference data needed for effective AdCP workflows:
 
-### [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats)
+### [`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats)
 Discover all supported creative formats with detailed specifications including dimensions, file types, duration limits, and technical requirements.
 
-### [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties)  
+### [`list_authorized_properties`](/dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties)
 Get all properties a sales agent is authorized to represent, including property tags for efficient organization and authorization validation data.
 
 ## Integration Pattern
 
 Capability discovery typically happens early in your AdCP workflow:
 
-1. **Understand Formats**: Call [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) to learn supported creative types
-2. **Validate Authorization**: Use [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties) to verify sales agent legitimacy
-3. **Discover Products**: Search for advertising inventory with [`get_products`](/docs/media-buy/task-reference/get_products)
+1. **Understand Formats**: Call [`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats) to learn supported creative types
+2. **Validate Authorization**: Use [`list_authorized_properties`](/dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties) to verify sales agent legitimacy
+3. **Discover Products**: Search for advertising inventory with [`get_products`](/dist/docs/2.5.3/media-buy/task-reference/get_products)
 4. **Plan Creatives**: Match discovered products to available formats for production planning
 5. **Execute Campaigns**: Create media buys with confidence in format compatibility and authorization
 
@@ -74,10 +74,10 @@ Together, these capabilities provide the foundation for safe, efficient, and eff
 
 ## Related Documentation
 
-- **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
-- **[Product Discovery](/docs/media-buy/product-discovery/)** - Finding advertising inventory
-- **[Creatives](/docs/media-buy/creatives/)** - Creative asset management
-- **[Creative Protocol](/docs/creative/)** - Creative agents and manifests
-- **[Creative Channel Guides](/docs/creative/channels/video)** - Format examples and patterns
-- **[Creative Manifests](/docs/creative/creative-manifests)** - Understanding creative specifications
-- **[adagents.json Specification](/docs/media-buy/capability-discovery/adagents)** - Publisher authorization system (applies across all AdCP protocols)
+- **[Task Reference](/dist/docs/2.5.3/media-buy/task-reference/)** - Complete API documentation
+- **[Product Discovery](/dist/docs/2.5.3/media-buy/product-discovery/)** - Finding advertising inventory
+- **[Creatives](/dist/docs/2.5.3/media-buy/creatives/)** - Creative asset management
+- **[Creative Protocol](/dist/docs/2.5.3/creative/)** - Creative agents and manifests
+- **[Creative Channel Guides](/dist/docs/2.5.3/creative/channels/video)** - Format examples and patterns
+- **[Creative Manifests](/dist/docs/2.5.3/creative/creative-manifests)** - Understanding creative specifications
+- **[adagents.json Specification](/dist/docs/2.5.3/media-buy/capability-discovery/adagents)** - Publisher authorization system (applies across all AdCP protocols)
