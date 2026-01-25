@@ -26,7 +26,7 @@
       "description": "Which AdCP domain protocols this seller supports",
       "items": {
         "type": "string",
-        "enum": ["media_buy", "signals", "governance"]
+        "enum": ["media_buy", "signals", "governance", "sponsored_intelligence"]
       },
       "minItems": 1
     },
@@ -288,6 +288,56 @@
           }
         }
       }
+    },
+    "sponsored_intelligence": {
+      "type": "object",
+      "description": "Sponsored Intelligence protocol capabilities. Only present if sponsored_intelligence is in supported_protocols. SI agents handle conversational brand experiences.",
+      "properties": {
+        "endpoint": {
+          "type": "object",
+          "description": "SI agent endpoint configuration",
+          "properties": {
+            "transports": {
+              "type": "array",
+              "description": "Available protocol transports. Hosts select based on their capabilities.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["mcp", "a2a"],
+                    "description": "Protocol transport type"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Agent endpoint URL for this transport"
+                  }
+                },
+                "required": ["type", "url"],
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "preferred": {
+              "type": "string",
+              "enum": ["mcp", "a2a"],
+              "description": "Preferred transport when host supports multiple"
+            }
+          },
+          "required": ["transports"]
+        },
+        "capabilities": {
+          "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
+          "description": "Modalities, components, and commerce capabilities"
+        },
+        "brand_manifest_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to brand manifest with colors, fonts, logos, tone"
+        }
+      },
+      "required": ["endpoint", "capabilities"]
     },
     "extensions_supported": {
       "type": "array",

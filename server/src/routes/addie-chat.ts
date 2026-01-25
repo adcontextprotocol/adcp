@@ -34,6 +34,11 @@ import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
 } from "../addie/mcp/member-tools.js";
+import {
+  SI_HOST_TOOLS,
+  createSiHostToolHandlers,
+} from "../addie/mcp/si-host-tools.js";
+import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
 import {
   getWebMemberContext,
@@ -139,49 +144,139 @@ interface PreparedRequest {
   messageToProcess: string;
   memberContext: MemberContext | null;
   requestTools: RequestTools;
+  siRetrievalTimeMs: number | null;
+  siAgents: RetrievedSIAgent[];
+}
+
+interface SiSessionData {
+  session_id: string;
+  brand_name: string;
+  brand_response: unknown;
+  identity_shared: boolean;
+  relationship: unknown;
+}
+
+/**
+ * Extract SI session data from tool executions if an SI session was started
+ */
+function extractSiSessionFromToolExecutions(
+  toolExecutions: Array<{ tool_name: string; result?: unknown }> | undefined
+): SiSessionData | null {
+  if (!toolExecutions) return null;
+
+  for (const exec of toolExecutions) {
+    if (exec.tool_name === "connect_to_si_agent" && exec.result) {
+      try {
+        const result = typeof exec.result === "string" ? JSON.parse(exec.result) : exec.result;
+        if (result.success && result.session_id) {
+          return {
+            session_id: result.session_id,
+            brand_name: result.brand_name,
+            brand_response: result.brand_response,
+            identity_shared: result.identity_shared,
+            relationship: result.relationship,
+          };
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
  * Prepare a request with member context and per-request tools
- * Creates member tools with the user's actual context for authenticated users
+ * Creates member tools and SI host tools with the user's actual context
+ * Also retrieves relevant SI agents for RAG-style context injection
  */
 async function prepareRequestWithMemberTools(
   sanitizedInput: string,
-  userId: string | undefined
+  userId: string | undefined,
+  threadExternalId: string
 ): Promise<PreparedRequest> {
   let messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
+  let siRetrievalTimeMs: number | null = null;
 
-  try {
-    if (userId) {
-      memberContext = await getWebMemberContext(userId);
-      const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
-      if (memberContextText) {
-        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
-        logger.debug(
-          { userId, hasContext: true, orgName: memberContext.organization?.name },
-          "Addie Chat: Added member context to message"
-        );
+  // Run member context fetch and SI retrieval in parallel
+  const [memberContextResult, siRetrievalResult] = await Promise.all([
+    // Get member context
+    (async () => {
+      try {
+        if (userId) {
+          return await getWebMemberContext(userId);
+        }
+        return null;
+      } catch (error) {
+        logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+        return null;
       }
-    } else {
-      const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
-      const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
-      if (memberContextText) {
-        messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
-        logger.debug("Addie Chat: Added anonymous web context to message");
-      }
+    })(),
+    // Retrieve relevant SI agents
+    siRetriever.retrieve(sanitizedInput),
+  ]);
+
+  memberContext = memberContextResult;
+  siRetrievalTimeMs = siRetrievalResult.retrieval_time_ms;
+
+  // Build message with member context
+  if (memberContext) {
+    const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
+    if (memberContextText) {
+      messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+      logger.debug(
+        { userId, hasContext: true, orgName: memberContext.organization?.name },
+        "Addie Chat: Added member context to message"
+      );
     }
-  } catch (error) {
-    logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+  } else {
+    const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
+    const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
+    if (memberContextText) {
+      messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+      logger.debug("Addie Chat: Added anonymous web context to message");
+    }
   }
 
+  // Inject SI agent context if relevant agents were found
+  if (siRetrievalResult.agents.length > 0) {
+    const siContext = siRetriever.formatContext(siRetrievalResult.agents);
+    messageToProcess = `${messageToProcess}\n\n${siContext}`;
+    logger.debug(
+      {
+        agentCount: siRetrievalResult.agents.length,
+        topAgents: siRetrievalResult.agents.map((a) => a.display_name),
+        retrievalTimeMs: siRetrievalResult.retrieval_time_ms,
+      },
+      "Addie Chat: Injected SI agent context"
+    );
+  }
+
+  // Create per-request member tools
   const memberHandlers = createMemberToolHandlers(memberContext);
+
+  // Create per-request SI host tools with thread context
+  const siHostHandlers = createSiHostToolHandlers(
+    () => memberContext,
+    () => threadExternalId
+  );
+
+  // Combine all per-request tools
+  const combinedHandlers = new Map([...memberHandlers, ...siHostHandlers]);
   const requestTools: RequestTools = {
-    tools: MEMBER_TOOLS,
-    handlers: memberHandlers,
+    tools: [...MEMBER_TOOLS, ...SI_HOST_TOOLS],
+    handlers: combinedHandlers,
   };
 
-  return { messageToProcess, memberContext, requestTools };
+  return {
+    messageToProcess,
+    memberContext,
+    requestTools,
+    siRetrievalTimeMs,
+    siAgents: siRetrievalResult.agents,
+  };
 }
 
 // CORS configuration for native apps (Tauri desktop, mobile)
@@ -333,7 +428,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       // Prepare message with member context and per-request tools
       const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
-        req.user?.id
+        req.user?.id,
+        externalId
       );
 
       // Process with Claude
@@ -394,6 +490,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         config_version_id: response.config_version_id,
       });
 
+      // Check for SI session started (from connect_to_si_agent tool)
+      const siSession = extractSiSessionFromToolExecutions(response.tool_executions);
+
       res.json({
         response: outputValidation.sanitized,
         conversation_id: externalId, // Return external_id as conversation_id for API compatibility
@@ -403,6 +502,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         timing: response.timing,
         usage: response.usage,
         latency_ms: latencyMs,
+        si_session: siSession,
       });
     } catch (error) {
       logger.error({ err: error }, "Addie Chat: Error handling message");
@@ -546,9 +646,10 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }));
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestTools, siAgents } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
-        req.user?.id
+        req.user?.id,
+        externalId
       );
 
       // Stream the response
@@ -622,7 +723,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         config_version_id: response?.config_version_id,
       });
 
+      // Check for SI session started (from connect_to_si_agent tool)
+      const siSession = extractSiSessionFromToolExecutions(response?.tool_executions);
+
       // Send done event with final metadata
+      // Include available SI agents only if no session was started (for CTA buttons)
       sendEvent("done", {
         conversation_id: externalId,
         message_id: assistantMessage.message_id,
@@ -630,6 +735,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         timing: response?.timing,
         usage: response?.usage,
         latency_ms: latencyMs,
+        si_session: siSession,
+        si_agents: !siSession && siAgents.length > 0 ? siAgents.map(a => ({
+          slug: a.slug,
+          display_name: a.display_name,
+          tagline: a.tagline,
+        })) : undefined,
       });
 
       res.end();

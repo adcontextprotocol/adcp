@@ -108,6 +108,25 @@
             ]
           },
           {
+            "group": "Sponsored Intelligence Protocol",
+            "pages": [
+              "docs/sponsored-intelligence/overview",
+              "docs/sponsored-intelligence/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/sponsored-intelligence/tasks/index",
+                  "docs/sponsored-intelligence/tasks/si_check_availability",
+                  "docs/sponsored-intelligence/tasks/si_initiate_session",
+                  "docs/sponsored-intelligence/tasks/si_send_message",
+                  "docs/sponsored-intelligence/tasks/si_terminate_session"
+                ]
+              },
+              "docs/sponsored-intelligence/implementing-si-agents",
+              "docs/sponsored-intelligence/implementing-si-hosts"
+            ]
+          },
+          {
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
