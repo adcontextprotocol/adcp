@@ -68,6 +68,7 @@ import { queuePerspectiveLink, processPendingResources, processRssPerspectives, 
 import { InsightsDatabase } from "./db/insights-db.js";
 import { sendCommunityReplies } from "./addie/services/community-articles.js";
 import { sendChannelMessage } from "./slack/client.js";
+import { serveHtmlWithMetaTags } from "./utils/html-config.js";
 import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
 import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
 import { runGoalFollowUpJob } from "./addie/jobs/goal-follow-up.js";
@@ -1626,9 +1627,38 @@ export class HTTPServer {
       res.redirect(301, "/latest/perspectives");
     });
 
-    // Perspectives detail page - serves article content
+    // Perspectives detail page - serves article content with SSR meta tags for social sharing
     this.app.get("/perspectives/:slug", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'perspectives/article.html');
+      const { slug } = req.params;
+
+      // Fetch article data for meta tags (social crawlers don't execute JS)
+      let article: { title: string; excerpt?: string; subtitle?: string; featured_image_url?: string; author_name?: string; published_at?: string; updated_at?: string } | null = null;
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT title, excerpt, subtitle, featured_image_url, author_name, published_at, updated_at
+           FROM perspectives
+           WHERE slug = $1 AND status = 'published'`,
+          [slug]
+        );
+        if (result.rows.length > 0) {
+          article = result.rows[0];
+        }
+      } catch (error) {
+        logger.warn({ error, slug }, 'Failed to fetch article for meta tags');
+      }
+
+      // Serve HTML with meta tags injected
+      await serveHtmlWithMetaTags(req, res, 'perspectives/article.html', article ? {
+        title: article.title,
+        description: article.excerpt || article.subtitle || article.title,
+        image: article.featured_image_url || 'https://agenticadvertising.org/AAo-social.png',
+        url: `https://agenticadvertising.org/perspectives/${slug}`,
+        type: 'article',
+        author: article.author_name,
+        publishedAt: article.published_at,
+        modifiedAt: article.updated_at,
+      } : undefined);
     });
 
     // Legacy redirects
