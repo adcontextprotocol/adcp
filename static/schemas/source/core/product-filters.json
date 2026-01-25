@@ -133,11 +133,8 @@
       }
     },
     "required_features": {
-      "type": "array",
-      "description": "Filter to products from sellers supporting specific protocol features (e.g., 'content_standards', 'inline_creative_management')",
-      "items": {
-        "type": "string"
-      }
+      "$ref": "/schemas/core/media-buy-features.json",
+      "description": "Filter to products from sellers supporting specific protocol features. Only features set to true are used for filtering."
     },
     "required_geo_targeting": {
       "type": "array",

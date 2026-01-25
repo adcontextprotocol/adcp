@@ -35,25 +35,7 @@
       "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",
       "properties": {
         "features": {
-          "type": "object",
-          "description": "Optional media-buy features supported. If declared true, the seller MUST honor requests using that feature.",
-          "properties": {
-            "inline_creative_management": {
-              "type": "boolean",
-              "description": "Supports creatives provided inline in create_media_buy requests"
-            },
-            "property_list_filtering": {
-              "type": "boolean",
-              "description": "Honors property_list parameter in get_products to filter results to buyer-approved properties"
-            },
-            "content_standards": {
-              "type": "boolean",
-              "description": "Full support for content_standards configuration including sampling rates and category filtering"
-            }
-          },
-          "additionalProperties": {
-            "type": "boolean"
-          }
+          "$ref": "/schemas/core/media-buy-features.json"
         },
         "execution": {
           "type": "object",

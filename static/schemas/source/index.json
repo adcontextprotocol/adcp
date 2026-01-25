@@ -169,6 +169,10 @@
         "identifier": {
           "$ref": "/schemas/core/identifier.json",
           "description": "A property identifier with type and value"
+        },
+        "media-buy-features": {
+          "$ref": "/schemas/core/media-buy-features.json",
+          "description": "Optional media-buy protocol features for capability declarations and product filters"
         }
       }
     },
