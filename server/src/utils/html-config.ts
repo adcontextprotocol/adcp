@@ -145,3 +145,181 @@ export async function serveHtmlWithConfig(
   res.setHeader("Expires", "0");
   res.send(injectedHtml);
 }
+
+/**
+ * Meta tag data for server-side rendering of social sharing previews.
+ * These values replace placeholder content in HTML templates so that
+ * social crawlers (Slack, Twitter, LinkedIn, Facebook) see real content
+ * instead of "Loading..." placeholders from client-side rendered SPAs.
+ */
+export interface MetaTagData {
+  title: string;
+  description: string;
+  image?: string;
+  url: string;
+  type?: 'article' | 'website';
+  author?: string;
+  publishedAt?: string;
+  modifiedAt?: string;
+}
+
+/**
+ * Escape HTML special characters for safe insertion into HTML attributes.
+ */
+function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Inject meta tags into HTML for social sharing previews.
+ * Replaces placeholder values in og:*, twitter:*, and JSON-LD tags.
+ */
+export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): string {
+  const safeTitle = escapeHtmlAttr(metaTags.title);
+  const safeDesc = escapeHtmlAttr(metaTags.description);
+  const safeImage = escapeHtmlAttr(metaTags.image || 'https://agenticadvertising.org/AAo-social.png');
+  const safeUrl = escapeHtmlAttr(metaTags.url);
+
+  let result = html;
+
+  // Replace page title
+  result = result.replace(
+    /<title[^>]*>Loading\.\.\.[^<]*<\/title>/i,
+    `<title>${safeTitle} | AgenticAdvertising.org</title>`
+  );
+
+  // Replace meta description
+  result = result.replace(
+    /<meta name="description"[^>]*content="Loading\.\.\."/i,
+    `<meta name="description" id="pageDescription" content="${safeDesc}"`
+  );
+
+  // Replace Open Graph tags
+  result = result.replace(
+    /<meta property="og:url"[^>]*content=""/i,
+    `<meta property="og:url" id="ogUrl" content="${safeUrl}"`
+  );
+  result = result.replace(
+    /<meta property="og:title"[^>]*content=""/i,
+    `<meta property="og:title" id="ogTitle" content="${safeTitle}"`
+  );
+  result = result.replace(
+    /<meta property="og:description"[^>]*content=""/i,
+    `<meta property="og:description" id="ogDescription" content="${safeDesc}"`
+  );
+  result = result.replace(
+    /<meta property="og:image"[^>]*content="[^"]*"/i,
+    `<meta property="og:image" id="ogImage" content="${safeImage}"`
+  );
+
+  // Replace Twitter tags
+  result = result.replace(
+    /<meta name="twitter:url"[^>]*content=""/i,
+    `<meta name="twitter:url" id="twitterUrl" content="${safeUrl}"`
+  );
+  result = result.replace(
+    /<meta name="twitter:title"[^>]*content=""/i,
+    `<meta name="twitter:title" id="twitterTitle" content="${safeTitle}"`
+  );
+  result = result.replace(
+    /<meta name="twitter:description"[^>]*content=""/i,
+    `<meta name="twitter:description" id="twitterDescription" content="${safeDesc}"`
+  );
+  result = result.replace(
+    /<meta name="twitter:image"[^>]*content="[^"]*"/i,
+    `<meta name="twitter:image" id="twitterImage" content="${safeImage}"`
+  );
+
+  // Replace canonical URL
+  result = result.replace(
+    /<link rel="canonical"[^>]*href=""/i,
+    `<link rel="canonical" id="canonicalUrl" href="${safeUrl}"`
+  );
+
+  // Update JSON-LD structured data if article type
+  if (metaTags.type === 'article') {
+    const jsonLd = {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": metaTags.title,
+      "description": metaTags.description,
+      "url": metaTags.url,
+      "datePublished": metaTags.publishedAt || new Date().toISOString(),
+      "dateModified": metaTags.modifiedAt || metaTags.publishedAt || new Date().toISOString(),
+      "author": metaTags.author ? {
+        "@type": "Person",
+        "name": metaTags.author
+      } : {
+        "@type": "Organization",
+        "name": "AgenticAdvertising.org"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "AgenticAdvertising.org",
+        "url": "https://agenticadvertising.org",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://agenticadvertising.org/AAo.svg"
+        }
+      },
+      "image": safeImage,
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": metaTags.url
+      }
+    };
+
+    // Escape </script> sequences in JSON to prevent XSS
+    const jsonString = JSON.stringify(jsonLd, null, 2).replace(/<\//g, '<\\/');
+    result = result.replace(
+      /<script type="application\/ld\+json" id="articleJsonLd">[\s\S]*?<\/script>/,
+      `<script type="application/ld+json" id="articleJsonLd">\n${jsonString}\n</script>`
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Serve an HTML file with app config AND meta tags injected.
+ * Use for pages that need social sharing previews (perspectives, events, etc.).
+ *
+ * @example
+ * router.get("/perspectives/:slug", optionalAuth, async (req, res) => {
+ *   const article = await getArticle(req.params.slug);
+ *   await serveHtmlWithMetaTags(req, res, "article.html", article ? {
+ *     title: article.title,
+ *     description: article.excerpt,
+ *     url: `https://example.com/perspectives/${article.slug}`,
+ *     type: 'article',
+ *   } : undefined);
+ * });
+ */
+export async function serveHtmlWithMetaTags(
+  req: Request,
+  res: Response,
+  filename: string,
+  metaTags?: MetaTagData
+): Promise<void> {
+  const filePath = getPublicFilePath(filename);
+
+  let html = await fs.readFile(filePath, "utf-8");
+
+  // Inject meta tags first (if provided)
+  if (metaTags) {
+    html = injectMetaTagsIntoHtml(html, metaTags);
+  }
+
+  // Then inject app config
+  html = injectConfigIntoHtml(html, req.user);
+
+  res.setHeader("Content-Type", "text/html");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.send(html);
+}
