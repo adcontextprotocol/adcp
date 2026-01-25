@@ -11,20 +11,7 @@
     },
     "errors": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": "Error code (e.g., STANDARDS_NOT_FOUND, SCOPE_CONFLICT)"
-          },
-          "message": {
-            "type": "string",
-            "description": "Human-readable error message"
-          }
-        },
-        "required": ["code", "message"]
-      },
+      "items": { "$ref": "/schemas/core/error.json" },
       "description": "Errors that occurred during the update"
     },
     "conflicting_standards_id": {

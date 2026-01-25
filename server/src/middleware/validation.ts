@@ -3,9 +3,9 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('validation');
 
 /**
- * Validation result type
+ * Result of validating an input field
  */
-export interface ValidationResult {
+export interface FieldValidationResult {
   valid: boolean;
   error?: string;
 }
@@ -18,7 +18,7 @@ export interface ValidationResult {
  * - Cannot contain consecutive spaces
  * - Cannot be only whitespace
  */
-export function validateOrganizationName(name: unknown): ValidationResult {
+export function validateOrganizationName(name: unknown): FieldValidationResult {
   if (typeof name !== 'string') {
     return { valid: false, error: 'Organization name must be a string' };
   }
@@ -67,7 +67,7 @@ export function validateOrganizationName(name: unknown): ValidationResult {
 /**
  * Validate email address
  */
-export function validateEmail(email: unknown): ValidationResult {
+export function validateEmail(email: unknown): FieldValidationResult {
   if (typeof email !== 'string') {
     return { valid: false, error: 'Email must be a string' };
   }

@@ -85,9 +85,9 @@ export interface AddieInteractionLog {
 }
 
 /**
- * Security validation result
+ * Content sanitization result
  */
-export interface ValidationResult {
+export interface SanitizationResult {
   valid: boolean;
   sanitized: string;
   flagged: boolean;

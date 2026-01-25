@@ -112,7 +112,7 @@ export interface AdAgentsJson {
   last_updated?: string;
 }
 
-export interface ValidationResult {
+export interface AuthorizationResult {
   authorized: boolean;
   domain: string;
   agent_url: string;
