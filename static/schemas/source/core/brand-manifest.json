@@ -108,6 +108,44 @@
       "type": "string",
       "description": "Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
     },
+    "voice": {
+      "type": "object",
+      "description": "Brand voice configuration for audio/conversational experiences",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "TTS provider (e.g., 'elevenlabs', 'openai', 'amazon_polly')"
+        },
+        "voice_id": {
+          "type": "string",
+          "description": "Provider-specific voice identifier"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Provider-specific voice settings (speed, pitch, etc.)",
+          "additionalProperties": true
+        }
+      }
+    },
+    "avatar": {
+      "type": "object",
+      "description": "Brand avatar configuration for visual conversational experiences",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Avatar provider (e.g., 'd-id', 'heygen', 'synthesia')"
+        },
+        "avatar_id": {
+          "type": "string",
+          "description": "Provider-specific avatar identifier"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Provider-specific avatar settings",
+          "additionalProperties": true
+        }
+      }
+    },
     "tagline": {
       "type": "string",
       "description": "Brand tagline or slogan"

@@ -10,7 +10,7 @@
       "description": "Specific protocols to query capabilities for. If omitted, returns capabilities for all supported protocols.",
       "items": {
         "type": "string",
-        "enum": ["media_buy", "signals"]
+        "enum": ["media_buy", "signals", "sponsored_intelligence"]
       }
     },
     "context": {

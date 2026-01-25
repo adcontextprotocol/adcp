@@ -125,6 +125,14 @@
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
         },
+        "promoted-offerings": {
+          "$ref": "/schemas/core/promoted-offerings.json",
+          "description": "Complete offering specification combining brand manifest, product selectors, and asset filters"
+        },
+        "offering": {
+          "$ref": "/schemas/core/offering.json",
+          "description": "A promotable offering from a brand with optional SI endpoint for conversational experiences"
+        },
         "start-timing": {
           "$ref": "/schemas/core/start-timing.json",
           "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
@@ -778,6 +786,65 @@
           "response": {
             "$ref": "/schemas/protocol/get-adcp-capabilities-response.json",
             "description": "Response payload for get_adcp_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
+          }
+        }
+      }
+    },
+    "sponsored-intelligence": {
+      "description": "Sponsored Intelligence Protocol for conversational brand experiences in AI assistants",
+      "supporting-schemas": {
+        "si-capabilities": {
+          "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
+          "description": "Capability categories that brand or host can support (modalities, components, commerce)"
+        },
+        "si-identity": {
+          "$ref": "/schemas/sponsored-intelligence/si-identity.json",
+          "description": "User identity with explicit consent for personalized brand experiences"
+        },
+        "si-ui-element": {
+          "$ref": "/schemas/sponsored-intelligence/si-ui-element.json",
+          "description": "Standard visual components (text, link, image, product_card, carousel, action_button, app_handoff)"
+        }
+      },
+      "tasks": {
+        "si-get-offering": {
+          "request": {
+            "$ref": "/schemas/sponsored-intelligence/si-get-offering-request.json",
+            "description": "Get offering details, availability, and optionally matching products before session handoff"
+          },
+          "response": {
+            "$ref": "/schemas/sponsored-intelligence/si-get-offering-response.json",
+            "description": "Offering details, availability status, matching products, and token for session correlation"
+          }
+        },
+        "si-initiate-session": {
+          "request": {
+            "$ref": "/schemas/sponsored-intelligence/si-initiate-session-request.json",
+            "description": "Host initiates SI session with brand agent - includes context, identity, and capability negotiation"
+          },
+          "response": {
+            "$ref": "/schemas/sponsored-intelligence/si-initiate-session-response.json",
+            "description": "Brand agent's response with session ID, initial message, UI elements, and negotiated capabilities"
+          }
+        },
+        "si-send-message": {
+          "request": {
+            "$ref": "/schemas/sponsored-intelligence/si-send-message-request.json",
+            "description": "Send a message within an active SI session"
+          },
+          "response": {
+            "$ref": "/schemas/sponsored-intelligence/si-send-message-response.json",
+            "description": "Brand agent's response to the message, including session status and potential handoff"
+          }
+        },
+        "si-terminate-session": {
+          "request": {
+            "$ref": "/schemas/sponsored-intelligence/si-terminate-session-request.json",
+            "description": "Terminate an SI session with reason (handoff_transaction, handoff_complete, user_exit, session_timeout, host_terminated)"
+          },
+          "response": {
+            "$ref": "/schemas/sponsored-intelligence/si-terminate-session-response.json",
+            "description": "Termination confirmation with optional ACP handoff or follow-up data"
           }
         }
       }

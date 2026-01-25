@@ -7,6 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/AAo.svg">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -769,6 +770,45 @@
       padding: 4px 0;
     }
 
+    /* SI Agent CTA Buttons */
+    .si-cta-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .si-cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .si-cta-button:hover:not(:disabled) {
+      background: var(--color-brand-hover);
+      transform: translateY(-1px);
+    }
+
+    .si-cta-button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .si-cta-icon {
+      font-size: 14px;
+    }
+
     /* Responsive */
     @media (max-width: 600px) {
       .message-content {
@@ -1147,6 +1187,71 @@
       justify-content: space-between;
     }
 
+    /* Branded SI chat history items */
+    .history-item.si-branded {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--si-item-color, var(--color-brand));
+      background: linear-gradient(90deg, color-mix(in srgb, var(--si-item-color, var(--color-brand)) 8%, transparent) 0%, transparent 100%);
+    }
+
+    .history-item.si-branded:hover {
+      background: linear-gradient(90deg, color-mix(in srgb, var(--si-item-color, var(--color-brand)) 15%, transparent) 0%, var(--color-bg-subtle) 100%);
+    }
+
+    .si-brand-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--si-item-color, var(--color-brand));
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .si-brand-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .history-item.si-branded .history-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .history-item.si-branded .history-item-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .si-brand-name {
+      font-weight: 500;
+      color: var(--color-text);
+    }
+
+    .si-brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: var(--si-item-color, var(--color-brand));
+      color: white;
+      opacity: 0.9;
+    }
+
     .thread-channel-badge {
       display: inline-flex;
       align-items: center;
@@ -1303,11 +1408,638 @@
     body.native-app .input-container {
       padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     }
+
+    /* ===================================================================
+       SI (Sponsored Intelligence) Chat Modal
+       =================================================================== */
+
+    .si-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: var(--z-overlay, 40);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      backdrop-filter: blur(2px);
+    }
+
+    .si-modal-overlay.visible,
+    .si-modal-overlay.active {
+      display: flex;
+    }
+
+    .si-modal {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-xl, 16px);
+      width: 100%;
+      max-width: 520px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-lg, 0 25px 50px -12px rgba(0, 0, 0, 0.25));
+      animation: siModalIn 0.2s ease-out;
+      overflow: hidden;
+    }
+
+    @keyframes siModalIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    .si-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+    }
+
+    .si-modal-header-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .si-modal-header-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    .si-modal-header-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .si-modal-header-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .si-modal-header-tagline {
+      font-size: 12px;
+      opacity: 0.9;
+      margin: 2px 0 0 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .si-modal-sponsored {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.8;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .si-modal-close {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .si-modal-close:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .si-modal-close svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .si-modal-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 200px;
+      max-height: 400px;
+    }
+
+    .si-message {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .si-message.user {
+      flex-direction: row-reverse;
+    }
+
+    .si-message-content {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .si-message.assistant .si-message-content {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 12px 12px 12px 4px;
+    }
+
+    .si-message.user .si-message-content {
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+      border-radius: 12px 12px 4px 12px;
+    }
+
+    .si-message-content p {
+      margin: 0 0 8px 0;
+    }
+
+    .si-message-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .si-modal-input-container {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px 16px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+
+    .si-modal-input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      transition: border-color 0.15s;
+    }
+
+    .si-modal-input:focus {
+      outline: none;
+      border-color: var(--si-brand-color, var(--color-brand));
+    }
+
+    .si-modal-input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    .si-modal-send {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.15s;
+      flex-shrink: 0;
+    }
+
+    .si-modal-send:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    .si-modal-send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .si-modal-send svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .si-typing-indicator .si-message-content {
+      display: flex;
+      gap: 4px;
+      padding: 12px 14px;
+    }
+
+    .si-typing-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--color-text-muted);
+      border-radius: 50%;
+      animation: siTyping 1.4s infinite ease-in-out;
+    }
+
+    .si-typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .si-typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes siTyping {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    /* UI Elements */
+    .si-ui-elements {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+      flex-basis: 100%;
+    }
+
+    .si-ui-button {
+      padding: 8px 16px;
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .si-ui-button:hover {
+      opacity: 0.9;
+    }
+
+    .si-ui-link {
+      color: var(--si-brand-color, var(--color-brand));
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .si-ui-link:hover {
+      text-decoration: underline;
+    }
+
+    .si-product-card {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      background: var(--color-bg-page);
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      margin-top: 8px;
+    }
+
+    .si-product-image {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 6px;
+    }
+
+    .si-product-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .si-product-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .si-product-price {
+      color: var(--si-brand-color, var(--color-brand));
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .si-product-description {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .si-product-badge {
+      display: inline-block;
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+    }
+
+    .si-product-cta {
+      margin-top: 8px;
+    }
+
+    .si-product-cta button {
+      padding: 6px 12px;
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .si-product-cta button:hover {
+      opacity: 0.9;
+    }
+
+    /* Carousel */
+    .si-carousel {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .si-carousel-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--color-text);
+    }
+
+    .si-carousel-track {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: thin;
+      padding-bottom: 8px;
+    }
+
+    .si-carousel-track::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    .si-carousel-track::-webkit-scrollbar-track {
+      background: var(--color-bg-subtle);
+      border-radius: 3px;
+    }
+
+    .si-carousel-track::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border-radius: 3px;
+    }
+
+    .si-carousel-item {
+      flex: 0 0 auto;
+      width: 200px;
+      scroll-snap-align: start;
+      background: var(--color-bg-page);
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .si-carousel-item:hover {
+      border-color: var(--si-brand-color, var(--color-brand));
+      transform: translateY(-2px);
+    }
+
+    .si-carousel-item-image {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      background: var(--color-bg-subtle);
+    }
+
+    .si-carousel-item-content {
+      padding: 10px;
+    }
+
+    .si-carousel-item-title {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .si-carousel-item-subtitle {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      margin-bottom: 4px;
+    }
+
+    .si-carousel-item-price {
+      color: var(--si-brand-color, var(--color-brand));
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    /* Image element */
+    .si-image {
+      margin-top: 8px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+    }
+
+    .si-image img {
+      width: 100%;
+      max-height: 250px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .si-image-caption {
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      background: var(--color-bg-subtle);
+    }
+
+    /* Action buttons */
+    .si-action-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+
+    .si-action-button:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .si-action-button.secondary {
+      background: transparent;
+      color: var(--si-brand-color, var(--color-brand));
+      border: 1px solid var(--si-brand-color, var(--color-brand));
+    }
+
+    .si-action-button.secondary:hover {
+      background: var(--si-brand-color, var(--color-brand));
+      color: white;
+    }
+
+    .si-action-button svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* MCP/A2A integration buttons */
+    .si-integration-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--color-border);
+    }
+
+    .si-integration-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: var(--color-bg-page);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .si-integration-button:hover {
+      border-color: var(--si-brand-color, var(--color-brand));
+      background: var(--color-bg-subtle);
+    }
+
+    .si-integration-button svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.7;
+    }
+
+    .si-integration-button.highlighted {
+      background: linear-gradient(135deg, var(--si-brand-color, var(--color-brand)) 0%, color-mix(in srgb, var(--si-brand-color, var(--color-brand)) 80%, purple) 100%);
+      color: white;
+      border-color: transparent;
+    }
+
+    .si-integration-button.highlighted svg {
+      opacity: 1;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+      .si-modal-overlay {
+        padding: 0;
+        align-items: flex-end;
+      }
+
+      .si-modal {
+        max-width: 100%;
+        max-height: 90vh;
+        border-radius: var(--radius-xl, 16px) var(--radius-xl, 16px) 0 0;
+      }
+
+      .si-modal-messages {
+        max-height: 50vh;
+      }
+
+      .si-modal-input-container {
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      }
+    }
   </style>
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
   <div id="adcp-nav"></div>
+
+  <!-- SI (Sponsored Intelligence) Chat Modal -->
+  <div id="siModalOverlay" class="si-modal-overlay">
+    <div class="si-modal" id="siModal">
+      <div class="si-modal-header" id="siModalHeader">
+        <div class="si-modal-header-icon" id="siModalIcon">
+          <span id="siModalIconEmoji">🏢</span>
+        </div>
+        <div class="si-modal-header-info">
+          <h2 class="si-modal-header-title" id="siModalTitle">Brand Agent</h2>
+          <p class="si-modal-header-tagline" id="siModalTagline"></p>
+        </div>
+        <span class="si-modal-sponsored">Sponsored</span>
+        <button class="si-modal-close" id="siModalClose" title="End conversation">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="si-modal-messages" id="siModalMessages">
+        <!-- Messages will be inserted here -->
+      </div>
+      <div class="si-modal-input-container">
+        <textarea
+          id="siModalInput"
+          class="si-modal-input"
+          placeholder="Type a message..."
+          rows="1"
+        ></textarea>
+        <button class="si-modal-send" id="siModalSend" title="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Mobile sidebar toggle button -->
   <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Show chats">
@@ -1458,6 +2190,19 @@
       const sidebarBadge = document.getElementById('sidebarBadge');
       const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
 
+      // SI Modal Elements
+      const siModalOverlay = document.getElementById('siModalOverlay');
+      const siModal = document.getElementById('siModal');
+      const siModalHeader = document.getElementById('siModalHeader');
+      const siModalIcon = document.getElementById('siModalIcon');
+      const siModalIconEmoji = document.getElementById('siModalIconEmoji');
+      const siModalTitle = document.getElementById('siModalTitle');
+      const siModalTagline = document.getElementById('siModalTagline');
+      const siModalClose = document.getElementById('siModalClose');
+      const siModalMessages = document.getElementById('siModalMessages');
+      const siModalInput = document.getElementById('siModalInput');
+      const siModalSend = document.getElementById('siModalSend');
+
       // State
       let conversationId = null;
       let isLoading = false;
@@ -1489,6 +2234,12 @@
         }
       });
       const originalTitle = document.title;
+
+      // SI (Sponsored Intelligence) Modal State
+      let siSessionId = null;
+      let siBrandName = null;
+      let siBrandInfo = null;
+      let siIsLoading = false;
 
       // Native app auth token (from URL hash, e.g., #token=xxx)
       let nativeAuthToken = null;
@@ -1563,16 +2314,30 @@
         }
       }
 
-      // Load user's conversation threads
+      // SI sessions state (for branded chat history)
+      let siSessions = [];
+
+      // Load user's conversation threads and SI sessions
       async function loadThreads() {
         if (!isAuthenticated) return;
 
         try {
-          const response = await authFetch('/api/addie/chat/threads');
-          if (!response.ok) return;
+          // Load regular threads and SI sessions in parallel
+          const [threadsResponse, siResponse] = await Promise.all([
+            authFetch('/api/addie/chat/threads'),
+            authFetch('/api/si/sessions/user').catch(() => ({ ok: false }))
+          ]);
 
-          const data = await response.json();
-          threads = data.conversations || [];
+          if (threadsResponse.ok) {
+            const data = await threadsResponse.json();
+            threads = data.conversations || [];
+          }
+
+          if (siResponse.ok) {
+            const siData = await siResponse.json();
+            siSessions = siData.sessions || [];
+          }
+
           renderHistoryList();
           renderActiveTabs();
         } catch (error) {
@@ -1739,25 +2504,67 @@
         const activeIds = new Set(activeTabs.map(t => t.id));
         const historyThreads = threads.filter(t => !activeIds.has(t.conversation_id));
 
-        historyCount.textContent = historyThreads.length;
+        // Combine regular threads and SI sessions, sorted by most recent
+        const allItems = [
+          ...historyThreads.map(t => ({ ...t, type: 'thread' })),
+          ...siSessions.map(s => ({
+            ...s,
+            type: 'si_session',
+            id: s.session_id,
+            title: `Chat with ${s.brand_name}`,
+            last_message_at: s.last_activity_at
+          }))
+        ].sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
 
-        if (historyThreads.length === 0) {
+        historyCount.textContent = allItems.length;
+
+        if (allItems.length === 0) {
           historyList.innerHTML = '<div class="history-empty">No conversation history</div>';
           return;
         }
 
-        historyList.innerHTML = historyThreads.map(t => `
-          <div class="history-item" data-conversation-id="${t.conversation_id}" data-channel="${t.channel || 'web'}">
-            <div class="history-item-title">
-              ${escapeHtml(t.title)}
-              ${getChannelBadge(t.channel)}
-            </div>
-            <div class="history-item-meta">
-              <span>${t.message_count} msgs</span>
-              <span>${formatRelativeTime(t.last_message_at)}</span>
-            </div>
-          </div>
-        `).join('');
+        historyList.innerHTML = allItems.map(item => {
+          if (item.type === 'si_session') {
+            // Branded SI session item
+            const brandColor = item.brand_color || '#667eea';
+            const logoUrl = item.brand_logo_url;
+            const initial = (item.brand_name || 'B').charAt(0).toUpperCase();
+            return `
+              <div class="history-item si-branded"
+                   data-si-session-id="${item.session_id}"
+                   data-brand-name="${escapeHtml(item.brand_name)}"
+                   style="--si-item-color: ${brandColor}">
+                <div class="si-brand-avatar">
+                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : initial}
+                </div>
+                <div class="history-item-content">
+                  <div class="history-item-title">
+                    <span class="si-brand-name">${escapeHtml(item.brand_name)}</span>
+                    <span class="si-brand-badge">Sponsored</span>
+                  </div>
+                  <div class="history-item-meta">
+                    <span>${item.message_count || 0} msgs</span>
+                    <span>${formatRelativeTime(item.last_message_at)}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          } else {
+            // Regular thread item
+            return `
+              <div class="history-item" data-conversation-id="${item.conversation_id}" data-channel="${item.channel || 'web'}">
+                <div class="history-item-title">
+                  ${escapeHtml(item.title)}
+                  ${getChannelBadge(item.channel)}
+                </div>
+                <div class="history-item-meta">
+                  <span>${item.message_count} msgs</span>
+                  <span>${formatRelativeTime(item.last_message_at)}</span>
+                </div>
+              </div>
+            `;
+          }
+        }).join('');
       }
 
       // Switch to home tab
@@ -2259,7 +3066,7 @@
           return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
         };
 
-        let html = marked.parse(processedText, { renderer });
+        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer }));
 
         // Replace placeholders with rendered components
         dataBlocks.forEach((data, index) => {
@@ -2620,6 +3427,40 @@
         messageDiv.removeAttribute('id');
       }
 
+      // Render CTA buttons for available SI agents
+      function renderSiAgentCtas(contentDiv, siAgents) {
+        const ctaContainer = document.createElement('div');
+        ctaContainer.className = 'si-cta-container';
+
+        for (const agent of siAgents) {
+          const btn = document.createElement('button');
+          btn.className = 'si-cta-button';
+          btn.innerHTML = `<span class="si-cta-icon">&#128172;</span> Chat with ${escapeHtml(agent.display_name)}`;
+          btn.title = agent.tagline || `Connect with ${agent.display_name}`;
+
+          btn.addEventListener('click', async () => {
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerHTML = `<span class="si-cta-icon">&#8987;</span> Connecting...`;
+
+            // Send message to Addie to connect to this agent
+            const connectMessage = `Connect me to ${agent.display_name}`;
+            chatInput.value = connectMessage;
+            await sendMessage();
+          });
+
+          ctaContainer.appendChild(btn);
+        }
+
+        // Insert before feedback div (if exists) or at the end
+        const feedbackDiv = contentDiv.querySelector('.message-feedback');
+        if (feedbackDiv) {
+          contentDiv.insertBefore(ctaContainer, feedbackDiv);
+        } else {
+          contentDiv.appendChild(ctaContainer);
+        }
+      }
+
       // Show error toast
       function showError(message) {
         const toast = document.createElement('div');
@@ -2696,6 +3537,8 @@
         const { messageDiv, contentDiv } = createStreamingMessage();
         let fullContent = '';
         let messageId = null;
+        let pendingSiSession = null;
+        let pendingSiAgents = null;
 
         try {
           const response = await authFetch('/api/addie/chat/stream', {
@@ -2752,6 +3595,18 @@
                   } else if (currentEventType === 'done') {
                     messageId = data.message_id;
                     conversationId = data.conversation_id;
+
+                    // Store SI session data - will open modal after stream is completely done
+                    if (data.si_session && data.si_session.session_id) {
+                      console.log('SI session detected, will open modal after stream completes:', data.si_session);
+                      pendingSiSession = data.si_session;
+                    }
+
+                    // Store available SI agents for CTA buttons
+                    if (data.si_agents && data.si_agents.length > 0) {
+                      console.log('SI agents available for CTA:', data.si_agents);
+                      pendingSiAgents = data.si_agents;
+                    }
                   } else if (currentEventType === 'error') {
                     throw new Error(data.error || 'Unknown error');
                   }
@@ -2789,6 +3644,26 @@
 
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
+
+          // Open SI modal if a brand agent session was created
+          // This must happen AFTER the stream is completely done to avoid race conditions
+          if (pendingSiSession) {
+            console.log('Stream complete, opening SI modal:', pendingSiSession);
+            // Small delay to ensure DOM is fully settled
+            setTimeout(async () => {
+              try {
+                await siOpenModal(pendingSiSession);
+                console.log('SI modal opened successfully');
+              } catch (err) {
+                console.error('Error opening SI modal:', err);
+              }
+            }, 100);
+          }
+
+          // Render SI agent CTA buttons if available (but no session started)
+          if (pendingSiAgents && pendingSiAgents.length > 0 && !pendingSiSession) {
+            renderSiAgentCtas(contentDiv, pendingSiAgents);
+          }
 
           // Update tab state - mark as not loading
           if (conversationId) {
@@ -2880,6 +3755,16 @@
       historyList.addEventListener('click', (e) => {
         const historyItem = e.target.closest('.history-item');
         if (historyItem) {
+          // Check if this is an SI session
+          const siSessionId = historyItem.dataset.siSessionId;
+          if (siSessionId) {
+            // Open SI session in modal
+            const brandName = historyItem.dataset.brandName;
+            resumeSiSession(siSessionId, brandName);
+            return;
+          }
+
+          // Regular thread
           const id = historyItem.dataset.conversationId;
           const channel = historyItem.dataset.channel;
           const thread = threads.find(t => t.conversation_id === id);
@@ -2889,6 +3774,62 @@
           switchToConversation(id, channel);
         }
       });
+
+      // Resume an existing SI session from history
+      async function resumeSiSession(sessionId, brandName) {
+        try {
+          // Fetch session details including messages
+          const response = await authFetch(`/api/si/sessions/${sessionId}`);
+          if (!response.ok) {
+            console.error('Failed to load SI session');
+            return;
+          }
+
+          const data = await response.json();
+
+          // Set up modal state
+          siSessionId = sessionId;
+          siBrandName = brandName;
+          siBrandInfo = data.brand || null;
+
+          // Update modal header
+          siModalTitle.textContent = data.brand?.name || brandName;
+          siModalTagline.textContent = data.brand?.tagline || '';
+
+          // Apply brand color if available
+          if (data.brand?.brand_color) {
+            siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
+          }
+
+          // Update icon
+          if (data.brand?.logo_url) {
+            siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
+          } else {
+            siModalIconEmoji.textContent = (brandName || 'B').charAt(0).toUpperCase();
+          }
+
+          // Clear and populate messages
+          siModalMessages.innerHTML = '';
+          if (data.messages && data.messages.length > 0) {
+            for (const msg of data.messages) {
+              const role = msg.role === 'user' ? 'user' : 'assistant';
+              siAddMessage(role, msg.content, msg.ui_elements);
+            }
+          }
+
+          // Show the modal
+          siModalOverlay.classList.add('active');
+          document.body.style.overflow = 'hidden';
+
+          // Focus input
+          setTimeout(() => siModalInput.focus(), 100);
+
+          // Close mobile sidebar if open
+          closeMobileSidebar();
+        } catch (error) {
+          console.error('Failed to resume SI session:', error);
+        }
+      }
 
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
       function checkQueryPrompt() {
@@ -2911,6 +3852,566 @@
           setTimeout(() => clearInterval(waitForReady), 10000);
         }
       }
+
+      // === SI (Sponsored Intelligence) Modal Functions ===
+
+      // Open SI modal with brand info and initial response
+      async function siOpenModal(sessionData) {
+        siSessionId = sessionData.session_id;
+        siBrandName = sessionData.brand_name;
+
+        // Update modal header
+        siModalTitle.textContent = siBrandName || 'Brand Agent';
+        siModalTagline.textContent = '';
+
+        // Clear previous messages
+        siModalMessages.innerHTML = '';
+
+        // Fetch full session data including messages and brand info
+        let messagesLoaded = false;
+        try {
+          const response = await authFetch(`/api/si/sessions/${siSessionId}`);
+          if (response.ok) {
+            const data = await response.json();
+
+            // Apply brand styling
+            if (data.brand) {
+              siBrandInfo = data.brand;
+              siModalTitle.textContent = data.brand.name || siBrandName;
+              if (data.brand.tagline) {
+                siModalTagline.textContent = data.brand.tagline;
+              }
+              // Apply brand color if available
+              if (data.brand.brand_color) {
+                siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
+              }
+              // Update icon with logo or first letter
+              if (data.brand.logo_url) {
+                siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
+              } else {
+                siModalIconEmoji.textContent = (data.brand.name || siBrandName || 'B').charAt(0).toUpperCase();
+              }
+            }
+
+            // Load messages from API (includes UI elements)
+            if (data.messages && data.messages.length > 0) {
+              for (const msg of data.messages) {
+                const role = msg.role === 'user' ? 'user' : 'assistant';
+                siAddMessage(role, msg.content, msg.ui_elements);
+              }
+              messagesLoaded = true;
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to fetch SI session data:', error);
+        }
+
+        // Fallback: use brand_response from SSE if API didn't return messages
+        if (!messagesLoaded && sessionData.brand_response) {
+          const response = sessionData.brand_response;
+          if (typeof response === 'string') {
+            siAddMessage('assistant', response);
+          } else if (response.message) {
+            siAddMessage('assistant', response.message, response.ui_elements);
+          }
+        }
+
+        // Show the modal
+        siModalOverlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+
+        // Focus the input
+        setTimeout(() => siModalInput.focus(), 100);
+      }
+
+      // Close SI modal
+      async function siCloseModal(endSession = true) {
+        // End the session if requested
+        if (endSession && siSessionId) {
+          try {
+            await authFetch(`/api/si/sessions/${siSessionId}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason: 'user_exit' })
+            });
+          } catch (error) {
+            console.warn('Failed to end SI session:', error);
+          }
+        }
+
+        // Hide modal
+        siModalOverlay.classList.remove('active');
+        document.body.style.overflow = '';
+
+        // Reset state
+        siSessionId = null;
+        siBrandName = null;
+        siBrandInfo = null;
+        siIsLoading = false;
+
+        // Reset header styling
+        siModalHeader.style.removeProperty('--si-brand-color');
+        siModalIconEmoji.textContent = '🏢';
+      }
+
+      // Add a message to the SI modal
+      function siAddMessage(role, content, uiElements = null) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `si-message ${role}`;
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'si-message-content';
+
+        // Parse markdown for assistant messages
+        if (role === 'assistant' && window.marked) {
+          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || ''));
+        } else {
+          contentDiv.textContent = content || '';
+        }
+
+        messageDiv.appendChild(contentDiv);
+
+        // Render UI elements if present
+        if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
+          const uiContainer = document.createElement('div');
+          uiContainer.className = 'si-ui-elements';
+          siRenderUiElements(uiContainer, uiElements);
+          messageDiv.appendChild(uiContainer);
+        }
+
+        siModalMessages.appendChild(messageDiv);
+
+        // Scroll to bottom
+        siModalMessages.scrollTop = siModalMessages.scrollHeight;
+      }
+
+      // Render UI elements from SI response
+      function siRenderUiElements(container, uiElements) {
+        for (const element of uiElements) {
+          // Normalize element data - handle both {type, data} format and flat format
+          const data = element.data || element;
+          const type = element.type;
+
+          if (type === 'button' || type === 'action_button') {
+            const btn = document.createElement('button');
+            btn.className = 'si-action-button';
+            if (data.variant === 'secondary') btn.classList.add('secondary');
+
+            // Add icon if specified
+            if (data.icon) {
+              btn.innerHTML = getSiIcon(data.icon) + ' ';
+            }
+            btn.innerHTML += escapeHtml(data.label || data.text || 'Continue');
+
+            btn.addEventListener('click', () => {
+              if (data.action === 'send_message' && data.value) {
+                siModalInput.value = data.value;
+                siSendMessage();
+              } else if (data.action === 'add_mcp_tool' || data.action === 'mcp_handoff') {
+                siHandleMcpHandoff(data);
+              } else if (data.action === 'a2a_handoff') {
+                siHandleA2aHandoff(data);
+              } else if (data.action === 'checkout' || data.action === 'acp_checkout') {
+                siHandleCheckout(data);
+              } else if (data.url) {
+                window.open(data.url, '_blank');
+              } else if (data.action) {
+                // Generic action - send to SI agent
+                siSendAction(data.action, data.payload);
+              }
+            });
+            container.appendChild(btn);
+          } else if (type === 'link') {
+            const link = document.createElement('a');
+            link.className = 'si-ui-link';
+            link.href = data.url || '#';
+            link.target = '_blank';
+            link.textContent = data.text || data.label || data.url;
+            container.appendChild(link);
+          } else if (type === 'image') {
+            const imageDiv = document.createElement('div');
+            imageDiv.className = 'si-image';
+            imageDiv.innerHTML = `
+              <img src="${escapeHtml(data.url || data.image_url)}" alt="${escapeHtml(data.alt || '')}">
+              ${data.caption ? `<div class="si-image-caption">${escapeHtml(data.caption)}</div>` : ''}
+            `;
+            container.appendChild(imageDiv);
+          } else if (type === 'product_card') {
+            const card = document.createElement('div');
+            card.className = 'si-product-card';
+            const imageUrl = data.image || data.image_url;
+            const hasAction = data.cta && data.cta.action;
+            card.innerHTML = `
+              ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.title || '')}" class="si-product-image">` : ''}
+              <div class="si-product-info">
+                ${data.badge ? `<div class="si-product-badge">${escapeHtml(data.badge)}</div>` : ''}
+                <div class="si-product-title">${escapeHtml(data.title || '')}</div>
+                ${data.subtitle ? `<div class="si-product-subtitle" style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">${escapeHtml(data.subtitle)}</div>` : ''}
+                ${data.price ? `<div class="si-product-price">${escapeHtml(data.price)}</div>` : ''}
+                ${data.description ? `<div class="si-product-description">${escapeHtml(data.description)}</div>` : ''}
+              </div>
+            `;
+            // Add CTA button if present
+            if (data.cta) {
+              const ctaDiv = document.createElement('div');
+              ctaDiv.className = 'si-product-cta';
+              const ctaBtn = document.createElement('button');
+              ctaBtn.textContent = data.cta.label || 'Select';
+              ctaBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (data.cta.action === 'checkout' || data.cta.action === 'acp_checkout') {
+                  siHandleCheckout({ ...data.cta, product: data });
+                } else if (data.cta.action) {
+                  siSendAction(data.cta.action, { ...data.cta.payload, product: data });
+                }
+              });
+              ctaDiv.appendChild(ctaBtn);
+              card.querySelector('.si-product-info').appendChild(ctaDiv);
+            }
+            container.appendChild(card);
+          } else if (type === 'carousel') {
+            const carousel = document.createElement('div');
+            carousel.className = 'si-carousel';
+            if (data.title) {
+              carousel.innerHTML = `<div class="si-carousel-title">${escapeHtml(data.title)}</div>`;
+            }
+            const track = document.createElement('div');
+            track.className = 'si-carousel-track';
+
+            const items = data.items || [];
+            for (const item of items) {
+              const itemDiv = document.createElement('div');
+              itemDiv.className = 'si-carousel-item';
+              const itemImageUrl = item.image || item.image_url;
+              itemDiv.innerHTML = `
+                ${itemImageUrl ? `<img src="${escapeHtml(itemImageUrl)}" alt="${escapeHtml(item.title || '')}" class="si-carousel-item-image">` : '<div class="si-carousel-item-image"></div>'}
+                <div class="si-carousel-item-content">
+                  <div class="si-carousel-item-title">${escapeHtml(item.title || '')}</div>
+                  ${item.subtitle ? `<div class="si-carousel-item-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
+                  ${item.price ? `<div class="si-carousel-item-price">${escapeHtml(item.price)}</div>` : ''}
+                </div>
+              `;
+              itemDiv.addEventListener('click', () => {
+                if (item.action) {
+                  siSendAction(item.action, { item });
+                } else if (item.url) {
+                  window.open(item.url, '_blank');
+                } else {
+                  // Default: select this item
+                  siSendAction('select_item', { item });
+                }
+              });
+              track.appendChild(itemDiv);
+            }
+            carousel.appendChild(track);
+            container.appendChild(carousel);
+          } else if (type === 'integration_actions') {
+            // MCP/A2A handoff options
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'si-integration-actions';
+
+            const actions = data.actions || [
+              { type: 'mcp', label: 'Add as MCP Tool', highlighted: true },
+              { type: 'a2a', label: 'Connect via A2A' }
+            ];
+
+            for (const action of actions) {
+              const btn = document.createElement('button');
+              btn.className = 'si-integration-button';
+              if (action.highlighted) btn.classList.add('highlighted');
+
+              const icon = action.type === 'mcp' ? getSiIcon('plug') : getSiIcon('link');
+              btn.innerHTML = icon + ' ' + escapeHtml(action.label);
+
+              btn.addEventListener('click', () => {
+                if (action.type === 'mcp') {
+                  siHandleMcpHandoff(action);
+                } else if (action.type === 'a2a') {
+                  siHandleA2aHandoff(action);
+                }
+              });
+              actionsDiv.appendChild(btn);
+            }
+            container.appendChild(actionsDiv);
+          }
+        }
+      }
+
+      // Get SVG icon for SI components
+      function getSiIcon(name) {
+        const icons = {
+          plug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10m0 0a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-6-2h12M8 2v4m8-4v4"/></svg>',
+          link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+          cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+          check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
+          arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>'
+        };
+        return icons[name] || '';
+      }
+
+      // Handle MCP tool handoff
+      async function siHandleMcpHandoff(data) {
+        const brandName = siBrandInfo?.name || siBrandName;
+        const endpoint = siBrandInfo?.si_endpoint_url || data.endpoint;
+
+        // Show confirmation in the chat
+        siAddMessage('assistant', `Great choice! To add ${brandName} as an MCP tool, you can configure your AI assistant with this endpoint:\n\n\`${endpoint || 'https://' + (siBrandInfo?.slug || brandName.toLowerCase()) + '.example.com/mcp'}\`\n\nThis will give your AI assistant direct access to ${brandName}'s capabilities.`, [
+          {
+            type: 'action_button',
+            data: {
+              label: 'Copy MCP Config',
+              action: 'copy_mcp_config',
+              icon: 'check',
+              variant: 'secondary'
+            }
+          }
+        ]);
+
+        // Also notify the SI agent about the interest
+        try {
+          await authFetch(`/api/si/sessions/${siSessionId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action_response: {
+                action: 'mcp_interest',
+                payload: { requested: true }
+              }
+            })
+          });
+        } catch (error) {
+          console.warn('Failed to notify SI agent of MCP interest:', error);
+        }
+      }
+
+      // Handle A2A handoff
+      async function siHandleA2aHandoff(data) {
+        const brandName = siBrandInfo?.name || siBrandName;
+
+        siAddMessage('assistant', `${brandName} supports the Agent-to-Agent (A2A) protocol. Your AI can communicate directly with ${brandName}'s agent for seamless collaboration.\n\nA2A enables richer, more contextual interactions than traditional API calls.`, [
+          {
+            type: 'action_button',
+            data: {
+              label: 'Learn More About A2A',
+              url: 'https://a2a.protocol.io',
+              variant: 'secondary'
+            }
+          }
+        ]);
+      }
+
+      // Handle checkout/transaction handoff
+      function siHandleCheckout(data) {
+        const brandName = siBrandInfo?.name || siBrandName;
+        siAddMessage('assistant', `Ready to complete your purchase! I'll hand you off to ${brandName}'s secure checkout.`);
+
+        // Signal handoff to SI agent
+        siSendAction('handoff_transaction', { checkout_data: data });
+      }
+
+      // Send an action to the SI agent
+      async function siSendAction(action, payload = {}) {
+        if (siIsLoading || !siSessionId) return;
+
+        siIsLoading = true;
+        siShowTyping();
+
+        try {
+          const response = await authFetch(`/api/si/sessions/${siSessionId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action_response: { action, payload }
+            })
+          });
+
+          siHideTyping();
+
+          if (!response.ok) {
+            throw new Error('Failed to send action');
+          }
+
+          const data = await response.json();
+
+          if (data.response) {
+            siAddMessage('assistant', data.response.message, data.response.ui_elements);
+
+            if (data.response.session_status === 'completed' || data.response.handoff) {
+              setTimeout(() => siCloseModal(false), 2000);
+            }
+          }
+        } catch (error) {
+          siHideTyping();
+          console.error('SI action error:', error);
+        } finally {
+          siIsLoading = false;
+        }
+      }
+
+      // Add typing indicator
+      function siShowTyping() {
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'si-message assistant si-typing-indicator';
+        typingDiv.id = 'siTypingIndicator';
+        typingDiv.innerHTML = `
+          <div class="si-message-content">
+            <span class="si-typing-dot"></span>
+            <span class="si-typing-dot"></span>
+            <span class="si-typing-dot"></span>
+          </div>
+        `;
+        siModalMessages.appendChild(typingDiv);
+        siModalMessages.scrollTop = siModalMessages.scrollHeight;
+      }
+
+      // Remove typing indicator
+      function siHideTyping() {
+        const typing = document.getElementById('siTypingIndicator');
+        if (typing) typing.remove();
+      }
+
+      // Send message through SI API with streaming
+      async function siSendMessage() {
+        const message = siModalInput.value.trim();
+        if (!message || siIsLoading || !siSessionId) return;
+
+        siIsLoading = true;
+        siModalInput.value = '';
+        siModalSend.disabled = true;
+
+        // Add user message
+        siAddMessage('user', message);
+
+        // Create placeholder for streaming response
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'si-message assistant';
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'si-message-content';
+        messageDiv.appendChild(contentDiv);
+        siModalMessages.appendChild(messageDiv);
+
+        let streamedText = '';
+        let uiElements = null;
+        let sessionStatus = 'active';
+        let hasHandoff = false;
+
+        try {
+          // Get auth headers
+          const headers = { 'Content-Type': 'application/json' };
+          const token = localStorage.getItem('jwt');
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+
+          const response = await fetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ message })
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to send message');
+          }
+
+          // Process SSE stream
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete SSE events from buffer
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const event = JSON.parse(line.slice(6));
+
+                  if (event.type === 'text') {
+                    streamedText += event.text;
+                    // Update content with markdown parsing
+                    if (window.marked) {
+                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText));
+                    } else {
+                      contentDiv.textContent = streamedText;
+                    }
+                    siModalMessages.scrollTop = siModalMessages.scrollHeight;
+                  } else if (event.type === 'done') {
+                    // Store UI elements and session info for final render
+                    uiElements = event.response?.ui_elements;
+                    sessionStatus = event.response?.session_status;
+                    hasHandoff = !!event.response?.handoff;
+                  } else if (event.type === 'error') {
+                    streamedText = event.error || 'Sorry, there was an error processing your message.';
+                    contentDiv.textContent = streamedText;
+                  }
+                } catch (parseError) {
+                  console.warn('SI stream parse error:', parseError);
+                }
+              }
+            }
+          }
+
+          // Render UI elements after stream completes
+          if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
+            const uiContainer = document.createElement('div');
+            uiContainer.className = 'si-ui-elements';
+            siRenderUiElements(uiContainer, uiElements);
+            messageDiv.appendChild(uiContainer);
+          }
+
+          // Check if session should be closed
+          if (sessionStatus === 'completed' || hasHandoff) {
+            setTimeout(() => {
+              siCloseModal(false);
+            }, 2000);
+          }
+        } catch (error) {
+          contentDiv.textContent = 'Sorry, there was an error processing your message. Please try again.';
+          console.error('SI message error:', error);
+        } finally {
+          siIsLoading = false;
+          siModalSend.disabled = false;
+          siModalInput.focus();
+        }
+      }
+
+      // SI Modal Event Listeners
+      siModalClose.addEventListener('click', () => siCloseModal());
+
+      siModalOverlay.addEventListener('click', (e) => {
+        if (e.target === siModalOverlay) {
+          siCloseModal();
+        }
+      });
+
+      siModalSend.addEventListener('click', siSendMessage);
+
+      siModalInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          siSendMessage();
+        }
+      });
+
+      // Auto-resize SI input
+      siModalInput.addEventListener('input', () => {
+        siModalInput.style.height = 'auto';
+        siModalInput.style.height = Math.min(siModalInput.scrollHeight, 120) + 'px';
+      });
+
+      // Close on Escape key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && siModalOverlay.classList.contains('active')) {
+          siCloseModal();
+        }
+      });
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash

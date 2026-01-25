@@ -92,6 +92,8 @@ import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } 
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
+import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
+import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
   isManagedChannel,
@@ -328,6 +330,7 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
+let setSiContext: (memberContext: MemberContext | null, threadExternalId: string) => void = () => {};
 let initialized = false;
 
 /**
@@ -404,6 +407,31 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
       claudeClient.registerTool(tool, handler);
     }
   }
+
+  // Register SI host tools (Sponsored Intelligence protocol)
+  // These enable Addy to connect users with AAO member brand agents
+  // Note: We need to pass context providers that will be called per-request
+  // For now, we register with placeholder getters - actual context comes from handleUserMessage
+  let currentMemberContext: MemberContext | null = null;
+  let currentThreadExternalId: string = '';
+
+  const siHostHandlers = createSiHostToolHandlers(
+    () => currentMemberContext,
+    () => currentThreadExternalId
+  );
+  for (const tool of SI_HOST_TOOLS) {
+    const handler = siHostHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+  logger.info('Addie: SI host tools registered');
+
+  // Export setters for SI context (called from handleUserMessage)
+  setSiContext = (memberContext: MemberContext | null, threadExternalId: string) => {
+    currentMemberContext = memberContext;
+    currentThreadExternalId = threadExternalId;
+  };
 
   // Create the Assistant
   const assistant = new Assistant({
@@ -1056,6 +1084,9 @@ async function handleUserMessage({
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
+
+  // Set SI context for SI host tools (allows them to access member context and thread ID)
+  setSiContext(memberContext, externalId);
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
@@ -2547,14 +2578,24 @@ async function handleChannelMessage({
 
     // Quick match first (no API call for obvious cases)
     let plan = addieRouter.quickMatch(routingCtx);
+    let siRetrievalResult: SIRetrievalResult | null = null;
 
-    // If no quick match, use the full router
+    // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
-      plan = await addieRouter.route(routingCtx);
+      const [routerPlan, siResult] = await Promise.all([
+        addieRouter.route(routingCtx),
+        siRetriever.retrieve(messageText),
+      ]);
+      plan = routerPlan;
+      siRetrievalResult = siResult;
     }
 
-    logger.debug({ channelId, action: plan.action, reason: plan.reason },
-      'Addie Bolt: Router decision for channel message');
+    logger.debug({
+      channelId,
+      action: plan.action,
+      reason: plan.reason,
+      siAgentsFound: siRetrievalResult?.agents.length ?? 0,
+    }, 'Addie Bolt: Router decision for channel message');
 
     // Build external ID for Slack channel messages: channel_id:thread_ts
     const externalId = `${channelId}:${threadTs}`;
@@ -2642,10 +2683,15 @@ async function handleChannelMessage({
     const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
     const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin);
 
-    // Append unavailable sets hint to message context so Sonnet knows what's not loaded
-    const messageWithHint = unavailableHint
-      ? `${messageWithContext}\n\n${unavailableHint}`
-      : messageWithContext;
+    // Build SI context from retrieved agents
+    const siContext = siRetrievalResult?.agents.length
+      ? siRetriever.formatContext(siRetrievalResult.agents)
+      : '';
+
+    // Append unavailable sets hint and SI context to message
+    const messageWithHint = [messageWithContext, unavailableHint, siContext]
+      .filter(Boolean)
+      .join('\n\n');
 
     // Use precision model (Opus) for billing/financial queries
     const effectiveModel = plan.requires_precision ? ModelConfig.precision : AddieModelConfig.chat;

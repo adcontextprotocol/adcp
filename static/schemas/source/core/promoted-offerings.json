@@ -2,12 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/promoted-offerings.json",
   "title": "Promoted Offerings",
-  "description": "Complete offering specification combining brand manifest, product selectors, and asset filters. Provides all context needed for creative generation about what is being promoted.",
+  "description": "Complete offering specification combining brand manifest, product selectors, and optional SI agent endpoint. Provides all context needed for creative generation and/or conversational experiences about what is being promoted. When si_agent_url is present, hosts can connect users to conversational experiences about any of the offerings.",
   "type": "object",
   "properties": {
     "brand_manifest": {
       "$ref": "/schemas/core/brand-manifest-ref.json",
       "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest."
+    },
+    "si_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "MCP endpoint URL for the brand's SI agent. When present, hosts can connect users to conversational experiences about any of the offerings. The agent handles si_get_offering lookups and full conversations."
     },
     "product_selectors": {
       "$ref": "/schemas/core/promoted-products.json",
@@ -15,32 +20,9 @@
     },
     "offerings": {
       "type": "array",
-      "description": "Inline offerings for campaigns without a product catalog. Each offering has a name, description, and associated assets.",
+      "description": "Offerings available for promotion. Each offering can include creative assets (via portfolio_ref or inline assets) for traditional ads. When si_agent_url is set at the parent level, hosts can offer conversational experiences about any of these offerings.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Offering name (e.g., 'Winter Sale', 'New Product Launch')"
-          },
-          "description": {
-            "type": "string",
-            "description": "Description of what's being offered"
-          },
-          "assets": {
-            "type": "array",
-            "description": "Assets specific to this offering",
-            "items": {
-              "type": "object",
-              "description": "Asset definition using standard asset structure",
-              "additionalProperties": true
-            }
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/offering.json"
       }
     },
     "asset_selectors": {
@@ -91,23 +73,57 @@
   "additionalProperties": true,
   "examples": [
     {
-      "brand_manifest": {
-        "name": "Brand Name",
-        "url": "https://brand.com"
-      },
-      "product_selectors": {
-        "manifest_skus": [
-          "SKU-123",
-          "SKU-456"
+      "description": "Traditional creative offering (no SI)",
+      "data": {
+        "brand_manifest": {
+          "name": "Brand Name",
+          "url": "https://brand.com"
+        },
+        "product_selectors": {
+          "manifest_skus": ["SKU-123", "SKU-456"]
+        },
+        "asset_selectors": {
+          "tags": ["holiday"],
+          "asset_types": ["image", "video"]
+        }
+      }
+    },
+    {
+      "description": "Offerings with SI agent for conversational experiences",
+      "data": {
+        "brand_manifest": "https://brand.com/manifest.json",
+        "si_agent_url": "https://agent.brand.com/mcp",
+        "offerings": [
+          {
+            "offering_id": "q1-2025-trial",
+            "name": "Free 30-day trial",
+            "description": "Try our platform free for 30 days",
+            "valid_from": "2025-01-01T00:00:00Z",
+            "valid_to": "2025-03-31T23:59:59Z",
+            "checkout_url": "https://brand.com/signup"
+          },
+          {
+            "offering_id": "standard-product",
+            "name": "Enterprise Platform",
+            "description": "Our flagship enterprise solution",
+            "landing_url": "https://brand.com/enterprise"
+          }
         ]
-      },
-      "asset_selectors": {
-        "tags": [
-          "holiday"
-        ],
-        "asset_types": [
-          "image",
-          "video"
+      }
+    },
+    {
+      "description": "Offerings with both creatives and SI",
+      "data": {
+        "brand_manifest": "https://brand.com/manifest.json",
+        "si_agent_url": "https://agent.brand.com/mcp",
+        "offerings": [
+          {
+            "offering_id": "summer-campaign",
+            "name": "Summer Sale",
+            "description": "Up to 50% off summer collection",
+            "landing_url": "https://brand.com/summer",
+            "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+          }
         ]
       }
     }
