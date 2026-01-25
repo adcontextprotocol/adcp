@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/enums/co-branding-requirement.json",
+  "title": "Co-Branding Requirement",
+  "description": "Co-branding policy for creatives (retailer/publisher brand inclusion)",
+  "type": "string",
+  "enum": [
+    "required",
+    "optional",
+    "none"
+  ]
+}

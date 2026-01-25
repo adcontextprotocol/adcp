@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/media-buy/package-update.json",
+  "title": "Package Update",
+  "description": "Package update configuration for update_media_buy. Identifies package by package_id or buyer_ref and specifies fields to modify. Fields not present are left unchanged. Note: product_id, format_ids, and pricing_option_id cannot be changed after creation.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Publisher's ID of package to update"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference for the package to update"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Updated budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.0.0/enums/pacing.json"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Updated bid price for auction-based pricing options (only applies when pricing_option is auction-based)",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Updated impression goal for this package",
+      "minimum": 0
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause/resume specific package (true = paused, false = active)"
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.0.0/core/targeting.json"
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Replace creative assignments for this package with optional weights and placement targeting. Uses replacement semantics - omit to leave assignments unchanged.",
+      "items": {
+        "$ref": "/schemas/3.0.0/core/creative-assignment.json"
+      }
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "$ref": "/schemas/3.0.0/core/creative-asset.json"
+      },
+      "maxItems": 100
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "package_id"
+      ]
+    },
+    {
+      "required": [
+        "buyer_ref"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

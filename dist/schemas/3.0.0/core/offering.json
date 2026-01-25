@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/core/offering.json",
+  "title": "Offering",
+  "description": "A promotable offering from a brand. Can represent a campaign, product promotion, service, or any other thing the brand wants to make available. Offerings can be promoted via traditional creatives (using portfolio_ref or assets) or conversational SI experiences (via si_agent_url at the promoted-offerings level).",
+  "type": "object",
+  "properties": {
+    "offering_id": {
+      "type": "string",
+      "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable offering name (e.g., 'Winter Sale', 'Free Trial', 'Enterprise Platform')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what's being offered"
+    },
+    "tagline": {
+      "type": "string",
+      "description": "Short promotional tagline for the offering"
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the offering becomes available. If not specified, offering is immediately available."
+    },
+    "valid_to": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the offering expires. If not specified, offering has no expiration."
+    },
+    "checkout_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL for checkout/purchase flow when the brand doesn't support agentic checkout."
+    },
+    "landing_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Landing page URL for this offering."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Assets specific to this offering (images, videos, copy)",
+      "items": {
+        "type": "object",
+        "description": "Asset definition using standard asset structure",
+        "additionalProperties": true
+      }
+    },
+    "portfolio_ref": {
+      "type": "string",
+      "format": "uri",
+      "description": "Reference to a creative portfolio for this offering. Portfolios contain organized creative assets across formats, enabling consistent ad delivery for this specific offering."
+    },
+    "keywords": {
+      "type": "array",
+      "description": "Keywords for matching this offering to user intent. Hosts use these for retrieval/relevance scoring.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "categories": {
+      "type": "array",
+      "description": "Categories this offering belongs to (e.g., 'measurement', 'identity', 'programmatic')",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0/core/ext.json"
+    }
+  },
+  "required": ["offering_id", "name"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Time-limited promotional offer with checkout",
+      "data": {
+        "offering_id": "q1-2025-trial",
+        "name": "Free 30-day trial",
+        "description": "Try our carbon measurement platform free for 30 days",
+        "tagline": "Start measuring your digital carbon footprint today",
+        "valid_from": "2025-01-01T00:00:00Z",
+        "valid_to": "2025-03-31T23:59:59Z",
+        "checkout_url": "https://scope3.com/signup",
+        "keywords": ["carbon", "sustainability", "measurement", "emissions"],
+        "categories": ["measurement", "sustainability"]
+      }
+    },
+    {
+      "description": "Product offering with landing page",
+      "data": {
+        "offering_id": "enterprise-dsp",
+        "name": "Enterprise DSP Platform",
+        "description": "Full-featured demand-side platform for enterprise advertisers",
+        "landing_url": "https://thetradedesk.com/enterprise",
+        "keywords": ["dsp", "programmatic", "rtb", "ctv"],
+        "categories": ["programmatic", "dsp"]
+      }
+    },
+    {
+      "description": "Offering with creative portfolio",
+      "data": {
+        "offering_id": "summer-sale-2025",
+        "name": "Summer Sale",
+        "description": "Up to 50% off summer collection",
+        "valid_from": "2025-06-01T00:00:00Z",
+        "valid_to": "2025-08-31T23:59:59Z",
+        "landing_url": "https://brand.com/summer-sale",
+        "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+      }
+    },
+    {
+      "description": "Offering with inline assets",
+      "data": {
+        "offering_id": "product-launch",
+        "name": "New Product Launch",
+        "description": "Introducing our latest innovation",
+        "assets": [
+          {
+            "asset_id": "launch-hero",
+            "asset_type": "image",
+            "url": "https://cdn.brand.com/launch-hero.jpg"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/content-standards/update-content-standards-response.json",
+  "title": "Update Content Standards Response",
+  "description": "Response from updating a content standards configuration",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "ID of the updated standards configuration"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Error code (e.g., STANDARDS_NOT_FOUND, SCOPE_CONFLICT)"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "description": "Errors that occurred during the update"
+    },
+    "conflicting_standards_id": {
+      "type": "string",
+      "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

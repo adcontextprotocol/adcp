@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/enums/preview-output-format.json",
+  "title": "Preview Output Format",
+  "description": "Output format for creative previews",
+  "type": "string",
+  "enum": [
+    "url",
+    "html"
+  ]
+}

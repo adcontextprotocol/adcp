@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0/core/assets/webhook-asset.json",
+  "title": "Webhook Asset",
+  "description": "Webhook for server-side dynamic content rendering (DCO)",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook URL to call for dynamic content"
+    },
+    "method": {
+      "$ref": "/schemas/3.0.0/enums/http-method.json",
+      "default": "POST",
+      "description": "HTTP method"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 5000,
+      "default": 500,
+      "description": "Maximum time to wait for response in milliseconds"
+    },
+    "supported_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Universal macros that can be passed to webhook (e.g., {DEVICE_TYPE}, {COUNTRY})"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Universal macros that must be provided for webhook to function"
+    },
+    "response_type": {
+      "$ref": "/schemas/3.0.0/enums/webhook-response-type.json",
+      "description": "Expected content type of webhook response"
+    },
+    "security": {
+      "type": "object",
+      "description": "Security configuration for webhook calls",
+      "properties": {
+        "method": {
+          "$ref": "/schemas/3.0.0/enums/webhook-security-method.json",
+          "description": "Authentication method"
+        },
+        "hmac_header": {
+          "type": "string",
+          "description": "Header name for HMAC signature (e.g., 'X-Signature')"
+        },
+        "api_key_header": {
+          "type": "string",
+          "description": "Header name for API key (e.g., 'X-API-Key')"
+        }
+      },
+      "required": [
+        "method"
+      ]
+    }
+  },
+  "required": [
+    "url",
+    "response_type",
+    "security"
+  ],
+  "additionalProperties": true
+}
