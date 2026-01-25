@@ -50,9 +50,188 @@
     }
   ],
   "navigation": {
+    "default": "2.5",
     "versions": [
       {
-        "version": "3.0-beta",
+        "version": "2.5",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "dist/docs/2.5.3/intro",
+              "dist/docs/2.5.3/quickstart"
+            ]
+          },
+          {
+            "group": "Protocols",
+            "pages": [
+              "dist/docs/2.5.3/protocols/getting-started",
+              "dist/docs/2.5.3/protocols/core-concepts",
+              {
+                "group": "Choose Your Protocol",
+                "pages": [
+                  "dist/docs/2.5.3/protocols/mcp-guide",
+                  "dist/docs/2.5.3/protocols/a2a-guide",
+                  "dist/docs/2.5.3/protocols/a2a-response-format"
+                ]
+              },
+              "dist/docs/2.5.3/protocols/protocol-comparison",
+              "dist/docs/2.5.3/protocols/context-management",
+              "dist/docs/2.5.3/protocols/task-management",
+              "dist/docs/2.5.3/protocols/envelope-examples",
+              "dist/docs/2.5.3/protocols/error-handling"
+            ]
+          },
+          {
+            "group": "Signals Protocol",
+            "pages": [
+              "dist/docs/2.5.3/signals/overview",
+              "dist/docs/2.5.3/signals/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "dist/docs/2.5.3/signals/tasks/get_signals",
+                  "dist/docs/2.5.3/signals/tasks/activate_signal"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Curation Protocol",
+            "pages": [
+              "dist/docs/2.5.3/curation/coming-soon"
+            ]
+          },
+          {
+            "group": "Media Buy Protocol",
+            "pages": [
+              "dist/docs/2.5.3/media-buy/index",
+              {
+                "group": "Task Reference",
+                "pages": [
+                  "dist/docs/2.5.3/media-buy/task-reference/index",
+                  "dist/docs/2.5.3/media-buy/task-reference/get_products",
+                  "dist/docs/2.5.3/media-buy/task-reference/list_creative_formats",
+                  "dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties",
+                  "dist/docs/2.5.3/media-buy/task-reference/create_media_buy",
+                  "dist/docs/2.5.3/media-buy/task-reference/list_creatives",
+                  "dist/docs/2.5.3/media-buy/task-reference/sync_creatives",
+                  "dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery",
+                  "dist/docs/2.5.3/media-buy/task-reference/update_media_buy",
+                  "dist/docs/2.5.3/media-buy/task-reference/provide_performance_feedback"
+                ]
+              },
+              {
+                "group": "Capability Discovery",
+                "pages": [
+                  "dist/docs/2.5.3/media-buy/capability-discovery/index",
+                  "dist/docs/2.5.3/media-buy/capability-discovery/adagents",
+                  "dist/docs/2.5.3/media-buy/capability-discovery/authorized-properties",
+                  "dist/docs/2.5.3/media-buy/capability-discovery/implementing-standard-formats"
+                ]
+              },
+              {
+                "group": "Product Discovery",
+                "pages": [
+                  "dist/docs/2.5.3/media-buy/product-discovery/index",
+                  "dist/docs/2.5.3/media-buy/product-discovery/brief-expectations",
+                  "dist/docs/2.5.3/media-buy/product-discovery/example-briefs",
+                  "dist/docs/2.5.3/media-buy/product-discovery/media-products"
+                ]
+              },
+              {
+                "group": "Media Buys",
+                "pages": [
+                  "dist/docs/2.5.3/media-buy/media-buys/index",
+                  "dist/docs/2.5.3/media-buy/media-buys/optimization-reporting",
+                  "dist/docs/2.5.3/media-buy/media-buys/policy-compliance"
+                ]
+              },
+              {
+                "group": "Creatives",
+                "pages": [
+                  "dist/docs/2.5.3/media-buy/creatives/index"
+                ]
+              },
+              {
+                "group": "Advanced Topics",
+                "pages": [
+                  "dist/docs/2.5.3/media-buy/advanced-topics/index",
+                  "dist/docs/2.5.3/media-buy/advanced-topics/pricing-models",
+                  "dist/docs/2.5.3/media-buy/advanced-topics/targeting",
+                  "dist/docs/2.5.3/media-buy/advanced-topics/agentic-execution-engine",
+                  "dist/docs/2.5.3/media-buy/advanced-topics/principals-and-security",
+                  "dist/docs/2.5.3/media-buy/advanced-topics/testing",
+                  "dist/docs/2.5.3/media-buy/advanced-topics/orchestrator-design"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Creative",
+            "pages": [
+              "dist/docs/2.5.3/creative/index",
+              "dist/docs/2.5.3/creative/formats",
+              "dist/docs/2.5.3/creative/asset-types",
+              "dist/docs/2.5.3/creative/creative-manifests",
+              "dist/docs/2.5.3/creative/brand-manifest",
+              "dist/docs/2.5.3/creative/universal-macros",
+              "dist/docs/2.5.3/creative/implementing-creative-agents",
+              "dist/docs/2.5.3/creative/generative-creative",
+              "dist/docs/2.5.3/creative/template-format-ids",
+              {
+                "group": "Channel Guides",
+                "pages": [
+                  "dist/docs/2.5.3/creative/channels/video",
+                  "dist/docs/2.5.3/creative/channels/display",
+                  "dist/docs/2.5.3/creative/channels/audio",
+                  "dist/docs/2.5.3/creative/channels/dooh",
+                  "dist/docs/2.5.3/creative/channels/carousels"
+                ]
+              },
+              {
+                "group": "Task Reference",
+                "pages": [
+                  "dist/docs/2.5.3/creative/task-reference/build_creative",
+                  "dist/docs/2.5.3/creative/task-reference/preview_creative",
+                  "dist/docs/2.5.3/creative/task-reference/preview_creative-advanced",
+                  "dist/docs/2.5.3/creative/task-reference/list_creative_formats"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "dist/docs/2.5.3/reference/media-buy-quick-reference",
+              "dist/docs/2.5.3/reference/creative-quick-reference",
+              "dist/docs/2.5.3/reference/signals-quick-reference",
+              "dist/docs/2.5.3/reference/gmsf-reference",
+              "dist/docs/2.5.3/reference/adcp-ecosystem",
+              "dist/docs/2.5.3/reference/ad-tech-primer",
+              "dist/docs/2.5.3/reference/roadmap",
+              "dist/docs/2.5.3/reference/release-notes",
+              "dist/docs/2.5.3/reference/changelog",
+              "dist/docs/2.5.3/reference/schema-versioning",
+              "dist/docs/2.5.3/reference/extensions-and-context",
+              "dist/docs/2.5.3/reference/error-codes",
+              "dist/docs/2.5.3/reference/data-models",
+              "dist/docs/2.5.3/reference/authentication",
+              "dist/docs/2.5.3/reference/security",
+              "dist/docs/2.5.3/reference/implementor-faq",
+              "dist/docs/2.5.3/reference/glossary"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "dist/docs/2.5.3/community/working-group"
+            ]
+          }
+        ]
+      },
+      {
+        "version": "latest",
         "groups": [
           {
             "group": "Getting Started",
@@ -66,6 +245,7 @@
             "pages": [
               "docs/protocols/getting-started",
               "docs/protocols/core-concepts",
+              "docs/protocol/get_adcp_capabilities",
               {
                 "group": "Choose Your Protocol",
                 "pages": [
@@ -77,14 +257,59 @@
               "docs/protocols/protocol-comparison",
               "docs/protocols/context-management",
               "docs/protocols/task-management",
-              "docs/protocols/envelope-examples"
+              "docs/protocols/envelope-examples",
+              "docs/protocols/error-handling"
             ]
           },
           {
-            "group": "adagents.json",
+            "group": "Governance Protocol",
             "pages": [
-              "docs/media-buy/capability-discovery/adagents",
-              "docs/media-buy/capability-discovery/authorized-properties"
+              "docs/governance/index",
+              {
+                "group": "Property Governance",
+                "pages": [
+                  "docs/governance/property/index",
+                  "docs/governance/property/adagents",
+                  "docs/governance/property/authorized-properties",
+                  "docs/governance/property/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/property/tasks/index",
+                      "docs/governance/property/tasks/list_property_features",
+                      "docs/governance/property/tasks/property_lists",
+                      "docs/governance/property/tasks/validate_property_delivery"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Content Standards",
+                "pages": [
+                  "docs/governance/content-standards/index",
+                  "docs/governance/content-standards/artifacts",
+                  "docs/governance/content-standards/implementation-guide",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/content-standards/tasks/list_content_standards",
+                      "docs/governance/content-standards/tasks/get_content_standards",
+                      "docs/governance/content-standards/tasks/create_content_standards",
+                      "docs/governance/content-standards/tasks/update_content_standards",
+                      "docs/governance/content-standards/tasks/delete_content_standards",
+                      "docs/governance/content-standards/tasks/calibrate_content",
+                      "docs/governance/content-standards/tasks/get_media_buy_artifacts",
+                      "docs/governance/content-standards/tasks/validate_content_delivery"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Brand Standards",
+                "pages": [
+                  "docs/governance/brand-standards/index"
+                ]
+              }
             ]
           },
           {
@@ -116,7 +341,7 @@
                 "group": "Tasks",
                 "pages": [
                   "docs/sponsored-intelligence/tasks/index",
-                  "docs/sponsored-intelligence/tasks/si_check_availability",
+                  "docs/sponsored-intelligence/tasks/si_get_offering",
                   "docs/sponsored-intelligence/tasks/si_initiate_session",
                   "docs/sponsored-intelligence/tasks/si_send_message",
                   "docs/sponsored-intelligence/tasks/si_terminate_session"
@@ -200,6 +425,8 @@
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
+              "docs/creative/template-format-ids",
+              "docs/creative/promoted-offerings",
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -215,6 +442,7 @@
                 "pages": [
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
+                  "docs/creative/task-reference/preview_creative-advanced",
                   "docs/creative/task-reference/list_creative_formats"
                 ]
               }
@@ -223,7 +451,13 @@
           {
             "group": "Reference",
             "pages": [
+              "docs/reference/media-buy-quick-reference",
+              "docs/reference/creative-quick-reference",
+              "docs/reference/signals-quick-reference",
+              "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
+              "docs/reference/adcp-ecosystem",
+              "docs/reference/ad-tech-primer",
               "docs/reference/migrating-to-v3",
               "docs/reference/roadmap",
               "docs/reference/release-notes",
@@ -234,6 +468,7 @@
               "docs/reference/data-models",
               "docs/reference/authentication",
               "docs/reference/security",
+              "docs/reference/implementor-faq",
               "docs/reference/glossary"
             ]
           },
@@ -244,189 +479,10 @@
             ]
           }
         ]
-      },
-      {
-        "version": "2.5",
-        "groups": [
-          {
-            "group": "Getting Started",
-            "pages": [
-              "dist/docs/2.5.3/intro",
-              "dist/docs/2.5.3/quickstart"
-            ]
-          },
-          {
-            "group": "Protocols",
-            "pages": [
-              "dist/docs/2.5.3/protocols/getting-started",
-              "dist/docs/2.5.3/protocols/core-concepts",
-              {
-                "group": "Choose Your Protocol",
-                "pages": [
-                  "dist/docs/2.5.3/protocols/mcp-guide",
-                  "dist/docs/2.5.3/protocols/a2a-guide",
-                  "dist/docs/2.5.3/protocols/a2a-response-format"
-                ]
-              },
-              "dist/docs/2.5.3/protocols/protocol-comparison",
-              "dist/docs/2.5.3/protocols/context-management",
-              "dist/docs/2.5.3/protocols/task-management",
-              "dist/docs/2.5.3/protocols/envelope-examples"
-            ]
-          },
-          {
-            "group": "adagents.json",
-            "pages": [
-              "dist/docs/2.5.3/media-buy/capability-discovery/adagents",
-              "dist/docs/2.5.3/media-buy/capability-discovery/authorized-properties"
-            ]
-          },
-          {
-            "group": "Signals Protocol",
-            "pages": [
-              "dist/docs/2.5.3/signals/overview",
-              "dist/docs/2.5.3/signals/specification",
-              {
-                "group": "Tasks",
-                "pages": [
-                  "dist/docs/2.5.3/signals/tasks/get_signals",
-                  "dist/docs/2.5.3/signals/tasks/activate_signal"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Curation Protocol",
-            "pages": [
-              "dist/docs/2.5.3/curation/coming-soon"
-            ]
-          },
-          {
-            "group": "Media Buy Protocol",
-            "pages": [
-              "dist/docs/2.5.3/media-buy/index",
-              {
-                "group": "Task Reference",
-                "pages": [
-                  "dist/docs/2.5.3/media-buy/task-reference/index",
-                  "dist/docs/2.5.3/media-buy/task-reference/get_products",
-                  "dist/docs/2.5.3/media-buy/task-reference/list_creative_formats",
-                  "dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties",
-                  "dist/docs/2.5.3/media-buy/task-reference/create_media_buy",
-                  "dist/docs/2.5.3/media-buy/task-reference/list_creatives",
-                  "dist/docs/2.5.3/media-buy/task-reference/sync_creatives",
-                  "dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery",
-                  "dist/docs/2.5.3/media-buy/task-reference/update_media_buy",
-                  "dist/docs/2.5.3/media-buy/task-reference/provide_performance_feedback"
-                ]
-              },
-              {
-                "group": "Capability Discovery",
-                "pages": [
-                  "dist/docs/2.5.3/media-buy/capability-discovery/index",
-                  "dist/docs/2.5.3/media-buy/capability-discovery/implementing-standard-formats"
-                ]
-              },
-              {
-                "group": "Product Discovery",
-                "pages": [
-                  "dist/docs/2.5.3/media-buy/product-discovery/index",
-                  "dist/docs/2.5.3/media-buy/product-discovery/brief-expectations",
-                  "dist/docs/2.5.3/media-buy/product-discovery/example-briefs",
-                  "dist/docs/2.5.3/media-buy/product-discovery/media-products"
-                ]
-              },
-              {
-                "group": "Media Buys",
-                "pages": [
-                  "dist/docs/2.5.3/media-buy/media-buys/index",
-                  "dist/docs/2.5.3/media-buy/media-buys/optimization-reporting",
-                  "dist/docs/2.5.3/media-buy/media-buys/policy-compliance"
-                ]
-              },
-              {
-                "group": "Creatives",
-                "pages": [
-                  "dist/docs/2.5.3/media-buy/creatives/index"
-                ]
-              },
-              {
-                "group": "Advanced Topics",
-                "pages": [
-                  "dist/docs/2.5.3/media-buy/advanced-topics/index",
-                  "dist/docs/2.5.3/media-buy/advanced-topics/pricing-models",
-                  "dist/docs/2.5.3/media-buy/advanced-topics/targeting",
-                  "dist/docs/2.5.3/media-buy/advanced-topics/agentic-execution-engine",
-                  "dist/docs/2.5.3/media-buy/advanced-topics/principals-and-security",
-                  "dist/docs/2.5.3/media-buy/advanced-topics/testing",
-                  "dist/docs/2.5.3/media-buy/advanced-topics/orchestrator-design"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Creative",
-            "pages": [
-              "dist/docs/2.5.3/creative/index",
-              "dist/docs/2.5.3/creative/formats",
-              "dist/docs/2.5.3/creative/asset-types",
-              "dist/docs/2.5.3/creative/creative-manifests",
-              "dist/docs/2.5.3/creative/brand-manifest",
-              "dist/docs/2.5.3/creative/universal-macros",
-              "dist/docs/2.5.3/creative/implementing-creative-agents",
-              "dist/docs/2.5.3/creative/generative-creative",
-              {
-                "group": "Channel Guides",
-                "pages": [
-                  "dist/docs/2.5.3/creative/channels/video",
-                  "dist/docs/2.5.3/creative/channels/display",
-                  "dist/docs/2.5.3/creative/channels/audio",
-                  "dist/docs/2.5.3/creative/channels/dooh",
-                  "dist/docs/2.5.3/creative/channels/carousels"
-                ]
-              },
-              {
-                "group": "Task Reference",
-                "pages": [
-                  "dist/docs/2.5.3/creative/task-reference/build_creative",
-                  "dist/docs/2.5.3/creative/task-reference/preview_creative",
-                  "dist/docs/2.5.3/creative/task-reference/list_creative_formats"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Reference",
-            "pages": [
-              "dist/docs/2.5.3/reference/media-buy-quick-reference",
-              "dist/docs/2.5.3/reference/signals-quick-reference",
-              "dist/docs/2.5.3/reference/creative-quick-reference",
-              "dist/docs/2.5.3/reference/roadmap",
-              "dist/docs/2.5.3/reference/release-notes",
-              "dist/docs/2.5.3/reference/changelog",
-              "dist/docs/2.5.3/reference/schema-versioning",
-              "dist/docs/2.5.3/reference/extensions-and-context",
-              "dist/docs/2.5.3/reference/error-codes",
-              "dist/docs/2.5.3/reference/data-models",
-              "dist/docs/2.5.3/reference/authentication",
-              "dist/docs/2.5.3/reference/security",
-              "dist/docs/2.5.3/reference/glossary"
-            ]
-          },
-          {
-            "group": "Community",
-            "pages": [
-              "dist/docs/2.5.3/community/working-group"
-            ]
-          }
-        ]
       }
     ]
   },
   "footer": {
-    "socials": {
-      "github": "https://github.com/adcontextprotocol/adcp"
-    },
     "links": [
       {
         "header": "Legal",

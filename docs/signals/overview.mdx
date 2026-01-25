@@ -1,303 +1,52 @@
 ---
-sidebar_position: 1
-title: Overview
+title: Signals Protocol Overview
+description: Discover, activate, and manage data signals for AI-powered advertising
 ---
 
+# Signals Protocol
 
-Signal providers have data. AI agents need access. The Signals Activation Protocol connects them.
+The Signals Protocol enables AI agents to discover, activate, and manage data signals for advertising campaigns. Signals represent targetable audiences, contextual categories, geographic regions, and other data attributes.
 
-This protocol enables AI assistants to discover, activate, and manage data signals through natural language—making it practical to navigate and utilize the vast universe of available segments.
+## What Are Signals?
 
-## The Challenge: Navigating Hundreds of Thousands of Segments
+Signals are data segments that can be used for targeting or measurement in advertising campaigns. They include:
 
-Modern data platforms offer incredible depth—often hundreds of thousands of pre-built segments. While this provides unprecedented targeting options, it also creates real challenges:
-- **Limited visibility**: Provenance and methodology vary across providers
-- **Inconsistent metrics**: Each platform reports quality and performance differently
-- **Naming conventions**: Segment names don't always clearly convey their contents
-- **Discovery friction**: Finding the right segment requires deep platform expertise
-- **Fixed catalogs**: Pre-built segments may not precisely match campaign needs
+- **Audience Signals**: User segments based on demographics, interests, or behaviors
+- **Contextual Signals**: Content categories or page contexts
+- **Geographic Signals**: Location-based targeting data
+- **Temporal Signals**: Time-based targeting patterns
+- **Multi-dimensional Signals**: Combined or custom signal types
 
-## How AI Assistants Transform Signal Discovery
+## Key Capabilities
 
-### Current Approach
-```
-Human → Navigate platform UIs → Select from available → Activate and test
-```
-- **Challenges**: Time-intensive, may miss better options, requires platform expertise
-
-### With AdCP
-```
-Human describes need → AI evaluates all options → Providers can create custom → Streamlined activation
-```
-- **Benefits**: Comprehensive discovery, informed decisions, precise targeting
-
-## The Power of AI-Assisted Discovery
-
-### AI Can Process and Compare Metadata at Scale
-```
-Human: I need people likely to buy luxury cars in the next 30 days
-
-AI: Analyzing 487 automotive segments across 3 providers...
-
-Best match: DataVault's "Premium Auto Purchase Intent"
-- Provenance: Dealer data + finance searches + config tools
-- Freshness: Updated daily, 89% still in-market after 30 days
-- Accuracy: 73% precision based on 6-month validation
-- Size: 2.3M individuals (RampID, UID2, MAIDs)
-- Performance: 4.2x lift vs. general auto intenders
-- Price: $8 CPM
+The Signals Protocol provides:
 
-Alternatives with trade-offs:
-- MotorSignals: Higher precision (81%) but smaller scale (890K)
-- AutoData: Lower cost ($5 CPM) but monthly refresh only
-```
-
-### Providers Create Exactly What You Need
-```
-Human: I need business travelers who fly monthly but haven't 
-        booked hotels through our platform
-
-AI to DataVault: Creating custom segment from your requirements...
+- Natural language signal discovery based on marketing objectives
+- Multi-platform signal discovery in a single request
+- Signal activation for specific platforms and accounts
+- Transparent pricing with CPM and revenue share models
+- Signal size reporting with unit types (individuals, devices, households)
 
-DataVault's AI: 
-- Analyzing travel graph for monthly flyers
-- Cross-referencing with your CRM (secure match)
-- Excluding recent hotel bookers
-- Building segment in real-time...
+## Tasks
 
-Created: "Your Brand - High-Frequency Flyers Without Hotel Bookings"
-- Size: 147K matched individuals  
-- Available on: RampID, UID2, MAIDs
-- Exclusive to your account
-- Refreshes daily from your CRM
-```
+| Task | Purpose |
+|------|---------|
+| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria |
+| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a signal for use in campaigns |
 
-This enables a shift from browsing pre-built catalogs to requesting exactly what you need.
-
-## From Static Catalogs to Dynamic Capabilities
+## Agent Integration
 
-### Traditional Approach: Pre-Built Catalogs
-- Hundreds of thousands of pre-defined segments
-- Challenging to evaluate fit and quality across providers
-- Long lead times for new segment creation
-- Limited ability to customize for specific needs
-- Decision-making based on available documentation
-
-### Enhanced with AdCP: AI-Powered Discovery & Creation
-```
-Human: Find affluent parents interested in EVs but exclude Tesla owners
+The Signals Protocol operates within the broader [AdCP Ecosystem](/docs/intro#the-adcp-ecosystem-layers), enabling signal agents to integrate directly with decisioning platforms (DSPs, orchestration platforms).
 
-AI: Found 3 approaches:
-
-1. Existing segment: FamilyData's "EV-Curious Affluent Parents"
-   - Ready now, 340K individuals, $7 CPM
-   - Note: Includes ~15% Tesla owners
-
-2. Custom creation: DataVault can build exactly this
-   - Combining: Affluent parents + EV interest - Tesla registration
-   - 48-hour creation, 290K individuals, $9 CPM
-   - 100% match to your criteria
-
-3. Campaign combination: Use multiple signals
-   - FamilyData's segment + negative targeting for Tesla
-   - Immediate activation, handled at DSP level
-
-Which approach works best for your campaign?
-```
-
-## Universal Signal Keys
+### Direct Integration Model
 
-AdCP supports every major identity and targeting methodology:
+Signal agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once signals are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
 
-### Identity Signals
-- **RampID**: LiveRamp's universal identifier
-- **UID2**: The Trade Desk's open-source ID
-- **Publisher IDs**: First-party authenticated users
-- **Hashed emails**: SHA256 email matching
+## Getting Started
 
-### Device Identifiers
-- **MAIDs**: Mobile advertising IDs (IDFA/GAID)
-- **Connected TV IDs**: Roku ID, Samsung ID, etc.
-- **Cookie IDs**: Platform-specific cookies
-- **IP addresses**: Household-level targeting
-
-### Geographic Signals
-- **Lat/Long**: Precise location polygons
-- **Postal codes**: ZIP, ZIP+4, international formats
-- **DMA**: Designated Market Areas
-- **Custom geofences**: Store radii, event venues
+1. **Discover signals** using `get_signals` with a natural language brief
+2. **Review pricing** and signal sizes in the response
+3. **Activate signals** using `activate_signal` for your target platform
+4. **Use in campaigns** via the platform's standard targeting interface
 
-### Multi-Dimensional Signals
-- **Domain × Time**: "wsj.com visitors on weekday mornings"
-- **Weather × Location**: "Cold fronts approaching major metros"
-- **Content × Sentiment**: "Reading positive EV articles"
-- **Behavior × Frequency**: "Daily coffee shop visitors"
-
-### Temporal Signals
-- **Real-time triggers**: "Temperature exceeds 85°F"
-- **Time windows**: "Business hours in local timezone"
-- **Recency**: "Visited site in last 24 hours"
-- **Predictive**: "Likely to purchase in next 7 days"
-
-## Key Use Cases
-
-### 💡 Dynamic Weather-Based Activation
-
-```
-Human: Activate ice cream ads when tomorrow's weather will drive demand
-
-AI: Creating dynamic weather signal:
-- Monitoring 150 metro areas
-- Trigger: Tomorrow's forecast > 85°F + sunny
-- Currently qualifying: Miami, Phoenix, San Diego
-- Will auto-activate/deactivate based on forecasts
-- Refreshes every 6 hours
-
-Signal is now live across all platforms.
-```
-
-### 🎯 Multi-Signal Campaign Orchestration
-
-```
-Human: I want to target crypto investors who also collect wine 
-        and live in high-income neighborhoods
-
-AI: Found complementary signals for your campaign:
-
-FinanceSignals: "Active Crypto Traders"
-- Available on: UID2, RampID, MAIDs
-- Size: 1.8M individuals
-- Price: $5 CPM
-
-LuxuryData: "Wine Collectors" 
-- Available on: RampID, hashed emails
-- Size: 450K individuals
-- Price: $6 CPM
-
-CensusPlus: "HHI > $250K by Postal"
-- Geographic signal: ZIP+4 level
-- Coverage: All US metros
-- Price: $4 CPM
-
-Activating all three on DSP Platform X (using RampID).
-Platform will handle audience intersection.
-Total signal cost: $15 CPM combined
-```
-
-### 🔬 Real-Time Contextual Activation
-
-```
-Human: Target users reading about EVs right now on premium news sites
-
-AI: Activating real-time contextual signal:
-- Monitoring: WSJ, FT, Bloomberg, Reuters
-- Content match: Electric vehicle articles
-- Sentiment: Positive/neutral only
-- Viewability: > 70%
-- Updates: Every 5 minutes
-
-Current inventory: 2.3M impressions/day
-Activating on all connected SSPs...
-```
-
-### 📊 Custom Signal Creation from Your Data
-
-```
-Human: Can DataVault create a custom signal from our CRM data 
-        for high-value customers who haven't purchased recently?
-
-AI: DataVault can create a custom signal using your data:
-
-"Your Brand - Lapsed High-Value Customers"
-- Input: Your CRM list (hashed emails)
-- Match against DataVault's identity graph
-- Output formats: RampID, UID2, MAIDs
-- Expected match rate: 60-70%
-
-Signal characteristics:
-- Size: ~127K matched individuals
-- Refresh: Daily from your CRM
-- Exclusive to your account
-- Price: $8 CPM
-
-DataVault will score recency and value, making it
-available across all your connected platforms.
-
-Proceed with signal creation?
-```
-
-## Multi-Platform Intelligence
-
-See your entire signal ecosystem in one view:
-
-```
-Human: Show me all my travel signals across platforms
-
-AI: Your travel signals deployment status:
-
-**"Luxury Travel Intenders" (450K users)**
-✅ The Trade Desk: ttd_lux_travel_q4 (RampID)
-✅ Amazon DSP: amzn_travel_lux_2024 (UID2)
-✅ Google DV360: dbm_luxury_travel (Cookie ID)
-⏳ Yahoo DSP: Activating... (2 hours)
-
-**"Last-Minute Bookers" (1.2M users)**
-✅ All platforms active
-Using: RampID, UID2, and MAIDs
-
-**"Business Travelers" (890K users)**
-Custom segment you created last week
-Now used by 47 campaigns
-Generating $12K/day in signal revenue
-```
-
-## Core Tasks
-
-The Signals Activation Protocol supports two primary tasks:
-
-### 1. [get_signals](/docs/signals/tasks/get_signals)
-Discover signals across providers using natural language, with visibility into available identity keys.
-
-### 2. [activate_signal](/docs/signals/tasks/activate_signal)  
-Deploy signals to platforms with automatic identity resolution.
-
-## How It Works
-
-```mermaid
-flowchart LR
-    A[Natural Language Request] --> B[AI Understands Intent]
-    B --> C[Search Across Providers]
-    C --> D{Signal Exists?}
-    D -->|No| E[Provider Creates Custom]
-    D -->|Yes| F[Analyze Quality & Metadata]
-    E --> G[Match Identity Keys]
-    F --> G
-    G --> H[Activate on Platforms]
-    H --> I[Campaign Uses Signals]
-    I --> J[Monitor & Optimize]
-```
-
-## The Value Proposition
-
-**For Signal Providers:**
-- 📈 **Increased utilization**: Better discovery leads to more signal activation
-- ⚡ **Faster time-to-market**: Create custom signals more efficiently
-- 🎯 **Better matching**: Build signals that precisely match buyer needs
-- 🌍 **Broader compatibility**: Support multiple identity types and platforms
-
-**For Advertisers:**
-- 🔍 **Better visibility**: Access to comprehensive metadata and performance data
-- 🎨 **Precise targeting**: Request and receive exactly what you need
-- 🤖 **Informed decisions**: AI helps evaluate and compare options
-- 🚀 **Faster activation**: Streamlined discovery and deployment process
-
-## Next Steps
-
-- 📖 **Technical Teams**: Review the [Protocol Specification](/docs/signals/specification)
-- 💻 **Developers**: Explore the [Reference Implementation](https://github.com/adcontextprotocol/signals-agent)
-- 🏗️ **Platform Providers**: See [Integration Guide](/docs/signals/tasks/get_signals)
-- 💬 **Everyone**: Join the [Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
-
----
-
-*The Signals Activation Protocol is part of the broader [AdCP ecosystem](/docs/intro#the-adcp-ecosystem-layers), transforming how advertising technology works together.*
+See the [Protocol Specification](/docs/signals/specification) for complete technical details.
