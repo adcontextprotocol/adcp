@@ -45,7 +45,7 @@ const update1 = await call('update_media_buy', {
 });
 
 // Days later in new conversation - only task_id needed
-const status = await call('get_media_buy_status', {
+const delivery = await call('get_media_buy_delivery', {
   task_id: taskId          // No context_id - this is a new conversation
 });
 ```
@@ -94,6 +94,32 @@ const result2 = await mcp.call('get_products', {
   brief: "Focus on premium inventory"
 });
 ```
+
+```mermaid
+sequenceDiagram
+    participant B as Buyer Agent
+    participant S as Sales Agent
+
+    rect rgb(240, 248, 255)
+        Note over B,S: Turn 1 - Establish Context
+        B->>S: get_products(brief: "Video ads")
+        S-->>B: products[prod_123, ...] + context_id: "ctx_abc"
+    end
+
+    rect rgb(240, 255, 240)
+        Note over B,S: Turn 2 - Refine (same context)
+        B->>S: get_products(context_id: "ctx_abc", brief: "Focus on premium")
+        S-->>B: refined products[] + context_id: "ctx_abc"
+    end
+
+    rect rgb(255, 248, 240)
+        Note over B,S: Turn 3 - Execute (same context)
+        B->>S: create_media_buy(context_id: "ctx_abc", product_id: "prod_123")
+        S-->>B: media_buy_id + task_id + context_id: "ctx_abc"
+    end
+```
+
+The `context_id` persists across all turns, allowing the agent to remember previous search results and workflow state. The `product_id` in Turn 3 references a product discovered in Turn 1.
 
 ### MCP Context Management Pattern
 
@@ -169,11 +195,7 @@ Response (application-level context is repeated inside the payload):
 }
 ```
 
-<img src="./initator-context-lifecycle-01.png" alt="Application context lifecycle diagram showing initiator request flow" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
-
-<img src="./initator-context-lifecycle-02.png" alt="Application context lifecycle diagram showing webhook response flow" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
-
-Webhook updates include the same application-level `context` inside the webhook `result` payload.
+Webhook updates also include the same application-level `context` inside the webhook `result` payload, ensuring correlation tokens persist through asynchronous operations.
 
 ## Best Practices
 

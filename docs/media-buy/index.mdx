@@ -196,7 +196,51 @@ This accountability framework transforms the advertising marketplace from a seri
 
 The following diagram illustrates the complete lifecycle of a media buy in AdCP:
 
-<img src="./media-buying-lifecycle.png" alt="Media buying lifecycle diagram showing discovery, creation, delivery, and optimization stages" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
+```mermaid
+sequenceDiagram
+    participant P as Principal
+    participant G as Governance
+    participant MC as Media Company
+    participant H as Human
+
+    rect rgb(240, 248, 255)
+        Note over P,MC: Discovery & Planning
+        P->>MC: Brief
+        MC->>P: Products + Proposals
+        P->>MC: Refine proposal
+        MC->>P: Updated proposal
+    end
+
+    rect rgb(245, 240, 255)
+        Note over P,G: Governance
+        P->>G: Apply property lists
+        G->>P: Compliant inventory
+        P->>G: Brand safety check
+        G->>P: Approved placements
+    end
+
+    rect rgb(240, 255, 240)
+        Note over P,MC: Creation
+        P->>MC: Create media buy (or execute proposal)
+        MC->>P: Pending approval
+        P->>MC: Add creatives
+    end
+
+    rect rgb(255, 250, 240)
+        Note over MC,H: Human-in-the-Loop (optional)
+        MC->>H: Review media buy
+        H->>MC: Approve/Reject
+        MC->>P: Status update (webhook)
+    end
+
+    rect rgb(255, 248, 240)
+        Note over P,MC: Delivery & Optimization
+        MC->>P: Delivery logs
+        P->>MC: Performance Index
+        MC->>MC: Optimize products
+        P->>MC: Update media buy
+    end
+```
 
 ## Documentation Structure
 

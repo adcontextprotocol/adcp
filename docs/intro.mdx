@@ -40,7 +40,40 @@ All tasks and data models are defined with JSON schemas for validation and clien
 
 AdCP operates at multiple layers, providing a clean separation between the business roles, orchestration layer, and technical execution:
 
-<img src="./layers-of-the-stack.png" alt="Layers of the AdCP Stack showing Business Principals, Orchestration, and Technical Execution layers" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
+```mermaid
+flowchart TB
+    subgraph Business["Business Principals"]
+        BP["**Buying Principal**<br/>Advertiser, agency, retail media network, curator"]
+        MS["**Media Seller**<br/>Publisher, sales house, rep firm, SSP, or ad network"]
+        BP <-->|"imps & money"| MS
+    end
+
+    subgraph Orchestration["Orchestration Layer"]
+        MOP["**Media Orchestration Platform**<br/>Evaluates sellers and audiences; executes strategies"]
+        SA["**Signals Agent**<br/>Signals discovery → activation"]
+        SalesA["**Sales Agent**<br/>Media product discovery + execution"]
+        MOP -->|"MCP"| SA
+        MOP -->|"MCP"| SalesA
+    end
+
+    subgraph Technical["Technical Execution"]
+        AXE["**Agent Execution Environment**<br/>Real-time decisioning for brand safety, fcaps, 1p data"]
+        DP["**Decisioning Platform**<br/>Selects impression to serve (direct or programmatic)"]
+        AXE <-->|"KV or RTB"| DP
+    end
+
+    subgraph Governance["Governance (cross-cutting)"]
+        GOV["**Governance Agents**<br/>Brand safety, consent, property lists, compliance"]
+        HITL["**Human Oversight**<br/>Manual approval checkpoints"]
+    end
+
+    Business --> Orchestration
+    Orchestration --> Technical
+    GOV -.-> Business
+    GOV -.-> Orchestration
+    GOV -.-> Technical
+    HITL -.-> Orchestration
+```
 
 ### The AdCP Ecosystem Layers
 
@@ -101,11 +134,68 @@ The technical infrastructure that:
 - **Delivery Method**: Direct campaigns or programmatic (RTB)
 - **Examples**: DSPs, SSPs, Ad Servers, Google Ad Manager, Kevel
 
+#### Cross-Cutting: Governance & Human Oversight
+
+**Governance Agents**
+Specialized agents that provide compliance and quality control across all layers:
+- **Property Lists**: Define where ads can and cannot run
+- **Brand Safety**: Content filtering and suitability scoring
+- **Consent & Compliance**: Privacy regulations (COPPA, TCF, etc.)
+- **Integration**: Operates at setup time, real-time, and post-bid
+
+See [Governance Protocol](/docs/governance/) for details.
+
+**Human-in-the-Loop**
+AdCP supports optional manual approval at key decision points:
+- **Campaign Approval**: Publishers can require human review before activation
+- **Creative Review**: Manual sign-off on ad content
+- **Budget Thresholds**: Automatic escalation above certain spend levels
+- **Policy Exceptions**: Human judgment for edge cases
+
+This is not a real-time protocol - operations may take minutes to days when human approval is required.
+
 ## The Complete AdCP Flow with Creative Agents
 
 The AdCP ecosystem extends beyond media transactions to include creative production and delivery:
 
-<img src="./adcp_flows.png" alt="AdCP ecosystem diagram showing Creative, Business, and Technical flows with agent integration" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
+```mermaid
+flowchart LR
+    subgraph Creative["Creative flow"]
+        direction LR
+        CA[Creative Agent]
+    end
+
+    subgraph Business["Business flow"]
+        direction LR
+        ADV[Advertiser] --> PRIN[Principal] --> MSELL[Media Seller]
+    end
+
+    subgraph Tech["Technical flow"]
+        direction LR
+        BA[Brand Agent] <-.-> MA[Media Agent] <-.-> SAL[Sales Agent] --> DP[Decisioning Platform]
+    end
+
+    subgraph Data["Data flow"]
+        direction LR
+        SIG1[Signals Agent<br/>buyer signals]
+        SIG2[Signals Agent<br/>pub signals]
+    end
+
+    subgraph Delivery["Delivery"]
+        direction LR
+        PROP[Property] --> CONS[Consumer]
+    end
+
+    AXE[AXE]
+
+    CA --> PROP
+    ADV --> CA
+    SIG1 --> MA
+    SIG2 --> SAL
+    MA --> AXE
+    AXE --> DP
+    DP --> PROP
+```
 
 ### Three Interconnected Flows
 
