@@ -1,14 +1,14 @@
-import type { AdAgentsJson, ValidationResult } from "./types.js";
+import type { AdAgentsJson, AuthorizationResult } from "./types.js";
 import { Cache } from "./cache.js";
 
 export class AgentValidator {
-  private cache: Cache<ValidationResult>;
+  private cache: Cache<AuthorizationResult>;
 
   constructor(cacheTtlMinutes: number = 15) {
-    this.cache = new Cache<ValidationResult>(cacheTtlMinutes);
+    this.cache = new Cache<AuthorizationResult>(cacheTtlMinutes);
   }
 
-  async validate(domain: string, agentUrl: string): Promise<ValidationResult> {
+  async validate(domain: string, agentUrl: string): Promise<AuthorizationResult> {
     const cacheKey = `${domain}:${agentUrl}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
@@ -23,7 +23,7 @@ export class AgentValidator {
   private async fetchAndValidate(
     domain: string,
     agentUrl: string
-  ): Promise<ValidationResult> {
+  ): Promise<AuthorizationResult> {
     const normalizedDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const adagentsUrl = `https://${normalizedDomain}/.well-known/adagents.json`;
 

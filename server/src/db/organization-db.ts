@@ -3,6 +3,10 @@ import { getStripeSubscriptionInfo, listCustomersWithOrgIds } from '../billing/s
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
+import type { Agreement } from '../types.js';
+
+// Re-export Agreement for backwards compatibility
+export type { Agreement };
 
 const logger = createLogger('organization-db');
 
@@ -95,14 +99,6 @@ export interface SubscriptionInfo {
   product_name?: string;
   current_period_end?: number;
   cancel_at_period_end?: boolean;
-}
-
-export interface Agreement {
-  id: string;
-  version: string;
-  text: string;
-  effective_date: Date;
-  created_at: Date;
 }
 
 export interface AuditLogEntry {

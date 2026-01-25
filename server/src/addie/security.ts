@@ -8,7 +8,7 @@
  */
 
 import { logger } from '../logger.js';
-import type { ValidationResult, AddieInteractionLog } from './types.js';
+import type { SanitizationResult, AddieInteractionLog } from './types.js';
 
 /**
  * Patterns that might indicate prompt injection attempts
@@ -59,7 +59,7 @@ const FORBIDDEN_OUTPUT_PATTERNS = [
 /**
  * Sanitize user input before passing to Claude
  */
-export function sanitizeInput(text: string): ValidationResult {
+export function sanitizeInput(text: string): SanitizationResult {
   let sanitized = text;
   let flagged = false;
   let reason: string | undefined;
@@ -122,7 +122,7 @@ export function markdownToSlackLinks(text: string): string {
 /**
  * Validate output before sending to Slack
  */
-export function validateOutput(text: string): ValidationResult {
+export function validateOutput(text: string): SanitizationResult {
   let flagged = false;
   let reason: string | undefined;
 
