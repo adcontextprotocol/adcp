@@ -3,21 +3,31 @@ title: Asset Types
 ---
 
 
-Creative formats in AdCP use standardized asset types with well-defined properties. This ensures consistency across formats and makes it easier for buyers to understand requirements.
+Creative formats in AdCP use standardized asset types with well-defined properties. Assets are the discrete, typed building blocks used by formats to define requirements and by manifests to supply concrete values.
+
+Standardizing asset types ensures consistency across formats and makes requirements easier for buyers and systems to understand.
 
 ## Important: Payload vs Requirements
 
-**This document describes format requirements** (constraints and specifications defined in format specs).
-
-For **payload schemas** (the structure of actual asset data you send in creative manifests), see:
+For payload schemas (the structure of the actual asset data supplied in creative manifests), see:
 - [Asset Type Registry](https://adcontextprotocol.org/schemas/v2/creative/asset-types/index.json) - Links to all payload schemas
 - Core Asset Schemas at `/schemas/v2/core/assets/` - Individual asset payload definitions
 
-**Key distinction**:
-- **Format requirements** (this doc): `max_file_size_mb`, `required: true/false`, `acceptable_formats`, duration constraints
-- **Payload schemas** (schemas): `url`, `width`, `height`, `content`, `duration_ms`, `format`
+**Key distinction:**
 
-Asset requirements belong in the format specification's `requirements` field. Asset payloads use the core schemas.
+**Format requirements** (this document) define constraints such as:
+- Whether an asset is required or optional
+- Acceptable file or container formats
+- Duration, dimension, or aspect ratio limits
+- File size and bitrate limits
+- Allowed or restricted features (for tag-based assets)
+
+**Payload schemas** (core schemas) define the supplied values, such as:
+- `url`
+- `content` (for inline text or inline tag markup)
+- `width` / `height` (when declared)
+- `duration_ms` (when applicable)
+- `format` (declared container type)
 
 ## Asset Type Schema
 
@@ -271,18 +281,18 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 
 ## Common Properties
 
-All asset types share these common properties:
+All asset types share these common fields:
 
-- `asset_id`: Unique identifier for this asset within the format (e.g., "hero_image", "video_file", "headline")
-- `asset_type`: The type of asset (image, video, audio, text, html, css, javascript, vast, daast, url, promoted_offerings)
-- `asset_role`: Semantic purpose of the asset (e.g., "hero_video", "logo", "cta_button")
-- `required`: Boolean indicating if the asset is mandatory
+- `asset_id`: Unique identifier within the format
+- `asset_type`: The asset's type (image, video, text, url, etc.)
+- `asset_role`: Semantic purpose (hero_video, logo, cta_button)
+- `required`: Whether the asset is mandatory
 
 ### Asset ID vs Asset Role
 
-**`asset_id`**: A unique identifier for this asset within the format specification. Used as the key when constructing manifests.
+**`asset_id`**: A stable identifier used by manifests to supply values.
 
-**`asset_role`**: Describes the semantic purpose or function of the asset in the creative. Helps buyers, AI systems, and publishers understand what the asset is for.
+**`asset_role`**: A semantic label describing the asset's purpose.
 
 **Example**:
 ```json
@@ -294,9 +304,7 @@ All asset types share these common properties:
 }
 ```
 
-In this example:
-- `asset_id` = "main_video" (the unique identifier for manifests)
-- `asset_role` = "hero_video" (indicates this is the primary video content)
+Asset roles enable consistent rendering, validation, and AI-assisted generation without hard-coding layout assumptions.
 
 **Common asset roles**:
 - `hero_image` / `hero_video` - Primary visual content
@@ -307,8 +315,6 @@ In this example:
 - `background_image` - Background visual
 - `thumbnail` - Preview image
 - `companion_banner` - Secondary display ad
-
-Asset roles enable AI systems to generate appropriate content and help publishers understand how to render each asset in the creative.
 
 ### Asset ID Usage
 
@@ -421,12 +427,12 @@ const isValid = validator.validate(videoAsset, 'video');
 
 ## Best Practices
 
-1. **Be Specific**: Use exact values rather than ranges when possible
-2. **Include All Constraints**: Document all technical requirements upfront
-3. **Use Standard Units**: 
-   - File sizes: MB for video/audio, KB for images
-   - Bitrates: Mbps for video, Kbps for audio
-   - Durations: seconds
+1. **Be specific where possible**
+2. **Declare all constraints explicitly**
+3. **Use standard units:**
+   - File size: MB (video/audio), KB (images)
+   - Duration: seconds
+   - Bitrate: Mbps (video), Kbps (audio)
    - Dimensions: pixels
-4. **Provide Reasonable Limits**: Balance quality with file size constraints
-5. **Document Edge Cases**: Use the `notes` field for special requirements
+4. **Balance quality with performance**
+5. **Document edge cases using notes**
