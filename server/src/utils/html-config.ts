@@ -181,7 +181,7 @@ function escapeHtmlAttr(str: string): string {
 export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): string {
   const safeTitle = escapeHtmlAttr(metaTags.title);
   const safeDesc = escapeHtmlAttr(metaTags.description);
-  const safeImage = metaTags.image || 'https://agenticadvertising.org/AAo-social.png';
+  const safeImage = escapeHtmlAttr(metaTags.image || 'https://agenticadvertising.org/AAo-social.png');
   const safeUrl = escapeHtmlAttr(metaTags.url);
 
   let result = html;
@@ -273,9 +273,11 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
       }
     };
 
+    // Escape </script> sequences in JSON to prevent XSS
+    const jsonString = JSON.stringify(jsonLd, null, 2).replace(/<\//g, '<\\/');
     result = result.replace(
       /<script type="application\/ld\+json" id="articleJsonLd">[\s\S]*?<\/script>/,
-      `<script type="application/ld+json" id="articleJsonLd">\n${JSON.stringify(jsonLd, null, 2)}\n</script>`
+      `<script type="application/ld+json" id="articleJsonLd">\n${jsonString}\n</script>`
     );
   }
 

@@ -1632,7 +1632,16 @@ export class HTTPServer {
       const { slug } = req.params;
 
       // Fetch article data for meta tags (social crawlers don't execute JS)
-      let article: { title: string; excerpt?: string; subtitle?: string; featured_image_url?: string; author_name?: string; published_at?: string; updated_at?: string } | null = null;
+      interface ArticleMetaData {
+        title: string;
+        excerpt?: string;
+        subtitle?: string;
+        featured_image_url?: string;
+        author_name?: string;
+        published_at?: string;
+        updated_at?: string;
+      }
+      let article: ArticleMetaData | null = null;
       try {
         const pool = getPool();
         const result = await pool.query(
