@@ -17,6 +17,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
+import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
 
 const logger = createLogger("admin-members");
 
@@ -401,9 +402,8 @@ export function setupMembersRoutes(
         });
       }
 
-      // Validate membership ID format (WorkOS membership IDs are 'om_' followed by alphanumeric chars)
-      const WORKOS_ID_PATTERN = /^om_[A-Za-z0-9]{20,30}$/;
-      if (!WORKOS_ID_PATTERN.test(membershipId)) {
+      // Validate membership ID format
+      if (!isValidWorkOSMembershipId(membershipId)) {
         logger.error(
           { orgId, membershipId },
           "Invalid WorkOS membership ID format"
