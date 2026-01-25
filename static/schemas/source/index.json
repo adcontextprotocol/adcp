@@ -370,43 +370,35 @@
       }
     },
     "pricing-options": {
-      "description": "Individual pricing model schemas with model-specific validation. CPM and vCPM support both fixed and auction pricing; all other models are fixed-rate only.",
+      "description": "Individual pricing model schemas. Discriminated by pricing_model field. If fixed_price is present, it's fixed pricing. If absent, it's auction-based (floor_price and price_guidance optional).",
       "schemas": {
-        "cpm-fixed-option": {
-          "$ref": "/schemas/pricing-options/cpm-fixed-option.json",
-          "description": "Cost Per Mille (CPM) fixed-rate pricing for direct/guaranteed deals"
+        "cpm-option": {
+          "$ref": "/schemas/pricing-options/cpm-option.json",
+          "description": "Cost Per Mille (CPM) pricing - supports fixed rate and auction modes"
         },
-        "cpm-auction-option": {
-          "$ref": "/schemas/pricing-options/cpm-auction-option.json",
-          "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
-        },
-        "vcpm-fixed-option": {
-          "$ref": "/schemas/pricing-options/vcpm-fixed-option.json",
-          "description": "Viewable Cost Per Mille (vCPM) fixed-rate pricing for viewability-guaranteed deals"
-        },
-        "vcpm-auction-option": {
-          "$ref": "/schemas/pricing-options/vcpm-auction-option.json",
-          "description": "Viewable Cost Per Mille (vCPM) auction-based pricing for programmatic inventory with viewability guarantee"
+        "vcpm-option": {
+          "$ref": "/schemas/pricing-options/vcpm-option.json",
+          "description": "Viewable Cost Per Mille (vCPM) pricing - supports fixed rate and auction modes"
         },
         "cpc-option": {
           "$ref": "/schemas/pricing-options/cpc-option.json",
-          "description": "Cost Per Click (CPC) fixed-rate pricing for performance campaigns"
+          "description": "Cost Per Click (CPC) pricing - supports fixed rate and auction modes"
         },
         "cpcv-option": {
           "$ref": "/schemas/pricing-options/cpcv-option.json",
-          "description": "Cost Per Completed View (CPCV) fixed-rate pricing for video/audio"
+          "description": "Cost Per Completed View (CPCV) pricing - supports fixed rate and auction modes"
         },
         "cpv-option": {
           "$ref": "/schemas/pricing-options/cpv-option.json",
-          "description": "Cost Per View (CPV) fixed-rate pricing with threshold"
+          "description": "Cost Per View (CPV) pricing with threshold - supports fixed rate and auction modes"
         },
         "cpp-option": {
           "$ref": "/schemas/pricing-options/cpp-option.json",
-          "description": "Cost Per Point (CPP) fixed-rate pricing for TV/audio with demographic measurement"
+          "description": "Cost Per Point (CPP) pricing for TV/audio with demographic measurement - supports fixed rate and auction modes"
         },
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",
-          "description": "Flat rate pricing for DOOH and sponsorships"
+          "description": "Flat rate pricing for DOOH and sponsorships - supports fixed rate and auction modes"
         }
       }
     },

@@ -198,11 +198,10 @@ Many schemas now require explicit discriminator fields. Update your code to incl
   "rate": 12.50
 }
 
-// After
+// After (fixed pricing uses fixed_price field)
 {
   "pricing_model": "cpm",
-  "is_fixed": true,
-  "rate": 12.50
+  "fixed_price": 12.50
 }
 ```
 
