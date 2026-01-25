@@ -224,6 +224,7 @@
             "group": "Reference",
             "pages": [
               "docs/reference/media-channel-taxonomy",
+              "docs/reference/migrating-to-v3",
               "docs/reference/roadmap",
               "docs/reference/release-notes",
               "docs/reference/changelog",

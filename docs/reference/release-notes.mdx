@@ -12,7 +12,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ## Version 3.0.0-beta.1
 
-**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1)
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1) | [Migration Guide](/docs/reference/migrating-to-v3)
 
 <Warning>
 **This is a beta release.** While the API is stable for testing, breaking changes may occur before the final 3.0.0 release. We encourage early adopters to test and provide feedback.
@@ -20,202 +20,79 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ### What's New
 
-Version 3.0.0 is a **major release** introducing the Governance Protocol for brand safety and inventory curation, a complete overhaul of media channel definitions, and protocol-level capability discovery. This release establishes the foundation for enterprise-scale brand safety workflows.
+Version 3.0.0 is a **major release** that expands AdCP beyond media buying into governance, brand safety, and conversational commerce. See the [Migration Guide](/docs/reference/migrating-to-v3) for detailed upgrade instructions.
 
 **🎯 Key Themes:**
 
-1. **Media Channel Taxonomy** - Complete overhaul of channel enum values to align with how buyers actually plan and allocate budgets across 19 planning-oriented media channels.
+1. **Media Channel Taxonomy** - Complete overhaul from 5 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 
 2. **Governance Protocol** - New protocol domain for property lists, content standards, and brand safety evaluation with collaborative calibration workflows.
 
-3. **Protocol-Level Capability Discovery** - `get_adcp_capabilities` task replaces agent card extensions, providing runtime discovery of agent capabilities, supported protocols, and geo targeting systems.
+3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
 
-4. **Creative Assignment Weighting** - Replace simple creative ID arrays with weighted assignments supporting granular placement control.
+4. **Protocol-Level Capability Discovery** - `get_adcp_capabilities` task replaces agent card extensions, providing runtime discovery of capabilities, supported protocols, and geo targeting systems.
 
-5. **Geo Targeting Systems** - Structured geographic targeting with named systems (Nielsen DMA, UK ITL, etc.) for metros and postal areas.
+5. **Creative Assignment Weighting** - Replace simple creative ID arrays with weighted assignments supporting traffic allocation and placement targeting.
 
-### Breaking Changes
+6. **Global Geo Targeting** - Structured geographic targeting with named systems (Nielsen DMA, UK ITL, Eurostat NUTS2, etc.) for international markets.
 
-#### Media Channel Taxonomy
+### Breaking Changes Summary
 
-The channel enum has been completely replaced with 19 planning-oriented channels that reflect how buyers allocate budgets:
+| Change | v2.x | v3.x |
+|--------|------|------|
+| Channels | 5 values | 19 planning-oriented values |
+| Creative assignment | `creative_ids: [...]` | `creative_assignments: [{...}]` |
+| Metro targeting | `geo_metros: ["501"]` | `geo_metros: [{ system, code }]` |
+| Postal targeting | `geo_postal_codes` | `geo_postal_areas` with system |
+| Asset discovery | `assets_required: [...]` | `assets: [{ asset_id, required }]` |
 
-**Before (5 channels):**
-```json
-["display", "video", "audio", "native", "retail"]
-```
+See [Migration Guide](/docs/reference/migrating-to-v3) for detailed before/after examples and migration steps.
 
-**After (19 channels):**
-```json
-[
-  "display", "olv", "social", "search", "ctv", "linear_tv",
-  "radio", "streaming_audio", "podcast", "dooh", "ooh",
-  "print", "cinema", "email", "gaming", "retail_media",
-  "influencer", "affiliate", "product_placement"
-]
-```
-
-See the [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) for complete definitions and migration guidance.
-
-#### Creative Assignments with Weighting
-
-Replace `creative_ids` arrays with `creative_assignments` objects supporting optional weighting and placement targeting:
-
-**Before:**
-```json
-{
-  "creative_ids": ["creative_1", "creative_2"]
-}
-```
-
-**After:**
-```json
-{
-  "creative_assignments": [
-    { "creative_id": "creative_1", "weight": 60 },
-    { "creative_id": "creative_2", "weight": 40, "placement_ids": ["homepage"] }
-  ]
-}
-```
-
-Simple assignments still work:
-```json
-{
-  "creative_assignments": [
-    { "creative_id": "creative_1" },
-    { "creative_id": "creative_2" }
-  ]
-}
-```
-
-#### Geo Targeting with Named Systems
-
-Metro and postal targeting now require explicit system specification:
-
-**Before:**
-```json
-{
-  "targeting": {
-    "geo_metros": ["501", "602"],
-    "geo_postal_codes": ["10001", "90210"]
-  }
-}
-```
-
-**After:**
-```json
-{
-  "targeting": {
-    "geo_metros": [
-      { "system": "nielsen_dma", "code": "501" },
-      { "system": "nielsen_dma", "code": "602" }
-    ],
-    "geo_postal_areas": [
-      { "system": "us_zip", "code": "10001" },
-      { "system": "us_zip", "code": "90210" }
-    ]
-  }
-}
-```
-
-**Supported metro systems:** `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2`
-
-**Supported postal systems:** `us_zip`, `gb_outward`, `gb_full`, `ca_fsa`, `de_plz`, `fr_code_postal`, `au_postcode`
-
-### New Features
-
-#### get_adcp_capabilities Task
-
-Protocol-level capability discovery replacing agent card extensions:
-
-```json
-// Request
-{
-  "task": "get_adcp_capabilities"
-}
-
-// Response
-{
-  "adcp": {
-    "major_versions": [3]
-  },
-  "supported_protocols": ["media_buy", "signals", "governance"],
-  "extensions_supported": ["scope3", "garm"],
-  "media_buy": {
-    "features": ["inline_creative_management", "property_list_filtering"],
-    "portfolio": {
-      "publisher_domains": ["publisher.com"],
-      "channels": ["display", "ctv"],
-      "countries": ["US", "CA"]
-    },
-    "execution": {
-      "targeting": {
-        "geo_metros": [{ "system": "nielsen_dma" }],
-        "geo_postal_areas": [{ "system": "us_zip" }]
-      }
-    }
-  }
-}
-```
+### New Protocol Domains
 
 #### Governance Protocol
 
-New protocol domain for brand safety and inventory curation:
+Brand safety and inventory curation:
 
-**Property Lists** - Managed lists of properties for targeting/exclusion:
-- `create_property_list` - Create a new property list
-- `get_property_list` - Retrieve with resolved properties
-- `update_property_list` - Modify filters or sources
-- `delete_property_list` - Remove a property list
-- `list_property_lists` - Enumerate available lists
+- **Property Lists** - `create_property_list`, `get_property_list`, `update_property_list`, `delete_property_list`, `list_property_lists`
+- **Content Standards** - `create_content_standards`, `get_content_standards`, `update_content_standards`, `calibrate_content`, `validate_content_delivery`
+- **Product Filtering** - Pass property lists to `get_products` for compliant inventory discovery
 
-**Content Standards** - Brand safety evaluation:
-- `create_content_standards` - Define safety/suitability policies
-- `get_content_standards` - Retrieve policy configuration
-- `update_content_standards` - Modify policies
-- `calibrate_content` - Collaborative dialogue to align on interpretation
-- `validate_content_delivery` - Batch validate delivery records
+#### Sponsored Intelligence Protocol
 
-#### Unified Asset Discovery
+Conversational brand experiences:
 
-Formats now include a unified `assets` array with `required` boolean:
+- **Session Management** - `si_check_availability`, `si_initiate_session`, `si_send_message`, `si_terminate_session`
+- **Capability Negotiation** - Brands declare modalities (voice, video, avatar), hosts respond with supported capabilities
+- **Commerce Handoff** - Seamless transition to ACP for transactions
 
-**Before:**
-```json
-{
-  "assets_required": ["main_image", "headline"]
-}
-```
+See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
 
-**After:**
-```json
-{
-  "assets": [
-    { "asset_id": "main_image", "required": true },
-    { "asset_id": "headline", "required": true },
-    { "asset_id": "impression_tracker", "required": false }
-  ]
-}
-```
+### New Features
 
-This enables buyers and AI agents to discover ALL assets a format supports, including optional ones.
+- **`get_adcp_capabilities` task** - Runtime capability discovery replacing agent card extensions
+- **Unified asset discovery** - `assets` array with `required` boolean for full asset visibility
+- **Property list filtering** - Pass governance lists to `get_products` for brand-safe inventory
 
 ### Deprecations
 
-| Deprecated | Replacement | Removal |
-|------------|-------------|---------|
+| Deprecated | Replacement | Support Until |
+|------------|-------------|---------------|
 | `adcp-extension.json` agent card | `get_adcp_capabilities` task | 4.0.0 |
 | `list_property_features` task | `get_adcp_capabilities` governance section | 4.0.0 |
 | `assets_required` in formats | `assets` array with `required` boolean | 4.0.0 |
+| `creative_ids` in packages | `creative_assignments` array | 4.0.0 |
+| `geo_postal_codes` | `geo_postal_areas` | 4.0.0 |
 
-### Migration Checklist
+### Quick Migration Checklist
 
-- [ ] Update channel enum values to new taxonomy
+- [ ] Update channel enum values ([taxonomy guide](/docs/reference/media-channel-taxonomy))
 - [ ] Replace `creative_ids` with `creative_assignments`
 - [ ] Add system specification to metro/postal targeting
-- [ ] Switch from agent card extension to `get_adcp_capabilities`
+- [ ] Implement `get_adcp_capabilities` task
 - [ ] Update format parsing to use `assets` array
-- [ ] Test governance protocol integration if using property lists
+
+**[View Complete Migration Guide →](/docs/reference/migrating-to-v3)**
 
 ---
 
