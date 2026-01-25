@@ -32,16 +32,8 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Exclude versioned docs from broken links check
-      run: rm -rf v2.6-rc
-
-    - name: Check for broken links in docs (v2.5)
-      run: |
-        # Temporarily remove v2.6-rc docs which have WIP governance links
-        # These will be fixed when governance section is complete
-        rm -rf v2.6-rc
-        npx mintlify@latest broken-links
-        git checkout v2.6-rc
+    - name: Check for broken links in docs
+      run: npx mintlify@latest broken-links
 
     - name: Check README links
       run: npx markdown-link-check README.md --config .markdown-link-check.json
