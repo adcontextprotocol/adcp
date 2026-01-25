@@ -126,7 +126,8 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `brief` | string | No | Natural language description of campaign requirements |
+| `brief` | string | No | Natural language description of campaign requirements. When refining a proposal, can include instructions like "focus more on German speakers". |
+| `proposal_id` | string | No | Proposal ID to refine. When provided with a brief, the publisher uses the brief as refinement instructions and returns an updated proposal. |
 | `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
@@ -144,8 +145,8 @@ asyncio.run(discover_with_filters())
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
-| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
-| `channels` | string[] | Filter by advertising channels (e.g., `["display", "video", "dooh", "ctv", "audio", "native"]`) |
+| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (case-insensitive, e.g., `["US", "CA", "GB"]`) |
+| `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
 
 ### Budget Range Object
 
@@ -159,7 +160,9 @@ asyncio.run(discover_with_filters())
 
 ## Response
 
-Returns an array of `products`, each containing:
+Returns an array of `products` and optionally `proposals`.
+
+### Products Array
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -172,6 +175,19 @@ Returns an array of `products`, each containing:
 | `delivery_measurement` | DeliveryMeasurement | How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.) |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
+
+### Proposals Array (Optional)
+
+Publishers may return proposals alongside products - structured media plans with budget allocations. See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for details.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `proposal_id` | string | Unique identifier for executing or refining this proposal |
+| `name` | string | Human-readable name for the media plan |
+| `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100) |
+| `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
+| `brief_alignment` | string | How this proposal addresses the campaign brief |
+| `expires_at` | string | ISO 8601 timestamp when this proposal expires |
 
 ### Response Metadata
 
@@ -298,7 +314,7 @@ const result = await testAgent.getProducts({
       currency: 'USD'
     },
     countries: ['US', 'CA'],
-    channels: ['display', 'video', 'ctv'],
+    channels: ['display', 'ctv', 'streaming_audio'],
     delivery_type: 'guaranteed'
   }
 });
@@ -329,7 +345,7 @@ async def discover_with_budget_and_dates():
                 'currency': 'USD'
             },
             'countries': ['US', 'CA'],
-            'channels': ['display', 'video', 'ctv'],
+            'channels': ['web', 'ctv', 'streaming_audio'],
             'delivery_type': 'guaranteed'
         }
     )
@@ -357,7 +373,8 @@ const result = await testAgent.getProducts({
 });
 
 if (result.success && result.data) {
-  // Products with property_tags in publisher_properties need resolution via list_authorized_properties
+  // Products with property_tags in publisher_properties represent large networks
+  // Use get_adcp_capabilities to discover the agent's portfolio
   const productsWithTags = result.data.products.filter(p =>
     p.publisher_properties?.some(pub => pub.property_tags && pub.property_tags.length > 0)
   );
@@ -379,7 +396,8 @@ async def discover_property_tags():
         }
     )
 
-    # Products with property_tags in publisher_properties need resolution via list_authorized_properties
+    # Products with property_tags in publisher_properties represent large networks
+    # Use get_adcp_capabilities to discover the agent's portfolio
     products_with_tags = [p for p in result.products
         if any(pub.get('property_tags') for pub in p.get('publisher_properties', []))]
     print(f"{len(products_with_tags)} products use property tags (large networks)")

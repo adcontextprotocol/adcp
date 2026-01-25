@@ -1,0 +1,446 @@
+---
+sidebar_position: 2
+title: Specification
+---
+
+<Warning>
+**Draft Specification** — This protocol is under active development. APIs and schemas may change before the final release.
+</Warning>
+
+This document defines the Sponsored Intelligence (SI) Protocol specification. The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Protocol Overview
+
+The SI Protocol defines how AI assistants (hosts) invoke and interact with brand agent endpoints to enable conversational brand experiences. The protocol consists of:
+
+1. **Discovery** - How hosts discover brand agents and their capabilities
+2. **Offering Lookup** - Anonymous pre-flight checks before session handoff
+3. **Session Management** - Initiation, messaging, and termination
+4. **Capability Negotiation** - Determining supported features
+5. **UI Components** - Standard visual elements for rendering
+
+## Transport Requirements
+
+### Supported Transports
+
+Brand agents MUST support at least one of the following transports:
+
+| Transport | Protocol | Description |
+|-----------|----------|-------------|
+| MCP | Model Context Protocol | Tool-based interaction via JSON-RPC |
+| A2A | Agent-to-Agent | Message-based interaction |
+
+Brand agents SHOULD support MCP as the preferred transport.
+
+### Transport Declaration
+
+Brand agents declare supported transports via `get_adcp_capabilities`:
+
+```json
+{
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["sponsored_intelligence"],
+  "sponsored_intelligence": {
+    "endpoint": {
+      "transports": [
+        { "type": "mcp", "url": "https://brand.example/mcp" }
+      ],
+      "preferred": "mcp"
+    },
+    "capabilities": { ... },
+    "brand_manifest_url": "https://brand.example/.well-known/brand-manifest.json"
+  }
+}
+```
+
+If multiple transports are declared, the response SHOULD include a `preferred` field.
+
+## Discovery
+
+### Capability Discovery
+
+Brand agents MUST implement the `get_adcp_capabilities` task to declare SI support. When a host calls this task, the response MUST include:
+
+- `sponsored_intelligence` in the `supported_protocols` array
+- A `sponsored_intelligence` object containing:
+  - `endpoint` - Transport configuration (REQUIRED)
+  - `capabilities` - Supported modalities and components (REQUIRED)
+
+The response SHOULD include:
+
+- `brand_manifest_url` - Reference to brand identity assets
+
+## Get Offering
+
+### Purpose
+
+The `si_get_offering` task retrieves offering details and availability before session handoff. This allows hosts to show offering information (pricing, product availability) to users before asking for consent to engage with the brand.
+
+### Requirements
+
+Hosts MAY call `si_get_offering` before initiating a session.
+
+If a host calls `si_get_offering`:
+
+1. The request MUST NOT include user PII
+2. The request MUST include `offering_id`
+3. The request MAY include `context` for personalized results (e.g., "mens size 14 near Cincinnati")
+4. The request MAY set `include_products: true` to get matching products
+5. Brand agents MUST return an `offering_token` if available
+6. Brand agents SHOULD return a `ttl_seconds` indicating validity duration
+
+### Offering Token Flow
+
+If a host receives an `offering_token`:
+
+1. The host SHOULD include this token in the subsequent `si_initiate_session` request
+2. The brand agent MAY use the token to correlate offering lookups with sessions
+3. The token MUST be treated as opaque by the host
+
+```json
+{
+  "offering_token": "offering_abc123xyz"
+}
+```
+
+### Matching Products
+
+When `include_products` is true and `context` is provided, the response MAY include matching products:
+
+```json
+{
+  "available": true,
+  "offering_token": "offering_abc123xyz",
+  "offering": {
+    "title": "Nike Summer Sale",
+    "summary": "Up to 50% off summer collection",
+    "price_hint": "from $89"
+  },
+  "matching_products": [
+    {
+      "product_id": "nike-air-max-90",
+      "name": "Nike Air Max 90",
+      "price": "$129",
+      "availability_summary": "Size 14 in stock"
+    }
+  ],
+  "total_matching": 12
+}
+```
+
+This enables hosts to show rich previews before session initiation.
+
+## Session Lifecycle
+
+### Session States
+
+SI sessions have the following states:
+
+| State | Description |
+|-------|-------------|
+| `active` | Session is in progress |
+| `pending_handoff` | Brand is requesting handoff to commerce flow |
+| `complete` | Session has ended normally |
+
+### Initiate Session
+
+The `si_initiate_session` task establishes a new SI session.
+
+#### Request Requirements
+
+Hosts MUST include:
+
+- `context` - Natural language description of user intent
+- `identity` - User identity with consent status
+
+Hosts SHOULD include:
+
+- `supported_capabilities` - Host's capability set for negotiation
+- `offering_token` - Token from `si_get_offering` if performed
+
+Hosts MAY include:
+
+- `media_buy_id` - AdCP media buy ID if triggered by advertising
+- `offering_id` - Brand-specific offering to apply
+- `placement` - Where this session was triggered
+
+#### Response Requirements
+
+Brand agents MUST return:
+
+- `session_id` - Unique identifier for this session
+
+Brand agents SHOULD return:
+
+- `response.message` - Initial conversational message
+- `negotiated_capabilities` - Intersection of brand and host capabilities
+
+### Send Message
+
+The `si_send_message` task exchanges messages within an active session.
+
+#### Request Requirements
+
+Hosts MUST include:
+
+- `session_id` - Active session identifier
+
+Hosts MUST include one of:
+
+- `message` - User's text message
+- `action_response` - Response to a UI action
+
+#### Response Requirements
+
+Brand agents MUST return:
+
+- `session_id` - The session identifier
+- `session_status` - Current session state (`active`, `pending_handoff`, or `complete`)
+
+Brand agents SHOULD return:
+
+- `response.message` - Conversational response
+
+If `session_status` is `pending_handoff`, the response MUST include:
+
+- `handoff` - Handoff configuration for commerce flow
+
+### Terminate Session
+
+The `si_terminate_session` task ends an SI session.
+
+#### Request Requirements
+
+Hosts MUST include:
+
+- `session_id` - Session to terminate
+- `reason` - Termination reason
+
+#### Termination Reasons
+
+| Reason | Description |
+|--------|-------------|
+| `handoff_transaction` | User proceeding to purchase |
+| `handoff_complete` | Conversation completed successfully |
+| `user_exit` | User ended the session |
+| `session_timeout` | Session timed out due to inactivity |
+| `host_terminated` | Host ended the session (policy/error) |
+
+## Capability Negotiation
+
+### Negotiation Process
+
+1. Brand declares capabilities in SI manifest
+2. Host sends supported capabilities in session initiation
+3. Brand returns negotiated (intersection) capabilities in response
+4. Session uses only negotiated capabilities
+
+### Capability Categories
+
+#### Modalities
+
+Modalities define interaction modes:
+
+| Modality | Description | Required Support |
+|----------|-------------|------------------|
+| `conversational` | Text exchange | REQUIRED for all implementations |
+| `voice` | Audio-based interaction | OPTIONAL |
+| `video` | Video content playback | OPTIONAL |
+| `avatar` | Animated video presence | OPTIONAL |
+
+All SI implementations MUST support `conversational` modality.
+
+#### Standard Components
+
+The following components MUST be renderable by all compliant hosts:
+
+| Component | Purpose |
+|-----------|---------|
+| `text` | Conversational message |
+| `link` | URL with label |
+| `image` | Single image |
+| `product_card` | Product display with CTA |
+| `carousel` | Array of cards/images |
+| `action_button` | CTA that triggers callback |
+
+#### Extension Components
+
+Hosts MAY support additional components:
+
+| Component | Purpose |
+|-----------|---------|
+| `app_handoff` | Platform-specific app handoff |
+| `integration_actions` | MCP/A2A installation prompts |
+
+Brand agents MUST NOT rely on extension components for core functionality.
+
+## UI Element Requirements
+
+### Standard Component Data
+
+Each standard component MUST include the required fields as defined in `si-ui-element.json`:
+
+**text**: `message` (required)
+
+**link**: `url`, `label` (required); `preview` (optional)
+
+**image**: `url`, `alt` (required); `caption` (optional)
+
+**product_card**: `title`, `price` (required); `subtitle`, `image_url`, `description`, `badge`, `cta` (optional)
+
+**carousel**: `items` (required); `title` (optional)
+
+**action_button**: `label`, `action` (required); `payload` (optional)
+
+### Action Handling
+
+When a user interacts with an `action_button`:
+
+1. The host MUST send an `action_response` via `si_send_message`
+2. The `action_response` MUST include the `action` identifier
+3. The `action_response` SHOULD include the `payload` if provided
+
+### Integration Actions
+
+The `integration_actions` component allows brand agents to offer persistent connections:
+
+```json
+{
+  "type": "integration_actions",
+  "data": {
+    "actions": [
+      { "type": "mcp", "label": "Add as MCP Tool", "highlighted": true },
+      { "type": "a2a", "label": "Connect via A2A" }
+    ]
+  }
+}
+```
+
+Hosts MAY render integration actions if they support the integration type.
+
+## Identity and Privacy
+
+### Consent Requirements
+
+Hosts MUST obtain explicit user consent before sharing identity with brand agents.
+
+The consent flow MUST:
+
+1. Clearly identify what data will be shared
+2. Reference the brand's privacy policy
+3. Allow the user to decline
+
+### Identity Object
+
+When consent is granted, the `identity` object MUST include:
+
+- `consent_granted: true`
+- `consent_timestamp` - When consent was obtained
+- `consent_scope` - Array of data types consented to
+- `privacy_policy_acknowledged.brand_policy_url`
+
+The `user` object MAY include:
+
+- `email`
+- `name`
+- `locale`
+- `shipping_address`
+
+### Anonymous Sessions
+
+If consent is not granted:
+
+- `identity.consent_granted` MUST be `false`
+- `identity.anonymous_session_id` SHOULD be provided
+- No PII MUST be transmitted
+
+## Commerce Integration
+
+### ACP Handoff
+
+When `session_status` is `pending_handoff` with `handoff.type: "transaction"`:
+
+1. The host SHOULD initiate ACP checkout flow
+2. The `handoff.intent` MUST describe the purchase intent
+3. The `handoff.context_for_checkout` MAY include conversation context
+
+### Commerce Actions
+
+The `action_button` component MAY include commerce actions:
+
+| Action | Description |
+|--------|-------------|
+| `acp_checkout` | Initiate ACP checkout |
+| `add_to_cart` | Add item to persistent cart |
+
+## Error Handling
+
+### Error Response
+
+Brand agents MUST return errors in the `errors` array using the standard error schema:
+
+```json
+{
+  "errors": [
+    {
+      "code": "session_not_found",
+      "message": "Session has expired or does not exist"
+    }
+  ]
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| `session_not_found` | Session ID is invalid or expired |
+| `offer_unavailable` | Referenced offer is no longer available |
+| `capability_unsupported` | Required capability not available |
+| `rate_limited` | Too many requests |
+
+## Security Considerations
+
+### Transport Security
+
+All SI communications MUST use HTTPS with TLS 1.2 or higher.
+
+### Token Security
+
+- Availability tokens MUST be opaque and unpredictable
+- Session IDs MUST be unique and unpredictable
+- Tokens SHOULD expire within a reasonable timeframe
+
+### Data Minimization
+
+- Hosts MUST NOT send PII without consent
+- Brand agents SHOULD minimize data collection
+- Session data SHOULD be deleted after termination
+
+## Conformance
+
+### Host Conformance
+
+A conformant SI host MUST:
+
+1. Support MCP transport
+2. Render all standard components
+3. Implement session lifecycle (initiate, send, terminate)
+4. Obtain consent before sharing identity
+5. Support capability negotiation
+
+### Brand Agent Conformance
+
+A conformant SI brand agent MUST:
+
+1. Publish an SI manifest
+2. Support at least one specified transport
+3. Support conversational modality
+4. Return valid session IDs
+5. Handle all termination reasons
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.0 | 2025-01 | Initial specification |

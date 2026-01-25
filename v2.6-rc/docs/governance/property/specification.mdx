@@ -192,7 +192,7 @@ Discover what features a governance agent can evaluate.
 Create a new property list with filters and optional brand manifest.
 
 **Required Parameters**:
-- At least one country in `countries_all` (ISO country code)
+- At least one country in `countries_all` (ISO 3166-1 alpha-2 code)
 - At least one channel in `channels_any` (display, video, audio, etc.)
 
 **Base Properties**: An array of property sources to evaluate. Each entry is a discriminated union with `selection_type` as the discriminator:
@@ -414,6 +414,36 @@ Orchestrators may consult multiple governance agents:
 
 ## Agent Discovery
 
+There are two complementary discovery mechanisms:
+
+### Publisher-Side Discovery via adagents.json
+
+Publishers declare which governance agents have data about their properties using the `property_features` field in `adagents.json`:
+
+```json
+{
+  "property_features": [
+    {
+      "url": "https://api.scope3.com",
+      "name": "Scope3",
+      "features": ["carbon_score", "sustainability_grade"],
+      "publisher_id": "pub_12345"
+    },
+    {
+      "url": "https://api.onetrust.com",
+      "name": "OneTrust",
+      "features": ["gdpr_compliant", "tcf_registered", "ccpa_compliant"]
+    }
+  ]
+}
+```
+
+This solves the discovery problem: buyers don't need to query every possible governance agent. Instead, they read `property_features` from the publisher's adagents.json to find which agents have relevant data.
+
+See the [adagents.json Tech Spec](/docs/governance/property/adagents#governance-agent-discovery) for the complete discovery workflow.
+
+### Agent-Side Discovery via agent-card.json
+
 Governance agents expose capabilities via `.well-known/agent-card.json`:
 
 ```json
@@ -443,6 +473,8 @@ Governance agents expose capabilities via `.well-known/agent-card.json`:
   }
 }
 ```
+
+### Detailed Capability Discovery
 
 Use `list_property_features` for detailed capability discovery:
 

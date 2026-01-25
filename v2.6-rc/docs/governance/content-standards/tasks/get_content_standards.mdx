@@ -48,15 +48,17 @@ Retrieve content safety policies for a specific standards configuration.
 |-------|-------------|
 | `standards_id` | Unique identifier for this standards configuration |
 | `name` | Human-readable name |
-| `countries_all` | ISO country codes - standards apply in ALL listed countries |
+| `countries_all` | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - standards apply in ALL listed countries |
 | `channels_any` | Ad channels - standards apply to ANY of the listed channels |
-| `languages_any` | BCP 47 language tags - standards apply to content in ANY of these languages |
+| `languages_any` | ISO 639-1 or BCP 47 language tags (case-insensitive, lowercase recommended) - standards apply to content in ANY of these languages |
 | `policy` | Natural language policy describing acceptable and unacceptable content contexts |
 | `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
 
-:::note[Brand Safety Floor Requirement]
+<Note>
+**Brand Safety Floor Requirement**
+
 Implementors MUST apply a brand safety floor regardless of what policy is defined. AdCP does not define the floor specification.
-:::
+</Note>
 
 ### Error Response
 
@@ -73,5 +75,5 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
 
 ## Related Tasks
 
-- [calibrate_content](/docs/governance/content-standards/tasks/calibrate_content) - Collaborative calibration against these standards
-- [list_content_standards](/docs/governance/content-standards/tasks/list_content_standards) - List available standards configurations
+- [calibrate_content](./calibrate_content) - Collaborative calibration against these standards
+- [list_content_standards](./list_content_standards) - List available standards configurations

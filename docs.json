@@ -257,13 +257,6 @@
             ]
           },
           {
-            "group": "adagents.json",
-            "pages": [
-              "v2.6-rc/docs/media-buy/capability-discovery/adagents",
-              "v2.6-rc/docs/media-buy/capability-discovery/authorized-properties"
-            ]
-          },
-          {
             "group": "Signals Protocol",
             "pages": [
               "v2.6-rc/docs/signals/overview",
@@ -278,9 +271,79 @@
             ]
           },
           {
+            "group": "Governance Protocol [3.0]",
+            "pages": [
+              "v2.6-rc/docs/governance/index",
+              {
+                "group": "Property Governance",
+                "pages": [
+                  "v2.6-rc/docs/governance/property/index",
+                  "v2.6-rc/docs/governance/property/specification",
+                  "v2.6-rc/docs/governance/property/authorized-properties",
+                  "v2.6-rc/docs/governance/property/adagents",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "v2.6-rc/docs/governance/property/tasks/index",
+                      "v2.6-rc/docs/governance/property/tasks/list_property_features",
+                      "v2.6-rc/docs/governance/property/tasks/property_lists",
+                      "v2.6-rc/docs/governance/property/tasks/validate_property_delivery"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Brand Standards",
+                "pages": [
+                  "v2.6-rc/docs/governance/brand-standards/index"
+                ]
+              },
+              {
+                "group": "Content Standards",
+                "pages": [
+                  "v2.6-rc/docs/governance/content-standards/index",
+                  "v2.6-rc/docs/governance/content-standards/artifacts",
+                  "v2.6-rc/docs/governance/content-standards/implementation-guide",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "v2.6-rc/docs/governance/content-standards/tasks/list_content_standards",
+                      "v2.6-rc/docs/governance/content-standards/tasks/get_content_standards",
+                      "v2.6-rc/docs/governance/content-standards/tasks/create_content_standards",
+                      "v2.6-rc/docs/governance/content-standards/tasks/update_content_standards",
+                      "v2.6-rc/docs/governance/content-standards/tasks/delete_content_standards",
+                      "v2.6-rc/docs/governance/content-standards/tasks/calibrate_content",
+                      "v2.6-rc/docs/governance/content-standards/tasks/get_media_buy_artifacts",
+                      "v2.6-rc/docs/governance/content-standards/tasks/validate_content_delivery"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
             "group": "Curation Protocol",
             "pages": [
               "v2.6-rc/docs/curation/coming-soon"
+            ]
+          },
+          {
+            "group": "Sponsored Intelligence Protocol",
+            "pages": [
+              "v2.6-rc/docs/sponsored-intelligence/overview",
+              "v2.6-rc/docs/sponsored-intelligence/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "v2.6-rc/docs/sponsored-intelligence/tasks/index",
+                  "v2.6-rc/docs/sponsored-intelligence/tasks/si_check_availability",
+                  "v2.6-rc/docs/sponsored-intelligence/tasks/si_initiate_session",
+                  "v2.6-rc/docs/sponsored-intelligence/tasks/si_send_message",
+                  "v2.6-rc/docs/sponsored-intelligence/tasks/si_terminate_session"
+                ]
+              },
+              "v2.6-rc/docs/sponsored-intelligence/implementing-si-agents",
+              "v2.6-rc/docs/sponsored-intelligence/implementing-si-hosts"
             ]
           },
           {
@@ -380,6 +443,9 @@
           {
             "group": "Reference",
             "pages": [
+              "v2.6-rc/docs/reference/media-buy-quick-reference",
+              "v2.6-rc/docs/reference/signals-quick-reference",
+              "v2.6-rc/docs/reference/creative-quick-reference",
               "v2.6-rc/docs/reference/roadmap",
               "v2.6-rc/docs/reference/release-notes",
               "v2.6-rc/docs/reference/changelog",

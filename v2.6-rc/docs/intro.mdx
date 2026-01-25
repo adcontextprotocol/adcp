@@ -75,7 +75,7 @@ Platforms that evaluate sellers and audiences, and execute buying strategies:
 MCP servers that provide:
 - **Signal Discovery**: Finding relevant signals (audiences, contextual, geographical, temporal) using natural language
 - **Signal Activation**: Pushing signals to decisioning platforms
-- **Integration**: Connects signal platforms to orchestration via MCP
+- **Integration**: Exposes data provider capabilities via MCP
 
 #### Sales Agent (Right, Bottom)
 MCP servers that provide:
@@ -142,8 +142,8 @@ The creative flow operates in parallel with the business and technical flows, en
 Each AdCP protocol operates within this ecosystem:
 
 ### 🎯 Signals Activation Protocol
-- **Scope**: Works with **signal platforms** to discover and activate signals directly on **decisioning platforms**
-- **Integration**: Direct integration between signal agents and decisioning platforms (DSPs, injective platforms)
+- **Scope**: Works with **signal agents** to discover and activate signals directly on **decisioning platforms**
+- **Integration**: Direct integration between signal agents and decisioning platforms (DSPs, SSPs, ad servers)
 - **Workflow**: Find signals → Direct activation on target platform → Ready for campaign use
 
 ### 📍 Curation Protocol (Coming Soon)
@@ -152,7 +152,7 @@ Each AdCP protocol operates within this ecosystem:
 - **Workflow**: Define requirements → Find inventory → Package with signals
 
 ### 💰 Media Buy Protocol
-- **Scope**: Works primarily with **decisioning platforms** (DSPs, injective platforms)
+- **Scope**: Works primarily with **decisioning platforms** (DSPs, SSPs, ad servers)
 - **Integration**: Executes campaigns using curated inventory and activated signals
 - **Workflow**: Set objectives → Execute buys → Optimize performance
 
@@ -240,7 +240,7 @@ Generate and optimize creative assets using AI-powered agents.
 
 AI is buying ads. Make sure it can buy yours.
 
-If you operate a signal platform, DSP, or ad tech solution, AdCP lets AI agents discover and purchase your inventory. [Review the Protocol Specifications](/docs/signals/specification) to get started.
+If you operate a data platform, DSP, or ad tech solution, AdCP lets AI agents discover and purchase your inventory. [Review the Protocol Specifications](/docs/signals/specification) to get started.
 
 ## For Advertisers & Agencies
 
@@ -259,6 +259,14 @@ AdCP's task-first architecture means you can access the same functionality throu
 - **Using MCP**: Ideal for Claude and other AI assistants with direct tool integration
 - **Using A2A**: Perfect for complex workflows with approvals and multi-agent collaboration
 - **Protocol Agnostic**: Implementers write tasks once, support all protocols automatically
+
+### Capability Discovery
+
+Every AdCP agent supports [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) as the primary entry point for discovering what the agent supports. This single call returns:
+- Protocol versions and supported domains (media_buy, signals, governance)
+- Portfolio information for sales agents
+- Geo targeting capabilities and execution features
+- Supported extensions for rich metadata
 
 Learn more in the [Protocols section](/docs/protocols/getting-started).
 

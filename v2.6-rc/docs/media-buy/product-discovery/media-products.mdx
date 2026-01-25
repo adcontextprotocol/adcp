@@ -452,6 +452,130 @@ When displaying products in UIs, clients should follow this fallback order:
 
 This ensures a consistent user experience regardless of what product metadata is available.
 
+## Proposals
+
+Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can refine conversationally and execute directly.
+
+### What Are Proposals?
+
+A proposal is a recommended buying strategy that groups products with suggested budget allocations. Proposals encode publisher expertise - the kind of media planning guidance that traditionally required human sales reps.
+
+Key characteristics:
+- **Actionable**: Buyers execute proposals directly via `create_media_buy` with a `proposal_id`
+- **Refinable**: Buyers can request changes via natural language in subsequent `get_products` calls
+- **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
+
+### Proposal Structure
+
+```json
+{
+  "proposal_id": "swiss_balanced_v1",
+  "name": "Swiss Multi-Channel Plan",
+  "description": "Balanced coverage across devices and language regions",
+  "allocations": [
+    {
+      "product_id": "ch_desktop_de",
+      "allocation_percentage": 20,
+      "pricing_option_id": "cpm_usd_fixed",
+      "rationale": "Primary desktop audience in German Switzerland",
+      "tags": ["desktop", "german"]
+    },
+    {
+      "product_id": "ch_desktop_fr",
+      "allocation_percentage": 30,
+      "tags": ["desktop", "french"]
+    },
+    {
+      "product_id": "ch_mobile_de",
+      "allocation_percentage": 8,
+      "tags": ["mobile", "german"]
+    },
+    {
+      "product_id": "ch_mobile_fr",
+      "allocation_percentage": 12,
+      "tags": ["mobile", "french"]
+    },
+    {
+      "product_id": "ch_inapp_de",
+      "allocation_percentage": 12,
+      "tags": ["in-app", "german"]
+    },
+    {
+      "product_id": "ch_inapp_fr",
+      "allocation_percentage": 18,
+      "tags": ["in-app", "french"]
+    }
+  ],
+  "total_budget_guidance": {
+    "min": 30000,
+    "recommended": 50000,
+    "currency": "USD"
+  },
+  "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)"
+}
+```
+
+The `tags` field enables grouping allocations by dimension:
+- **By channel**: desktop (50%) + mobile (20%) + in-app (30%) = 100%
+- **By language**: German (40%) + French (60%) = 100%
+
+### Conversational Refinement
+
+Proposals support iterative refinement through natural language:
+
+```
+// Initial request
+get_products({
+  brief: "Swiss campaign, $50k, 50% desktop/20% mobile/30% in-app, 40% German/60% French"
+})
+
+// Response includes proposal "swiss_balanced_v1"
+
+// Refinement request
+get_products({
+  proposal_id: "swiss_balanced_v1",
+  brief: "focus more on German speakers - try 60/40 instead of 40/60"
+})
+
+// Response includes updated proposal "swiss_balanced_v2" with adjusted allocations
+```
+
+The publisher interprets the natural language instructions and returns an updated proposal. This mimics the back-and-forth of traditional media planning conversations.
+
+### Executing a Proposal
+
+To execute a proposal, provide the `proposal_id` and `total_budget` in `create_media_buy`:
+
+```json
+{
+  "buyer_ref": "swiss_q1_campaign",
+  "proposal_id": "swiss_balanced_v2",
+  "total_budget": {
+    "amount": 50000,
+    "currency": "USD"
+  },
+  "brand_manifest": { ... },
+  "start_time": "2025-04-01T00:00:00Z",
+  "end_time": "2025-04-30T23:59:59Z"
+}
+```
+
+The publisher converts the proposal's allocation percentages into packages:
+- `ch_desktop_de`: 20% × $50,000 = $10,000
+- `ch_desktop_fr`: 30% × $50,000 = $15,000
+- etc.
+
+This approach simplifies complex multi-line-item campaigns to a single proposal execution.
+
+### When Publishers Return Proposals
+
+Publishers include proposals when:
+- The brief requests specific allocation strategies (channel splits, language splits, etc.)
+- The publisher can provide strategic guidance based on campaign goals
+- Multiple products work better together than individually
+
+Proposals are optional - publishers may return only products if allocation guidance isn't applicable.
+
 ## Integration with Discovery
 
 Products are discovered through the [Product Discovery](/docs/media-buy/product-discovery) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
