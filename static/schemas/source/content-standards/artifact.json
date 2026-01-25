@@ -6,20 +6,8 @@
   "type": "object",
   "properties": {
     "property_id": {
-      "type": "object",
-      "description": "Identifier for the property where this artifact appears",
-      "properties": {
-        "type": {
-          "$ref": "/schemas/enums/identifier-types.json",
-          "description": "Type of property identifier"
-        },
-        "value": {
-          "type": "string",
-          "description": "The identifier value"
-        }
-      },
-      "required": ["type", "value"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/identifier.json",
+      "description": "Identifier for the property where this artifact appears"
     },
     "artifact_id": {
       "type": "string",
@@ -30,21 +18,8 @@
       "description": "Identifies a specific variant of this artifact. Use for A/B tests, translations, or temporal versions. Examples: 'en', 'es-MX', 'v2', 'headline_test_b'. The combination of artifact_id + variant_id must be unique."
     },
     "format_id": {
-      "type": "object",
-      "description": "Optional reference to a format definition. Uses the same format registry as creative formats.",
-      "properties": {
-        "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "description": "Base URL of the agent that defines this format"
-        },
-        "id": {
-          "type": "string",
-          "description": "Format identifier within that agent's registry"
-        }
-      },
-      "required": ["agent_url", "id"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/format-id.json",
+      "description": "Optional reference to a format definition. Uses the same format registry as creative formats."
     },
     "url": {
       "type": "string",
