@@ -2,7 +2,7 @@ name: Changeset Check
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, '2.6.x']
 
 jobs:
   check:

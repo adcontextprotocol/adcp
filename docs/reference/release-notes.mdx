@@ -10,6 +10,92 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0-beta.1
+
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1) | [Migration Guide](/docs/reference/migrating-to-v3)
+
+<Warning>
+**This is a beta release.** While the API is stable for testing, breaking changes may occur before the final 3.0.0 release. We encourage early adopters to test and provide feedback.
+</Warning>
+
+### What's New
+
+Version 3.0.0 is a **major release** that expands AdCP beyond media buying into governance, brand safety, and conversational commerce. See the [Migration Guide](/docs/reference/migrating-to-v3) for detailed upgrade instructions.
+
+**🎯 Key Themes:**
+
+1. **Media Channel Taxonomy** - Complete overhaul from 5 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
+
+2. **Governance Protocol** - New protocol domain for property lists, content standards, and brand safety evaluation with collaborative calibration workflows.
+
+3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+
+4. **Protocol-Level Capability Discovery** - `get_adcp_capabilities` task replaces agent card extensions, providing runtime discovery of capabilities, supported protocols, and geo targeting systems.
+
+5. **Creative Assignment Weighting** - Replace simple creative ID arrays with weighted assignments supporting traffic allocation and placement targeting.
+
+6. **Global Geo Targeting** - Structured geographic targeting with named systems (Nielsen DMA, UK ITL, Eurostat NUTS2, etc.) for international markets.
+
+### Breaking Changes Summary
+
+| Change | v2.x | v3.x |
+|--------|------|------|
+| Channels | 5 values | 19 planning-oriented values |
+| Creative assignment | `creative_ids: [...]` | `creative_assignments: [{...}]` |
+| Metro targeting | `geo_metros: ["501"]` | `geo_metros: [{ system, code }]` |
+| Postal targeting | `geo_postal_codes` | `geo_postal_areas` with system |
+| Asset discovery | `assets_required: [...]` | `assets: [{ asset_id, required }]` |
+
+See [Migration Guide](/docs/reference/migrating-to-v3) for detailed before/after examples and migration steps.
+
+### New Protocol Domains
+
+#### Governance Protocol
+
+Brand safety and inventory curation:
+
+- **Property Lists** - `create_property_list`, `get_property_list`, `update_property_list`, `delete_property_list`, `list_property_lists`
+- **Content Standards** - `create_content_standards`, `get_content_standards`, `update_content_standards`, `calibrate_content`, `validate_content_delivery`
+- **Product Filtering** - Pass property lists to `get_products` for compliant inventory discovery
+
+#### Sponsored Intelligence Protocol
+
+Conversational brand experiences:
+
+- **Session Management** - `si_check_availability`, `si_initiate_session`, `si_send_message`, `si_terminate_session`
+- **Capability Negotiation** - Brands declare modalities (voice, video, avatar), hosts respond with supported capabilities
+- **Commerce Handoff** - Seamless transition to ACP for transactions
+
+See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
+
+### New Features
+
+- **`get_adcp_capabilities` task** - Runtime capability discovery replacing agent card extensions
+- **Unified asset discovery** - `assets` array with `required` boolean for full asset visibility
+- **Property list filtering** - Pass governance lists to `get_products` for brand-safe inventory
+
+### Deprecations
+
+| Deprecated | Replacement | Support Until |
+|------------|-------------|---------------|
+| `adcp-extension.json` agent card | `get_adcp_capabilities` task | 4.0.0 |
+| `list_property_features` task | `get_adcp_capabilities` governance section | 4.0.0 |
+| `assets_required` in formats | `assets` array with `required` boolean | 4.0.0 |
+| `creative_ids` in packages | `creative_assignments` array | 4.0.0 |
+| `geo_postal_codes` | `geo_postal_areas` | 4.0.0 |
+
+### Quick Migration Checklist
+
+- [ ] Update channel enum values ([taxonomy guide](/docs/reference/media-channel-taxonomy))
+- [ ] Replace `creative_ids` with `creative_assignments`
+- [ ] Add system specification to metro/postal targeting
+- [ ] Implement `get_adcp_capabilities` task
+- [ ] Update format parsing to use `assets` array
+
+**[View Complete Migration Guide →](/docs/reference/migrating-to-v3)**
+
+---
+
 ## Version 2.5.0
 
 **Released:** November 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#250)
@@ -219,7 +305,7 @@ New structured filters in `get_products`:
       "currency": "USD"
     },
     "countries": ["US", "CA"],
-    "channels": ["display", "video"]
+    "channels": ["display", "ctv"]
   }
 }
 ```

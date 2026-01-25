@@ -2,27 +2,19 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-filters.json",
   "title": "Creative Filters",
-  "description": "Filter criteria for querying creative assets from the centralized library",
+  "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
   "type": "object",
   "properties": {
-    "format": {
-      "type": "string",
-      "description": "Filter by creative format type (e.g., video, audio, display)"
-    },
     "formats": {
       "type": "array",
-      "description": "Filter by multiple creative format types",
+      "description": "Filter by creative format types (e.g., video, audio, display)",
       "items": {
         "type": "string"
       }
     },
-    "status": {
-      "$ref": "/schemas/enums/creative-status.json",
-      "description": "Filter by creative approval status"
-    },
     "statuses": {
       "type": "array",
-      "description": "Filter by multiple creative statuses",
+      "description": "Filter by creative approval statuses",
       "items": {
         "$ref": "/schemas/enums/creative-status.json"
       }
@@ -72,10 +64,6 @@
       "type": "string",
       "format": "date-time",
       "description": "Filter creatives last updated before this date (ISO 8601)"
-    },
-    "assigned_to_package": {
-      "type": "string",
-      "description": "Filter creatives assigned to this specific package"
     },
     "assigned_to_packages": {
       "type": "array",

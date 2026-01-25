@@ -1,0 +1,90 @@
+---
+sidebar_position: 1
+title: Brand Standards
+---
+
+<Info>
+**AdCP 3.0 Proposal** - This protocol is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Info>
+
+Brand Standards governance enables buyers to declare brand requirements that governance agents use to automatically apply appropriate rules across advertising workflows.
+
+## Overview
+
+Brand Standards addresses three concerns:
+
+| Concern | Description | Mechanism |
+|---------|-------------|-----------|
+| **Brand Identity** | Who is the advertiser? | Brand manifest declarations |
+| **Creative Guidelines** | What can the brand show? | Creative constraints and policies |
+| **Audience Constraints** | Who should see the ads? | Industry-specific targeting rules |
+
+## Brand Manifest
+
+The brand manifest is the core declaration that buyers provide to governance agents:
+
+```json
+{
+  "brand_manifest": {
+    "brand_name": "ToyBrand",
+    "industry": "toys",
+    "target_audience": "children_under_13",
+    "prohibited_categories": ["gambling", "alcohol", "tobacco"],
+    "creative_guidelines": {
+      "max_animation_duration": 15,
+      "require_accessibility": true
+    }
+  }
+}
+```
+
+When governance agents receive a brand manifest, they automatically apply:
+
+- **Regulatory compliance**: COPPA for children's brands, GDPR consent requirements
+- **Content filtering**: Block categories inappropriate for the brand's audience
+- **Creative validation**: Enforce brand-specific creative guidelines
+
+## Integration with Property Governance
+
+Brand manifests work alongside property lists. When creating a property list, include the brand manifest to get automatic rule application:
+
+```json
+{
+  "tool": "create_property_list",
+  "arguments": {
+    "name": "ToyBrand Q1 Properties",
+    "base_properties": [
+      {
+        "selection_type": "publisher_tags",
+        "publisher_domain": "kidsmedia.com",
+        "tags": ["kids_family", "educational"]
+      }
+    ],
+    "filters": {
+      "countries_all": ["US"],
+      "channels_any": ["display", "video"],
+      "feature_requirements": [
+        { "feature_id": "brand_safety", "min_value": 90, "max_value": 100 }
+      ]
+    },
+    "brand_manifest": {
+      "brand_name": "ToyBrand",
+      "industry": "toys",
+      "target_audience": "children_under_13"
+    }
+  }
+}
+```
+
+The governance agent uses the brand manifest to apply COPPA requirements, filter out non-child-safe properties, and enforce relevant industry rules.
+
+## Coming Soon
+
+Detailed specification and task definitions for Brand Standards governance are under development. Key planned features:
+
+- **Brand manifest validation**: Verify manifest completeness and consistency
+- **Industry rule sets**: Pre-defined rules for common industries (toys, alcohol, pharmaceuticals, finance)
+- **Creative compliance**: Validate creatives against brand guidelines
+- **Audience verification**: Ensure targeting complies with brand audience constraints
+
+See the [Governance Protocol overview](../index) for the broader context of how Brand Standards fits into AdCP governance.

@@ -1,0 +1,189 @@
+---
+sidebar_position: 5
+title: Context Management
+---
+
+
+How AdCP handles conversation state differs significantly between protocols.
+
+## Key Identifiers
+
+AdCP uses two distinct identifiers for different purposes:
+
+### context_id vs task_id
+
+**context_id**:
+- Comes from the protocol layer (built into A2A)
+- Provides conversation history and session continuity
+- Lives at the protocol level
+- Used for maintaining state across multiple task calls in a conversation
+- Expires after conversation timeout (typically 1 hour)
+
+**task_id**:
+- Specific to individual requests that could be asynchronous
+- Lives beyond the conversation
+- Used for tracking operation progress over time
+- Persists until the task completes (may be days for complex media buys)
+- Can be referenced across different conversations or sessions
+
+### Usage Example
+
+```javascript
+// First call - establishes context and creates task
+const result = await call('create_media_buy', {
+  brief: "Launch summer campaign"
+});
+
+const contextId = result.context_id;  // For conversation continuity
+const taskId = result.task_id;        // For tracking this specific media buy
+
+// Later in same conversation - uses context_id
+const update1 = await call('update_media_buy', {
+  context_id: contextId,    // Maintains conversation state
+  task_id: taskId,          // References the specific media buy
+  updates: {...}
+});
+
+// Days later in new conversation - only task_id needed
+const status = await call('get_media_buy_status', {
+  task_id: taskId          // No context_id - this is a new conversation
+});
+```
+
+## Protocol Differences
+
+- **A2A**: Context is handled automatically by the protocol
+- **MCP**: Requires manual context_id management
+
+## A2A Context (Automatic)
+
+A2A handles sessions natively - you don't need to manage context:
+
+```javascript
+// A2A maintains context automatically
+const task = await a2a.send({ message: {...} });
+// contextId is managed by A2A protocol
+
+// Follow-ups automatically use the same context
+const followUp = await a2a.send({ 
+  contextId: task.contextId,  // Optional - A2A tracks this
+  message: {...} 
+});
+```
+
+The A2A protocol maintains:
+- Session state
+- Conversation history
+- Task relationships
+- Context switching
+
+## MCP Context (Manual)
+
+MCP requires explicit context management to maintain state:
+
+```javascript
+// First call - no context
+const result1 = await mcp.call('get_products', {
+  brief: "Video ads"
+});
+const contextId = result1.context_id;  // Save this!
+
+// Follow-up - must include context_id
+const result2 = await mcp.call('get_products', {
+  context_id: contextId,  // Required for continuity
+  brief: "Focus on premium inventory"
+});
+```
+
+### MCP Context Management Pattern
+
+```javascript
+class MCPSession {
+  constructor(mcp) {
+    this.mcp = mcp;
+    this.contextId = null;
+  }
+  
+  async call(method, params) {
+    const result = await this.mcp.call(method, {
+      ...params,
+      context_id: this.contextId
+    });
+    this.contextId = result.context_id;  // Update for next call
+    return result;
+  }
+}
+```
+
+## What Context Maintains
+
+The `context_id` maintains conversation state, regardless of protocol:
+- Current media buy and products being discussed
+- Search results and applied filters
+- Conversation history and user intent
+- User preferences expressed in the session
+- Workflow state and temporary decisions
+
+Note: Long-term task state (like media buy status, creative assets, performance data) is tracked via `task_id`, not `context_id`.
+
+## Application-Level Context
+
+Task request payloads may include an optional `context` object that carries application-level metadata (session hints, correlation tokens, tracking identifiers, etc.). The agent must echo this object back unchanged inside the task payload, including webhook `result` payloads.
+
+### Example: Create media buy with application-level context
+
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "nike_q1_campaign_2025",
+    "packages": [
+      {
+        "buyer_ref": "nike_ctv_package",
+        "product_id": "ctv_sports_premium",
+        "format_ids": [
+          { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" }
+        ],
+        "budget": 50000,
+        "pricing_option_id": "cpm-fixed-sports"
+      }
+    ],
+    "start_time": "2025-02-01T00:00:00Z",
+    "end_time": "2025-03-31T23:59:59Z",
+    "context": { "user_id": "user_12345", "ui": "buyer_dashboard" }
+  }
+}
+```
+
+Response (application-level context is repeated inside the payload):
+
+```json
+{
+  "status": "input-required",
+  "message": "Media buy requires manual approval before activation.",
+  "context_id": "ctx_ghi789",
+  "payload": {
+    "buyer_ref": "nike_q1_campaign_2025",
+    "context": { "user_id": "user_12345", "ui": "buyer_dashboard" }
+  }
+}
+```
+
+<img src="./initator-context-lifecycle-01.png" alt="Application context lifecycle diagram showing initiator request flow" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
+
+<img src="./initator-context-lifecycle-02.png" alt="Application context lifecycle diagram showing webhook response flow" style={{ width: '100%', maxWidth: '900px', display: 'block', margin: '0 auto' }} />
+
+Webhook updates include the same application-level `context` inside the webhook `result` payload.
+
+## Best Practices
+
+### For A2A
+- Let the protocol handle context
+- Use contextId for explicit conversation threading
+- Trust the session management
+
+### For MCP
+- Always preserve context_id between calls
+- Implement a session wrapper (see pattern above)
+- Handle context expiration (1 hour timeout)
+- Start fresh context for new workflows

@@ -22,6 +22,7 @@ import {
   NOT_MEMBER_ALIASED,
   type OrgTier,
 } from "../../db/org-filters.js";
+import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
@@ -1866,11 +1867,9 @@ export function setupAccountRoutes(
           });
         }
 
-        // Validate membership ID format (WorkOS membership IDs are 'om_' followed by alphanumeric chars)
+        // Validate membership ID format
         const membershipId = membership.workos_membership_id;
-        // WorkOS IDs follow the format: prefix_ulid (e.g., om_01ABCDEF...)
-        const WORKOS_ID_PATTERN = /^om_[A-Za-z0-9]{20,30}$/;
-        if (!WORKOS_ID_PATTERN.test(membershipId)) {
+        if (!isValidWorkOSMembershipId(membershipId)) {
           logger.error(
             { orgId, userId, membershipId },
             "Invalid WorkOS membership ID format"

@@ -1,0 +1,269 @@
+---
+sidebar_position: 3
+title: Implementing SI Agents
+---
+
+This guide helps brands implement Sponsored Intelligence agents. Once implemented, your agent can be invoked by SI hosts like Addy, ChatGPT, or other AI assistants.
+
+## Quick Start
+
+An SI agent is an MCP or A2A server that implements four tasks:
+
+1. `si_get_offering` - Respond to offering lookups (details, availability, products)
+2. `si_initiate_session` - Start a conversation
+3. `si_send_message` - Exchange messages
+4. `si_terminate_session` - End the conversation
+
+## Capability Discovery
+
+SI agents expose their capabilities through the standard AdCP `get_adcp_capabilities` task. When a host calls this task, your agent returns its SI configuration:
+
+```json
+{
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["sponsored_intelligence"],
+  "sponsored_intelligence": {
+    "endpoint": {
+      "transports": [
+        { "type": "mcp", "url": "https://yourbrand.example/si-agent" }
+      ]
+    },
+    "capabilities": {
+      "modalities": {
+        "conversational": true,
+        "voice": false,
+        "video": false,
+        "avatar": false
+      },
+      "components": {
+        "standard": ["text", "link", "image", "product_card", "carousel", "action_button"],
+        "extensions": {}
+      },
+      "commerce": {
+        "acp_checkout": false
+      }
+    },
+    "brand_manifest_url": "https://yourbrand.example/.well-known/brand-manifest.json"
+  }
+}
+```
+
+This unified discovery mechanism lets hosts discover SI capabilities alongside other AdCP protocols.
+
+## Reference Implementation
+
+<Note>
+Reference implementations are coming soon. When available, they will demonstrate:
+- All four SI tasks implemented as MCP tools
+- Session management with timeout handling
+- Identity and consent handling
+- UI element generation
+- ACP checkout handoff
+</Note>
+
+### Task Structure
+
+Each SI task follows the MCP tool pattern:
+
+```typescript
+server.tool(
+  "si_initiate_session",
+  "Start a conversational session with this brand agent",
+  {
+    context: { type: "string", description: "Natural language user intent" },
+    identity: { type: "object", description: "User identity with consent" },
+    media_buy_id: { type: "string", description: "AdCP media buy ID (optional)" },
+    offering_id: { type: "string", description: "Brand-specific offering reference (optional)" },
+  },
+  async ({ context, identity, media_buy_id, offering_id }) => {
+    // Your implementation here
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          session_id: "sess_abc123",
+          response: { message: "Hello! How can I help?" },
+          negotiated_capabilities: { /* ... */ }
+        })
+      }]
+    };
+  }
+);
+```
+
+## Key Implementation Considerations
+
+### 1. The Conversation Handoff
+
+The `context` field in `si_initiate_session` is the host's handoff message - what the host AI tells your brand agent about the user's intent. This is visible to the user as part of the conversation flow.
+
+For example, when a user says "I need to fly to Boston next week" in ChatGPT, and the host decides to connect them to Delta's SI agent, the handoff might look like:
+
+> "I'm connecting you with Delta to help with your Boston flight. They can check availability and offerings for you."
+
+Your brand agent receives the context and should respond naturally - as if continuing the conversation:
+
+```typescript
+// Your agent is an AI that responds conversationally
+// The context tells you what the user needs - just help them
+
+// Good response:
+"Hi! I'd be happy to help you find a flight to Boston.
+When next week were you thinking - any preferred time of day?"
+
+// Not this - don't mechanically echo back parsed data:
+"I detected: category=flight, destination=Boston, timeframe=next_week"
+```
+
+The key is that SI is a conversation, not an API call. Your brand agent should feel like talking to a helpful person, not filling out a form.
+
+### 2. Identity Handling
+
+When `consent_granted` is true, you receive real PII:
+
+```typescript
+async function handleIdentity(identity: Identity) {
+  if (!identity.consent_granted) {
+    // Anonymous session - can still help, just can't personalize
+    return null;
+  }
+
+  // Look up existing customer by email
+  const customer = await lookupCustomer(identity.user.email);
+
+  if (customer) {
+    // Personalize based on history
+    return {
+      name: customer.preferred_name || identity.user.name,
+      loyalty_status: customer.loyalty_tier,
+      preferences: customer.preferences,
+    };
+  }
+
+  // New customer - use provided identity
+  return {
+    name: identity.user.name,
+    email: identity.user.email,
+  };
+}
+```
+
+### 3. UI Elements
+
+Return structured data that hosts can render:
+
+```typescript
+const uiElements = [
+  // Product card for a specific item
+  {
+    type: "product_card",
+    data: {
+      title: "Premium Widget",
+      subtitle: "Best seller",
+      price: "$99",
+      image_url: "https://...",
+      cta: { label: "Add to Cart", action: "add_to_cart", payload: { sku: "WIDGET-001" } },
+    },
+  },
+
+  // Carousel for browsing options
+  {
+    type: "carousel",
+    data: {
+      title: "You might also like",
+      items: [
+        { title: "Option A", price: "$49" },
+        { title: "Option B", price: "$79" },
+      ],
+    },
+  },
+
+  // Action button for explicit CTA
+  {
+    type: "action_button",
+    data: {
+      label: "Complete Purchase",
+      action: "checkout",
+      payload: { items: ["WIDGET-001"] },
+    },
+  },
+];
+```
+
+### 4. Session Management
+
+Sessions should have timeouts and cleanup:
+
+```typescript
+const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (now - session.last_activity.getTime() > SESSION_TIMEOUT_MS) {
+      sessions.delete(id);
+    }
+  }
+}
+
+// Run cleanup periodically
+setInterval(cleanupExpiredSessions, 60 * 1000);
+```
+
+### 5. Handoff to ACP
+
+When the user is ready to purchase, signal a handoff:
+
+```typescript
+if (userWantsToPurchase) {
+  return {
+    session_status: "pending_handoff",
+    handoff: {
+      type: "transaction",
+      intent: {
+        action: "purchase",
+        product: selectedProduct,
+        price: { amount: 99, currency: "USD" },
+      },
+      context_for_checkout: {
+        conversation_summary: "User selected Premium Widget after discussing features",
+        applied_offers: appliedOffers,
+      },
+    },
+  };
+}
+```
+
+## Testing Your Endpoint
+
+### Local Testing
+
+Use the MCP Inspector to test your endpoint:
+
+```bash
+npx @anthropic-ai/mcp-inspector your-si-agent
+```
+
+### Integration Testing with Addy
+
+Once your endpoint is registered:
+
+1. Join the AgenticAdvertising.org Slack workspace
+2. Start a conversation with Addy
+3. Say "connect me with [Your Brand]"
+4. Addy will invoke your SI endpoint
+
+## Registering Your SI Agent
+
+To make your SI agent available through Addy and other hosts:
+
+1. Implement the five SI tasks (`get_adcp_capabilities` + four SI tasks)
+2. Ensure `get_adcp_capabilities` returns your SI endpoint and capabilities
+3. Contact the AgenticAdvertising.org team to register your endpoint
+4. Test the integration in the staging environment
+
+## Next Steps
+
+- Review the [Task Reference](./tasks/) for detailed schema specifications
+- Explore the [SI Protocol Overview](./overview) for conceptual understanding
+- Join the [Working Group](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg) to discuss implementation questions

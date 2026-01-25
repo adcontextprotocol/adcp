@@ -6,26 +6,28 @@ title: Glossary
 
 ## A
 
-**Account Type**  
+**Account Type**
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
-**Activation**  
+**Activation**
 The process of making a signal available for targeting on a specific platform and seat.
 
 **Ad Context Protocol (AdCP)**
 An open standard for AI-powered advertising workflows. AdCP defines domain-specific tasks and schemas that work over MCP and A2A as transports, enabling natural language interfaces for advertising operations.
 
-**Agentic eXecution Engine (AXE)**  
+**Agentic Commerce Protocol (ACP)**
+An open standard developed by OpenAI and Stripe for programmatic commerce flows in AI assistants. ACP defines how agents can initiate checkout, delegate payment, and complete transactions without becoming the merchant of record. In the context of Sponsored Intelligence, ACP handles the transaction after a brand agent hands off a user with purchase intent.
+
+**Agentic eXecution Engine (AXE)**
 The real-time execution layer that sits between orchestrators and decisioning platforms, handling dynamic audience targeting, brand safety enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for details.
 
-**Signal Discovery**  
-The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions.
+**AgenticAdvertising.org**
+The member organization that stewards the Ad Context Protocol (AdCP) and related open standards for AI-powered advertising.
 
-**Signal ID**  
-A unique identifier for a signal within a provider's catalog.
+## B
 
-**Signal Type**  
-Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".
+**Budget**
+Total monetary allocation for a media buy, which can be distributed across multiple packages.
 
 ## C
 
@@ -86,6 +88,9 @@ Predicted timeframe for signal deployment, typically 24-48 hours for new activat
 **Flat Rate**
 Fixed-cost pricing model where a single payment is made regardless of delivery volume. Common for sponsorships and takeovers.
 
+**Flight**
+A time-bounded advertising campaign segment, mapped to line items in ad servers.
+
 **Frequency**
 The average number of times an individual is exposed to an advertisement during a campaign.
 
@@ -99,24 +104,41 @@ A unit of measurement for television and radio advertising representing 1% of th
 **Households**
 Size unit representing unique household addresses, useful for geographic and family-based targeting.
 
+**Human-in-the-Loop (HITL)**
+Protocol feature allowing publishers to require manual approval for operations.
+
 ## I
 
-**Impressions** (Media Buy Protocol)  
+**Impressions** (Media Buy Protocol)
 The number of times an ad is displayed, used for pricing and delivery tracking.
 
-**Individuals** (Signals Protocol)  
+**Individuals** (Signals Protocol)
 Size unit representing unique people, best for frequency capping and demographic targeting.
 
-**Inventory**  
+**Inventory**
 Available advertising space on websites, apps, or other media properties.
+
+## L
+
+**Line Item**
+The basic unit of inventory in ad servers like Google Ad Manager, represented as packages in AdCP.
+
+**Loop Duration**
+The length of time for a complete rotation of ads in a DOOH display, measured in seconds. Used to calculate frequency and share of voice.
+
+**Loop Plays**
+The number of times an ad was displayed in a DOOH loop rotation. Key metric for DOOH delivery reporting.
 
 ## M
 
-**MCP (Model Context Protocol)**  
+**Marketplace Signal**
+Third-party signal available for licensing from data providers.
+
+**MCP (Model Context Protocol)**
 The underlying protocol framework that enables AI assistants to interact with external systems.
 
-**Marketplace Signal**  
-Third-party signal available for licensing from data providers.
+**Media Buy**
+A complete advertising campaign containing packages, budget, targeting, and creative assets.
 
 ## N
 
@@ -130,6 +152,9 @@ First-party signal data belonging to the advertiser or platform.
 
 ## P
 
+**Package**
+A specific advertising product within a media buy, representing a flight or line item with its own pricing and targeting.
+
 **Platform Account**
 Master account representing an advertising platform that can syndicate signals to multiple customers.
 
@@ -138,6 +163,12 @@ The method by which advertising inventory is priced and billed. AdCP supports CP
 
 **Pricing Option**
 A specific pricing model offered by a publisher for a product, including rate, currency, and parameters.
+
+**Principal**
+An authenticated entity (advertiser, agency, or brand) with unique access credentials and platform mappings.
+
+**Product**
+Advertising inventory available for purchase, discovered through natural language queries.
 
 **Prompt**
 Natural language description used to discover relevant signals (e.g., "high-income sports enthusiasts", "premium automotive content", "users in urban areas during evening hours").
@@ -184,8 +215,20 @@ Percentage of available ad inventory allocated to a specific advertiser in DOOH 
 **Signal Agent**
 An MCP server that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Examples: LiveRamp, Experian, Peer39.
 
+**Signal Discovery**
+The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions.
+
+**Signal ID**
+A unique identifier for a signal within a provider's catalog.
+
+**Signal Type**
+Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".
+
 **Size Unit** (Signals Protocol)
 The measurement type for signal size: individuals, devices, or households.
+
+**Sponsored Intelligence (SI)**
+An open standard for conversational brand experiences in AI assistants. Like VAST defines video ad serving, SI defines how to serve and interact with brand agent endpoints. SI handles the engagement; the Agentic Commerce Protocol (ACP) handles transactions. See [Sponsored Intelligence Protocol](/docs/sponsored-intelligence/overview) for details.
 
 **SSP (Supply-Side Platform)**
 A type of decisioning platform that helps publishers sell advertising inventory programmatically. SSPs connect to multiple demand sources and make ad selection decisions. Examples: Index Exchange, OpenX, PubMatic, Magnite.
@@ -203,6 +246,9 @@ Pricing structure based on duration (hourly, daily, or daypart) rather than impr
 
 ## U
 
+**Universal Commerce Protocol (UCP)**
+An open standard developed by Google with Shopify, Walmart, Target, and others for commerce in AI assistants. UCP defines primitives for checkout, payments, and fulfillment. Along with ACP (Agentic Commerce Protocol), UCP represents the commerce layer that complements AdCP's advertising layer.
+
 **Usage Reporting**
 Daily reporting of signal utilization for billing and optimization purposes.
 
@@ -214,70 +260,22 @@ Physical location where DOOH advertising is displayed (e.g., airport terminal, t
 **Venue Package**
 Named collection of DOOH screens across specific venues (e.g., 'times_square_network', 'airport_terminals'). Used in DOOH pricing parameters.
 
-## B
-
-**Budget**  
-Total monetary allocation for a media buy, which can be distributed across multiple packages.
-
-## F
-
-**Flight**  
-A time-bounded advertising campaign segment, mapped to line items in ad servers.
-
-## H
-
-**Households** (Signals Protocol)  
-Size unit representing unique household addresses, useful for geographic and family-based targeting.
-
-**Human-in-the-Loop (HITL)** (Media Buy Protocol)  
-Protocol feature allowing publishers to require manual approval for operations.
-
-## L
-
-**Line Item**
-The basic unit of inventory in ad servers like Google Ad Manager, represented as packages in AdCP.
-
-**Loop Duration**
-The length of time for a complete rotation of ads in a DOOH display, measured in seconds. Used to calculate frequency and share of voice.
-
-**Loop Plays**
-The number of times an ad was displayed in a DOOH loop rotation. Key metric for DOOH delivery reporting.
-
-## M
-
-**MCP (Model Context Protocol)**  
-The underlying protocol framework that enables AI assistants to interact with external systems.
-
-**Marketplace Signal**  
-Third-party signal available for licensing from data providers.
-
-**Media Buy**  
-A complete advertising campaign containing packages, budget, targeting, and creative assets.
-
-## P
-
-**Package**  
-A specific advertising product within a media buy, representing a flight or line item with its own pricing and targeting.
-
-**Principal**  
-An authenticated entity (advertiser, agency, or brand) with unique access credentials and platform mappings.
-
-**Product**  
-Advertising inventory available for purchase, discovered through natural language queries.
-
 ## Acronyms
 
+- **ACP**: Agentic Commerce Protocol
 - **AdCP**: Ad Context Protocol
 - **API**: Application Programming Interface
 - **AXE**: Agentic eXecution Engine
 - **CPM**: Cost Per Mille (thousand)
-- **DSP**: Demand-Side Platform
 - **DMP**: Data Management Platform
+- **DSP**: Demand-Side Platform
 - **MCP**: Model Context Protocol
 - **PII**: Personally Identifiable Information
 - **RTB**: Real-Time Bidding
+- **SI**: Sponsored Intelligence
 - **SSP**: Supply-Side Platform
 - **TTD**: The Trade Desk
+- **UCP**: Universal Commerce Protocol
 - **UTC**: Coordinated Universal Time
 
 ## Units and Measurements

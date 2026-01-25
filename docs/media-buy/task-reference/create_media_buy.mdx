@@ -5,7 +5,11 @@ testable: true
 ---
 
 
-Create a media buy from selected packages. Handles validation, approval if needed, and campaign creation.
+Create a media buy from selected packages or execute a proposal. Handles validation, approval if needed, and campaign creation.
+
+Supports two modes:
+- **Manual Mode**: Provide `packages` array with explicit line item configurations
+- **Proposal Mode**: Provide `proposal_id` and `total_budget` to execute a proposal from `get_products`
 
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
@@ -161,12 +165,23 @@ npx adcp \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Your reference identifier for this media buy |
-| `packages` | Package[] | Yes | Array of package configurations (see below) |
+| `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
+| `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
+| `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
 | `brand_manifest` | BrandManifestRef | Yes | Brand identity - minimal (name/URL) acceptable for sales agents. See [Brand Manifest](/docs/creative/brand-manifest) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `po_number` | string | No | Purchase order number |
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
+
+\* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
+
+### TotalBudget Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `amount` | number | Yes | Total budget amount |
+| `currency` | string | Yes | ISO 4217 currency code |
 
 ### Package Object
 
@@ -182,8 +197,8 @@ npx adcp \
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when `is_fixed` is false) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
-| `creative_ids` | string[] | No | Existing library creative IDs to assign |
-| `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign |
+| `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
+| `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
 
 ## Response
 
@@ -538,6 +553,95 @@ asyncio.run(create_with_reporting())
 
 </CodeGroup>
 
+### Executing a Proposal
+
+Execute a proposal from `get_products` without manually constructing packages:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/client';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  buyer_ref: 'swiss_campaign_' + Date.now(),
+  proposal_id: 'swiss_balanced_v2',  // From get_products response
+  total_budget: {
+    amount: 50000,
+    currency: 'USD'
+  },
+  brand_manifest: {
+    name: 'Swiss Brand',
+    url: 'https://example-swiss.com'
+  },
+  start_time: 'asap',
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  // Publisher converted proposal allocations to packages
+  console.log(`Created media buy ${validated.media_buy_id}`);
+  console.log(`Packages created: ${validated.packages.length}`);
+}
+```
+
+```python Python
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp import test_agent
+
+async def execute_proposal():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        buyer_ref=f'swiss_campaign_{int(time.time() * 1000)}',
+        proposal_id='swiss_balanced_v2',  # From get_products response
+        total_budget={
+            'amount': 50000,
+            'currency': 'USD'
+        },
+        brand_manifest={
+            'name': 'Swiss Brand',
+            'url': 'https://example-swiss.com'
+        },
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    # Publisher converted proposal allocations to packages
+    print(f"Created media buy {result.media_buy_id}")
+    print(f"Packages created: {len(result.packages)}")
+
+asyncio.run(execute_proposal())
+```
+
+</CodeGroup>
+
+When executing a proposal:
+- The publisher converts allocation percentages to actual budgets using `total_budget`
+- Packages are created automatically based on the proposal's allocations
+- All other fields (brand_manifest, start_time, end_time, etc.) work the same as manual mode
+
+See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for the complete workflow including conversational refinement.
+
 ## Error Handling
 
 Common errors and resolutions:
@@ -550,6 +654,7 @@ Common errors and resolutions:
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 
 Example error response:
 
@@ -1025,6 +1130,7 @@ For complete async handling patterns, see [Task Management](/docs/protocols/task
 - AXE segments enable advanced audience targeting
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
 
 ## Policy Compliance
 

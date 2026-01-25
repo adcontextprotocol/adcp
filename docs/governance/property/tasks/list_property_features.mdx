@@ -1,0 +1,200 @@
+---
+sidebar_position: 1
+title: list_property_features
+---
+
+<Warning>
+**Deprecated** - Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) instead. Governance agent capabilities are now declared in the `governance.property_features` section of the capabilities response.
+</Warning>
+
+This task has been superseded by the protocol-level [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) task, which provides capability discovery across all AdCP protocols in a single call.
+
+## Migration
+
+Instead of calling `list_property_features`:
+
+```json
+{
+  "tool": "list_property_features",
+  "arguments": {}
+}
+```
+
+Call `get_adcp_capabilities` and access the `governance.property_features` array:
+
+```json
+{
+  "tool": "get_adcp_capabilities",
+  "arguments": {}
+}
+```
+
+Response:
+
+```json
+{
+  "adcp": { "major_versions": [1] },
+  "supported_protocols": ["governance"],
+  "governance": {
+    "property_features": [
+      {
+        "feature_id": "consent_quality",
+        "type": "quantitative",
+        "range": { "min": 0, "max": 100 },
+        "description": "Measures the quality of consent implementation"
+      },
+      {
+        "feature_id": "coppa_certified",
+        "type": "binary",
+        "description": "Whether the property has COPPA certification"
+      },
+      {
+        "feature_id": "content_category",
+        "type": "categorical",
+        "categories": ["news", "sports", "entertainment", "technology"],
+        "description": "IAB content category classification"
+      }
+    ]
+  }
+}
+```
+
+## Feature Types
+
+| Type | Description | Schema Fields |
+|------|-------------|---------------|
+| `binary` | True/false values | None additional |
+| `quantitative` | Numeric values within a range | `range: { min, max }` |
+| `categorical` | Enumerated string values | `categories: string[]` |
+
+## Example Feature Sets by Agent Type
+
+### Consent/Compliance Agent
+
+```json
+{
+  "features": [
+    { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+    { "feature_id": "tcf_version", "type": "categorical", "allowed_values": ["none", "tcf_2.0", "tcf_2.2"] },
+    { "feature_id": "coppa_certified", "type": "binary" },
+    { "feature_id": "gpp_supported", "type": "binary" },
+    { "feature_id": "vendor_count", "type": "quantitative", "range": { "min": 0, "max": 1000 } }
+  ]
+}
+```
+
+### Sustainability Agent (e.g., Scope3)
+
+```json
+{
+  "features": [
+    { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+    { "feature_id": "green_certified", "type": "binary" },
+    { "feature_id": "renewable_hosting", "type": "binary" },
+    { "feature_id": "emissions_per_impression", "type": "quantitative", "range": { "min": 0, "max": 100 } }
+  ]
+}
+```
+
+### Brand Safety Agent
+
+```json
+{
+  "features": [
+    { "feature_id": "content_category", "type": "categorical", "allowed_values": ["news", "sports", ...] },
+    { "feature_id": "brand_risk_score", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+    { "feature_id": "sentiment", "type": "categorical", "allowed_values": ["positive", "neutral", "negative"] },
+    { "feature_id": "made_for_advertising", "type": "binary" }
+  ]
+}
+```
+
+## Vendor Extensions
+
+Feature definitions can include vendor-specific data in an `ext` block with vendor-namespaced fields:
+
+```json
+{
+  "feature_id": "carbon_score",
+  "name": "Carbon Emissions Score",
+  "type": "quantitative",
+  "range": { "min": 0, "max": 100 },
+  "methodology_url": "https://scope3.com/methodology",
+  "ext": {
+    "scope3": {
+      "emissions_unit": "gCO2e_per_1000_impressions",
+      "model_version": "2024.1",
+      "sbti_aligned": true
+    }
+  }
+}
+```
+
+Extensions are optional. Buyers should process features normally even if `ext` contains unfamiliar vendors. Each vendor's `methodology_url` documents their extension schema.
+
+## Integration Pattern
+
+Use `list_property_features` to understand agent capabilities before creating property lists:
+
+```python
+# Step 1: Discover agent capabilities
+features_response = governance_agent.list_property_features()
+
+# Step 2: Build feature_requirements using available features
+feature_requirements = []
+for feature in features_response.features:
+    if feature.feature_id == "consent_quality" and feature.type == "quantitative":
+        feature_requirements.append({
+            "feature_id": "consent_quality",
+            "min_value": 80,
+            "max_value": 100
+        })
+    if feature.feature_id == "coppa_certified" and feature.type == "binary":
+        feature_requirements.append({
+            "feature_id": "coppa_certified",
+            "allowed_values": [True]
+        })
+
+# Step 3: Create property list with feature requirements
+governance_agent.create_property_list(
+    name="Q1 Campaign",
+    filters={"feature_requirements": feature_requirements},
+    brand_manifest=my_brand_manifest
+)
+```
+
+## Discovering Governance Agents
+
+Before calling `list_property_features`, you need to know which governance agents to query. There are two discovery mechanisms:
+
+### Via adagents.json (Publisher-Declared)
+
+Publishers declare which governance agents have data about their properties in `property_features` (from their `/.well-known/adagents.json`):
+
+```json
+{
+  "property_features": [
+    {
+      "url": "https://api.scope3.com",
+      "name": "Scope3",
+      "features": ["carbon_score", "sustainability_grade"]
+    }
+  ]
+}
+```
+
+This tells buyers: "Scope3 has carbon data for our properties." The buyer then calls `list_property_features` on Scope3 to get detailed feature definitions.
+
+See the [adagents.json Tech Spec](/docs/governance/property/adagents#governance-agent-discovery) for the complete discovery workflow.
+
+### Via Direct Subscription
+
+Buyers may also have direct relationships with governance agents (e.g., a subscription to a compliance vendor). In this case, the buyer already knows which agents to query.
+
+## Usage Notes
+
+1. **Discover first**: Find governance agents via `property_features` in adagents.json before querying
+2. **Call early**: Use this task to understand capabilities before other governance tasks
+3. **Cache results**: Feature definitions change infrequently; cache for hours/days
+4. **Check coverage**: Not all features apply to all property types or countries
+5. **Marketplace discovery**: Use this to understand what different governance agents offer

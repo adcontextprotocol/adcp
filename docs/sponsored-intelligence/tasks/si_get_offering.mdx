@@ -1,0 +1,302 @@
+---
+sidebar_position: 1
+title: si_get_offering
+---
+
+Get offering details, availability, and optionally matching products before initiating a session. This allows hosts to show rich previews to users before asking for consent to engage with the brand.
+
+## When to Use This Task
+
+There are two valid flows for starting an SI session:
+
+### Flow A: Pre-Session Lookup (Recommended for Sponsored Results)
+
+```
+si_get_offering → Host shows products → User consents → si_initiate_session with offering_token
+```
+
+Use this when you want to show the user products **before** asking for consent. The `offering_token` bridges pre-session context into the session, so references like "the second one" work.
+
+**Example**: Search results page shows "Nike has 3 running shoes in your size from $89" before the user decides to engage.
+
+### Flow B: Direct Session
+
+```
+si_initiate_session → Brand shows products in first response → Conversation continues
+```
+
+Use this when the user has already expressed intent to engage. The brand agent shows products as part of the session, tracking what they showed internally.
+
+**Example**: User says "I want to talk to Nike about running shoes" - no need to pre-fetch, just start the session.
+
+The key difference: `si_get_offering` is for **anonymous pre-consent previews**. If you're going straight into a session, skip it.
+
+## Purpose
+
+The offering lookup serves three purposes:
+
+1. **Show offering details** - Display pricing, availability, and descriptions to users before consent
+2. **Surface matching products** - When given context, return relevant products from the offering
+3. **Session continuity** - The returned token preserves what was shown, so the brand agent knows the context when the session starts
+
+## Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `offering_id` | string | Yes | Offering identifier from promoted offerings |
+| `context` | string | No | Natural language context for personalized results (no PII) |
+| `include_products` | boolean | No | Whether to include matching products (default: false) |
+| `product_limit` | integer | No | Max products to return (default: 5, max: 50) |
+
+### Privacy
+
+This request must not include any personally identifiable information. The `context` field may include intent description but must be anonymous (e.g., "mens size 14 near Cincinnati" is OK, but email addresses are not).
+
+## Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `available` | boolean | Whether the offering is currently available |
+| `offering_token` | string | Token to pass to `si_initiate_session` |
+| `ttl_seconds` | integer | How long this information is valid |
+| `checked_at` | string | ISO 8601 timestamp of the lookup |
+| `offering` | object | Offering details |
+| `matching_products` | array | Products matching the context (if requested) |
+| `total_matching` | integer | Total products matching (may exceed returned count) |
+| `unavailable_reason` | string | Why offering is unavailable (if not available) |
+| `alternative_offering_ids` | array | Alternative offerings to check |
+
+### Offering Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `offering_id` | string | Offering identifier |
+| `title` | string | Offering title |
+| `summary` | string | Brief description |
+| `tagline` | string | Short promotional tagline |
+| `expires_at` | string | When the offering expires |
+| `price_hint` | string | Price indication (e.g., "from $89") |
+| `image_url` | string | Hero image URL |
+| `landing_url` | string | Landing page URL |
+
+### Matching Product Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `product_id` | string | Product identifier |
+| `name` | string | Product name |
+| `price` | string | Display price |
+| `original_price` | string | Original price if on sale |
+| `image_url` | string | Product image URL |
+| `availability_summary` | string | Brief availability info |
+| `url` | string | Product detail page URL |
+
+### Unavailable Reasons
+
+| Reason | Description |
+|--------|-------------|
+| `sold_out` | Product/offering inventory exhausted |
+| `expired` | Offering past its end date |
+| `region_restricted` | Not available in user's region |
+| `inactive` | Campaign paused or ended |
+
+## Examples
+
+### Basic Offering Lookup
+
+```json
+{
+  "offering_id": "nike-summer-sale"
+}
+```
+
+### Response
+
+```json
+{
+  "available": true,
+  "offering_token": "offering_abc123xyz",
+  "ttl_seconds": 3600,
+  "checked_at": "2025-01-19T10:00:00Z",
+  "offering": {
+    "offering_id": "nike-summer-sale",
+    "title": "Nike Summer Sale",
+    "summary": "Up to 50% off summer collection",
+    "price_hint": "from $89",
+    "expires_at": "2025-08-31T23:59:59Z"
+  }
+}
+```
+
+### With Product Context
+
+```json
+{
+  "offering_id": "nike-summer-sale",
+  "context": "mens size 14 running shoes near Cincinnati",
+  "include_products": true,
+  "product_limit": 3
+}
+```
+
+### Response with Products
+
+```json
+{
+  "available": true,
+  "offering_token": "offering_abc123xyz",
+  "ttl_seconds": 3600,
+  "checked_at": "2025-01-19T10:00:00Z",
+  "offering": {
+    "offering_id": "nike-summer-sale",
+    "title": "Nike Summer Sale",
+    "summary": "Up to 50% off summer collection",
+    "price_hint": "from $89"
+  },
+  "matching_products": [
+    {
+      "product_id": "nike-pegasus-41",
+      "name": "Nike Pegasus 41",
+      "price": "$89",
+      "original_price": "$130",
+      "image_url": "https://cdn.nike.com/pegasus-41.jpg",
+      "availability_summary": "Size 14 in stock"
+    },
+    {
+      "product_id": "nike-air-max-90",
+      "name": "Nike Air Max 90",
+      "price": "$129",
+      "image_url": "https://cdn.nike.com/air-max-90.jpg",
+      "availability_summary": "Size 14 in stock"
+    }
+  ],
+  "total_matching": 12
+}
+```
+
+This enables the host to show:
+
+> "Nike has 12 running shoes in your size starting at $89. Want to explore with their assistant?"
+
+### Unavailable Response
+
+```json
+{
+  "available": false,
+  "checked_at": "2025-01-19T10:00:00Z",
+  "unavailable_reason": "expired",
+  "alternative_offering_ids": [
+    "nike-fall-collection",
+    "nike-clearance"
+  ]
+}
+```
+
+## Using the Offering Token
+
+The `offering_token` is the key to **session continuity**. When a user sees products from `si_get_offering` and then initiates a conversation, the token allows the brand agent to know exactly what was shown.
+
+### Why Session Continuity Matters
+
+Without the token, this conversation breaks:
+
+```
+Host: "Nike has 3 running shoes in size 14: Pegasus 41 ($89), Air Max 90 ($129), Vomero 18 ($139)"
+User: "Tell me more about the second one"
+Host → si_initiate_session: { context: "User wants more info about the second shoe" }
+Brand Agent: ??? (Which shoes were shown? In what order?)
+```
+
+With the token, the brand agent can reconstruct the full context:
+
+```
+Host → si_initiate_session: {
+  context: "User wants more info about the second shoe",
+  offering_token: "offering_abc123xyz"
+}
+Brand Agent: (Looks up token → sees Pegasus, Air Max, Vomero were shown in that order)
+Brand Agent: "The Air Max 90 is a classic! It's part of our summer sale..."
+```
+
+### How Brand Agents Should Use Tokens
+
+When generating an `offering_token`, store the full query state server-side:
+
+```typescript
+// When returning si_get_offering response
+const token = generateToken();
+await store.save(token, {
+  offering_id: request.offering_id,
+  context: request.context,
+  products_shown: matchingProducts,  // In exact order returned
+  product_ids: matchingProducts.map(p => p.product_id),
+  queried_at: new Date().toISOString(),
+  ttl: 3600
+});
+
+return {
+  available: true,
+  offering_token: token,
+  matching_products: matchingProducts,
+  // ...
+};
+```
+
+When receiving the token in `si_initiate_session`:
+
+```typescript
+// Retrieve the pre-session context
+const preContext = await store.get(request.offering_token);
+if (preContext) {
+  // Now you know exactly what was shown
+  // "the second one" = preContext.products_shown[1]
+}
+```
+
+### Including the Token in Session Initiation
+
+When initiating a session after getting offering details, include the token:
+
+```json
+{
+  "context": "User wants running shoes, mens size 14",
+  "offering_id": "nike-summer-sale",
+  "offering_token": "offering_abc123xyz",
+  "identity": {
+    "consent_granted": true,
+    "user": { ... }
+  }
+}
+```
+
+## Key Points
+
+1. **Anonymous by design** - No user data is sent with offering lookups. This protects user privacy while enabling hosts to show rich previews.
+
+2. **Session continuity** - The offering token is the brand's memory of what was shown. When users reference "the first option" or "that blue one", the token lets the brand agent resolve those references.
+
+3. **Product matching** - When `include_products` is true and `context` is provided, brands can return relevant products. This powers pre-session previews like "12 shoes in your size from $89."
+
+4. **Caching** - Hosts may cache responses for up to `ttl_seconds`. This reduces load on brand agents for frequently checked offerings.
+
+5. **Graceful degradation** - If the lookup fails or times out, hosts may still initiate sessions directly. The offering lookup is optional.
+
+6. **Alternative suggestions** - When offerings are unavailable, brand agents may suggest alternatives via `alternative_offering_ids`.
+
+## Best Practices
+
+### For Hosts
+
+- Get offering details before showing sponsored results to users
+- Use `include_products` with context for richer previews
+- Respect TTL for caching to avoid stale data
+- Handle unavailable gracefully - don't show expired offerings
+- Include offering token in session initiation when available
+
+### For Brand Agents
+
+- Return rich `offering` details to help hosts display accurate information
+- Support `include_products` for contextual product matching
+- Use reasonable TTL values (e.g., 5-60 minutes depending on volatility)
+- Provide helpful `unavailable_reason` for debugging
+- Suggest alternatives when primary offering is unavailable

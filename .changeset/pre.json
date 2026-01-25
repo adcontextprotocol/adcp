@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "adcontextprotocol": "3.0.0-beta.1"
+  },
+  "changesets": []
+}

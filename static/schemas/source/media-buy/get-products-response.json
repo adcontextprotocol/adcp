@@ -12,12 +12,23 @@
         "$ref": "/schemas/core/product.json"
       }
     },
+    "proposals": {
+      "type": "array",
+      "description": "Optional array of proposed media plans with budget allocations across products. Publishers include proposals when they can provide strategic guidance based on the brief. Proposals are actionable - buyers can refine them via subsequent get_products calls or execute them directly via create_media_buy.",
+      "items": {
+        "$ref": "/schemas/core/proposal.json"
+      }
+    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., product filtering issues)",
       "items": {
         "$ref": "/schemas/core/error.json"
       }
+    },
+    "property_list_applied": {
+      "type": "boolean",
+      "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

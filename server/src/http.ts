@@ -45,6 +45,7 @@ import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
@@ -773,6 +774,10 @@ export class HTTPServer {
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
     this.app.use('/chat', chatPageRouter);              // Page routes: /chat
     this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
+
+    // Mount SI (Sponsored Intelligence) chat routes
+    const { apiRouter: siChatApiRouter } = createSiChatRoutes();
+    this.app.use('/api/si', siChatApiRouter);           // API routes: /api/si/sessions/*
 
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency
@@ -5756,18 +5761,23 @@ Disallow: /api/admin/
 
         return res.json({
           success: true,
-          formats: formats.map(format => ({
-            format_id: format.format_id,
-            name: format.name,
-            type: format.type,
-            description: format.description,
-            preview_image: format.preview_image,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets_required: format.assets_required,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          })),
+          formats: formats.map(format => {
+            // Cast to allow 'assets' field (added in schema v2.5.2, @adcp/client may not have it yet)
+            const formatWithAssets = format as typeof format & { assets?: unknown };
+            return {
+              format_id: format.format_id,
+              name: format.name,
+              type: format.type,
+              description: format.description,
+              preview_image: format.preview_image,
+              example_url: format.example_url,
+              renders: format.renders,
+              assets_required: format.assets_required, // deprecated but kept for backward compatibility
+              assets: formatWithAssets.assets, // new unified field
+              output_format_ids: format.output_format_ids,
+              agent_url: format.agent_url,
+            };
+          }),
         });
       } catch (error) {
         logger.error({ err: error, url }, 'Agent formats fetch error');

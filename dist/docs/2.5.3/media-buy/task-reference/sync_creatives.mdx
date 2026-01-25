@@ -1,0 +1,675 @@
+---
+title: sync_creatives
+sidebar_position: 4
+testable: true
+---
+
+
+Upload and manage creative assets for media buys. Supports bulk uploads, upsert semantics, and generative creatives.
+
+**Response Time**: Instant to days (returns `completed`, or `submitted` for review that takes hours/days)
+
+**Request Schema**: [`/schemas/v2/media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json)
+
+## Quick Start
+
+Upload creative assets:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncCreativesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncCreatives({
+  creatives: [
+    {
+      creative_id: "creative_video_001",
+      name: "Summer Sale 30s",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "video_standard_30s",
+      },
+      assets: {
+        video: {
+          url: "https://cdn.example.com/summer-sale-30s.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+// Check for operation-level errors first (discriminated union)
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(`Synced ${validated.creatives.length} creatives`);
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        creatives=[{
+            'creative_id': 'creative_video_001',
+            'name': 'Summer Sale 30s',
+            'format_id': {
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'video_standard_30s'
+            },
+            'assets': {
+                'video': {
+                    'url': 'https://cdn.example.com/summer-sale-30s.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
+        }]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Synced {len(result.creatives)} creatives")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+**Note:** When creatives require approval, the response returns `status: "submitted"` with a `task_id`. See [Async Approval Workflow](#async-approval-workflow) for handling these cases.
+
+## Request Parameters
+
+| Parameter         | Type       | Required | Description                                                                                                                                                              |
+| ----------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
+| `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
+| `assignments`     | object     | No       | Map of creative_id to array of package_ids for bulk assignment                                                                                                           |
+| `dry_run`         | boolean    | No       | When true, preview changes without applying them (default: false)                                                                                                        |
+| `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
+| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false)                                                                                                      |
+
+### Creative Object
+
+| Field         | Type     | Required | Description                                                        |
+| ------------- | -------- | -------- | ------------------------------------------------------------------ |
+| `creative_id` | string   | Yes      | Unique identifier for this creative                                |
+| `name`        | string   | Yes      | Human-readable name                                                |
+| `format_id`   | FormatId | Yes      | Format specification (structured object with `agent_url` and `id`) |
+| `assets`      | object   | Yes      | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`)    |
+| `tags`        | string[] | No       | Searchable tags for creative organization                          |
+
+### Asset Structure
+
+Assets are keyed by role name. Each role contains the asset details:
+
+```json test=false
+{
+  "assets": {
+    "video": {
+      "url": "https://cdn.example.com/video.mp4",
+      "width": 1920,
+      "height": 1080,
+      "duration_ms": 30000
+    },
+    "thumbnail": {
+      "url": "https://cdn.example.com/thumb.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+### Assignments Structure
+
+Assignments are at the request level, mapping creative IDs to package IDs:
+
+```json test=false
+{
+  "assignments": {
+    "creative_video_001": ["pkg_premium", "pkg_standard"],
+    "creative_display_002": ["pkg_standard"]
+  }
+}
+```
+
+## Response
+
+**Success Response:**
+
+- `creatives` - Results for each creative processed (includes both successful and failed items)
+- `dry_run` - Boolean indicating if this was a dry run (optional)
+
+**Error Response:**
+
+- `errors` - Array of operation-level errors (auth failure, service unavailable)
+
+**Note:** Responses use discriminated unions - you get either success fields OR errors, never both. Per-creative errors appear in the `errors` array of individual creative objects when `action: "failed"`.
+
+**Each creative in success response includes**:
+
+- All request fields
+- `platform_id` - Platform's internal ID (when `action` is not `failed`)
+- `action` - What happened: `created`, `updated`, `unchanged`, `failed`, `deleted`
+- `errors` - Array of error messages (only when `action: "failed"`)
+- `warnings` - Array of non-fatal warnings (optional)
+
+**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json)
+
+## Common Scenarios
+
+### Bulk Upload
+
+Upload multiple creatives in one call:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncCreativesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncCreatives({
+  creatives: [
+    {
+      creative_id: "creative_display_001",
+      name: "Summer Sale Banner 300x250",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "display_300x250",
+      },
+      assets: {
+        image: {
+          url: "https://cdn.example.com/banner-300x250.jpg",
+          width: 300,
+          height: 250,
+        },
+      },
+    },
+    {
+      creative_id: "creative_video_002",
+      name: "Product Demo 15s",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "video_standard_15s",
+      },
+      assets: {
+        video: {
+          url: "https://cdn.example.com/demo-15s.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 15000,
+        },
+      },
+    },
+    {
+      creative_id: "creative_display_002",
+      name: "Summer Sale Banner 728x90",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "display_728x90",
+      },
+      assets: {
+        image: {
+          url: "https://cdn.example.com/banner-728x90.jpg",
+          width: 728,
+          height: 90,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(`Successfully synced ${validated.creatives.length} creatives`);
+  validated.creatives.forEach((creative) => {
+    console.log(`  ${creative.name}: ${creative.platform_creative_id}`);
+  });
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        creatives=[
+            {
+                'creative_id': 'creative_display_001',
+                'name': 'Summer Sale Banner 300x250',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'display_300x250'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/banner-300x250.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_video_002',
+                'name': 'Product Demo 15s',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'video_standard_15s'
+                },
+                'assets': {
+                    'video': {
+                        'url': 'https://cdn.example.com/demo-15s.mp4',
+                        'width': 1920,
+                        'height': 1080,
+                        'duration_ms': 15000
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_display_002',
+                'name': 'Summer Sale Banner 728x90',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'display_728x90'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/banner-728x90.jpg',
+                        'width': 728,
+                        'height': 90
+                    }
+                }
+            }
+        ]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Successfully synced {len(result.creatives)} creatives")
+    for creative in result.creatives:
+        print(f"  {creative.name}: {creative.platform_creative_id}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Generative Creatives
+
+Use the creative agent to generate creatives from a brand manifest. See the [Generative Creatives guide](/docs/creative/generative-creative) for complete workflow details.
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncCreativesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncCreatives({
+  creatives: [
+    {
+      creative_id: "creative_gen_001",
+      name: "AI-Generated Summer Banner",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "display_300x250",
+      },
+      assets: {
+        manifest: {
+          url: "https://cdn.example.com/brand-manifest.json",
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(
+    "Generative creative synced:",
+    validated.creatives[0].creative_id
+  );
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        creatives=[{
+            'creative_id': 'creative_gen_001',
+            'name': 'AI-Generated Summer Banner',
+            'format_id': {
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'display_300x250'
+            },
+            'assets': {
+                'manifest': {
+                    'url': 'https://cdn.example.com/brand-manifest.json'
+                }
+            }
+        }]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Generative creative synced: {result.creatives[0].creative_id}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Dry Run Validation
+
+Validate creative configuration without uploading:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncCreativesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncCreatives({
+  dry_run: true,
+  creatives: [
+    {
+      creative_id: "creative_test_001",
+      name: "Test Creative",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "video_standard_30s",
+      },
+      assets: {
+        video: {
+          url: "https://cdn.example.com/test-video.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors && validated.errors.length > 0) {
+  console.log("Validation errors found:");
+  validated.errors.forEach((error) => console.log(`  - ${error.message}`));
+} else {
+  console.log("Validation passed! Ready to sync.");
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        dry_run=True,
+        creatives=[{
+            'creative_id': 'creative_test_001',
+            'name': 'Test Creative',
+            'format_id': {
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'video_standard_30s'
+            },
+            'assets': {
+                'video': {
+                    'url': 'https://cdn.example.com/test-video.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        error_messages = [error.message for error in result.errors]
+        raise Exception(f"Validation errors: {error_messages}")
+
+    print('Validation passed! Ready to sync.')
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Scoped Update with creative_ids Filter
+
+Update only specific creatives from a large library without affecting others:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncCreativesResponseSchema } from "@adcp/client";
+
+// Update just 2 creatives out of 100+ in the library
+const result = await testAgent.syncCreatives({
+  creative_ids: ["creative_video_001", "creative_display_001"],
+  creatives: [
+    {
+      creative_id: "creative_video_001",
+      name: "Summer Sale 30s - Updated",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "video_standard_30s",
+      },
+      assets: {
+        video: {
+          url: "https://cdn.example.com/updated-video.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+        },
+      },
+    },
+    {
+      creative_id: "creative_display_001",
+      name: "Summer Sale Banner - Updated",
+      format_id: {
+        agent_url: "https://creative.adcontextprotocol.org",
+        id: "display_300x250",
+      },
+      assets: {
+        image: {
+          url: "https://cdn.example.com/updated-banner.jpg",
+          width: 300,
+          height: 250,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(
+    `Updated ${validated.creatives.length} creatives, others untouched`
+  );
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    # Update just 2 creatives out of 100+ in the library
+    result = await test_agent.simple.sync_creatives(
+        creative_ids=['creative_video_001', 'creative_display_001'],
+        creatives=[
+            {
+                'creative_id': 'creative_video_001',
+                'name': 'Summer Sale 30s - Updated',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'video_standard_30s'
+                },
+                'assets': {
+                    'video': {
+                        'url': 'https://cdn.example.com/updated-video.mp4',
+                        'width': 1920,
+                        'height': 1080,
+                        'duration_ms': 30000
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_display_001',
+                'name': 'Summer Sale Banner - Updated',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'display_300x250'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/updated-banner.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    print(f"Updated {len(result.creatives)} creatives, others untouched")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+**Why use creative_ids filter:**
+
+- Scoped updates: Only specified creatives modified, even with 100+ in library
+- Error recovery: Retry only failed creatives after bulk sync validation failures
+- Performance: Publisher can optimize processing when scope is known upfront
+- Safety: Explicit targeting reduces risk of unintended changes
+
+## Async Approval Workflow
+
+When creatives require review (brand safety, policy compliance), the initial response is `status: "submitted"`. Use webhooks or polling to get the outcome.
+
+**Final response has `status: "completed"` with per-creative results:**
+
+- **Approved creatives**: `action: "created"` with `platform_id`
+- **Rejected creatives**: `action: "failed"` with error details in `errors` array
+
+The operation status (`completed`) means the review process finished. Individual creative outcomes are in the `action` field.
+
+**Operation-level failures** (auth error, service unavailable) return `status: "failed"` with no `creatives` array.
+
+**See:** [Task Management - Async Operations](/docs/protocols/task-management) for webhook configuration.
+
+## Sync Modes
+
+### Upsert (default)
+
+- Creates new creatives or updates existing by `creative_id`
+- Merges package assignments (additive)
+- Updates provided fields, leaves others unchanged
+- Use `creative_ids` filter to limit scope to specific creatives
+
+### Dry Run
+
+- Validates request without making changes
+- Returns errors and warnings
+- Does not process assets or create creatives
+- Use for pre-flight validation checks
+
+## Error Handling
+
+| Error Code                | Description                                       | Resolution                                                           |
+| ------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
+| `INVALID_FORMAT`          | Format not supported by product                   | Check product's supported formats via `list_creative_formats`        |
+| `ASSET_PROCESSING_FAILED` | Asset file corrupt or invalid                     | Verify asset meets format requirements (codec, dimensions, duration) |
+| `PACKAGE_NOT_FOUND`       | Package ID doesn't exist in media buy             | Verify `package_id` from `create_media_buy` response                 |
+| `BRAND_SAFETY_VIOLATION`  | Creative failed brand safety scan                 | Review content against publisher's brand safety guidelines           |
+| `FORMAT_MISMATCH`         | Assets don't match format requirements            | Verify asset types and specifications match format definition        |
+| `DUPLICATE_CREATIVE_ID`   | Creative ID already exists in different media buy | Use unique `creative_id` or sync to correct media buy                |
+
+## Best Practices
+
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development.
+
+2. **Validate first** - Use `dry_run: true` to catch errors before actual upload. This saves bandwidth and processing time.
+
+3. **Batch assignments** - Include all package assignments in single sync call to avoid race conditions between updates.
+
+4. **CDN-hosted assets** - Use publicly accessible CDN URLs for faster processing. Platforms can fetch assets directly without proxy delays.
+
+5. **Brand manifests** - For generative creatives, validate manifest schema before syncing to avoid processing failures.
+
+6. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
+
+## Next Steps
+
+- [list_creative_formats](/docs/media-buy/task-reference/list_creative_formats) - Check supported formats before upload
+- [Generative Creatives Guide](/docs/creative/generative-creative) - Generate creatives from brand manifests
+- [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) - Monitor creative performance
+- [Creative Asset Types](/docs/creative/asset-types) - Technical requirements for assets

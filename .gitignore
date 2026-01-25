@@ -5,9 +5,10 @@ server/node_modules
 # Production
 /build
 
-# Ignore dist except for released schemas
+# Ignore dist except for released schemas and docs
 /dist/*
 !/dist/schemas
+!/dist/docs
 /dist/schemas/latest
 /dist/schemas/v*
 

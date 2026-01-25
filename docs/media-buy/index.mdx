@@ -23,9 +23,10 @@ All protocols provide identical functionality - choose based on your integration
 The Media Buy protocol provides these essential operations:
 
 ### Discovery & Planning
+- **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**: Discover agent capabilities, portfolio, and supported features (protocol-level)
 - **[`get_products`](/docs/media-buy/task-reference/get_products)**: Discover advertising inventory using natural language briefs
 - **[`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats)**: Understand creative requirements and specifications
-- **[`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties)**: Verify publisher authorization and available properties
+- **[`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties)**: Verify publisher authorization (deprecated - use `get_adcp_capabilities`)
 
 ### Campaign Execution
 - **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)**: Launch advertising campaigns with complete lifecycle management
@@ -223,9 +224,10 @@ Choose your path based on your role and needs:
 
 ### **For AI Agent Developers**
 1. **Start with [Protocol Selection](/docs/protocols/protocol-comparison)** - Choose MCP or A2A based on your use case
-2. **Learn [Capability Discovery](/docs/media-buy/capability-discovery/)** - Understand creative formats and property authorization
-3. **Try [Product Discovery](/docs/media-buy/product-discovery/)** - See how natural language briefs work
-4. **Reference [Task Reference](/docs/media-buy/task-reference/)** - Implement the 8 core tasks
+2. **Call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover what the agent supports
+3. **Learn [Capability Discovery](/docs/media-buy/capability-discovery/)** - Understand creative formats and property authorization
+4. **Try [Product Discovery](/docs/media-buy/product-discovery/)** - See how natural language briefs work
+5. **Reference [Task Reference](/docs/media-buy/task-reference/)** - Implement the core tasks
 
 ### **For Campaign Managers**
 1. **Understand the [Media Buy Lifecycle](/docs/media-buy/media-buys/)** - Learn the complete workflow
@@ -234,7 +236,7 @@ Choose your path based on your role and needs:
 4. **Explore [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting)** - Learn performance management
 
 ### **For Publishers/Sales Agents**
-1. **Learn [Authorized Properties](/docs/media-buy/capability-discovery/authorized-properties)** - Understand authorization requirements
+1. **Learn [Understanding Authorization](/docs/governance/property/authorized-properties)** - Understand authorization requirements
 2. **Review [Creative Formats](/docs/creative/formats)** - See supported creative specifications
 3. **Study [Advanced Topics](/docs/media-buy/advanced-topics/)** - Deep dive into technical implementation
 

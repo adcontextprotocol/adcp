@@ -60,7 +60,7 @@ Addie can run comprehensive E2E tests including:
 
 **Standard Scenarios:**
 - **health_check** - Verify agent responds
-- **discovery** - Test `get_products`, `list_creative_formats`, `list_authorized_properties`
+- **discovery** - Test `get_adcp_capabilities`, `get_products`, `list_creative_formats`
 - **create_media_buy** - Discovery + create a test campaign
 - **full_sales_flow** - Complete lifecycle: create → update → delivery
 - **creative_sync** - Test `sync_creatives` flow
@@ -83,9 +83,9 @@ By default tests run in dry-run mode. For real testing, ask Addie to run without
 Use this checklist to verify your sales agent implementation covers all required features:
 
 **Core Discovery (Required)**
+- [ ] `get_adcp_capabilities` - Returns agent capabilities, portfolio, and supported features
 - [ ] `get_products` - Returns products with pricing_options, format_ids, delivery_type
 - [ ] `list_creative_formats` - Returns supported formats and creative agents
-- [ ] `list_authorized_properties` - Returns publisher domains (if applicable)
 
 **Media Buy Lifecycle (Required)**
 - [ ] `create_media_buy` - Accepts packages with product_id, pricing_option_id, budget

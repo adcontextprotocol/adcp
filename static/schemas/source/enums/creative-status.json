@@ -8,12 +8,14 @@
     "processing",
     "approved",
     "rejected",
-    "pending_review"
+    "pending_review",
+    "archived"
   ],
   "enumDescriptions": {
     "processing": "Creative is being processed or transcoded",
     "approved": "Creative has been approved and is ready for delivery",
     "rejected": "Creative has been rejected due to policy or technical issues",
-    "pending_review": "Creative is under review"
+    "pending_review": "Creative is under review",
+    "archived": "Creative has been archived and is excluded from default queries"
   }
 }

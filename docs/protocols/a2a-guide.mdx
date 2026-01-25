@@ -673,7 +673,8 @@ await a2a.send({
 ```
 
 ### Available Skills
-- **Media Buy**: `get_products`, `list_creative_formats`, `create_media_buy`, `update_media_buy`, `sync_creatives`, `get_media_buy_delivery`, `list_authorized_properties`, `provide_performance_feedback`
+- **Protocol**: `get_adcp_capabilities` (start here to discover agent capabilities)
+- **Media Buy**: `get_products`, `list_creative_formats`, `create_media_buy`, `update_media_buy`, `sync_creatives`, `get_media_buy_delivery`, `provide_performance_feedback`
 - **Signals**: `get_signals`, `activate_signal`
 
 **Task Parameters**: See [Media Buy](/docs/media-buy) and [Signals](/docs/signals/overview) documentation for complete parameter specifications.
@@ -711,32 +712,55 @@ console.log('Examples:', getProductsSkill.examples);
       ]
     }
   ],
-  "extensions": {
-    "adcp": {
-      "adcp_version": "2.4.0",
-      "protocols_supported": ["media_buy"]
+  "extensions": [
+    {
+      "uri": "https://adcontextprotocol.org/extensions/adcp",
+      "description": "AdCP media buying protocol support",
+      "required": false,
+      "params": {
+        "adcp_version": "2.6.0",
+        "protocols_supported": ["media_buy"],
+        "extensions_supported": ["sustainability"]
+      }
     }
-  }
+  ]
 }
 ```
 
 ### AdCP Extension
 
-**Recommended**: Include the `extensions.adcp` field in your agent card to declare AdCP support programmatically.
+<Note>
+**Recommended**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for runtime capability discovery. The agent card extension provides static metadata for agent registries and discovery services.
+</Note>
+
+Include the AdCP extension in your agent card's `extensions` array to declare AdCP support programmatically.
+
+The A2A protocol uses an `extensions` array where each extension has:
+- **`uri`**: Extension identifier (use `https://adcontextprotocol.org/extensions/adcp`)
+- **`description`**: Human-readable description of how you use AdCP
+- **`required`**: Whether clients must support this extension (typically `false` for AdCP)
+- **`params`**: AdCP-specific configuration (see schema below)
 
 ```javascript
 // Check if agent supports AdCP
 const agentCard = await fetch('https://sales.example.com/.well-known/agent.json')
   .then(r => r.json());
 
-if (agentCard.extensions?.adcp) {
-  console.log('AdCP Version:', agentCard.extensions.adcp.adcp_version);
-  console.log('Supported domains:', agentCard.extensions.adcp.protocols_supported);
+// Find the AdCP extension in the extensions array
+const adcpExt = agentCard.extensions?.find(
+  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp'
+);
+
+if (adcpExt) {
+  console.log('AdCP Version:', adcpExt.params.adcp_version);
+  console.log('Supported domains:', adcpExt.params.protocols_supported);
   // ["media_buy", "creative", "signals"]
+  console.log('Typed extensions:', adcpExt.params.extensions_supported);
+  // ["sustainability"]
 }
 ```
 
-**Extension Structure**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for complete specification.
+**Extension Params Schema**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for the complete `params` specification.
 
 **Benefits**:
 - Clients can discover AdCP capabilities without making test calls

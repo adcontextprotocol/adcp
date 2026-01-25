@@ -182,29 +182,19 @@
                       "type": "string",
                       "description": "Package identifier"
                     },
-                    "package_name": {
+                    "buyer_ref": {
                       "type": "string",
-                      "description": "Human-readable package name"
+                      "description": "Buyer's reference identifier for this package"
                     },
                     "assigned_date": {
                       "type": "string",
                       "format": "date-time",
                       "description": "When this assignment was created"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "active",
-                        "paused",
-                        "ended"
-                      ],
-                      "description": "Status of this specific assignment"
                     }
                   },
                   "required": [
                     "package_id",
-                    "assigned_date",
-                    "status"
+                    "assigned_date"
                   ],
                   "additionalProperties": true
                 }
@@ -293,6 +283,11 @@
       "type": "object",
       "description": "Breakdown of creatives by status",
       "properties": {
+        "processing": {
+          "type": "integer",
+          "description": "Number of creatives being processed",
+          "minimum": 0
+        },
         "approved": {
           "type": "integer",
           "description": "Number of approved creatives",
@@ -416,9 +411,8 @@
               "assigned_packages": [
                 {
                   "package_id": "pkg_ctv_001",
-                  "package_name": "CTV Prime Time",
-                  "assigned_date": "2024-01-16T09:00:00Z",
-                  "status": "active"
+                  "buyer_ref": "ctv_prime_time_q1",
+                  "assigned_date": "2024-01-16T09:00:00Z"
                 }
               ]
             },

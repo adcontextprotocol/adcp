@@ -8,11 +8,11 @@ npm run verify-version-sync
 echo "🔍 Validating Mintlify documentation..."
 
 # Check for broken internal links
-# Temporarily remove v2.6-rc docs which have WIP governance links
-rm -rf v2.6-rc
+# Temporarily remove archived docs which have version-specific links
+rm -rf dist/docs
 npx --yes mintlify@latest broken-links
 BROKEN_LINKS_EXIT=$?
-git checkout v2.6-rc
+git checkout dist/docs 2>/dev/null || true
 if [ $BROKEN_LINKS_EXIT -ne 0 ]; then
   echo "❌ Mintlify broken links check failed. Please fix broken links before pushing."
   exit 1

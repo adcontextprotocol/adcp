@@ -425,6 +425,61 @@ Request exceeded maximum processing time.
 
 **Resolution**: Refine request parameters or retry.
 
+## Content Standards Errors
+
+### STANDARDS_NOT_FOUND
+Specified standards ID doesn't exist.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "STANDARDS_NOT_FOUND",
+  "message": "No standards found with ID 'invalid_id'",
+  "details": {
+    "standards_id": "invalid_id"
+  }
+}
+```
+
+**Resolution**: Use `list_content_standards` to find valid standards IDs.
+
+### STANDARDS_IN_USE
+Cannot delete standards that are referenced by active media buys.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "STANDARDS_IN_USE",
+  "message": "Cannot delete standards 'nike_emea_safety' - currently referenced by active media buys",
+  "details": {
+    "standards_id": "nike_emea_safety",
+    "active_media_buy_count": 3
+  }
+}
+```
+
+**Resolution**: Wait for media buys to complete before deleting.
+
+### STANDARDS_SCOPE_CONFLICT
+New standards configuration conflicts with existing standards for the same scope.
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "STANDARDS_SCOPE_CONFLICT",
+  "message": "Standards already exist for brand 'nike' in countries ['GB', 'DE']",
+  "details": {
+    "conflicting_standards_id": "nike_emea_safety",
+    "overlapping_countries": ["GB", "DE"]
+  }
+}
+```
+
+**Resolution**: Update existing standards or narrow scope to avoid overlap.
+
 ## Data Errors
 
 ### DATA_QUALITY_ISSUE
@@ -506,7 +561,10 @@ const PERMANENT_ERRORS = [
   'INSUFFICIENT_PERMISSIONS',
   'SEGMENT_NOT_FOUND',
   'PLATFORM_UNAUTHORIZED',
-  'UNSUPPORTED_VERSION'
+  'UNSUPPORTED_VERSION',
+  'STANDARDS_NOT_FOUND',
+  'STANDARDS_IN_USE',
+  'STANDARDS_SCOPE_CONFLICT'
 ];
 
 function isRetryable(errorCode: string): boolean {

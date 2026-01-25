@@ -1,5 +1,148 @@
 # Changelog
 
+## 2.6.0
+
+### Major Changes
+
+- Add Content Standards Protocol for brand safety and suitability evaluation (#621)
+
+  **New Protocol:**
+  
+  Introduces a comprehensive content standards framework enabling buyers to define, calibrate, and enforce brand safety policies across advertising placements.
+
+  **New Tasks:**
+  - `list_content_standards` - List available content standards configurations
+  - `get_content_standards` - Retrieve full standards configuration with policy details
+  - `create_content_standards` - Create new content standards configuration
+  - `update_content_standards` - Update existing content standards configuration
+  - `calibrate_content` - Collaborative calibration dialogue for policy alignment
+  - `validate_content_delivery` - Batch validate delivery records against standards
+  - `get_media_buy_artifacts` - Retrieve content artifacts from media buys for validation
+
+  **New Schemas:**
+  - `content-standards.json` - Reusable content standards configuration
+  - `content-standards-artifact.json` - Content artifact for evaluation
+  - `artifact-webhook-payload.json` - Webhook payload for artifact delivery
+
+- Add Property Governance Protocol for AdCP 3.0 (#588)
+
+  **New Protocol:**
+  
+  Enables governance agents to evaluate properties against feature-based requirements for brand safety, content quality, and compliance.
+
+  **New Tasks:**
+  - `list_property_features` - Discover governance agent capabilities
+  - `create_property_list` - Create managed property lists with filters
+  - `update_property_list` - Update existing property lists
+  - `get_property_list` - Retrieve property list with resolved properties
+  - `list_property_lists` - List all property lists
+  - `delete_property_list` - Delete a property list
+
+  **New Schemas:**
+  - `property-feature-definition.json` - Feature definition schema
+  - `property-feature.json` - Feature assessment schema
+  - `feature-requirement.json` - Feature-based requirement schema
+  - `property-list.json` - Managed property list schema
+  - `property-list-filters.json` - Dynamic filter schema
+  - `property-list-changed-webhook.json` - Webhook payload for list changes
+
+### Minor Changes
+
+- Add unified `assets` field to format schema for better asset discovery
+
+  **Schema Changes:**
+
+  - **format.json**: Add new `assets` array field that includes both required and optional assets
+  - **format.json**: Deprecate `assets_required` (still supported for backward compatibility)
+
+  **Rationale:**
+
+  Previously, buyers and AI agents could only see required assets via `assets_required`. There was no way to discover optional assets that enhance creatives (companion banners, third-party tracking pixels, etc.).
+
+  Since each asset already has a `required` boolean field, we introduced a unified `assets` array where:
+  - `required: true` - Asset MUST be provided for a valid creative
+  - `required: false` - Asset is optional, enhances the creative when provided
+
+  This enables:
+  - **Full asset discovery**: Buyers and AI agents can see ALL assets a format supports
+  - **Richer creatives**: Optional assets like impression trackers can now be discovered and used
+  - **Cleaner schema**: Single array instead of two separate arrays
+
+  **Example:**
+
+  ```json
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "assets": [
+      { "item_type": "individual", "asset_id": "video_file", "asset_type": "video", "required": true },
+      { "item_type": "individual", "asset_id": "end_card", "asset_type": "image", "required": false },
+      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "url", "required": false }
+    ]
+  }
+  ```
+
+  **Migration:** Non-breaking change. `assets_required` is deprecated but still supported. New implementations should use `assets`.
+
+- Add typed extensions infrastructure with auto-discovery (#648)
+
+  **New Feature:**
+  
+  Introduces a typed extension system allowing vendors and domains to add custom data to AdCP schemas in a discoverable, validated way.
+
+  **New Schemas:**
+  - `extensions/extension-meta.json` - Meta schema for extension definitions
+  - `extensions/index.json` - Auto-generated registry of all extensions
+  - `protocols/adcp-extension.json` - AdCP extension for agent cards
+
+  **Benefits:**
+  - Vendor-specific data without polluting core schemas
+  - Auto-discovery of available extensions
+  - Validation support for extension data
+
+- Add OpenAI Commerce integration to brand manifest (#802)
+
+  **Schema Changes:**
+  - **brand-manifest.json**: Add `openai_commerce` field for OpenAI shopping integration
+  
+  Enables brands to include their OpenAI Commerce merchant ID for AI-powered shopping experiences.
+
+- Add privacy_policy_url to brand manifest and adagents.json (#801)
+
+  **Schema Changes:**
+  - **brand-manifest.json**: Add optional `privacy_policy_url` field
+  - **adagents.json**: Add optional `privacy_policy_url` field
+  
+  Enables publishers and brands to declare their privacy policy URLs for compliance and transparency.
+
+- Refactor: replace creative_ids with creative_assignments (#794)
+
+  **Breaking Change:**
+  
+  Package schema now uses `creative_assignments` array instead of `creative_ids` for more flexible creative-to-package mapping with placement support.
+
+  **Migration:**
+  ```json
+  // Before
+  { "creative_ids": ["creative_1", "creative_2"] }
+  
+  // After
+  { "creative_assignments": [
+    { "creative_id": "creative_1" },
+    { "creative_id": "creative_2", "placement_ids": ["homepage_banner"] }
+  ]}
+  ```
+
+### Patch Changes
+
+- fix: Mintlify callout syntax and case-insensitivity docs (#834)
+- fix: Convert governance docs to relative links (#820)
+- build: rebuild dist/schemas/2.6.0 with impressions and paused fields
+- chore: regenerate dist/schemas/2.6.0 with additionalProperties: true
+- ci: add 2.6.x branch to all workflows
+- docs: add deprecated assets_required examples with deprecation comments
+- schema: make 'required' field mandatory in assets array and nested repeatable_group assets
+- schema: add formal deprecated: true to assets_required field
+
 ## 2.5.3
 
 ### Patch Changes
