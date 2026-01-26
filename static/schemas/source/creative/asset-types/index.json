@@ -88,7 +88,7 @@
       "process": [
         "1. Read format_id from manifest",
         "2. Fetch format specification",
-        "3. For each asset in manifest, look up asset_id in format's assets_required",
+        "3. For each asset in manifest, look up asset_id in format's assets array",
         "4. Validate asset matches the type and requirements defined in the format"
       ]
     }

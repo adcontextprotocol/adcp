@@ -33,7 +33,7 @@ This approach:
 - Single source of truth for all capability information
 
 :::note
-The agent card extension (`adcp-extension.json`) is deprecated. Use tool-based discovery instead.
+The agent card extension (`adcp-extension.json`) has been removed in v3. Use tool-based discovery instead.
 :::
 
 ## Request Parameters
@@ -487,9 +487,9 @@ This tells buyers:
 | Postal (UK) | `gb_full` | `SW1A 1AA` |
 | Postal (CA) | `ca_fsa` | `K1A`, `M5V` |
 
-## Migration from list_authorized_properties
+## Migration from list_authorized_properties (v2)
 
-If migrating from `list_authorized_properties`:
+The `list_authorized_properties` task was removed in v3. If migrating from v2:
 
 | Old Field | New Location |
 |-----------|--------------|

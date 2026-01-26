@@ -17,11 +17,6 @@
       "type": "string",
       "description": "Plain text explanation of what this format does and what assets it requires"
     },
-    "preview_image": {
-      "type": "string",
-      "format": "uri",
-      "description": "DEPRECATED: Use format_card instead. Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers. This field is maintained for backward compatibility but format_card provides a more flexible, structured approach."
-    },
     "example_url": {
       "type": "string",
       "format": "uri",
@@ -144,121 +139,9 @@
       },
       "minItems": 1
     },
-    "assets_required": {
-      "type": "array",
-      "deprecated": true,
-      "description": "DEPRECATED: Use 'assets' instead. Array of required assets or asset groups for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Can contain individual assets or repeatable asset sequences (e.g., carousel products, slideshow frames). This field is maintained for backward compatibility; new implementations should use 'assets' with the 'required' boolean on each asset.",
-      "items": {
-        "oneOf": [
-          {
-            "description": "Individual asset requirement",
-            "type": "object",
-            "properties": {
-              "item_type": {
-                "type": "string",
-                "const": "individual",
-                "description": "Discriminator indicating this is an individual asset requirement"
-              },
-              "asset_id": {
-                "type": "string",
-                "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
-              },
-              "asset_type": {
-                "$ref": "/schemas/enums/asset-content-type.json",
-                "description": "Type of asset"
-              },
-              "asset_role": {
-                "type": "string",
-                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests\u2014use asset_id instead. This field is for human-readable documentation and UI display only."
-              },
-              "required": {
-                "type": "boolean",
-                "description": "Whether this asset is required"
-              },
-              "requirements": {
-                "type": "object",
-                "description": "Technical requirements for this asset (dimensions, file size, duration, etc.). For template formats, use parameters_from_format_id: true to indicate asset parameters must match the format_id parameters (width/height/unit and/or duration_ms).",
-                "additionalProperties": true
-              }
-            },
-            "required": [
-              "item_type",
-              "asset_id",
-              "asset_type"
-            ]
-          },
-          {
-            "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
-            "type": "object",
-            "properties": {
-              "item_type": {
-                "type": "string",
-                "const": "repeatable_group",
-                "description": "Discriminator indicating this is a repeatable asset group"
-              },
-              "asset_group_id": {
-                "type": "string",
-                "description": "Identifier for this asset group (e.g., 'product', 'slide', 'card')"
-              },
-              "min_count": {
-                "type": "integer",
-                "description": "Minimum number of repetitions required",
-                "minimum": 1
-              },
-              "max_count": {
-                "type": "integer",
-                "description": "Maximum number of repetitions allowed",
-                "minimum": 1
-              },
-              "assets": {
-                "type": "array",
-                "description": "Assets within each repetition of this group",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "asset_id": {
-                      "type": "string",
-                      "description": "Identifier for this asset within the group"
-                    },
-                    "asset_type": {
-                      "$ref": "/schemas/enums/asset-content-type.json",
-                      "description": "Type of asset"
-                    },
-                    "asset_role": {
-                      "type": "string",
-                      "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests\u2014use asset_id instead. This field is for human-readable documentation and UI display only."
-                    },
-                    "required": {
-                      "type": "boolean",
-                      "description": "Whether this asset is required in each repetition"
-                    },
-                    "requirements": {
-                      "type": "object",
-                      "description": "Technical requirements for this asset. For template formats, use parameters_from_format_id: true to indicate asset parameters must match the format_id parameters (width/height/unit and/or duration_ms).",
-                      "additionalProperties": true
-                    }
-                  },
-                  "required": [
-                    "asset_id",
-                    "asset_type"
-                  ]
-                }
-              }
-            },
-            "required": [
-              "item_type",
-              "asset_group_id",
-              "min_count",
-              "max_count",
-              "assets"
-            ]
-          }
-        ]
-      }
-    },
     "assets": {
       "type": "array",
-      "description": "Array of all assets supported for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Use the 'required' boolean on each asset to indicate whether it's mandatory. This field replaces the deprecated 'assets_required' and enables full asset discovery for buyers and AI agents.",
+      "description": "Array of all assets supported for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Use the 'required' boolean on each asset to indicate whether it's mandatory.",
       "items": {
         "oneOf": [
           {
