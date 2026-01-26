@@ -5,7 +5,7 @@ keywords: [A2A integration, Agent-to-Agent Protocol, artifacts, SSE streaming, a
 ---
 
 
-Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/docs/protocols/core-concepts).
+Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/docs/building/implementation/task-lifecycle).
 
 ## A2A Client Setup
 
@@ -144,7 +144,7 @@ const task = await a2a.send({
 });
 ```
 
-**Status Handling**: See [Core Concepts](/docs/protocols/core-concepts) for complete status handling patterns.
+**Status Handling**: See [Core Concepts](/docs/building/implementation/task-lifecycle) for complete status handling patterns.
 
 ## A2A Response Format
 
@@ -179,7 +179,7 @@ AdCP responses over A2A **MUST** include at least one `DataPart` (kind: 'data') 
 }
 ```
 
-**For complete canonical format specification, see [A2A Response Format](/docs/protocols/a2a-response-format).**
+**For complete canonical format specification, see [A2A Response Format](/docs/building/integration/a2a-response-format).**
 
 ### A2A-Specific Fields
 - **taskId**: A2A task identifier for streaming updates
@@ -210,7 +210,7 @@ if (artifact) {
 return { status: response.status };
 ```
 
-**For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/protocols/a2a-response-format).**
+**For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/building/integration/a2a-response-format).**
 
 ## Push Notifications (A2A-Specific)
 
@@ -267,7 +267,7 @@ await a2a.send({
 });
 ```
 
-For webhook payload formats, protocol comparison, and detailed handling examples, see [Task Management - Push Notification Integration](/docs/protocols/task-management#push-notification-integration).
+For webhook payload formats, protocol comparison, and detailed handling examples, see [Task Management - Push Notification Integration](/docs/building/implementation/task-lifecycle#push-notification-integration).
 
 ## SSE Streaming (A2A-Specific)
 
@@ -651,7 +651,7 @@ await a2a.send({
 
 All AdCP tasks are available as A2A skills. Use explicit invocation for deterministic execution:
 
-**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Task Management](/docs/protocols/task-management).
+**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Task Management](/docs/building/implementation/task-lifecycle).
 
 ### Skill Structure
 ```javascript
@@ -819,9 +819,9 @@ The `@adcp/client` library handles A2A artifact extraction automatically, so you
 
 ## Next Steps
 
-- **Core Concepts**: Read [Core Concepts](/docs/protocols/core-concepts) for status handling and workflows  
+- **Core Concepts**: Read [Core Concepts](/docs/building/implementation/task-lifecycle) for status handling and workflows  
 - **Task Reference**: See [Media Buy Tasks](/docs/media-buy) and [Signals](/docs/signals/overview)
-- **Protocol Comparison**: Compare with [MCP integration](/docs/protocols/mcp-guide)
+- **Protocol Comparison**: Compare with [MCP integration](/docs/building/integration/mcp-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Core Concepts](/docs/protocols/core-concepts) - this guide focuses on A2A transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Core Concepts](/docs/building/implementation/task-lifecycle) - this guide focuses on A2A transport specifics only.**

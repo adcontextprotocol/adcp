@@ -110,7 +110,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 - **Bearer tokens**: Simple, good for development (Authorization header)
 - **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
 - Credentials exchanged out-of-band during publisher onboarding
-- See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for implementation details
+- See [Webhook Security](/docs/building/implementation/task-lifecycle.mdx#security) for implementation details
 
 #### Supported Frequencies
 
@@ -435,7 +435,7 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 
 #### Webhook Health Monitoring
 
-Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](/docs/protocols/task-management)).
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](/docs/building/implementation/task-lifecycle)).
 
 When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
 
@@ -727,7 +727,7 @@ Reporting webhooks follow AdCP's standard webhook reliability patterns:
 - **Best-effort ordering**: Notifications may arrive out of order
 - **Timeout and retry**: Limited retry attempts on delivery failure
 
-See [Core Concepts: Webhook Reliability](/docs/protocols/core-concepts.mdx#webhook-reliability) for detailed implementation guidance.
+See [Core Concepts: Webhook Reliability](/docs/building/implementation/task-lifecycle.mdx#webhook-reliability) for detailed implementation guidance.
 
 ## Optimization Strategies
 
