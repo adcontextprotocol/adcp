@@ -1,64 +1,108 @@
 ---
-title: Overview
-description: Conceptual foundation for the Ad Context Protocol
+title: Why AdCP
+description: Understanding the strategic vision behind the Ad Context Protocol
 ---
 
-Before integrating with AdCP, understand how it works and where it fits in the advertising ecosystem.
+## Allocation, Not Day Trading
 
-## In This Section
+RTB treats advertising like day trading: *"What is this impression worth?"* It works for fungible inventory but commoditizes everything.
+
+AdCP enables portfolio-level allocation: *"How should I invest my ad budget?"* This mirrors how advertisers actually think—they buy outcomes, not impressions.
+
+<Card title="Agentic Advertising is for Allocation" icon="book-open" href="https://bokonads.com/p/agentic-advertising-is-for-allocation">
+  Why the RTB mental model doesn't fit how advertisers actually make decisions.
+</Card>
+
+## The Fragmentation Problem
+
+Today, advertisers face three completely different buying systems:
+
+| Paradigm | Era | How It Works |
+|----------|-----|--------------|
+| **RTB/Biddable** | Legacy web | Real-time bidding via OpenRTB |
+| **API-based** | Modern social, AI | Platform-specific APIs (Meta, TikTok) |
+| **Direct IO** | Legacy | Insertion orders, manual deals |
+
+Each requires different integrations, tools, workflows, and expertise. 90% of ad spend never touches RTB—it lives in walled gardens, direct deals, and premium inventory.
+
+AdCP creates a **universal API standard** that unifies all three under one umbrella.
+
+## Omnichannel By Design
+
+Buying billboards is fundamentally different from buying social links:
+
+- **Different pricing**: Flat rate vs CPM vs engagement-based
+- **Different creatives**: Static images vs dynamic video vs conversational AI
+- **Different measurement**: Impressions vs engagement vs footfall
+
+AdCP creates a conceptual layer that abstracts these differences while preserving what makes each channel unique. One protocol, any channel.
+
+## Why Agents?
+
+Intelligent agents reduce the cost of managing complex, negotiated deals:
+
+- **Adapt to nuances** without over-specifying everything in code
+- **Handle variability** across platforms and channels
+- **Natural language** lets buyers describe intent, not configure parameters
+- **Scale relationships** from 3-5 platforms to 20+ without scaling teams
+
+## The Protocol Layer for AI
+
+AdCP isn't just unifying legacy systems—it's the protocol layer for emerging AI surfaces.
+
+### Sponsored Intelligence
+
+Like VAST defined video ad serving, SI defines conversational brand experiences in AI assistants. When an AI says *"Delta has flights to Boston—want me to connect you with their assistant?"*—SI defines what happens next.
+
+<Card title="Sponsored Intelligence and the Trillion Dollar Sentence" icon="book-open" href="https://bokonads.com/p/sponsored-intelligence-and-the-trillion">
+  How conversational AI changes the economics of advertising.
+</Card>
+
+### Brand Manifests
+
+Standardized brand identity for AI-powered creative generation. Brands express who they are—colors, tone, assets—in formats AI systems can consume.
+
+### Promoted Offerings
+
+The unified schema connecting brand identity, products, creative assets, and conversational AI. This bridges traditional advertising and conversational commerce.
+
+Together, these support fully AI-powered systems like Performance Max that need structured brand inputs, not manual campaign configuration.
 
 <CardGroup cols={2}>
-  <Card title="How AdCP Works" icon="diagram-project" href="/docs/building/understanding/how-it-works">
-    Design principles, architecture, and how the pieces fit together.
+  <Card title="Sponsored Intelligence Protocol" icon="message-bot" href="/docs/sponsored-intelligence/overview">
+    Conversational brand experiences in AI assistants.
   </Card>
-  <Card title="The Ecosystem" icon="globe" href="/docs/building/understanding/ecosystem">
-    The players, relationships, and landscape of agentic advertising.
-  </Card>
-  <Card title="Protocol Comparison" icon="code-compare" href="/docs/building/understanding/protocol-comparison">
-    MCP vs A2A - when to use which, and what's the same.
-  </Card>
-  <Card title="Ad Tech Primer" icon="graduation-cap" href="/docs/building/understanding/ad-tech-primer">
-    Digital advertising fundamentals for AI agents and developers.
+  <Card title="Brand Manifests" icon="palette" href="/docs/creative/brand-manifest">
+    Standardized brand identity for AI creative generation.
   </Card>
 </CardGroup>
 
-## Key Concepts
+## Design Implications
 
-### What AdCP Provides
+These goals drive AdCP's technical design:
 
-AdCP is an open standard for AI-powered advertising workflows. It provides:
+- **Asynchronous**: Deals take time. This is not a real-time protocol—operations may take minutes to days.
+- **Human-in-the-loop**: Some decisions need human approval. Publishers can require manual sign-off.
+- **Multiple transports**: MCP and A2A provide the same tasks through different protocols.
 
-- **Unified interface** for media buying across diverse advertising platforms
-- **Protocol-agnostic tasks** that work with both MCP and A2A
-- **Async-first design** for operations that may take seconds, hours, or days
-- **Human-in-the-loop support** for approvals and manual oversight
+## The Protocol Family
 
-### Design Philosophy
-
-1. **AI-Optimized**: Designed for AI agents, not just human users
-2. **Platform Agnostic**: Works across ad platforms (Google, Meta, Amazon, etc.)
-3. **Asynchronous**: Operations may complete immediately or require manual approval
-4. **MCP-Based**: Built on the Model Context Protocol foundation
-5. **Human-in-the-Loop**: Optional manual approval for sensitive operations
-
-### The AdCP Stack
-
-```
-Your Application / AI Agent
-          ↓
-    [MCP or A2A Protocol]
-          ↓
-      AdCP Tasks
-          ↓
-    Sales Agents (Ad Servers)
-          ↓
-   Ad Platforms & Publishers
-```
-
-Both protocols provide the same AdCP tasks - they're just different ways to communicate.
+| Protocol | Purpose | Key Tasks |
+|----------|---------|-----------|
+| **Media Buy** | Campaign execution | `get_products`, `create_media_buy` |
+| **Signals** | Audience targeting | `get_signals`, `activate_signal` |
+| **Creative** | Ad creative management | `build_creative`, `sync_creatives` |
+| **Governance** | Brand safety, compliance | Property lists, content standards |
+| **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session` |
+| **Curation** | Inventory packaging | Coming soon |
 
 ## Next Steps
 
-- **New to AdCP?** Start with [How AdCP Works](/docs/building/understanding/how-it-works)
-- **Evaluating protocols?** See [Protocol Comparison](/docs/building/understanding/protocol-comparison)
-- **Ready to integrate?** Jump to [Integration](/docs/building/integration)
+<CardGroup cols={2}>
+  <Card title="Protocol Comparison" icon="code-compare" href="/docs/building/understanding/protocol-comparison">
+    MCP vs A2A—when to use which, and what's the same.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
+    Get started in 5 minutes.
+  </Card>
+</CardGroup>
