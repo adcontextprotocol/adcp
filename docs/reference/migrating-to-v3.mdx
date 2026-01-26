@@ -32,6 +32,36 @@ Version 3 represents a strategic expansion of AdCP:
 
 5. **Runtime Discovery** - `get_adcp_capabilities` replaces static agent card extensions with dynamic capability discovery.
 
+### Migration by Role
+
+Your migration path depends on what you're building:
+
+**Seller Agents** (publishers, SSPs, networks):
+- **Breaking changes** - Update all data structures to v3 format (channels, pricing, geo targeting)
+- **New implementations** - Implement `get_adcp_capabilities` task for runtime discovery
+- **New integrations** - Support property list filtering in `get_products` if working with governance agents
+
+**Buyer Agents & Orchestrators** (DSPs, agencies, brands):
+- **Breaking changes** - Update all requests and response handling to v3 format
+- **New consumption** - Use `get_adcp_capabilities` to discover seller capabilities at runtime
+- **New integrations** - Pass property lists to filter inventory; invoke SI sessions for conversational brand experiences
+
+**Signals Agents** (data providers, measurement vendors):
+- **Breaking changes** - Update schema references from v2 to v3
+- **No channel changes** - Signals Protocol doesn't use media channels in its core model
+
+**Creative Agents** (creative management, DCO providers):
+- **Breaking changes** - Support `assets` array with `required` boolean for full asset discovery
+- **No channel changes** - Format `type` field (video, display, audio) is IAB creative classification, not media channels
+
+**Governance Agents** (verification vendors, brand safety platforms) - *new in v3*:
+- **New protocol** - Implement property lists and content standards tasks
+- See [Governance Protocol](/docs/governance) for implementation details
+
+**Sponsored Intelligence Agents** (brand agents) - *new in v3*:
+- **New protocol** - Implement SI session tasks for conversational brand experiences
+- See [Sponsored Intelligence](/docs/sponsored-intelligence/overview) for implementation details
+
 ---
 
 ## Breaking Changes
@@ -41,7 +71,7 @@ Version 3 represents a strategic expansion of AdCP:
 The channel enum has been completely replaced with 19 planning-oriented channels.
 
 <Warning>
-**This is the most significant breaking change in v3.** All code that reads or writes channel values must be updated.
+All code that reads or writes channel values must be updated.
 </Warning>
 
 **v2.x channels (5):**
@@ -491,7 +521,9 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 
 ## Migration Checklist
 
-### Required Changes
+### All Implementations
+
+These breaking changes affect anyone reading or writing AdCP data:
 
 - [ ] Update channel enum values to [new taxonomy](/docs/reference/media-channel-taxonomy)
 - [ ] Rename `fixed_rate` → `fixed_price` in pricing options
@@ -500,21 +532,40 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 - [ ] Add system specification to metro/postal targeting
 - [ ] Rename `geo_postal_codes` → `geo_postal_areas`
 - [ ] Update format parsing to use `assets` array
+- [ ] Validate all requests/responses against v3 schemas
 
-### Recommended Changes
+### Seller Agents
 
 - [ ] Implement `get_adcp_capabilities` task
 - [ ] Remove `adcp-extension.json` from agent card
-- [ ] Explore Governance Protocol for brand safety
-- [ ] Consider Sponsored Intelligence for conversational experiences
+- [ ] Support property list filtering in `get_products` if integrating with governance agents
 
-### Testing
+### Buyer Agents & Orchestrators
 
-- [ ] Validate all requests against v3 schemas
-- [ ] Test channel values in product discovery
-- [ ] Verify pricing option field renames work correctly
-- [ ] Verify geo targeting with named systems
-- [ ] Test creative assignment weighting
+- [ ] Update to call `get_adcp_capabilities` for runtime discovery
+- [ ] Pass property lists to filter inventory when working with governance agents
+- [ ] Invoke SI sessions when connecting users with brand agents
+
+### Signals Agents
+
+- [ ] Update schema references from v2 to v3
+- [ ] Ensure `get_adcp_capabilities` returns `major_versions: [3]`
+
+### Creative Agents
+
+- [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
+- [ ] Update schema references from v2 to v3
+
+### Governance Agents (new in v3)
+
+- [ ] Implement property list tasks (`create_property_list`, `get_property_list`, etc.)
+- [ ] Implement content standards tasks (`create_content_standards`, `calibrate_content`, etc.)
+- [ ] Implement `get_adcp_capabilities` with `governance` in `supported_protocols`
+
+### Sponsored Intelligence Agents (new in v3)
+
+- [ ] Implement SI session tasks (`si_initiate_session`, `si_send_message`, `si_terminate_session`)
+- [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols`
 
 ---
 
