@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/enums/webhook-response-type.json",
+  "title": "Webhook Response Type",
+  "description": "Expected response content type from webhook endpoints",
+  "type": "string",
+  "enum": [
+    "html",
+    "json",
+    "xml",
+    "javascript"
+  ]
+}

@@ -1,0 +1,208 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/bundled/media-buy/sync-creatives-response.json",
+  "title": "Sync Creatives Response",
+  "description": "Response from creative sync operation. Returns either per-creative results (best-effort processing) OR operation-level errors (complete failure). This enforces atomic semantics at the operation level while allowing per-item failures within successful operations.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "SyncCreativesSuccess",
+      "description": "Success response - sync operation processed creatives (may include per-item failures)",
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean",
+          "description": "Whether this was a dry run (no actual changes made)"
+        },
+        "creatives": {
+          "type": "array",
+          "description": "Results for each creative processed. Items with action='failed' indicate per-item validation/processing failures, not operation-level failures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "creative_id": {
+                "type": "string",
+                "description": "Creative ID from the request"
+              },
+              "action": {
+                "title": "Creative Action",
+                "description": "Action taken for this creative",
+                "type": "string",
+                "enum": [
+                  "created",
+                  "updated",
+                  "unchanged",
+                  "failed",
+                  "deleted"
+                ]
+              },
+              "platform_id": {
+                "type": "string",
+                "description": "Platform-specific ID assigned to the creative"
+              },
+              "changes": {
+                "type": "array",
+                "description": "Field names that were modified (only present when action='updated')",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "Validation or processing errors (only present when action='failed')",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "description": "Non-fatal warnings about this creative",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "preview_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Preview URL for generative creatives (only present for generative formats)"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when preview link expires (only present when preview_url exists)"
+              },
+              "assigned_to": {
+                "type": "array",
+                "description": "Package IDs this creative was successfully assigned to (only present when assignments were requested)",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "assignment_errors": {
+                "type": "object",
+                "description": "Assignment errors by package ID (only present when assignment failures occurred)",
+                "patternProperties": {
+                  "^[a-zA-Z0-9_-]+$": {
+                    "type": "string",
+                    "description": "Error message for this package assignment"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "creative_id",
+              "action"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "context": {
+          "title": "Context Object",
+          "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ext": {
+          "title": "Extension Object",
+          "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "creatives"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "SyncCreativesError",
+      "description": "Error response - operation failed completely, no creatives were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors that prevented processing any creatives (e.g., authentication failure, service unavailable, invalid request format)",
+          "items": {
+            "title": "Error",
+            "description": "Standard error structure for task-specific errors and warnings",
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code for programmatic handling"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "field": {
+                "type": "string",
+                "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "Suggested fix for the error"
+              },
+              "retry_after": {
+                "type": "number",
+                "description": "Seconds to wait before retrying the operation",
+                "minimum": 0
+              },
+              "details": {
+                "type": "object",
+                "description": "Additional task-specific error details",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "context": {
+          "title": "Context Object",
+          "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ext": {
+          "title": "Extension Object",
+          "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "creatives"
+            ]
+          },
+          {
+            "required": [
+              "dry_run"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-01-26T12:55:43.205Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

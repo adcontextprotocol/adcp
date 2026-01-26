@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/core/targeting.json",
+  "title": "Targeting Overlay",
+  "description": "Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
+  "type": "object",
+  "properties": {
+    "geo_countries": {
+      "type": "array",
+      "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "geo_regions": {
+      "type": "array",
+      "description": "Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      }
+    },
+    "geo_metros": {
+      "type": "array",
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-beta.1/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      }
+    },
+    "geo_postal_areas": {
+      "type": "array",
+      "description": "Restrict delivery to specific postal areas. Each entry specifies the postal system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-beta.1/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      }
+    },
+    "axe_include_segment": {
+      "type": "string",
+      "description": "AXE segment ID to include for targeting"
+    },
+    "axe_exclude_segment": {
+      "type": "string",
+      "description": "AXE segment ID to exclude from targeting"
+    },
+    "frequency_cap": {
+      "$ref": "/schemas/3.0.0-beta.1/core/frequency-cap.json"
+    }
+  },
+  "additionalProperties": true
+}

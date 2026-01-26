@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/property/property-list.json",
+  "title": "Property List",
+  "description": "A managed property list with optional filters for dynamic evaluation. Lists are resolved at setup time and cached by orchestrators/sellers for real-time use.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "Unique identifier for this property list"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the list"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the list's purpose"
+    },
+    "principal": {
+      "type": "string",
+      "description": "Principal identity that owns this list"
+    },
+    "base_properties": {
+      "type": "array",
+      "description": "Array of property sources to evaluate. Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers). If omitted, queries the agent's entire property database.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/property/base-property-source.json"
+      }
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.0-beta.1/property/property-list-filters.json",
+      "description": "Dynamic filters applied when resolving the list"
+    },
+    "brand_manifest": {
+      "$ref": "/schemas/3.0.0-beta.1/core/brand-manifest.json",
+      "description": "Brand identity used to automatically apply appropriate rules"
+    },
+    "webhook_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to receive notifications when the resolved list changes"
+    },
+    "cache_duration_hours": {
+      "type": "integer",
+      "description": "Recommended cache duration for resolved list. Consumers should re-fetch after this period.",
+      "minimum": 1,
+      "default": 24
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was created"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was last modified"
+    },
+    "property_count": {
+      "type": "integer",
+      "description": "Number of properties in the resolved list (at time of last resolution)"
+    }
+  },
+  "required": ["list_id", "name"],
+  "additionalProperties": false
+}

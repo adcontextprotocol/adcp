@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/media-buy/create-media-buy-request.json",
+  "title": "Create Media Buy Request",
+  "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this media buy"
+    },
+    "proposal_id": {
+      "type": "string",
+      "description": "ID of a proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array."
+    },
+    "total_budget": {
+      "type": "object",
+      "description": "Total budget for the media buy when executing a proposal. The publisher applies the proposal's allocation percentages to this amount to derive package budgets.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "Total budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of package configurations. Required when not using proposal_id. When executing a proposal, this can be omitted and packages will be derived from the proposal's allocations.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/media-buy/package-request.json"
+      }
+    },
+    "brand_manifest": {
+      "$ref": "/schemas/3.0.0-beta.1/core/brand-manifest-ref.json",
+      "description": "Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest. Can be cached and reused across multiple requests."
+    },
+    "po_number": {
+      "type": "string",
+      "description": "Purchase order number for tracking"
+    },
+    "start_time": {
+      "$ref": "/schemas/3.0.0-beta.1/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Campaign end date/time in ISO 8601 format"
+    },
+    "reporting_webhook": {
+      "$ref": "/schemas/3.0.0-beta.1/core/reporting-webhook.json",
+      "description": "Optional webhook configuration for automated reporting delivery"
+    },
+    "artifact_webhook": {
+      "$comment": "Webhook configuration for content artifact delivery - enables governance validation. Same authentication structure as reporting_webhook.",
+      "type": "object",
+      "description": "Optional webhook configuration for content artifact delivery. Used by governance agents to validate content adjacency. Seller pushes artifacts to this endpoint; orchestrator forwards to governance agent for validation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook endpoint URL for artifact delivery"
+        },
+        "token": {
+          "type": "string",
+          "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+          "minLength": 16
+        },
+        "authentication": {
+          "type": "object",
+          "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+              "items": {
+                "$ref": "/schemas/3.0.0-beta.1/enums/auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "delivery_mode": {
+          "type": "string",
+          "enum": [
+            "realtime",
+            "batched"
+          ],
+          "description": "How artifacts are delivered. 'realtime' pushes artifacts as impressions occur. 'batched' aggregates artifacts and pushes periodically (see batch_frequency)."
+        },
+        "batch_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily"
+          ],
+          "description": "For batched delivery, how often to push artifacts. Required when delivery_mode is 'batched'."
+        },
+        "sampling_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "delivery_mode"
+      ],
+      "additionalProperties": true
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "brand_manifest",
+    "start_time",
+    "end_time"
+  ],
+  "dependencies": {
+    "proposal_id": ["total_budget"]
+  },
+  "additionalProperties": true
+}

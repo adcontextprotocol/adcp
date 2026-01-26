@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/property/property-list-filters.json",
+  "title": "Property List Filters",
+  "description": "Filters that dynamically modify a property list when resolved",
+  "type": "object",
+  "properties": {
+    "countries_all": {
+      "type": "array",
+      "description": "Property must have feature data for ALL listed countries (ISO codes). Required.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "channels_any": {
+      "type": "array",
+      "description": "Property must support ANY of the listed channels. Required.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/enums/channels.json"
+      }
+    },
+    "property_types": {
+      "type": "array",
+      "description": "Filter to these property types",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/enums/property-type.json"
+      }
+    },
+    "feature_requirements": {
+      "type": "array",
+      "description": "Feature-based requirements. Property must pass ALL requirements (AND logic).",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/property/feature-requirement.json"
+      }
+    },
+    "exclude_identifiers": {
+      "type": "array",
+      "description": "Identifiers to always exclude from results",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/core/identifier.json"
+      }
+    }
+  },
+  "required": ["countries_all", "channels_any"],
+  "additionalProperties": false
+}

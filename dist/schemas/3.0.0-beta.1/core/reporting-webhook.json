@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/core/reporting-webhook.json",
+  "title": "Reporting Webhook",
+  "description": "Webhook configuration for automated reporting delivery. Configures where and how campaign performance reports are sent.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL for reporting notifications"
+    },
+    "token": {
+      "type": "string",
+      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+      "minLength": 16
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.1/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "minLength": 32
+        }
+      },
+      "required": [
+        "schemes",
+        "credentials"
+      ],
+      "additionalProperties": false
+    },
+    "reporting_frequency": {
+      "type": "string",
+      "enum": [
+        "hourly",
+        "daily",
+        "monthly"
+      ],
+      "description": "Frequency for automated reporting delivery. Must be supported by all products in the media buy."
+    },
+    "requested_metrics": {
+      "type": "array",
+      "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's available_metrics.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/enums/available-metric.json"
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "url",
+    "authentication",
+    "reporting_frequency"
+  ],
+  "additionalProperties": true
+}
