@@ -255,6 +255,7 @@
                   "docs/building/understanding/ad-tech-primer"
                 ]
               },
+              "docs/building/schemas-and-sdks",
               {
                 "group": "Foundations",
                 "pages": [
@@ -264,9 +265,7 @@
                   "docs/building/integration/a2a-response-format",
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication",
-                  "docs/building/integration/data-models",
-                  "docs/building/integration/schema-versioning"
+                  "docs/building/integration/authentication"
                 ]
               },
               {
