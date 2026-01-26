@@ -55,7 +55,7 @@ Formats may produce multiple rendered pieces (e.g., video + companion banner). D
 
 | Field | Description |
 |-------|-------------|
-| `formats` | Array of full format definitions (format_id, name, type, requirements, assets, assets_required, renders) |
+| `formats` | Array of full format definitions (format_id, name, type, requirements, assets, assets, renders) |
 | `creative_agents` | Optional array of other creative agents providing additional formats |
 
 See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for complete format object structure.
@@ -107,7 +107,7 @@ if (!result.success) {
 // Validate response against schema
 const validated = ListCreativeFormatsResponseSchema.parse(result.data);
 validated.formats.forEach(format => {
-  console.log(`${format.name}: ${format.assets_required.length} assets required`);
+  console.log(`${format.name}: ${format.assets.length} assets required`);
 });
 ```
 
@@ -131,7 +131,7 @@ async def main():
         raise Exception(f"Failed: {result.errors}")
 
     for fmt in result.formats:
-        print(f"{fmt.name}: {len(fmt.assets_required)} assets required")
+        print(f"{fmt.name}: {len(fmt.assets)} assets required")
 
 asyncio.run(main())
 ```
@@ -161,7 +161,7 @@ console.log(`Found ${validated.formats.length} formats`);
 // Examine asset requirements
 validated.formats.forEach(format => {
   console.log(`\n${format.name}:`);
-  format.assets_required.forEach(asset => {
+  format.assets.forEach(asset => {
     console.log(`  - ${asset.asset_role}: ${asset.asset_type}`);
   });
 });
@@ -184,7 +184,7 @@ async def main():
     print(f"Found {len(result.formats)} formats")
     for fmt in result.formats:
         print(f"\n{fmt.name}:")
-        for asset in fmt.assets_required:
+        for asset in fmt.assets:
             print(f"  - {asset.asset_role}: {asset.asset_type}")
 
 asyncio.run(main())
@@ -421,7 +421,6 @@ Each format includes:
 | `type` | Format type (audio, video, display, dooh) |
 | `requirements` | Technical requirements (duration, file types, bitrate, etc.) |
 | `assets` | Array of all assets with `required` boolean indicating mandatory vs optional |
-| `assets_required` | *(Deprecated)* Array of required assets - use `assets` instead |
 | `renders` | Array of rendered output pieces (dimensions, role) |
 
 ### Asset Roles
@@ -449,7 +448,7 @@ The `asset_types` parameter uses **OR logic** - formats matching ANY specified a
 // Find formats requiring BOTH image AND text
 const result = await agent.listCreativeFormats();
 const imageAndText = result.formats.filter(format => {
-  const assetTypes = format.assets_required.map(a => a.asset_type);
+  const assetTypes = format.assets.map(a => a.asset_type);
   return assetTypes.includes('image') && assetTypes.includes('text');
 });
 ```

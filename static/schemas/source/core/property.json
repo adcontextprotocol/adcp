@@ -50,7 +50,7 @@
     },
     "publisher_domain": {
       "type": "string",
-      "description": "Domain where adagents.json should be checked for authorization validation. Required for list_authorized_properties response. Optional in adagents.json (file location implies domain)."
+      "description": "Domain where adagents.json should be checked for authorization validation. Optional in adagents.json (file location implies domain)."
     }
   },
   "required": [

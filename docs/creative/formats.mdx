@@ -110,13 +110,6 @@ Buyers and sales agents rely on the `agent_url` to retrieve definitive format in
 
 Formats may optionally include metadata to support visual browsing and selection in user interfaces.
 
-### Preview Image
-**Field**: `preview_image`
-**Purpose**: Lightweight thumbnail for format browsing
-**Specifications**:
-- 4:3 aspect ratio
-- PNG or JPG
-
 ### Example Showcase
 **Field**: `example_url`
 **Purpose**: Deep link to a publisher-controlled showcase
@@ -140,7 +133,6 @@ This approach allows publishers to present complex formats without constraining 
   "name": "Premium Homepage Takeover",
   "type": "rich_media",
   "description": "Full-screen immersive experience with video, carousel, and companion units",
-  "preview_image": "https://publisher.com/format-cards/homepage-takeover.png",
   "example_url": "https://publisher.com/formats/homepage-takeover-demo"
 }
 ```
@@ -281,7 +273,7 @@ Formats are JSON objects with the following key fields:
   ],
 
   // DEPRECATED: Use "assets" above instead. Kept for backward compatibility.
-  "assets_required": [
+  "assets": [
     {
       "item_type": "individual",
       "asset_id": "video_file",
@@ -302,7 +294,6 @@ Formats are JSON objects with the following key fields:
 - **agent_url**: The creative agent authoritative for this format
 - **type**: Category (video, display, audio, native, dooh, rich_media)
 - **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional
-- **assets_required**: *(Deprecated)* Array of required asset specifications - use `assets` instead
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
 
@@ -314,10 +305,6 @@ The `assets` array enables comprehensive asset discovery. Each asset has a `requ
 - **`required: false`** - Asset is optional, enhances the creative when provided (e.g., companion banners, third-party tracking pixels)
 
 This unified approach helps creative tools and AI agents understand the full capabilities of a format, enabling richer creative experiences when optional assets are available while clearly indicating minimum requirements.
-
-<Note>
-**Backward Compatibility**: The `assets_required` field is deprecated but still supported. Existing implementations can continue using `assets_required` for required assets only. New implementations should use `assets` with the `required` boolean on each asset for full asset discovery.
-</Note>
 
 ### Rendered Outputs and Dimensions
 
@@ -610,9 +597,8 @@ Use the detailed card variant when you want to provide comprehensive format docu
 When displaying formats in UIs, clients should follow this fallback order:
 
 1. **If `format_card` exists** → Render card via `preview_creative` or display pre-rendered image
-2. **If only `preview_image` exists** → Display static image (deprecated but supported)
-3. **If neither exists** → Render text-only representation (format name + description)
-4. **If card rendering fails** → Gracefully fall back to text-only representation
+2. **If no `format_card` exists** → Render text-only representation (format name + description)
+3. **If card rendering fails** → Gracefully fall back to text-only representation
 
 This ensures a consistent user experience regardless of what format metadata is available.
 

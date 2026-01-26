@@ -76,23 +76,25 @@ flowchart TB
 
 ### Feature Discovery
 
-All governance agents advertise their capabilities via discovery tasks:
+All governance agents advertise their capabilities via `get_adcp_capabilities`:
 
 ```json
 {
-  "tool": "list_property_features",
+  "tool": "get_adcp_capabilities",
   "arguments": {}
 }
 ```
 
-Response:
+Response (governance section):
 ```json
 {
-  "features": [
-    { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
-    { "feature_id": "coppa_certified", "type": "binary" },
-    { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } }
-  ]
+  "governance": {
+    "property_features": [
+      { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+      { "feature_id": "coppa_certified", "type": "binary" },
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } }
+    ]
+  }
 }
 ```
 
@@ -167,7 +169,7 @@ The Media Buy Protocol consumes governance data at multiple stages:
 4. Share references with sellers (with auth tokens)
 
 **Governance Agent Implementers:**
-1. Implement feature discovery tasks (`list_property_features`, etc.)
+1. Implement feature discovery tasks (`get_adcp_capabilities`, etc.)
 2. Implement stateful list management (CRUD operations)
 3. Support webhooks to notify when evaluations change
 4. See the [Property Protocol Specification](./property/specification) for detailed implementation guidance

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/property/property-feature-definition.json",
   "title": "Property Feature Definition",
-  "description": "Defines a feature that a governance agent can evaluate for properties. Used in list_property_features to advertise agent capabilities.",
+  "description": "Defines a feature that a governance agent can evaluate for properties. Used in get_adcp_capabilities to advertise agent capabilities.",
   "type": "object",
   "properties": {
     "feature_id": {

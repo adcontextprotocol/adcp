@@ -181,7 +181,7 @@ flowchart TB
 
 1. **Publisher declares** properties, sales agents, AND governance agents in `adagents.json`
 2. **Buyer discovers** governance agents by reading `property_features` from adagents.json
-3. **Buyer queries** each governance agent's `list_property_features` for detailed capabilities
+3. **Buyer queries** each governance agent's `get_adcp_capabilities` for detailed capabilities
 4. **Buyer creates** property lists on each governance agent with filters and brand manifests
 5. **Governance agents evaluate** properties and notify buyer via webhooks when lists change
 6. **Buyer aggregates** results into a final compliant list
@@ -249,7 +249,6 @@ Both protocols operate on properties but serve different purposes:
 ### Discovery
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**: Discover governance capabilities including property features (protocol-level task)
-- **[list_property_features](./tasks/list_property_features)**: Discover what data a governance agent can provide (deprecated - use `get_adcp_capabilities`)
 
 ### Property List Management
 
@@ -267,7 +266,7 @@ Both protocols operate on properties but serve different purposes:
 
 **Buyers:**
 1. Discover governance agents by reading `property_features` from publishers' adagents.json files
-2. Query each governance agent's `list_property_features` for capabilities
+2. Query each governance agent's `get_adcp_capabilities` for capabilities
 3. Create property lists on relevant governance agents with filters and brand manifests
 4. Aggregate results into a final compliant list
 5. Share property list references with sellers (with auth tokens)

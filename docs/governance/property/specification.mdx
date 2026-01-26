@@ -21,7 +21,7 @@ The Property Protocol addresses four distinct concerns:
 |---------|----------|-------|-----------|
 | **Property Identity** | What properties exist? | Publishers | `adagents.json` properties array |
 | **Sales Authorization** | Who can sell this property? | Publishers | `adagents.json` authorized_agents |
-| **Property Data** | What do we know about this property? | Data providers | Governance agents via `list_property_features` |
+| **Property Data** | What do we know about this property? | Data providers | Governance agents via `get_adcp_capabilities` |
 | **Property Selection** | Which properties meet my requirements? | Buyers | Property lists with filters |
 
 The first two are **publisher-side declarations** via adagents.json. The last two are **buyer-side operations** that consume property data from governance agents.
@@ -30,7 +30,7 @@ The first two are **publisher-side declarations** via adagents.json. The last tw
 
 Property data and selection use a **stateful** model:
 
-- **Feature discovery**: Agents advertise what they can evaluate via `list_property_features`
+- **Feature discovery**: Agents advertise what they can evaluate via `get_adcp_capabilities`
 - **Property list management**: CRUD operations for managed property lists with filters
 - **Brand manifests**: Let agents automatically apply rules based on brand characteristics
 - **Webhook notifications**: Real-time updates when resolved lists change
@@ -146,7 +146,7 @@ Properties that pass the threshold are included. Properties that fail are exclud
 
 #### Methodology Discovery
 
-The `list_property_features` task returns information about what features an agent evaluates and their methodology, but NOT the underlying scores:
+The `get_adcp_capabilities` task returns information about what features an agent evaluates and their methodology, but NOT the underlying scores:
 
 ```json
 {
@@ -175,7 +175,7 @@ But they cannot retrieve the actual scores for individual properties.
 
 ### Discovery
 
-#### list_property_features
+#### get_adcp_capabilities
 
 Discover what features a governance agent can evaluate.
 
@@ -451,7 +451,7 @@ Governance agents expose capabilities via `.well-known/agent-card.json`:
   "url": "https://compliance.example.com",
   "capabilities": {
     "tasks": [
-      "list_property_features",
+      "get_adcp_capabilities",
       "create_property_list",
       "get_property_list",
       "update_property_list",
@@ -475,11 +475,11 @@ Governance agents expose capabilities via `.well-known/agent-card.json`:
 
 ### Detailed Capability Discovery
 
-Use `list_property_features` for detailed capability discovery:
+Use `get_adcp_capabilities` for detailed capability discovery:
 
 ```json
 {
-  "tool": "list_property_features",
+  "tool": "get_adcp_capabilities",
   "arguments": {}
 }
 ```
@@ -499,7 +499,7 @@ The Property Protocol enables a marketplace of specialized data agents:
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    BUYER AGENT (implements Property Protocol)           │
-│  - Exposes: list_property_features, get_property_list, webhooks         │
+│  - Exposes: get_adcp_capabilities, get_property_list, webhooks         │
 │  - Source of truth for final compliant list                             │
 │  - Intersects results from specialized agents                           │
 └───────────────────────────┬─────────────────────────────────────────────┘
@@ -637,6 +637,6 @@ Media buys can reference governance policies via property list references:
 ## Next Steps
 
 - See the [adagents.json Tech Spec](/docs/governance/property/adagents) for property declaration and authorization
-- See the [list_property_features task reference](/docs/governance/property/tasks/list_property_features) for capability discovery
+- See the [get_adcp_capabilities task reference](/docs/protocol/get_adcp_capabilities) for capability discovery
 - See the [Property List Management](/docs/governance/property/tasks/property_lists) for CRUD operations and webhooks
 - See the [validate_property_delivery task reference](/docs/governance/property/tasks/validate_property_delivery) for post-campaign compliance validation

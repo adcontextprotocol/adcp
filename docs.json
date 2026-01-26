@@ -116,7 +116,6 @@
                     "group": "Tasks",
                     "pages": [
                       "dist/docs/3.0.0-beta.1/governance/property/tasks/index",
-                      "dist/docs/3.0.0-beta.1/governance/property/tasks/list_property_features",
                       "dist/docs/3.0.0-beta.1/governance/property/tasks/property_lists",
                       "dist/docs/3.0.0-beta.1/governance/property/tasks/validate_property_delivery"
                     ]
@@ -195,7 +194,6 @@
                   "dist/docs/3.0.0-beta.1/media-buy/task-reference/index",
                   "dist/docs/3.0.0-beta.1/media-buy/task-reference/get_products",
                   "dist/docs/3.0.0-beta.1/media-buy/task-reference/list_creative_formats",
-                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/list_authorized_properties",
                   "dist/docs/3.0.0-beta.1/media-buy/task-reference/create_media_buy",
                   "dist/docs/3.0.0-beta.1/media-buy/task-reference/list_creatives",
                   "dist/docs/3.0.0-beta.1/media-buy/task-reference/sync_creatives",
@@ -547,7 +545,6 @@
                     "group": "Tasks",
                     "pages": [
                       "docs/governance/property/tasks/index",
-                      "docs/governance/property/tasks/list_property_features",
                       "docs/governance/property/tasks/property_lists",
                       "docs/governance/property/tasks/validate_property_delivery"
                     ]
@@ -626,7 +623,6 @@
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
-                  "docs/media-buy/task-reference/list_authorized_properties",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/list_creatives",
                   "docs/media-buy/task-reference/sync_creatives",

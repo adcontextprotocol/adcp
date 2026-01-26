@@ -73,15 +73,18 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 - **Unified asset discovery** - `assets` array with `required` boolean for full asset visibility
 - **Property list filtering** - Pass governance lists to `get_products` for brand-safe inventory
 
-### Deprecations
+### Removed in v3
 
-| Deprecated | Replacement | Support Until |
-|------------|-------------|---------------|
-| `adcp-extension.json` agent card | `get_adcp_capabilities` task | 4.0.0 |
-| `list_property_features` task | `get_adcp_capabilities` governance section | 4.0.0 |
-| `assets_required` in formats | `assets` array with `required` boolean | 4.0.0 |
-| `creative_ids` in packages | `creative_assignments` array | 4.0.0 |
-| `geo_postal_codes` | `geo_postal_areas` | 4.0.0 |
+| Removed | Replacement |
+|---------|-------------|
+| `adcp-extension.json` agent card | `get_adcp_capabilities` task |
+| `list_authorized_properties` task | `get_adcp_capabilities` portfolio section |
+| `assets_required` in formats | `assets` array with `required` boolean |
+| `preview_image` in formats | `format_card` object |
+| `creative_ids` in packages | `creative_assignments` array |
+| `geo_postal_codes` | `geo_postal_areas` |
+| `fixed_rate` in pricing | `fixed_price` |
+| `price_guidance.floor` | `floor_price` (top-level) |
 
 ### Quick Migration Checklist
 

@@ -327,7 +327,7 @@ Formats now use an `assets` array with `required` boolean instead of `assets_req
 - **Optional asset usage** - Use optional assets like trackers when available
 - **Better AI integration** - Agents can see the complete asset interface
 
-The `assets_required` field is deprecated but still supported through v3.x. It will be removed in v4.0.
+The `assets_required` field has been removed in v3. Use `assets` with the `required` boolean instead.
 
 ---
 
@@ -517,15 +517,20 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 
 ---
 
-## Deprecations
+## Removed in v3
 
-| Deprecated | Replacement | Support Until |
-|------------|-------------|---------------|
-| `adcp-extension.json` agent card | `get_adcp_capabilities` task | 4.0.0 |
-| `list_property_features` task | `get_adcp_capabilities` governance section | 4.0.0 |
-| `assets_required` in formats | `assets` array with `required` boolean | 4.0.0 |
-| `creative_ids` in packages | `creative_assignments` array | 4.0.0 |
-| `geo_postal_codes` | `geo_postal_areas` | 4.0.0 |
+These items from v2.x have been removed in v3:
+
+| Removed | Replacement |
+|---------|-------------|
+| `adcp-extension.json` agent card | `get_adcp_capabilities` task |
+| `list_authorized_properties` task | `get_adcp_capabilities` portfolio section |
+| `assets_required` in formats | `assets` array with `required` boolean |
+| `preview_image` in formats | `format_card` object |
+| `creative_ids` in packages | `creative_assignments` array |
+| `geo_postal_codes` | `geo_postal_areas` |
+| `fixed_rate` in pricing | `fixed_price` |
+| `price_guidance.floor` | `floor_price` (top-level) |
 
 ---
 

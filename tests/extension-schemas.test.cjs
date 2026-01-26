@@ -177,63 +177,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 5: Agent card extension schema supports extensions_supported field
-  await test('Agent card extension schema supports extensions_supported', async () => {
-    const validate = await loadAndCompileSchema(
-      path.join(SCHEMA_BASE_DIR, 'protocols/adcp-extension.json')
-    );
-
-    const validData = {
-      adcp_version: '2.5.0',
-      protocols_supported: ['media_buy'],
-      extensions_supported: ['sustainability', 'custom_vendor']
-    };
-
-    const valid = validate(validData);
-    if (!valid) {
-      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
-    }
-    return true;
-  });
-
-  // Test 6: Agent card validates without extensions_supported (optional field)
-  await test('Agent card validates without extensions_supported', async () => {
-    const validate = await loadAndCompileSchema(
-      path.join(SCHEMA_BASE_DIR, 'protocols/adcp-extension.json')
-    );
-
-    const validData = {
-      adcp_version: '2.5.0',
-      protocols_supported: ['media_buy', 'creative']
-    };
-
-    const valid = validate(validData);
-    if (!valid) {
-      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
-    }
-    return true;
-  });
-
-  // Test 7: Agent card rejects invalid extension namespace format
-  await test('Agent card rejects invalid extension namespace format', async () => {
-    const validate = await loadAndCompileSchema(
-      path.join(SCHEMA_BASE_DIR, 'protocols/adcp-extension.json')
-    );
-
-    const invalidData = {
-      adcp_version: '2.5.0',
-      protocols_supported: ['media_buy'],
-      extensions_supported: ['Invalid-Namespace'] // Must be lowercase
-    };
-
-    const valid = validate(invalidData);
-    if (valid) {
-      throw new Error('Should have rejected invalid namespace format');
-    }
-    return true;
-  });
-
-  // Test 8: Product can include arbitrary extension data (untyped)
+  // Test 5: Product can include arbitrary extension data (untyped)
   await test('Product validates with arbitrary extension data', async () => {
     const validate = await loadAndCompileSchema(
       path.join(SCHEMA_BASE_DIR, 'core/product.json')
@@ -280,7 +224,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 9: Extension meta schema validates a sample extension
+  // Test 6: Extension meta schema validates a sample extension
   await test('Extension meta schema validates sample extension structure', async () => {
     const validate = await loadAndCompileSchema(
       path.join(EXTENSIONS_DIR, 'extension-meta.json')
@@ -307,7 +251,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 10: Extension meta schema validates extension with valid_until
+  // Test 7: Extension meta schema validates extension with valid_until
   await test('Extension meta schema validates extension with valid_until', async () => {
     const validate = await loadAndCompileSchema(
       path.join(EXTENSIONS_DIR, 'extension-meta.json')
@@ -333,7 +277,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 11: Extension meta schema rejects invalid valid_from format
+  // Test 8: Extension meta schema rejects invalid valid_from format
   await test('Extension meta schema rejects invalid valid_from format', async () => {
     const validate = await loadAndCompileSchema(
       path.join(EXTENSIONS_DIR, 'extension-meta.json')
@@ -356,7 +300,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 12: Extension meta schema rejects invalid $id pattern
+  // Test 9: Extension meta schema rejects invalid $id pattern
   await test('Extension meta schema rejects invalid $id pattern', async () => {
     const validate = await loadAndCompileSchema(
       path.join(EXTENSIONS_DIR, 'extension-meta.json')
@@ -379,7 +323,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 13: Reserved namespaces should be rejected by build script validation
+  // Test 10: Reserved namespaces should be rejected by build script validation
   await test('Reserved namespaces are documented', async () => {
     // These namespaces are reserved in scripts/build-schemas.cjs
     const RESERVED_NAMESPACES = ['adcp', 'core', 'protocol', 'schema', 'meta', 'ext', 'context'];
@@ -394,7 +338,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 14: Discovered extensions validate against meta schema
+  // Test 11: Discovered extensions validate against meta schema
   const extensionFiles = discoverExtensionFiles();
   if (extensionFiles.length > 0) {
     for (const extensionPath of extensionFiles) {
