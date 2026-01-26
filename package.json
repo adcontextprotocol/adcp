@@ -27,7 +27,6 @@
     "test:unit": "jest --coverage",
     "test:registry": "vitest run server/tests",
     "test:docker": "docker compose -f docker-compose.test.yml up --build --abort-on-container-exit",
-    "generate-openapi": "node scripts/generate-openapi.cjs",
     "test": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:migrations && npm run test:unit && npm run typecheck",
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
     "precommit": "npm test",
