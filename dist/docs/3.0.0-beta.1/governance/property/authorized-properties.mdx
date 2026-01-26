@@ -98,9 +98,6 @@ Sales agents use the [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilit
 2. **Validation enablement**: Provides publisher domains for buyers to verify authorization via `adagents.json`
 3. **Portfolio overview**: Includes primary channels, countries, and portfolio description
 
-<Note>
-The [`list_authorized_properties`](../../media-buy/task-reference/list_authorized_properties) task is deprecated. Use `get_adcp_capabilities` for portfolio information and fetch detailed property definitions from publisher `adagents.json` files.
-</Note>
 
 ### Property Declaration Example
 
@@ -269,7 +266,6 @@ See the **[adagents.json Tech Spec](./adagents)** for complete implementation gu
 ## Related Documentation
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities and portfolio information
-- **[`list_authorized_properties`](../../media-buy/task-reference/list_authorized_properties)** - Property discovery (deprecated - use `get_adcp_capabilities`)
 - **[Product Discovery](../../media-buy/product-discovery/)** - How authorization integrates with product discovery
 - **[Properties Schema](https://adcontextprotocol.org/schemas/v2/core/property.json)** - Technical property data model
 - **[adagents.json Tech Spec](./adagents)** - Complete `adagents.json` implementation guide
