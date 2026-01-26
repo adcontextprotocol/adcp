@@ -201,7 +201,7 @@ You're a creative agency building custom formats for brands:
   "name": "Hero Video Package",
   "type": "video",
   "description": "Premium video creative with multiple aspect ratios",
-  "assets_required": [
+  "assets": [
     {"asset_role": "hero_video_16x9", ...},
     {"asset_role": "hero_video_9x16", ...},
     {"asset_role": "hero_video_1x1", ...}
@@ -222,7 +222,7 @@ You're a platform defining specialized formats:
   "name": "Interactive Quiz Ad",
   "type": "rich_media",
   "description": "Engagement-driven quiz format",
-  "assets_required": [
+  "assets": [
     {"asset_role": "question_1", "asset_type": "text", ...},
     {"asset_role": "answer_1a", "asset_type": "text", ...},
     // ... quiz structure
@@ -244,7 +244,7 @@ You provide enhanced versions of standard formats:
   "type": "video",
   "extends": "creative.adcontextprotocol.org:video_30s",
   "description": "Standard 30s video with automatic optimization",
-  "assets_required": [
+  "assets": [
     // Same requirements as standard format
   ],
   "enhancements": {

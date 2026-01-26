@@ -221,7 +221,7 @@
         },
         "task-type": {
           "$ref": "/schemas/enums/task-type.json",
-          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals, list_property_features, create_property_list, get_property_list, update_property_list, delete_property_list)"
+          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals, create_property_list, get_property_list, update_property_list, list_property_lists, delete_property_list)"
         },
         "asset-content-type": {
           "$ref": "/schemas/enums/asset-content-type.json",
@@ -483,18 +483,6 @@
           "response": {
             "$ref": "/schemas/media-buy/get-media-buy-delivery-response.json",
             "description": "Response payload for get_media_buy_delivery task"
-          }
-        },
-        "list-authorized-properties": {
-          "deprecated": true,
-          "deprecation_note": "Replaced by get_capabilities which provides expanded capability declaration",
-          "request": {
-            "$ref": "/schemas/media-buy/list-authorized-properties-request.json",
-            "description": "Request parameters for discovering all properties this agent is authorized to represent"
-          },
-          "response": {
-            "$ref": "/schemas/media-buy/list-authorized-properties-response.json",
-            "description": "Response payload for list_authorized_properties task"
           }
         },
         "provide-performance-feedback": {
@@ -823,17 +811,6 @@
       "$ref": "/schemas/adagents.json",
       "file_location": "/.well-known/adagents.json",
       "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
-    },
-    "protocols": {
-      "description": "Protocol-level schemas for agent card extensions",
-      "schemas": {
-        "adcp-extension": {
-          "$ref": "/schemas/protocols/adcp-extension.json",
-          "deprecated": true,
-          "deprecation_note": "Use tool-based discovery instead. Check for 'get_adcp_capabilities' tool, then call it for full capability details.",
-          "description": "DEPRECATED: AdCP extension for agent cards. Use get_adcp_capabilities tool for discovery instead."
-        }
-      }
     },
     "extensions": {
       "description": "Typed extension schemas for vendor-specific or domain-specific data. Extensions define the structure of data within the ext.{namespace} field. Agents declare which extensions they support in their agent card.",

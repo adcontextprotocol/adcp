@@ -279,7 +279,7 @@
               "url": {
                 "type": "string",
                 "format": "uri",
-                "description": "The agent's API endpoint URL (must implement get_property_features)"
+                "description": "The agent's API endpoint URL"
               },
               "name": {
                 "type": "string",
@@ -287,7 +287,7 @@
               },
               "features": {
                 "type": "array",
-                "description": "Feature IDs this agent provides (e.g., 'carbon_score', 'tag_certified_against_fraud'). Use list_property_features on the agent for full definitions.",
+                "description": "Feature IDs this agent provides (e.g., 'carbon_score', 'tag_certified_against_fraud'). Use get_adcp_capabilities on the agent for full definitions.",
                 "items": {
                   "type": "string"
                 },

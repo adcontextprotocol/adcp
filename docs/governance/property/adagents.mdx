@@ -555,10 +555,10 @@ sequenceDiagram
     Note over Buyer: Extract governance agents from property_features
 
     par Query governance agents
-        Buyer->>Scope3: list_property_features
+        Buyer->>Scope3: get_adcp_capabilities
         Scope3-->>Buyer: Available features (carbon_score, etc.)
     and
-        Buyer->>OneTrust: list_property_features
+        Buyer->>OneTrust: get_adcp_capabilities
         OneTrust-->>Buyer: Available features (gdpr_compliant, etc.)
     end
 
@@ -580,7 +580,7 @@ sequenceDiagram
 
 ### Vendor Extensions
 
-Governance agents can include vendor-specific data in feature definitions via an `ext` block. See [list_property_features](/docs/governance/property/tasks/list_property_features#vendor-extensions) for details.
+Governance agents can include vendor-specific data in feature definitions via an `ext` block. See [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) for details.
 
 ## Fetching and Validating
 

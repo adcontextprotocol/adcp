@@ -72,7 +72,7 @@ Format definition that accepts parameters:
       "parameters_from_format_id": true
     }
   ]
-  "assets_required": [
+  "assets": [
     {
       "item_type": "individual"
       "asset_id": "banner_image"
@@ -234,7 +234,7 @@ Publishers specify supported dimensions by listing all supported variants:
   "type": "display"
   "accepts_parameters": ["dimensions"]
   "renders": null
-  "assets_required": [...]
+  "assets": [...]
 }
 ```
 
@@ -250,7 +250,7 @@ Publishers specify supported dimensions by listing all supported variants:
   "type": "video"
   "accepts_parameters": ["duration"]
   "renders": null
-  "assets_required": [...]
+  "assets": [...]
 }
 ```
 
@@ -266,7 +266,7 @@ Publishers specify supported dimensions by listing all supported variants:
   "type": "dooh"
   "accepts_parameters": ["dimensions"]
   "renders": null
-  "assets_required": [...]
+  "assets": [...]
 }
 ```
 
@@ -324,7 +324,7 @@ Both creative and sales agents can return template format definitions via `list_
     {
       "format_id": {"agent_url": "...", "id": "display_static"}
       "accepts_parameters": ["dimensions"]
-      "assets_required": [...]
+      "assets": [...]
     }
   ]
 }
@@ -502,7 +502,7 @@ When comparing format_ids for equality or caching:
 {
   "format_id": {"agent_url": "...", "id": "display_static"}
   "accepts_parameters": ["dimensions"]
-  "assets_required": [...]
+  "assets": [...]
 }
 ```
 

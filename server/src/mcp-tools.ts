@@ -28,7 +28,7 @@ export const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["buyer_agent", "sales_agent", "creative_agent", "signals_agent", "publisher", "consulting", "other"],
+            enum: ["buyer_agent", "sales_agent", "creative_agent", "signals_agent", "si_agent", "governance_agent", "publisher", "consulting", "other"],
           },
           description: "Filter by member offerings (what services they provide)",
         },

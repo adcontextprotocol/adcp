@@ -141,25 +141,22 @@ Return ONLY valid JSON, no markdown formatting or explanation.`;
 /**
  * Check if a message is worth analyzing for insights
  * Skip very short messages, commands, etc.
+ * Note: Keep threshold low to capture short responses like "Just exploring" (14 chars)
  */
 function shouldAnalyzeMessage(message: string): { should: boolean; reason?: string } {
-  // Skip very short messages
-  if (message.length < 20) {
+  // Skip very short messages (lowered from 20 to capture short responses to "what brings you here?")
+  if (message.length < 10) {
     return { should: false, reason: 'Message too short' };
   }
 
-  // Skip messages that are just commands or questions to Addie
-  const commandPatterns = [
+  // Skip messages that are just simple greetings or acknowledgments (exact match only)
+  const simplePatterns = [
     /^(help|hi|hello|hey|thanks|thank you|ok|okay|sure|yes|no|bye)[\s!?.]*$/i,
-    /^what (is|are|can|does)/i,
-    /^how (do|can|to)/i,
-    /^can you/i,
-    /^please/i,
   ];
 
-  for (const pattern of commandPatterns) {
+  for (const pattern of simplePatterns) {
     if (pattern.test(message.trim())) {
-      return { should: false, reason: 'Message appears to be a question/command to Addie' };
+      return { should: false, reason: 'Message is just a greeting/acknowledgment' };
     }
   }
 

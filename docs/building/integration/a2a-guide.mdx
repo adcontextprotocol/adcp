@@ -759,7 +759,7 @@ if (adcpExt) {
 }
 ```
 
-**Extension Params Schema**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for the complete `params` specification.
+**Extension Params**: The `adcp-extension.json` schema was used in v2 to describe these params, but was removed in v3. For v3+ agents, use the `get_adcp_capabilities` task for runtime capability discovery instead. The extension `params` object above shows the typical structure.
 
 **Benefits**:
 - Clients can discover AdCP capabilities without making test calls

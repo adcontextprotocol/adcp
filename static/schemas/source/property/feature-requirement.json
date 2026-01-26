@@ -7,7 +7,7 @@
   "properties": {
     "feature_id": {
       "type": "string",
-      "description": "Feature to evaluate (discovered via list_property_features)"
+      "description": "Feature to evaluate (discovered via get_adcp_capabilities)"
     },
     "min_value": {
       "type": "number",
