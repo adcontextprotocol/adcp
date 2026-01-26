@@ -50,8 +50,261 @@
     }
   ],
   "navigation": {
-    "default": "2.5",
+    "default": "3.0-beta",
     "versions": [
+      {
+        "version": "3.0-beta",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/intro",
+              "dist/docs/3.0.0-beta.1/quickstart",
+              "dist/docs/3.0.0-beta.1/reference/migrating-to-v3"
+            ]
+          },
+          {
+            "group": "Building with AdCP",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/building/index",
+              {
+                "group": "Understanding AdCP",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/building/understanding/index",
+                  "dist/docs/3.0.0-beta.1/building/understanding/protocol-comparison"
+                ]
+              },
+              "dist/docs/3.0.0-beta.1/building/schemas-and-sdks",
+              {
+                "group": "Foundations",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/building/integration/index",
+                  "dist/docs/3.0.0-beta.1/building/integration/mcp-guide",
+                  "dist/docs/3.0.0-beta.1/building/integration/a2a-guide",
+                  "dist/docs/3.0.0-beta.1/building/integration/a2a-response-format",
+                  "dist/docs/3.0.0-beta.1/protocol/get_adcp_capabilities",
+                  "dist/docs/3.0.0-beta.1/building/integration/context-sessions",
+                  "dist/docs/3.0.0-beta.1/building/integration/authentication"
+                ]
+              },
+              {
+                "group": "Implementation Patterns",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/building/implementation/index",
+                  "dist/docs/3.0.0-beta.1/building/implementation/task-lifecycle",
+                  "dist/docs/3.0.0-beta.1/building/implementation/async-operations",
+                  "dist/docs/3.0.0-beta.1/building/implementation/webhooks",
+                  "dist/docs/3.0.0-beta.1/building/implementation/orchestrator-design",
+                  "dist/docs/3.0.0-beta.1/building/implementation/error-handling",
+                  "dist/docs/3.0.0-beta.1/building/implementation/security"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Governance Protocol",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/governance/overview",
+              {
+                "group": "Property Governance",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/governance/property/index",
+                  "dist/docs/3.0.0-beta.1/governance/property/adagents",
+                  "dist/docs/3.0.0-beta.1/governance/property/authorized-properties",
+                  "dist/docs/3.0.0-beta.1/governance/property/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "dist/docs/3.0.0-beta.1/governance/property/tasks/index",
+                      "dist/docs/3.0.0-beta.1/governance/property/tasks/list_property_features",
+                      "dist/docs/3.0.0-beta.1/governance/property/tasks/property_lists",
+                      "dist/docs/3.0.0-beta.1/governance/property/tasks/validate_property_delivery"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Content Standards",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/governance/content-standards/index",
+                  "dist/docs/3.0.0-beta.1/governance/content-standards/artifacts",
+                  "dist/docs/3.0.0-beta.1/governance/content-standards/implementation-guide",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/list_content_standards",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/get_content_standards",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/create_content_standards",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/update_content_standards",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/delete_content_standards",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/calibrate_content",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/get_media_buy_artifacts",
+                      "dist/docs/3.0.0-beta.1/governance/content-standards/tasks/validate_content_delivery"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Signals Protocol",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/signals/overview",
+              "dist/docs/3.0.0-beta.1/signals/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/signals/tasks/get_signals",
+                  "dist/docs/3.0.0-beta.1/signals/tasks/activate_signal"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Curation Protocol",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/curation/coming-soon"
+            ]
+          },
+          {
+            "group": "Sponsored Intelligence Protocol",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/sponsored-intelligence/overview",
+              "dist/docs/3.0.0-beta.1/sponsored-intelligence/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/sponsored-intelligence/tasks/index",
+                  "dist/docs/3.0.0-beta.1/sponsored-intelligence/tasks/si_get_offering",
+                  "dist/docs/3.0.0-beta.1/sponsored-intelligence/tasks/si_initiate_session",
+                  "dist/docs/3.0.0-beta.1/sponsored-intelligence/tasks/si_send_message",
+                  "dist/docs/3.0.0-beta.1/sponsored-intelligence/tasks/si_terminate_session"
+                ]
+              },
+              "dist/docs/3.0.0-beta.1/sponsored-intelligence/implementing-si-agents",
+              "dist/docs/3.0.0-beta.1/sponsored-intelligence/implementing-si-hosts"
+            ]
+          },
+          {
+            "group": "Media Buy Protocol",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/media-buy/index",
+              {
+                "group": "Task Reference",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/index",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/get_products",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/list_creative_formats",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/list_authorized_properties",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/create_media_buy",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/list_creatives",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/sync_creatives",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/get_media_buy_delivery",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/update_media_buy",
+                  "dist/docs/3.0.0-beta.1/media-buy/task-reference/provide_performance_feedback"
+                ]
+              },
+              {
+                "group": "Capability Discovery",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/media-buy/capability-discovery/index",
+                  "dist/docs/3.0.0-beta.1/media-buy/capability-discovery/implementing-standard-formats"
+                ]
+              },
+              {
+                "group": "Product Discovery",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/media-buy/product-discovery/index",
+                  "dist/docs/3.0.0-beta.1/media-buy/product-discovery/brief-expectations",
+                  "dist/docs/3.0.0-beta.1/media-buy/product-discovery/example-briefs",
+                  "dist/docs/3.0.0-beta.1/media-buy/product-discovery/media-products"
+                ]
+              },
+              {
+                "group": "Media Buys",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/media-buy/media-buys/index",
+                  "dist/docs/3.0.0-beta.1/media-buy/media-buys/optimization-reporting",
+                  "dist/docs/3.0.0-beta.1/media-buy/media-buys/policy-compliance"
+                ]
+              },
+              {
+                "group": "Creatives",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/media-buy/creatives/index"
+                ]
+              },
+              {
+                "group": "Advanced Topics",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/index",
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/pricing-models",
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/targeting",
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/agentic-execution-engine",
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/principals-and-security",
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/testing",
+                  "dist/docs/3.0.0-beta.1/media-buy/advanced-topics/orchestrator-design"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Creative",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/creative/index",
+              "dist/docs/3.0.0-beta.1/creative/formats",
+              "dist/docs/3.0.0-beta.1/creative/asset-types",
+              "dist/docs/3.0.0-beta.1/creative/creative-manifests",
+              "dist/docs/3.0.0-beta.1/creative/brand-manifest",
+              "dist/docs/3.0.0-beta.1/creative/universal-macros",
+              "dist/docs/3.0.0-beta.1/creative/implementing-creative-agents",
+              "dist/docs/3.0.0-beta.1/creative/generative-creative",
+              "dist/docs/3.0.0-beta.1/creative/template-format-ids",
+              "dist/docs/3.0.0-beta.1/creative/promoted-offerings",
+              {
+                "group": "Channel Guides",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/creative/channels/video",
+                  "dist/docs/3.0.0-beta.1/creative/channels/display",
+                  "dist/docs/3.0.0-beta.1/creative/channels/audio",
+                  "dist/docs/3.0.0-beta.1/creative/channels/dooh",
+                  "dist/docs/3.0.0-beta.1/creative/channels/carousels"
+                ]
+              },
+              {
+                "group": "Task Reference",
+                "pages": [
+                  "dist/docs/3.0.0-beta.1/creative/task-reference/build_creative",
+                  "dist/docs/3.0.0-beta.1/creative/task-reference/preview_creative",
+                  "dist/docs/3.0.0-beta.1/creative/task-reference/preview_creative-advanced",
+                  "dist/docs/3.0.0-beta.1/creative/task-reference/list_creative_formats"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/media-buy/quick-reference",
+              "dist/docs/3.0.0-beta.1/creative/quick-reference",
+              "dist/docs/3.0.0-beta.1/signals/quick-reference",
+              "dist/docs/3.0.0-beta.1/reference/gmsf-reference",
+              "dist/docs/3.0.0-beta.1/reference/media-channel-taxonomy",
+              "dist/docs/3.0.0-beta.1/reference/roadmap",
+              "dist/docs/3.0.0-beta.1/reference/release-notes",
+              "dist/docs/3.0.0-beta.1/reference/changelog",
+              "dist/docs/3.0.0-beta.1/reference/implementor-faq",
+              "dist/docs/3.0.0-beta.1/reference/glossary"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "dist/docs/3.0.0-beta.1/community/working-group"
+            ]
+          }
+        ]
+      },
       {
         "version": "2.5",
         "groups": [
