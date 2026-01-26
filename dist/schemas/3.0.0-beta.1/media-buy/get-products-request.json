@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/media-buy/get-products-request.json",
+  "title": "Get Products Request",
+  "description": "Request parameters for discovering available advertising products",
+  "type": "object",
+  "properties": {
+    "brief": {
+      "type": "string",
+      "description": "Natural language description of campaign requirements. When refining a proposal, can include instructions like 'focus more on German speakers' or 'increase mobile allocation'."
+    },
+    "proposal_id": {
+      "type": "string",
+      "description": "Optional proposal ID to refine. When provided with a brief, the publisher will use the brief as refinement instructions for the specified proposal and return an updated version."
+    },
+    "brand_manifest": {
+      "$ref": "/schemas/3.0.0-beta.1/core/brand-manifest-ref.json",
+      "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.0-beta.1/core/product-filters.json"
+    },
+    "property_list": {
+      "$ref": "/schemas/3.0.0-beta.1/core/property-list-ref.json",
+      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [],
+  "additionalProperties": true
+}

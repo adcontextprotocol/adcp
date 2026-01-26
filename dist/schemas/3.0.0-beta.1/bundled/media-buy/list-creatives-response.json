@@ -1,0 +1,1918 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/bundled/media-buy/list-creatives-response.json",
+  "title": "List Creatives Response",
+  "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
+  "type": "object",
+  "properties": {
+    "query_summary": {
+      "type": "object",
+      "description": "Summary of the query that was executed",
+      "properties": {
+        "total_matching": {
+          "type": "integer",
+          "description": "Total number of creatives matching filters (across all pages)",
+          "minimum": 0
+        },
+        "returned": {
+          "type": "integer",
+          "description": "Number of creatives returned in this response",
+          "minimum": 0
+        },
+        "filters_applied": {
+          "type": "array",
+          "description": "List of filters that were applied to the query",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sort_applied": {
+          "type": "object",
+          "description": "Sort order that was applied",
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "direction": {
+              "title": "Sort Direction",
+              "description": "Sort direction for list queries",
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "total_matching",
+        "returned"
+      ],
+      "additionalProperties": true
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information for navigating results",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results requested",
+          "minimum": 1
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Number of results skipped",
+          "minimum": 0
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more results are available"
+        },
+        "total_pages": {
+          "type": "integer",
+          "description": "Total number of pages available",
+          "minimum": 0
+        },
+        "current_page": {
+          "type": "integer",
+          "description": "Current page number (1-based)",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
+      "additionalProperties": true
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Array of creative assets matching the query",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for the creative"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable creative name"
+          },
+          "format_id": {
+            "title": "Format ID",
+            "description": "Format identifier specifying which format this creative conforms to",
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "duration_ms": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+              }
+            },
+            "required": [
+              "agent_url",
+              "id"
+            ],
+            "additionalProperties": true,
+            "dependencies": {
+              "width": [
+                "height"
+              ],
+              "height": [
+                "width"
+              ]
+            }
+          },
+          "status": {
+            "title": "Creative Status",
+            "description": "Current approval status of the creative",
+            "type": "string",
+            "enum": [
+              "processing",
+              "approved",
+              "rejected",
+              "pending_review",
+              "archived"
+            ],
+            "enumDescriptions": {
+              "processing": "Creative is being processed or transcoded",
+              "approved": "Creative has been approved and is ready for delivery",
+              "rejected": "Creative has been rejected due to policy or technical issues",
+              "pending_review": "Creative is under review",
+              "archived": "Creative has been archived and is excluded from default queries"
+            }
+          },
+          "created_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was uploaded to the library"
+          },
+          "updated_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was last modified"
+          },
+          "assets": {
+            "type": "object",
+            "description": "Assets for this creative, keyed by asset_role",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "oneOf": [
+                  {
+                    "title": "Image Asset",
+                    "description": "Image asset with URL and dimensions",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to the image asset"
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels"
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels"
+                      },
+                      "format": {
+                        "type": "string",
+                        "description": "Image file format (jpg, png, gif, webp, etc.)"
+                      },
+                      "alt_text": {
+                        "type": "string",
+                        "description": "Alternative text for accessibility"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "Video Asset",
+                    "description": "Video asset with URL and specifications",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to the video asset"
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels"
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels"
+                      },
+                      "duration_ms": {
+                        "type": "integer",
+                        "description": "Video duration in milliseconds",
+                        "minimum": 1
+                      },
+                      "format": {
+                        "type": "string",
+                        "description": "Video file format (mp4, webm, mov, etc.)"
+                      },
+                      "bitrate_kbps": {
+                        "type": "integer",
+                        "description": "Video bitrate in kilobits per second",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "Audio Asset",
+                    "description": "Audio asset with URL and specifications",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to the audio asset"
+                      },
+                      "duration_ms": {
+                        "type": "integer",
+                        "description": "Audio duration in milliseconds",
+                        "minimum": 0
+                      },
+                      "format": {
+                        "type": "string",
+                        "description": "Audio file format (mp3, wav, aac, etc.)"
+                      },
+                      "bitrate_kbps": {
+                        "type": "integer",
+                        "description": "Audio bitrate in kilobits per second",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "Text Asset",
+                    "description": "Text content asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "Text content"
+                      },
+                      "language": {
+                        "type": "string",
+                        "description": "Language code (e.g., 'en', 'es', 'fr')"
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "HTML Asset",
+                    "description": "HTML content asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "HTML content"
+                      },
+                      "version": {
+                        "type": "string",
+                        "description": "HTML version (e.g., 'HTML5')"
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "CSS Asset",
+                    "description": "CSS stylesheet asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "CSS content"
+                      },
+                      "media": {
+                        "type": "string",
+                        "description": "CSS media query context (e.g., 'screen', 'print')"
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "JavaScript Asset",
+                    "description": "JavaScript code asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "JavaScript content"
+                      },
+                      "module_type": {
+                        "title": "JavaScript Module Type",
+                        "description": "JavaScript module type",
+                        "type": "string",
+                        "enum": [
+                          "esm",
+                          "commonjs",
+                          "script"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "VAST Asset",
+                    "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "url",
+                            "description": "Discriminator indicating VAST is delivered via URL endpoint"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL endpoint that returns VAST XML"
+                          },
+                          "vast_version": {
+                            "title": "VAST Version",
+                            "description": "VAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "2.0",
+                              "3.0",
+                              "4.0",
+                              "4.1",
+                              "4.2"
+                            ]
+                          },
+                          "vpaid_enabled": {
+                            "type": "boolean",
+                            "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected video duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "VAST Tracking Event",
+                              "description": "Standard VAST tracking events for video ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "click",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute",
+                                "fullscreen",
+                                "exitFullscreen",
+                                "playerExpand",
+                                "playerCollapse"
+                              ]
+                            },
+                            "description": "Tracking events supported by this VAST tag"
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "url"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "inline",
+                            "description": "Discriminator indicating VAST is delivered as inline XML content"
+                          },
+                          "content": {
+                            "type": "string",
+                            "description": "Inline VAST XML content"
+                          },
+                          "vast_version": {
+                            "title": "VAST Version",
+                            "description": "VAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "2.0",
+                              "3.0",
+                              "4.0",
+                              "4.1",
+                              "4.2"
+                            ]
+                          },
+                          "vpaid_enabled": {
+                            "type": "boolean",
+                            "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected video duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "VAST Tracking Event",
+                              "description": "Standard VAST tracking events for video ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "click",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute",
+                                "fullscreen",
+                                "exitFullscreen",
+                                "playerExpand",
+                                "playerCollapse"
+                              ]
+                            },
+                            "description": "Tracking events supported by this VAST tag"
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "content"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  {
+                    "title": "DAAST Asset",
+                    "description": "DAAST (Digital Audio Ad Serving Template) tag for third-party audio ad serving",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "url",
+                            "description": "Discriminator indicating DAAST is delivered via URL endpoint"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL endpoint that returns DAAST XML"
+                          },
+                          "daast_version": {
+                            "title": "DAAST Version",
+                            "description": "DAAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "1.0",
+                              "1.1"
+                            ]
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected audio duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "DAAST Tracking Event",
+                              "description": "Standard DAAST tracking events for audio ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute"
+                              ]
+                            },
+                            "description": "Tracking events supported by this DAAST tag"
+                          },
+                          "companion_ads": {
+                            "type": "boolean",
+                            "description": "Whether companion display ads are included"
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "url"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "inline",
+                            "description": "Discriminator indicating DAAST is delivered as inline XML content"
+                          },
+                          "content": {
+                            "type": "string",
+                            "description": "Inline DAAST XML content"
+                          },
+                          "daast_version": {
+                            "title": "DAAST Version",
+                            "description": "DAAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "1.0",
+                              "1.1"
+                            ]
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected audio duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "DAAST Tracking Event",
+                              "description": "Standard DAAST tracking events for audio ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute"
+                              ]
+                            },
+                            "description": "Tracking events supported by this DAAST tag"
+                          },
+                          "companion_ads": {
+                            "type": "boolean",
+                            "description": "Whether companion display ads are included"
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "content"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Promoted Offerings",
+                    "description": "Complete offering specification combining brand manifest, product selectors, and optional SI agent endpoint. Provides all context needed for creative generation and/or conversational experiences about what is being promoted. When si_agent_url is present, hosts can connect users to conversational experiences about any of the offerings.",
+                    "type": "object",
+                    "properties": {
+                      "brand_manifest": {
+                        "title": "Brand Manifest Reference",
+                        "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest.",
+                        "oneOf": [
+                          {
+                            "title": "Brand Manifest",
+                            "description": "Inline brand manifest object",
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "description": "Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
+                              },
+                              "privacy_policy_url": {
+                                "type": "string",
+                                "format": "uri",
+                                "description": "URL to the brand's privacy policy. Used for consumer consent flows when personal data may be shared with the advertiser. AI platforms can use this to present explicit privacy choices to users before data handoff."
+                              },
+                              "name": {
+                                "type": "string",
+                                "description": "Brand or business name"
+                              },
+                              "logos": {
+                                "type": "array",
+                                "description": "Brand logo assets with semantic tags for different use cases",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "format": "uri",
+                                      "description": "URL to the logo asset"
+                                    },
+                                    "tags": {
+                                      "type": "array",
+                                      "description": "Semantic tags describing the logo variant (e.g., 'dark', 'light', 'square', 'horizontal', 'icon')",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "width": {
+                                      "type": "integer",
+                                      "description": "Logo width in pixels"
+                                    },
+                                    "height": {
+                                      "type": "integer",
+                                      "description": "Logo height in pixels"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ]
+                                }
+                              },
+                              "colors": {
+                                "type": "object",
+                                "description": "Brand color palette",
+                                "properties": {
+                                  "primary": {
+                                    "type": "string",
+                                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                                    "description": "Primary brand color (hex format)"
+                                  },
+                                  "secondary": {
+                                    "type": "string",
+                                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                                    "description": "Secondary brand color (hex format)"
+                                  },
+                                  "accent": {
+                                    "type": "string",
+                                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                                    "description": "Accent color (hex format)"
+                                  },
+                                  "background": {
+                                    "type": "string",
+                                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                                    "description": "Background color (hex format)"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                                    "description": "Text color (hex format)"
+                                  }
+                                }
+                              },
+                              "fonts": {
+                                "type": "object",
+                                "description": "Brand typography guidelines",
+                                "properties": {
+                                  "primary": {
+                                    "type": "string",
+                                    "description": "Primary font family name"
+                                  },
+                                  "secondary": {
+                                    "type": "string",
+                                    "description": "Secondary font family name"
+                                  },
+                                  "font_urls": {
+                                    "type": "array",
+                                    "description": "URLs to web font files if using custom fonts",
+                                    "items": {
+                                      "type": "string",
+                                      "format": "uri"
+                                    }
+                                  }
+                                }
+                              },
+                              "tone": {
+                                "type": "string",
+                                "description": "Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
+                              },
+                              "voice": {
+                                "type": "object",
+                                "description": "Brand voice configuration for audio/conversational experiences",
+                                "properties": {
+                                  "provider": {
+                                    "type": "string",
+                                    "description": "TTS provider (e.g., 'elevenlabs', 'openai', 'amazon_polly')"
+                                  },
+                                  "voice_id": {
+                                    "type": "string",
+                                    "description": "Provider-specific voice identifier"
+                                  },
+                                  "settings": {
+                                    "type": "object",
+                                    "description": "Provider-specific voice settings (speed, pitch, etc.)",
+                                    "additionalProperties": true
+                                  }
+                                }
+                              },
+                              "avatar": {
+                                "type": "object",
+                                "description": "Brand avatar configuration for visual conversational experiences",
+                                "properties": {
+                                  "provider": {
+                                    "type": "string",
+                                    "description": "Avatar provider (e.g., 'd-id', 'heygen', 'synthesia')"
+                                  },
+                                  "avatar_id": {
+                                    "type": "string",
+                                    "description": "Provider-specific avatar identifier"
+                                  },
+                                  "settings": {
+                                    "type": "object",
+                                    "description": "Provider-specific avatar settings",
+                                    "additionalProperties": true
+                                  }
+                                }
+                              },
+                              "tagline": {
+                                "type": "string",
+                                "description": "Brand tagline or slogan"
+                              },
+                              "assets": {
+                                "type": "array",
+                                "description": "Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files.",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "asset_id": {
+                                      "type": "string",
+                                      "description": "Unique identifier for this asset"
+                                    },
+                                    "asset_type": {
+                                      "title": "Asset Content Type",
+                                      "description": "Type of asset. Note: Brand manifests typically contain basic media assets (image, video, audio, text). Code assets (html, javascript, css) and ad markup (vast, daast) are usually not part of brand asset libraries.",
+                                      "type": "string",
+                                      "enum": [
+                                        "image",
+                                        "video",
+                                        "audio",
+                                        "text",
+                                        "markdown",
+                                        "html",
+                                        "css",
+                                        "javascript",
+                                        "vast",
+                                        "daast",
+                                        "promoted_offerings",
+                                        "url",
+                                        "webhook"
+                                      ]
+                                    },
+                                    "url": {
+                                      "type": "string",
+                                      "format": "uri",
+                                      "description": "URL to CDN-hosted asset file"
+                                    },
+                                    "tags": {
+                                      "type": "array",
+                                      "description": "Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "name": {
+                                      "type": "string",
+                                      "description": "Human-readable asset name"
+                                    },
+                                    "description": {
+                                      "type": "string",
+                                      "description": "Asset description or usage notes"
+                                    },
+                                    "width": {
+                                      "type": "integer",
+                                      "description": "Image/video width in pixels"
+                                    },
+                                    "height": {
+                                      "type": "integer",
+                                      "description": "Image/video height in pixels"
+                                    },
+                                    "duration_seconds": {
+                                      "type": "number",
+                                      "description": "Video/audio duration in seconds"
+                                    },
+                                    "file_size_bytes": {
+                                      "type": "integer",
+                                      "description": "File size in bytes"
+                                    },
+                                    "format": {
+                                      "type": "string",
+                                      "description": "File format (e.g., 'jpg', 'mp4', 'mp3')"
+                                    },
+                                    "metadata": {
+                                      "type": "object",
+                                      "description": "Additional asset-specific metadata",
+                                      "additionalProperties": true
+                                    }
+                                  },
+                                  "required": [
+                                    "asset_id",
+                                    "asset_type",
+                                    "url"
+                                  ],
+                                  "additionalProperties": true
+                                }
+                              },
+                              "product_catalog": {
+                                "type": "object",
+                                "description": "Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection.",
+                                "properties": {
+                                  "feed_url": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "description": "URL to product catalog feed"
+                                  },
+                                  "feed_format": {
+                                    "type": "string",
+                                    "enum": [
+                                      "google_merchant_center",
+                                      "facebook_catalog",
+                                      "openai_product_feed",
+                                      "custom"
+                                    ],
+                                    "default": "google_merchant_center",
+                                    "description": "Format of the product feed. Use 'openai_product_feed' for feeds conforming to the OpenAI Commerce Product Feed specification."
+                                  },
+                                  "categories": {
+                                    "type": "array",
+                                    "description": "Product categories available in the catalog (for filtering)",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "last_updated": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "When the product catalog was last updated"
+                                  },
+                                  "update_frequency": {
+                                    "type": "string",
+                                    "enum": [
+                                      "realtime",
+                                      "hourly",
+                                      "daily",
+                                      "weekly"
+                                    ],
+                                    "description": "How frequently the product catalog is updated"
+                                  },
+                                  "agentic_checkout": {
+                                    "type": "object",
+                                    "description": "Agentic checkout endpoint configuration. Enables AI agents to complete purchases on behalf of users through a structured checkout API.",
+                                    "properties": {
+                                      "endpoint": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "description": "Base URL for checkout session API (e.g., https://merchant.com/api/checkout_sessions)"
+                                      },
+                                      "spec": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai_agentic_checkout_v1"
+                                        ],
+                                        "description": "Checkout API specification implemented by the endpoint"
+                                      },
+                                      "supported_payment_providers": {
+                                        "type": "array",
+                                        "description": "Payment providers supported by this checkout endpoint",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "endpoint",
+                                      "spec"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "feed_url"
+                                ],
+                                "additionalProperties": true
+                              },
+                              "disclaimers": {
+                                "type": "array",
+                                "description": "Legal disclaimers or required text that must appear in creatives",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "text": {
+                                      "type": "string",
+                                      "description": "Disclaimer text"
+                                    },
+                                    "context": {
+                                      "type": "string",
+                                      "description": "When this disclaimer applies (e.g., 'financial_products', 'health_claims', 'all')"
+                                    },
+                                    "required": {
+                                      "type": "boolean",
+                                      "description": "Whether this disclaimer must appear",
+                                      "default": true
+                                    }
+                                  },
+                                  "required": [
+                                    "text"
+                                  ]
+                                }
+                              },
+                              "industry": {
+                                "type": "string",
+                                "description": "Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')"
+                              },
+                              "target_audience": {
+                                "type": "string",
+                                "description": "Primary target audience description"
+                              },
+                              "contact": {
+                                "type": "object",
+                                "description": "Brand contact information",
+                                "properties": {
+                                  "email": {
+                                    "type": "string",
+                                    "format": "email",
+                                    "description": "Contact email"
+                                  },
+                                  "phone": {
+                                    "type": "string",
+                                    "description": "Contact phone number"
+                                  }
+                                }
+                              },
+                              "metadata": {
+                                "type": "object",
+                                "description": "Additional brand metadata",
+                                "properties": {
+                                  "created_date": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "When this brand manifest was created"
+                                  },
+                                  "updated_date": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "When this brand manifest was last updated"
+                                  },
+                                  "version": {
+                                    "type": "string",
+                                    "description": "Brand card version number"
+                                  }
+                                }
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "additionalProperties": true,
+                            "examples": [
+                              {
+                                "description": "Example with both URL and name",
+                                "data": {
+                                  "url": "https://bobsfunburgers.com",
+                                  "name": "Bob's Fun Burgers"
+                                }
+                              },
+                              {
+                                "description": "Example: white-label brand without dedicated URL",
+                                "data": {
+                                  "name": "Great Value",
+                                  "colors": {
+                                    "primary": "#0071CE",
+                                    "secondary": "#FFC220"
+                                  },
+                                  "tone": "affordable and trustworthy"
+                                }
+                              },
+                              {
+                                "description": "Full brand manifest with all fields",
+                                "data": {
+                                  "url": "https://acmecorp.com",
+                                  "privacy_policy_url": "https://acmecorp.com/privacy",
+                                  "name": "ACME Corporation",
+                                  "logos": [
+                                    {
+                                      "url": "https://cdn.acmecorp.com/logo-square-dark.png",
+                                      "tags": [
+                                        "dark",
+                                        "square"
+                                      ],
+                                      "width": 512,
+                                      "height": 512
+                                    },
+                                    {
+                                      "url": "https://cdn.acmecorp.com/logo-horizontal-light.png",
+                                      "tags": [
+                                        "light",
+                                        "horizontal"
+                                      ],
+                                      "width": 1200,
+                                      "height": 400
+                                    }
+                                  ],
+                                  "colors": {
+                                    "primary": "#FF6B35",
+                                    "secondary": "#004E89",
+                                    "accent": "#F7931E",
+                                    "background": "#FFFFFF",
+                                    "text": "#1A1A1A"
+                                  },
+                                  "fonts": {
+                                    "primary": "Helvetica Neue",
+                                    "secondary": "Georgia"
+                                  },
+                                  "tone": "professional and trustworthy",
+                                  "tagline": "Innovation You Can Trust",
+                                  "assets": [
+                                    {
+                                      "asset_id": "hero_winter_2024",
+                                      "asset_type": "image",
+                                      "url": "https://cdn.acmecorp.com/hero-winter-2024.jpg",
+                                      "tags": [
+                                        "hero",
+                                        "winter",
+                                        "holiday",
+                                        "lifestyle"
+                                      ],
+                                      "name": "Winter Campaign Hero",
+                                      "width": 1920,
+                                      "height": 1080,
+                                      "format": "jpg"
+                                    },
+                                    {
+                                      "asset_id": "product_video_30s",
+                                      "asset_type": "video",
+                                      "url": "https://cdn.acmecorp.com/product-demo-30s.mp4",
+                                      "tags": [
+                                        "product",
+                                        "demo",
+                                        "30s"
+                                      ],
+                                      "name": "Product Demo 30 Second",
+                                      "width": 1920,
+                                      "height": 1080,
+                                      "duration_seconds": 30,
+                                      "format": "mp4"
+                                    }
+                                  ],
+                                  "product_catalog": {
+                                    "feed_url": "https://acmecorp.com/products.xml",
+                                    "feed_format": "google_merchant_center",
+                                    "categories": [
+                                      "electronics/computers",
+                                      "electronics/accessories"
+                                    ],
+                                    "last_updated": "2024-03-15T10:00:00Z",
+                                    "update_frequency": "hourly"
+                                  },
+                                  "disclaimers": [
+                                    {
+                                      "text": "Results may vary. Consult a professional before use.",
+                                      "context": "health_claims",
+                                      "required": true
+                                    }
+                                  ],
+                                  "industry": "technology",
+                                  "target_audience": "business decision-makers aged 35-55"
+                                }
+                              },
+                              {
+                                "description": "E-commerce brand with OpenAI product feed and agentic checkout",
+                                "data": {
+                                  "url": "https://shopexample.com",
+                                  "privacy_policy_url": "https://shopexample.com/privacy",
+                                  "name": "Shop Example",
+                                  "product_catalog": {
+                                    "feed_url": "https://shopexample.com/products.jsonl.gz",
+                                    "feed_format": "openai_product_feed",
+                                    "update_frequency": "daily",
+                                    "agentic_checkout": {
+                                      "endpoint": "https://api.shopexample.com/checkout_sessions",
+                                      "spec": "openai_agentic_checkout_v1",
+                                      "supported_payment_providers": [
+                                        "stripe",
+                                        "adyen"
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to a hosted brand manifest JSON file. The manifest at this URL must conform to the brand-manifest.json schema."
+                          }
+                        ],
+                        "examples": [
+                          {
+                            "description": "Inline brand manifest",
+                            "data": {
+                              "url": "https://acmecorp.com",
+                              "name": "ACME Corporation",
+                              "colors": {
+                                "primary": "#FF6B35"
+                              }
+                            }
+                          },
+                          {
+                            "description": "URL string reference to hosted manifest",
+                            "data": "https://cdn.acmecorp.com/brand-manifest.json"
+                          }
+                        ]
+                      },
+                      "si_agent_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "MCP endpoint URL for the brand's SI agent. When present, hosts can connect users to conversational experiences about any of the offerings. The agent handles si_get_offering lookups and full conversations."
+                      },
+                      "product_selectors": {
+                        "title": "Promoted Products",
+                        "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote",
+                        "type": "object",
+                        "properties": {
+                          "manifest_skus": {
+                            "type": "array",
+                            "description": "Direct product SKU references from the brand manifest product catalog",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "manifest_tags": {
+                            "type": "array",
+                            "description": "Select products by tags from the brand manifest product catalog (e.g., 'organic', 'sauces', 'holiday')",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "manifest_category": {
+                            "type": "string",
+                            "description": "Select products from a specific category in the brand manifest product catalog (e.g., 'beverages/soft-drinks', 'food/sauces')"
+                          },
+                          "manifest_query": {
+                            "type": "string",
+                            "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
+                          }
+                        },
+                        "additionalProperties": true,
+                        "examples": [
+                          {
+                            "description": "Direct SKU selection for specific products from brand manifest",
+                            "data": {
+                              "manifest_skus": [
+                                "SKU-12345",
+                                "SKU-67890"
+                              ]
+                            }
+                          },
+                          {
+                            "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand manifest",
+                            "data": {
+                              "manifest_tags": [
+                                "organic",
+                                "sauces"
+                              ],
+                              "manifest_category": "food/condiments"
+                            }
+                          },
+                          {
+                            "description": "Natural language product selection from brand manifest",
+                            "data": {
+                              "manifest_query": "all Kraft Heinz pasta sauces under $5"
+                            }
+                          },
+                          {
+                            "description": "Select products by tags",
+                            "data": {
+                              "manifest_tags": [
+                                "holiday"
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      "offerings": {
+                        "type": "array",
+                        "description": "Offerings available for promotion. Each offering can include creative assets (via portfolio_ref or inline assets) for traditional ads. When si_agent_url is set at the parent level, hosts can offer conversational experiences about any of these offerings.",
+                        "items": {
+                          "title": "Offering",
+                          "description": "A promotable offering from a brand. Can represent a campaign, product promotion, service, or any other thing the brand wants to make available. Offerings can be promoted via traditional creatives (using portfolio_ref or assets) or conversational SI experiences (via si_agent_url at the promoted-offerings level).",
+                          "type": "object",
+                          "properties": {
+                            "offering_id": {
+                              "type": "string",
+                              "description": "Unique identifier for this offering. Used by hosts to reference specific offerings in si_get_offering calls."
+                            },
+                            "name": {
+                              "type": "string",
+                              "description": "Human-readable offering name (e.g., 'Winter Sale', 'Free Trial', 'Enterprise Platform')"
+                            },
+                            "description": {
+                              "type": "string",
+                              "description": "Description of what's being offered"
+                            },
+                            "tagline": {
+                              "type": "string",
+                              "description": "Short promotional tagline for the offering"
+                            },
+                            "valid_from": {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "When the offering becomes available. If not specified, offering is immediately available."
+                            },
+                            "valid_to": {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "When the offering expires. If not specified, offering has no expiration."
+                            },
+                            "checkout_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "URL for checkout/purchase flow when the brand doesn't support agentic checkout."
+                            },
+                            "landing_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Landing page URL for this offering."
+                            },
+                            "assets": {
+                              "type": "array",
+                              "description": "Assets specific to this offering (images, videos, copy)",
+                              "items": {
+                                "type": "object",
+                                "description": "Asset definition using standard asset structure",
+                                "additionalProperties": true
+                              }
+                            },
+                            "portfolio_ref": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Reference to a creative portfolio for this offering. Portfolios contain organized creative assets across formats, enabling consistent ad delivery for this specific offering."
+                            },
+                            "keywords": {
+                              "type": "array",
+                              "description": "Keywords for matching this offering to user intent. Hosts use these for retrieval/relevance scoring.",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "categories": {
+                              "type": "array",
+                              "description": "Categories this offering belongs to (e.g., 'measurement', 'identity', 'programmatic')",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "ext": {
+                              "title": "Extension Object",
+                              "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "required": [
+                            "offering_id",
+                            "name"
+                          ],
+                          "additionalProperties": true,
+                          "examples": [
+                            {
+                              "description": "Time-limited promotional offer with checkout",
+                              "data": {
+                                "offering_id": "q1-2025-trial",
+                                "name": "Free 30-day trial",
+                                "description": "Try our carbon measurement platform free for 30 days",
+                                "tagline": "Start measuring your digital carbon footprint today",
+                                "valid_from": "2025-01-01T00:00:00Z",
+                                "valid_to": "2025-03-31T23:59:59Z",
+                                "checkout_url": "https://scope3.com/signup",
+                                "keywords": [
+                                  "carbon",
+                                  "sustainability",
+                                  "measurement",
+                                  "emissions"
+                                ],
+                                "categories": [
+                                  "measurement",
+                                  "sustainability"
+                                ]
+                              }
+                            },
+                            {
+                              "description": "Product offering with landing page",
+                              "data": {
+                                "offering_id": "enterprise-dsp",
+                                "name": "Enterprise DSP Platform",
+                                "description": "Full-featured demand-side platform for enterprise advertisers",
+                                "landing_url": "https://thetradedesk.com/enterprise",
+                                "keywords": [
+                                  "dsp",
+                                  "programmatic",
+                                  "rtb",
+                                  "ctv"
+                                ],
+                                "categories": [
+                                  "programmatic",
+                                  "dsp"
+                                ]
+                              }
+                            },
+                            {
+                              "description": "Offering with creative portfolio",
+                              "data": {
+                                "offering_id": "summer-sale-2025",
+                                "name": "Summer Sale",
+                                "description": "Up to 50% off summer collection",
+                                "valid_from": "2025-06-01T00:00:00Z",
+                                "valid_to": "2025-08-31T23:59:59Z",
+                                "landing_url": "https://brand.com/summer-sale",
+                                "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+                              }
+                            },
+                            {
+                              "description": "Offering with inline assets",
+                              "data": {
+                                "offering_id": "product-launch",
+                                "name": "New Product Launch",
+                                "description": "Introducing our latest innovation",
+                                "assets": [
+                                  {
+                                    "asset_id": "launch-hero",
+                                    "asset_type": "image",
+                                    "url": "https://cdn.brand.com/launch-hero.jpg"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "asset_selectors": {
+                        "type": "object",
+                        "description": "Selectors to choose specific assets from the brand manifest",
+                        "properties": {
+                          "tags": {
+                            "type": "array",
+                            "description": "Select assets with specific tags (e.g., ['holiday', 'premium'])",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "asset_types": {
+                            "type": "array",
+                            "description": "Filter by asset type (e.g., ['image', 'video'])",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "image",
+                                "video",
+                                "audio",
+                                "vast",
+                                "daast",
+                                "text",
+                                "url",
+                                "html",
+                                "css",
+                                "javascript",
+                                "webhook"
+                              ]
+                            }
+                          },
+                          "exclude_tags": {
+                            "type": "array",
+                            "description": "Exclude assets with these tags",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "brand_manifest"
+                    ],
+                    "additionalProperties": true,
+                    "examples": [
+                      {
+                        "description": "Traditional creative offering (no SI)",
+                        "data": {
+                          "brand_manifest": {
+                            "name": "Brand Name",
+                            "url": "https://brand.com"
+                          },
+                          "product_selectors": {
+                            "manifest_skus": [
+                              "SKU-123",
+                              "SKU-456"
+                            ]
+                          },
+                          "asset_selectors": {
+                            "tags": [
+                              "holiday"
+                            ],
+                            "asset_types": [
+                              "image",
+                              "video"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "description": "Offerings with SI agent for conversational experiences",
+                        "data": {
+                          "brand_manifest": "https://brand.com/manifest.json",
+                          "si_agent_url": "https://agent.brand.com/mcp",
+                          "offerings": [
+                            {
+                              "offering_id": "q1-2025-trial",
+                              "name": "Free 30-day trial",
+                              "description": "Try our platform free for 30 days",
+                              "valid_from": "2025-01-01T00:00:00Z",
+                              "valid_to": "2025-03-31T23:59:59Z",
+                              "checkout_url": "https://brand.com/signup"
+                            },
+                            {
+                              "offering_id": "standard-product",
+                              "name": "Enterprise Platform",
+                              "description": "Our flagship enterprise solution",
+                              "landing_url": "https://brand.com/enterprise"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "description": "Offerings with both creatives and SI",
+                        "data": {
+                          "brand_manifest": "https://brand.com/manifest.json",
+                          "si_agent_url": "https://agent.brand.com/mcp",
+                          "offerings": [
+                            {
+                              "offering_id": "summer-campaign",
+                              "name": "Summer Sale",
+                              "description": "Up to 50% off summer collection",
+                              "landing_url": "https://brand.com/summer",
+                              "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "title": "URL Asset",
+                    "description": "URL reference asset",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL reference"
+                      },
+                      "url_type": {
+                        "title": "URL Asset Type",
+                        "description": "Type of URL asset: 'clickthrough' for user click destination (landing page), 'tracker_pixel' for impression/event tracking via HTTP request (fires GET, expects pixel/204 response), 'tracker_script' for measurement SDKs that must load as <script> tag (OMID verification, native event trackers using method:2)",
+                        "type": "string",
+                        "enum": [
+                          "clickthrough",
+                          "tracker_pixel",
+                          "tracker_script"
+                        ]
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Description of what this URL points to"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "description": "User-defined tags for organization and searchability",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignments": {
+            "type": "object",
+            "description": "Current package assignments (included when include_assignments=true)",
+            "properties": {
+              "assignment_count": {
+                "type": "integer",
+                "description": "Total number of active package assignments",
+                "minimum": 0
+              },
+              "assigned_packages": {
+                "type": "array",
+                "description": "List of packages this creative is assigned to",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "description": "Package identifier"
+                    },
+                    "buyer_ref": {
+                      "type": "string",
+                      "description": "Buyer's reference identifier for this package"
+                    },
+                    "assigned_date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this assignment was created"
+                    }
+                  },
+                  "required": [
+                    "package_id",
+                    "assigned_date"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "assignment_count"
+            ],
+            "additionalProperties": true
+          },
+          "performance": {
+            "type": "object",
+            "description": "Aggregated performance metrics (included when include_performance=true)",
+            "properties": {
+              "impressions": {
+                "type": "integer",
+                "description": "Total impressions across all assignments",
+                "minimum": 0
+              },
+              "clicks": {
+                "type": "integer",
+                "description": "Total clicks across all assignments",
+                "minimum": 0
+              },
+              "ctr": {
+                "type": "number",
+                "description": "Click-through rate (clicks/impressions)",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "conversion_rate": {
+                "type": "number",
+                "description": "Conversion rate across all assignments",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "performance_score": {
+                "type": "number",
+                "description": "Aggregated performance score (0-100)",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "last_updated": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When performance data was last updated"
+              }
+            },
+            "required": [
+              "last_updated"
+            ],
+            "additionalProperties": true
+          },
+          "sub_assets": {
+            "type": "array",
+            "description": "Sub-assets for multi-asset formats (included when include_sub_assets=true)",
+            "items": {
+              "title": "Sub-Asset",
+              "description": "Sub-asset for multi-asset creative formats, including carousel images and native ad template variables",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "asset_kind": {
+                      "type": "string",
+                      "const": "media",
+                      "description": "Discriminator indicating this is a media asset with content_uri"
+                    },
+                    "asset_type": {
+                      "type": "string",
+                      "description": "Type of asset. Common types: thumbnail_image, product_image, featured_image, logo"
+                    },
+                    "asset_id": {
+                      "type": "string",
+                      "description": "Unique identifier for the asset within the creative"
+                    },
+                    "content_uri": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "URL for media assets (images, videos, etc.)"
+                    }
+                  },
+                  "required": [
+                    "asset_kind",
+                    "asset_type",
+                    "asset_id",
+                    "content_uri"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "asset_kind": {
+                      "type": "string",
+                      "const": "text",
+                      "description": "Discriminator indicating this is a text asset with content"
+                    },
+                    "asset_type": {
+                      "type": "string",
+                      "description": "Type of asset. Common types: headline, body_text, cta_text, price_text, sponsor_name, author_name, click_url"
+                    },
+                    "asset_id": {
+                      "type": "string",
+                      "description": "Unique identifier for the asset within the creative"
+                    },
+                    "content": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "description": "Single text content value"
+                        },
+                        {
+                          "type": "array",
+                          "description": "Multiple text content values (for A/B testing or variations)",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ],
+                      "description": "Text content for text-based assets like headlines, body text, CTA text, etc."
+                    }
+                  },
+                  "required": [
+                    "asset_kind",
+                    "asset_type",
+                    "asset_id",
+                    "content"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "creative_id",
+          "name",
+          "format_id",
+          "status",
+          "created_date",
+          "updated_date"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "format_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by format type",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "integer",
+          "description": "Number of creatives with this format",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "status_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by status",
+      "properties": {
+        "processing": {
+          "type": "integer",
+          "description": "Number of creatives being processed",
+          "minimum": 0
+        },
+        "approved": {
+          "type": "integer",
+          "description": "Number of approved creatives",
+          "minimum": 0
+        },
+        "pending_review": {
+          "type": "integer",
+          "description": "Number of creatives pending review",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "description": "Number of rejected creatives",
+          "minimum": 0
+        },
+        "archived": {
+          "type": "integer",
+          "description": "Number of archived creatives",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "query_summary",
+    "pagination",
+    "creatives"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Successful library query with results",
+      "data": {
+        "query_summary": {
+          "total_matching": 3,
+          "returned": 3,
+          "filters_applied": [
+            "format=video",
+            "status=approved"
+          ],
+          "sort_applied": {
+            "field": "created_date",
+            "direction": "desc"
+          }
+        },
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "has_more": false,
+          "total_pages": 1,
+          "current_page": 1
+        },
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
+            "status": "approved",
+            "created_date": "2024-01-15T10:30:00Z",
+            "updated_date": "2024-01-15T14:20:00Z",
+            "assets": {
+              "vast": {
+                "url": "https://vast.example.com/video/123",
+                "vast_version": "4.1"
+              }
+            },
+            "tags": [
+              "q1_2024",
+              "video",
+              "brand_awareness"
+            ]
+          }
+        ],
+        "format_summary": {
+          "video_30s_vast": 2,
+          "display_300x250": 1
+        },
+        "status_summary": {
+          "approved": 3,
+          "pending_review": 0,
+          "rejected": 0,
+          "archived": 0
+        }
+      }
+    },
+    {
+      "description": "Query with assignments and performance data",
+      "data": {
+        "query_summary": {
+          "total_matching": 1,
+          "returned": 1
+        },
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "has_more": false
+        },
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
+            "status": "approved",
+            "created_date": "2024-01-15T10:30:00Z",
+            "updated_date": "2024-01-15T14:20:00Z",
+            "assignments": {
+              "assignment_count": 2,
+              "assigned_packages": [
+                {
+                  "package_id": "pkg_ctv_001",
+                  "buyer_ref": "ctv_prime_time_q1",
+                  "assigned_date": "2024-01-16T09:00:00Z"
+                }
+              ]
+            },
+            "performance": {
+              "impressions": 150000,
+              "clicks": 1200,
+              "ctr": 0.008,
+              "performance_score": 85.2,
+              "last_updated": "2024-01-20T12:00:00Z"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-01-26T12:55:43.201Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

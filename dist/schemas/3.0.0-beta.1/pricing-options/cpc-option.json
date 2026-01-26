@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/pricing-options/cpc-option.json",
+  "title": "CPC Pricing Option",
+  "description": "Cost Per Click pricing. If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpc",
+      "description": "Cost per click"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "fixed_price": {
+      "type": "number",
+      "description": "Fixed price per click. If present, this is fixed pricing. If absent, auction-based.",
+      "minimum": 0
+    },
+    "floor_price": {
+      "type": "number",
+      "description": "Minimum acceptable bid for auction pricing (mutually exclusive with fixed_price). Bids below this value will be rejected.",
+      "minimum": 0
+    },
+    "price_guidance": {
+      "type": "object",
+      "description": "Optional pricing guidance for auction-based bidding. Helps buyers calibrate bids with historical percentiles.",
+      "properties": {
+        "p25": {
+          "type": "number",
+          "description": "25th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median of recent winning bids",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th percentile of recent winning bids",
+          "minimum": 0
+        }
+      }
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "currency"],
+  "additionalProperties": true
+}

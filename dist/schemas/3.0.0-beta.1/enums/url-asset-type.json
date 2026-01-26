@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/enums/url-asset-type.json",
+  "title": "URL Asset Type",
+  "description": "Types of URL assets for tracking and click-through purposes",
+  "type": "string",
+  "enum": [
+    "clickthrough",
+    "tracker_pixel",
+    "tracker_script"
+  ]
+}

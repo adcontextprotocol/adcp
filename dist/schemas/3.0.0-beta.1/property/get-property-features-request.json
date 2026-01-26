@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/property/get-property-features-request.json",
+  "title": "Get Property Features Request",
+  "description": "Request payload for get_property_features task. Retrieves feature values for properties from a governance agent. Supports two modes: explicit property list OR publisher-based discovery.",
+  "type": "object",
+  "properties": {
+    "properties": {
+      "type": "array",
+      "description": "Explicit list of properties to get features for. Can be domain strings or structured property references. Use this when you know exactly which properties you want.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Domain string (e.g., 'example.com')"
+          },
+          {
+            "$ref": "/schemas/3.0.0-beta.1/core/property-id.json"
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "publisher_domain": {
+      "type": "string",
+      "description": "Publisher domain to discover properties for. Use this to get features for all properties belonging to a publisher. Can be combined with property_types and property_tags for filtering."
+    },
+    "property_types": {
+      "type": "array",
+      "description": "Filter to specific property types (e.g., 'website', 'mobile_app', 'ctv_app'). Only applies when using publisher_domain.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/enums/property-type.json"
+      }
+    },
+    "property_tags": {
+      "type": "array",
+      "description": "Filter to properties with these tags. Only applies when using publisher_domain.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.1/core/property-tag.json"
+      }
+    },
+    "feature_ids": {
+      "type": "array",
+      "description": "Optional filter to specific features. If omitted, returns all available features.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.1/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["properties"],
+      "description": "Explicit property list mode"
+    },
+    {
+      "required": ["publisher_domain"],
+      "description": "Publisher discovery mode"
+    }
+  ],
+  "additionalProperties": false
+}

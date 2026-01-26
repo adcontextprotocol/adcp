@@ -1,5 +1,233 @@
 # Changelog
 
+## 3.0.0-beta.1
+
+### Major Changes
+
+- f4ef555: Add Media Channel Taxonomy specification with standardized channel definitions.
+
+  **BREAKING**: Replaces channel enum values (display, video, audio, native, retail → display, olv, social, search, ctv, etc.)
+
+  - Introduces 19 planning-oriented media channels representing how buyers allocate budget
+  - Channels: display, olv, social, search, ctv, linear_tv, radio, streaming_audio, podcast, dooh, ooh, print, cinema, email, gaming, retail_media, influencer, affiliate, product_placement
+  - Adds desktop_app property type for Electron/Chromium wrapper applications
+  - Clear distinction between channels (planning abstractions), property types (addressable surfaces), and formats (how ads render)
+  - Includes migration guide and edge cases documentation
+
+- a0039cc: Clarify pricing option field semantics with better separation of hard constraints vs soft hints
+
+  **Breaking Changes:**
+
+  - Rename `fixed_rate` → `fixed_price` in all pricing option schemas
+  - Move `price_guidance.floor` → top-level `floor_price` field
+  - Remove `is_fixed` discriminator (presence of `fixed_price` indicates fixed pricing)
+
+  **Schema Consolidation:**
+
+  - Consolidate 9 pricing schemas into 7 (one per pricing model)
+  - All models now support both fixed and auction pricing modes
+
+  **Semantic Distinction:**
+
+  - Hard constraints (`fixed_price`, `floor_price`) - Publisher-enforced prices that cause bid rejection
+  - Soft hints (`price_guidance.p25`, `.p50`, `.p75`, `.p90`) - Historical percentiles for bid calibration
+
+### Minor Changes
+
+- f4ef555: Add unified `assets` field to format schema for better asset discovery
+
+  - Add new `assets` array to format schema with `required` boolean per asset
+  - Deprecate `assets_required` (still supported for backward compatibility)
+  - Enables full asset discovery for buyers and AI agents to see all supported assets
+  - Optional assets like impression trackers can now be discovered and used
+
+- f4ef555: Add Content Standards Protocol for content safety and suitability evaluation.
+
+  Discovery tasks:
+
+  - `list_content_features`: Discover available content safety features
+  - `list_content_standards`: List available standards configurations
+  - `get_content_standards`: Retrieve content safety policies
+
+  Management tasks:
+
+  - `create_content_standards`: Create a new standards configuration
+  - `update_content_standards`: Update an existing configuration
+  - `delete_content_standards`: Delete a configuration
+
+  Calibration & Validation tasks:
+
+  - `calibrate_content`: Collaborative dialogue to align on policy interpretation
+  - `validate_content_delivery`: Batch validate delivery records
+
+- f4ef555: Add protocol-level get_adcp_capabilities task for cross-protocol capability discovery
+
+  Introduces `get_adcp_capabilities` as a **protocol-level task** that works across all AdCP domain protocols.
+
+  **Tool-based discovery:**
+
+  - AdCP discovery uses native MCP/A2A tool discovery
+  - Presence of `get_adcp_capabilities` tool indicates AdCP support
+  - Distinctive name ensures no collision with other protocols' capability tools
+  - Deprecates `adcp-extension.json` agent card extension
+
+  **Cross-protocol design:**
+
+  - `adcp.major_versions` - Declare supported AdCP major versions
+  - `supported_protocols` - Which domain protocols are supported (media_buy, signals)
+  - `extensions_supported` - Extension namespaces this agent supports (e.g., `["scope3", "garm"]`)
+  - Protocol-specific capability sections nested under protocol name
+
+  **Media-buy capabilities (media_buy section):**
+
+  - `features` - Optional features (inline_creative_management, property_list_filtering, content_standards)
+  - `execution.axe_integrations` - Agentic ad exchange URLs
+  - `execution.creative_specs` - VAST/MRAID version support
+  - `execution.targeting` - Geo targeting with granular system support
+  - `portfolio` - Publisher domains, channels, countries
+
+  **Geo targeting:**
+
+  - Countries (ISO 3166-1 alpha-2)
+  - Regions (ISO 3166-2)
+  - Metros with named systems (nielsen_dma, uk_itl1, uk_itl2, eurostat_nuts2)
+  - Postal areas with named systems encoding country and precision (us_zip, gb_outward, ca_fsa, etc.)
+
+  **Product filters - two models for geography:**
+
+  _Coverage filters (for locally-bound inventory like radio, OOH, local TV):_
+
+  - `countries` - country coverage (ISO 3166-1 alpha-2)
+  - `regions` - region coverage (ISO 3166-2) for regional OOH, local TV
+  - `metros` - metro coverage ({ system, code }) for radio, DOOH, DMA-based inventory
+
+  _Capability filters (for digital inventory with broad coverage):_
+
+  - `required_geo_targeting` - filter by seller capability with two-layer structure:
+    - `level`: targeting granularity (country, region, metro, postal_area)
+    - `system`: classification taxonomy (e.g., 'nielsen_dma', 'us_zip')
+  - `required_axe_integrations` - filter by AXE support
+  - `required_features` - filter by protocol feature support
+
+  Use coverage filters when products ARE geographically bound (radio station = DMA).
+  Use capability filters when products have broad coverage and you'll target at buy time.
+
+  **Targeting schema:**
+
+  - Updated `targeting.json` with structured geo systems
+  - `geo_metros` and `geo_postal_areas` now require system specification
+  - System names encode country and precision (us_zip, gb_outward, nielsen_dma, etc.)
+  - Aligns with capability declarations in get_adcp_capabilities
+
+  **Governance capabilities (governance section):**
+
+  - `property_features` - Array of features this governance agent can evaluate
+  - Each feature has: `feature_id`, `type` (binary/quantitative/categorical), optional `range`/`categories`
+  - `methodology_url` - Optional URL to methodology documentation (helps buyers understand/compare vendor approaches)
+  - Deprecates `list_property_features` task (schemas removed, doc page retained with migration guide)
+
+  **Capability contract:** If a capability is declared, the seller MUST honor it.
+
+- f4ef555: Add privacy_policy_url field to brand manifest and adagents.json schemas
+
+  Enables consumer consent flows by providing a link to advertiser/publisher privacy policies. AI platforms can use this to present explicit privacy choices to users before data handoff. Works alongside MyTerms/IEEE P7012 discovery for machine-readable privacy terms.
+
+- f4ef555: Clarify creative handling in media buy operations:
+
+  **Breaking:** Replace `creative_ids` with `creative_assignments` in `create_media_buy` and `update_media_buy`
+
+  - `creative_assignments` supports optional `weight` and `placement_ids` for granular control
+  - Simple assignment: `{ "creative_id": "my_creative" }` (weight/placement optional)
+  - Advanced assignment: `{ "creative_id": "my_creative", "weight": 60, "placement_ids": ["p1"] }`
+
+  **Clarifications:**
+
+  - `creatives` array creates NEW creatives only (add `CREATIVE_ID_EXISTS` error)
+  - `delete_missing` in sync_creatives cannot delete creatives in active delivery (`CREATIVE_IN_ACTIVE_DELIVERY` error)
+  - Document that existing library creatives should be managed via `sync_creatives`
+
+- f4ef555: Add OpenAI Commerce integration to brand manifest
+
+  - Add `openai_product_feed` as a supported feed format for product catalogs
+  - Add `agentic_checkout` object to enable AI agents to complete purchases via structured checkout APIs
+  - Document field mapping from Google Merchant Center to OpenAI Product Feed spec
+
+- f4ef555: Add Property Governance Protocol support to get_products
+
+  - Add optional `property_list` parameter to get_products request for filtering products by property list
+  - Add `property_list_applied` response field to indicate whether filtering was applied
+  - Enables buyers to pass property lists from governance agents to sales agents for compliant inventory discovery
+
+- 5b45d83: Refactor schemas to use $ref for shared type definitions
+
+  **New shared type:**
+
+  - `core/media-buy-features.json` - Shared definition for media-buy protocol features (inline_creative_management, property_list_filtering, content_standards)
+
+  **Breaking change:**
+
+  - `required_features` in product-filters.json changed from string array to object with boolean properties
+    - Before: `["content_standards", "inline_creative_management"]`
+    - After: `{ "content_standards": true, "inline_creative_management": true }`
+  - This aligns the filter format with the capabilities declaration format in `get_adcp_capabilities`
+
+  **Schema deduplication:**
+
+  - `get-adcp-capabilities-response.json`: `media_buy.features` now uses $ref to `core/media-buy-features.json`
+  - `product-filters.json`: `required_features` now uses $ref to `core/media-buy-features.json`
+  - `artifact.json`: `property_id` now uses $ref to `core/identifier.json`
+  - `artifact.json`: `format_id` now uses $ref to `core/format-id.json`
+
+  **Benefits:**
+
+  - Single source of truth for shared types
+  - Consistent validation across all usages
+  - Reduced schema maintenance burden
+
+### Patch Changes
+
+- 240b50c: Add Addie code version tracking and shorter performance timeframes
+- ccdbe18: Fix Addie alert spam and improve content relevance
+
+  **Alert deduplication fix:**
+  The alert query now checks if ANY perspective with the same external_url
+  has been alerted to a channel, preventing spam from cross-feed duplicates.
+
+  **Content relevance improvement:**
+  Tightened `mentions_agentic` detection to require BOTH agentic AI terms
+  AND advertising context. This prevents general AI news (e.g., ChatGPT updates)
+  from being flagged as relevant to our agentic advertising community.
+
+- f4ef555: Fix Mintlify callout syntax and add case-insensitivity notes for country/language codes
+
+  - Convert `:::note` Docusaurus syntax to Mintlify `<Note>` components
+  - Add case-insensitivity documentation for country codes (ISO 3166-1 alpha-2) and language codes (ISO 639-1/BCP 47)
+  - Remove orphaned webhook-config.json and webhook-authentication.json schemas
+
+- ec0e4fe: Fix API response parsing in Addie member tools
+
+  Multiple MCP tool handlers were incorrectly parsing API responses, expecting flat arrays/objects when APIs return wrapped responses. Fixed:
+
+  - `list_working_groups`: Extract `working_groups` from `{ working_groups: [...] }`
+  - `get_working_group`: Extract `working_group` from `{ working_group: {...}, is_member }`
+  - `get_my_working_groups`: Extract `working_groups` from wrapped response
+  - `get_my_profile`: Extract `profile` from `{ profile, organization_id, organization_name }`
+
+- 99f7f60: Fix pagination in auto-add domain users feature to fetch all organization members
+- a7f0d87: Remove deprecated schema files no longer part of v3 schema design:
+  - `creative-formats-v1.json` - replaced by modular format schemas in `source/core/`
+  - `standard-format-ids.json` - enum no longer used in current schema structure
+  - Cleaned up `index.json` registry (removed stale changelog and version fields)
+- 6708ad4: Add debug logging support to Addie's AdCP tools and clarify probe vs test behavior.
+
+  - Add `debug` parameter to all 10 AdCP tool schemas (get_products, create_media_buy, etc.)
+  - Include debug_logs in tool output when debug mode is enabled
+  - Remove redundant `call_adcp_agent` tool (individual tools provide better schema validation)
+  - Fix `probe_adcp_agent` messaging to clarify it only checks connectivity, not protocol compliance
+
+- 65358cb: Fix profile visibility check for invoice-based memberships (Founding Members)
+- 91f7bb3: docs: Consolidate data models and schema versioning into schemas-and-sdks page
+
 ## 2.6.0
 
 ### Major Changes
@@ -7,10 +235,11 @@
 - Add Content Standards Protocol for brand safety and suitability evaluation (#621)
 
   **New Protocol:**
-  
+
   Introduces a comprehensive content standards framework enabling buyers to define, calibrate, and enforce brand safety policies across advertising placements.
 
   **New Tasks:**
+
   - `list_content_standards` - List available content standards configurations
   - `get_content_standards` - Retrieve full standards configuration with policy details
   - `create_content_standards` - Create new content standards configuration
@@ -20,6 +249,7 @@
   - `get_media_buy_artifacts` - Retrieve content artifacts from media buys for validation
 
   **New Schemas:**
+
   - `content-standards.json` - Reusable content standards configuration
   - `content-standards-artifact.json` - Content artifact for evaluation
   - `artifact-webhook-payload.json` - Webhook payload for artifact delivery
@@ -27,10 +257,11 @@
 - Add Property Governance Protocol for AdCP 3.0 (#588)
 
   **New Protocol:**
-  
+
   Enables governance agents to evaluate properties against feature-based requirements for brand safety, content quality, and compliance.
 
   **New Tasks:**
+
   - `list_property_features` - Discover governance agent capabilities
   - `create_property_list` - Create managed property lists with filters
   - `update_property_list` - Update existing property lists
@@ -39,6 +270,7 @@
   - `delete_property_list` - Delete a property list
 
   **New Schemas:**
+
   - `property-feature-definition.json` - Feature definition schema
   - `property-feature.json` - Feature assessment schema
   - `feature-requirement.json` - Feature-based requirement schema
@@ -60,10 +292,12 @@
   Previously, buyers and AI agents could only see required assets via `assets_required`. There was no way to discover optional assets that enhance creatives (companion banners, third-party tracking pixels, etc.).
 
   Since each asset already has a `required` boolean field, we introduced a unified `assets` array where:
+
   - `required: true` - Asset MUST be provided for a valid creative
   - `required: false` - Asset is optional, enhances the creative when provided
 
   This enables:
+
   - **Full asset discovery**: Buyers and AI agents can see ALL assets a format supports
   - **Richer creatives**: Optional assets like impression trackers can now be discovered and used
   - **Cleaner schema**: Single array instead of two separate arrays
@@ -72,11 +306,29 @@
 
   ```json
   {
-    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_30s"
+    },
     "assets": [
-      { "item_type": "individual", "asset_id": "video_file", "asset_type": "video", "required": true },
-      { "item_type": "individual", "asset_id": "end_card", "asset_type": "image", "required": false },
-      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "url", "required": false }
+      {
+        "item_type": "individual",
+        "asset_id": "video_file",
+        "asset_type": "video",
+        "required": true
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "end_card",
+        "asset_type": "image",
+        "required": false
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "impression_tracker",
+        "asset_type": "url",
+        "required": false
+      }
     ]
   }
   ```
@@ -86,15 +338,17 @@
 - Add typed extensions infrastructure with auto-discovery (#648)
 
   **New Feature:**
-  
+
   Introduces a typed extension system allowing vendors and domains to add custom data to AdCP schemas in a discoverable, validated way.
 
   **New Schemas:**
+
   - `extensions/extension-meta.json` - Meta schema for extension definitions
   - `extensions/index.json` - Auto-generated registry of all extensions
   - `protocols/adcp-extension.json` - AdCP extension for agent cards
 
   **Benefits:**
+
   - Vendor-specific data without polluting core schemas
   - Auto-discovery of available extensions
   - Validation support for extension data
@@ -102,29 +356,32 @@
 - Add OpenAI Commerce integration to brand manifest (#802)
 
   **Schema Changes:**
+
   - **brand-manifest.json**: Add `openai_commerce` field for OpenAI shopping integration
-  
+
   Enables brands to include their OpenAI Commerce merchant ID for AI-powered shopping experiences.
 
 - Add privacy_policy_url to brand manifest and adagents.json (#801)
 
   **Schema Changes:**
+
   - **brand-manifest.json**: Add optional `privacy_policy_url` field
   - **adagents.json**: Add optional `privacy_policy_url` field
-  
+
   Enables publishers and brands to declare their privacy policy URLs for compliance and transparency.
 
 - Refactor: replace creative_ids with creative_assignments (#794)
 
   **Breaking Change:**
-  
+
   Package schema now uses `creative_assignments` array instead of `creative_ids` for more flexible creative-to-package mapping with placement support.
 
   **Migration:**
+
   ```json
   // Before
   { "creative_ids": ["creative_1", "creative_2"] }
-  
+
   // After
   { "creative_assignments": [
     { "creative_id": "creative_1" },

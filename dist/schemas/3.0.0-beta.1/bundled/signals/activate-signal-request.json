@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/bundled/signals/activate-signal-request.json",
+  "title": "Activate Signal Request",
+  "description": "Request parameters for activating a signal on a specific deployment target",
+  "type": "object",
+  "properties": {
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "The universal identifier for the signal to activate"
+    },
+    "deployments": {
+      "type": "array",
+      "description": "Target deployment(s) for activation. If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
+      "items": {
+        "title": "Destination",
+        "description": "A deployment target where signals can be activated (DSP, sales agent, etc.)",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "platform",
+                "description": "Discriminator indicating this is a platform-based deployment"
+              },
+              "platform": {
+                "type": "string",
+                "description": "Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp')"
+              },
+              "account": {
+                "type": "string",
+                "description": "Optional account identifier on the platform"
+              }
+            },
+            "required": [
+              "type",
+              "platform"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "agent",
+                "description": "Discriminator indicating this is an agent URL-based deployment"
+              },
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL identifying the deployment agent (for sales agents, etc.)"
+              },
+              "account": {
+                "type": "string",
+                "description": "Optional account identifier on the agent"
+              }
+            },
+            "required": [
+              "type",
+              "agent_url"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "signal_agent_segment_id",
+    "deployments"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-01-26T12:55:43.208Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

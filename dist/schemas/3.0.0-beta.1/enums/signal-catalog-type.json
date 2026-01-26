@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.1/enums/signal-catalog-type.json",
+  "title": "Signal Catalog Type",
+  "description": "Types of signal catalogs available for audience targeting",
+  "type": "string",
+  "enum": [
+    "marketplace",
+    "custom",
+    "owned"
+  ]
+}
