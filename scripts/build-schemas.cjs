@@ -486,6 +486,18 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
     /media-buy\/.*-response\.json$/,
     /signals\/.*-request\.json$/,
     /signals\/.*-response\.json$/,
+    /creative\/.*-request\.json$/,
+    /creative\/.*-response\.json$/,
+    /property\/.*-request\.json$/,
+    /property\/.*-response\.json$/,
+    /content-standards\/.*-request\.json$/,
+    /content-standards\/.*-response\.json$/,
+    /sponsored-intelligence\/.*-request\.json$/,
+    /sponsored-intelligence\/.*-response\.json$/,
+    /protocol\/.*-request\.json$/,
+    /protocol\/.*-response\.json$/,
+    /core\/tasks-.*-request\.json$/,
+    /core\/tasks-.*-response\.json$/,
   ];
 
   for (const schemaPath of schemaFiles) {

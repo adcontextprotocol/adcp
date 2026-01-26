@@ -8,11 +8,14 @@ Get started integrating with AdCP using our schemas and official SDKs.
 
 ## Schema Access
 
-All AdCP schemas are available at:
+AdCP schemas are available from two sources:
 
-```
-https://adcontextprotocol.org/schemas/v2/
-```
+| Source | URL | Best For |
+|--------|-----|----------|
+| Website | `https://adcontextprotocol.org/schemas/v2/` | Runtime fetching, version aliases |
+| GitHub | `https://github.com/adcontextprotocol/adcp/tree/main/dist/schemas` | Offline access, CI/CD pipelines |
+
+Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
 
 ### Common Schemas
 
@@ -152,11 +155,59 @@ datamodel-codegen \
 
 ## Bundled Schemas
 
-For tools that don't support `$ref` resolution, use bundled schemas with all references resolved inline:
+For tools that don't support `$ref` resolution, use bundled schemas with all references resolved inline. Bundled schemas are available from both the website and GitHub:
+
+### Website Access
 
 ```
 https://adcontextprotocol.org/schemas/2.6.0/bundled/media-buy/create-media-buy-request.json
 ```
+
+### GitHub Access
+
+Bundled schemas are committed to the repository at `dist/schemas/{VERSION}/bundled/`:
+
+```bash
+# Clone and access locally
+git clone https://github.com/adcontextprotocol/adcp.git
+ls adcp/dist/schemas/2.5.3/bundled/media-buy/
+
+# Or fetch directly via GitHub raw
+curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/2.5.3/bundled/media-buy/get-products-request.json
+```
+
+### Directory Structure
+
+```
+dist/schemas/{VERSION}/
+├── bundled/                      # Fully dereferenced schemas
+│   ├── media-buy/                # Media buying tasks
+│   ├── creative/                 # Creative tasks
+│   ├── signals/                  # Signal protocol tasks
+│   ├── property/                 # Property/governance tasks
+│   ├── content-standards/        # Content standards tasks
+│   ├── sponsored-intelligence/   # Sponsored intelligence tasks
+│   ├── protocol/                 # Protocol tasks
+│   └── core/                     # Core task schemas
+├── core/                         # Modular schemas with $ref
+├── media-buy/
+└── index.json                    # Schema registry
+```
+
+### Bundled Schema Categories
+
+All request/response task schemas are bundled:
+
+| Category | Tasks |
+|----------|-------|
+| `bundled/media-buy/` | get-products, create-media-buy, update-media-buy, list-creative-formats, sync-creatives, build-creative, list-creatives, get-media-buy-delivery, list-authorized-properties, provide-performance-feedback |
+| `bundled/creative/` | list-creative-formats, preview-creative |
+| `bundled/signals/` | get-signals, activate-signal |
+| `bundled/property/` | create-property-list, get-property-list, list-property-lists, update-property-list, delete-property-list, get-property-features, validate-property-delivery |
+| `bundled/content-standards/` | create-content-standards, get-content-standards, list-content-standards, update-content-standards, calibrate-content, validate-content-delivery, get-media-buy-artifacts |
+| `bundled/sponsored-intelligence/` | si-get-offering, si-initiate-session, si-send-message, si-terminate-session |
+| `bundled/protocol/` | get-adcp-capabilities |
+| `bundled/core/` | tasks-get, tasks-list |
 
 See the [schema registry](https://adcontextprotocol.org/schemas/v2/index.json) for all available schemas.
 
