@@ -1,6 +1,5 @@
 ---
 title: Task Management
-sidebar_position: 6
 ---
 
 
@@ -439,7 +438,7 @@ await a2a.send({
 
 ## Webhook Integration
 
-For async operations, you can configure webhooks instead of polling. See [Protocol Comparison - Push Notifications](/docs/protocols/protocol-comparison#push-notification-architecture) for protocol differences and [Core Concepts - Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability) for implementation patterns.
+For async operations, you can configure webhooks instead of polling. See [Protocol Comparison - Push Notifications](/docs/building/understanding/protocol-comparison#push-notification-architecture) for protocol differences and [Core Concepts - Webhook Reliability](/docs/building/implementation/task-lifecycle#webhook-reliability) for implementation patterns.
 
 **Webhook trigger conditions:**
 Webhooks fire when the task type supports async, `pushNotificationConfig` is provided, and the task actually runs asynchronously (initial response is `working` or `submitted`).
@@ -496,8 +495,8 @@ Webhooks fire when the task type supports async, `pushNotificationConfig` is pro
 
 ## Related Documentation
 
-- **[Core Concepts](/docs/protocols/core-concepts)** - Protocol fundamentals and design principles
-- **[MCP Guide](/docs/protocols/mcp-guide)** - MCP-specific implementation patterns
-- **[A2A Guide](/docs/protocols/a2a-guide)** - A2A-specific integration examples
+- **[Core Concepts](/docs/building/implementation/task-lifecycle)** - Protocol fundamentals and design principles
+- **[MCP Guide](/docs/building/integration/mcp-guide)** - MCP-specific implementation patterns
+- **[A2A Guide](/docs/building/integration/a2a-guide)** - A2A-specific integration examples
 - **[Media Buy Reference](/docs/media-buy/task-reference/)** - Domain-specific task documentation
 - **[Signals Reference](/docs/signals/overview)** - Signal-specific task documentation

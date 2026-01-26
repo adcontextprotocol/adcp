@@ -1,0 +1,165 @@
+---
+title: How AdCP Works
+description: Design principles and architecture of the Ad Context Protocol
+---
+
+AdCP (Ad Context Protocol) is an open standard for AI-powered advertising workflows. It provides a unified interface for media buying across diverse advertising platforms.
+
+## The Core Idea
+
+Traditional ad tech requires integrations with dozens of different platforms, each with its own API, data models, and workflows. AdCP provides a single, AI-optimized interface that works across all of them.
+
+```
+Your Application / AI Agent
+          ↓
+    [MCP or A2A Protocol]
+          ↓
+      AdCP Tasks
+          ↓
+    Sales Agents (Ad Servers)
+          ↓
+   Ad Platforms & Publishers
+```
+
+**Sales Agents** are the key abstraction. They implement AdCP tasks and translate them to specific ad platforms (Google Ad Manager, The Trade Desk, Meta, etc.). Your code talks to AdCP; the sales agent handles the platform complexity.
+
+## Design Principles
+
+### 1. AI-Optimized
+
+AdCP is designed for AI agents, not just human users. This means:
+
+- **Natural language briefs**: Describe what you want, not how to configure it
+- **Conversational refinement**: Agents can ask clarifying questions
+- **Structured data**: Responses include machine-readable data alongside human-readable messages
+
+### 2. Protocol Agnostic
+
+AdCP tasks work with both MCP (Model Context Protocol) and A2A (Agent-to-Agent) protocols:
+
+- **Same tasks**: `get_products`, `create_media_buy`, etc.
+- **Same capabilities**: All features work with both protocols
+- **Different transports**: MCP uses tool calls; A2A uses task messages
+
+Choose based on your ecosystem, not based on what AdCP supports.
+
+### 3. Asynchronous First
+
+Ad operations can take seconds, hours, or days:
+
+- **Immediate**: Simple queries return instantly
+- **Processing**: Complex operations take seconds to minutes
+- **Manual approval**: Some operations require human sign-off
+
+AdCP handles all of these with a unified status system and optional webhooks.
+
+### 4. Human-in-the-Loop
+
+Sensitive operations can require manual approval:
+
+- Budget thresholds (e.g., campaigns over $100K)
+- New advertiser onboarding
+- Policy-sensitive content
+
+The `input-required` status pauses execution until a human approves.
+
+### 5. Platform Agnostic
+
+One interface works across all supported platforms:
+
+- Google Ad Manager
+- The Trade Desk
+- Meta (Facebook/Instagram)
+- Amazon Ads
+- And more...
+
+Sales agents handle the translation layer.
+
+## Key Concepts
+
+### Tasks
+
+Tasks are the operations you can perform:
+
+| Task | What It Does |
+|------|--------------|
+| `get_products` | Discover available inventory |
+| `list_creative_formats` | See supported creative formats |
+| `create_media_buy` | Purchase advertising |
+| `sync_creatives` | Upload creative assets |
+| `get_media_buy_delivery` | Check campaign performance |
+
+Tasks are the same regardless of which protocol you use.
+
+### Status System
+
+Every response includes a `status` field:
+
+| Status | Meaning | Your Action |
+|--------|---------|-------------|
+| `completed` | Done | Process the results |
+| `working` | Processing (< 2 min) | Poll for updates |
+| `submitted` | Long-running (hours/days) | Use webhook or poll |
+| `input-required` | Needs user input | Prompt user, continue |
+| `failed` | Error occurred | Handle the error |
+
+### Context and Sessions
+
+AdCP maintains conversation state:
+
+- **`context_id`**: Session identifier for conversation continuity
+- **`task_id`**: Identifier for tracking specific operations
+
+Context lets agents remember previous requests and refine results conversationally.
+
+### Sales Agents
+
+Sales agents are server implementations that:
+
+- Expose AdCP tasks
+- Translate to specific ad platforms
+- Handle authentication and authorization
+- Manage inventory and pricing
+
+You connect to sales agents, not directly to ad platforms.
+
+## Architecture Layers
+
+```
+┌─────────────────────────────────────────┐
+│           Your Application              │
+│    (Orchestrator, AI Agent, etc.)       │
+└─────────────────────┬───────────────────┘
+                      │
+┌─────────────────────▼───────────────────┐
+│         Transport Protocol              │
+│           (MCP or A2A)                  │
+└─────────────────────┬───────────────────┘
+                      │
+┌─────────────────────▼───────────────────┐
+│           AdCP Tasks                    │
+│  (get_products, create_media_buy, etc.) │
+└─────────────────────┬───────────────────┘
+                      │
+┌─────────────────────▼───────────────────┐
+│           Sales Agent                   │
+│   (Implements tasks, handles auth)      │
+└─────────────────────┬───────────────────┘
+                      │
+┌─────────────────────▼───────────────────┐
+│         Ad Platform APIs                │
+│  (GAM, TTD, Meta, Amazon, etc.)         │
+└─────────────────────────────────────────┘
+```
+
+## What AdCP Is Not
+
+- **Not a DSP**: AdCP doesn't buy ads itself; it provides an interface to systems that do
+- **Not a replacement for RTB**: AdCP is for agentic, relationship-based buying, not real-time auctions
+- **Not a creative tool**: AdCP handles creative *management*, not creative *creation*
+
+## Next Steps
+
+- **Compare protocols**: [Protocol Comparison](/docs/building/understanding/protocol-comparison)
+- **Understand the ecosystem**: [The Ecosystem](/docs/building/understanding/ecosystem)
+- **Start integrating**: [Integration Guide](/docs/building/integration)

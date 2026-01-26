@@ -1,6 +1,5 @@
 ---
 title: Specification Guidelines
-sidebar_position: 100
 ---
 
 # AdCP Specification Guidelines

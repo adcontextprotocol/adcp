@@ -1,0 +1,237 @@
+---
+title: Protocol Comparison
+description: Compare MCP and A2A protocols for AdCP integration. Both use the same unified status system with different transport formats.
+---
+
+Both MCP and A2A provide identical AdCP capabilities using the same unified status system. They differ only in transport format and async handling.
+
+## Quick Comparison
+
+| Aspect | MCP | A2A |
+|--------|-----|-----|
+| **Request Style** | Tool calls | Task messages |
+| **Response Style** | Direct JSON | Artifacts |
+| **Status System** | Unified status field | Unified status field |
+| **Async Handling** | Polling with tasks/get | SSE streaming |
+| **Webhooks** | Protocol wrapper extension | Native PushNotificationConfig |
+| **Task Management** | tasks/list, tasks/get tools | Native tasks/list, tasks/get |
+| **Context** | Manual (pass context_id) | Automatic (protocol-managed) |
+| **Best For** | Claude, AI assistants | Agent workflows |
+
+## Unified Status System
+
+Both protocols use the same status field with consistent values.
+
+### Status Handling (Both Protocols)
+
+Every response includes a status field that tells you exactly what to do:
+
+```json
+{
+  "status": "input-required",    // Same values for both protocols
+  "message": "Need your budget", // Same human explanation
+  // ... protocol-specific formatting below
+}
+```
+
+| Status | What It Means | Your Action |
+|--------|---------------|-------------|
+| `completed` | Task finished | Process data, show success |
+| `input-required` | Need user input | Read message, prompt user, follow up |
+| `working` | Processing (< 120s) | Poll frequently, show progress |
+| `submitted` | Long-running (hours to days) | Provide webhook or poll less frequently |
+| `failed` | Error occurred | Show error, handle gracefully |
+| `auth-required` | Need auth | Prompt for credentials |
+
+See [Task Lifecycle](/docs/building/implementation/task-lifecycle) for complete status handling guide.
+
+## Transport Format Differences
+
+Same status and data, different packaging:
+
+### MCP Response Format
+```json
+{
+  "status": "input-required",
+  "message": "I need your budget and target audience",
+  "context_id": "ctx-123",
+  "products": [],
+  "suggestions": ["budget", "audience"]
+}
+```
+
+### A2A Response Format
+```json
+{
+  "status": "input-required",
+  "contextId": "ctx-123",
+  "artifacts": [{
+    "artifactId": "artifact-product-discovery-xyz",
+    "name": "product_discovery",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "I need your budget and target audience"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "products": [],
+          "suggestions": ["budget", "audience"]
+        }
+      }
+    ]
+  }]
+}
+```
+
+## Async Operation Differences
+
+Both protocols handle async operations with the same status progression:
+`submitted` → `working` → `completed`/`failed`
+
+### MCP Async Pattern
+```javascript
+// Initial response with task_id
+{
+  "status": "submitted",
+  "message": "Creating media buy, requires manual approval",
+  "context_id": "ctx-123",
+  "task_id": "task-456",
+}
+
+// Poll using tasks/get
+const updates = await session.call('tasks/get', {
+  task_id: "task-456",
+  include_result: true
+});
+
+// Optional: Configure webhook
+const response = await session.call('create_media_buy', params, {
+  push_notification_config: {
+    url: "https://buyer.com/webhooks",
+    authentication: {
+      schemes: ["HMAC-SHA256"],
+      credentials: "shared_secret_32_chars"
+    }
+  }
+});
+```
+
+### A2A Async Pattern
+```javascript
+// Initial response with native task tracking
+{
+  "status": "submitted",
+  "taskId": "task-456",
+  "contextId": "ctx-123",
+  "estimatedCompletionTime": "2025-01-23T10:00:00Z"
+}
+
+// Real-time updates via SSE
+const events = new EventSource(`/tasks/${response.taskId}/events`);
+events.onmessage = (event) => {
+  const update = JSON.parse(event.data);
+  console.log(`Status: ${update.status}, Message: ${update.message}`);
+};
+
+// Native webhook support
+await a2a.send({
+  message: { /* skill invocation */ },
+  push_notification_config: {
+    webhook_url: "https://buyer.com/webhooks",
+    authentication: {
+      schemes: ["Bearer"],
+      credentials: "secret_token_min_32_chars"
+    }
+  }
+});
+```
+
+## Context Management
+
+### MCP: Manual Context
+```javascript
+let contextId = null;
+
+async function callAdcp(request) {
+  if (contextId) {
+    request.context_id = contextId;
+  }
+
+  const response = await mcp.call('get_products', request);
+  contextId = response.context_id; // Save for next call
+
+  return response;
+}
+```
+
+### A2A: Automatic Context
+```javascript
+// A2A manages context automatically
+const response1 = await a2a.send({ message: "Find video products" });
+const response2 = await a2a.send({
+  contextId: response1.contextId, // Optional - A2A tracks this
+  message: "Focus on premium inventory"
+});
+```
+
+## Clarification Handling
+
+Both protocols use the same `status: "input-required"` pattern:
+
+```javascript
+// Works for both MCP and A2A
+function handleResponse(response) {
+  if (response.status === 'input-required') {
+    const info = promptUser(response.message);
+    return sendFollowUp(response.context_id, info);
+  }
+
+  if (response.status === 'completed') {
+    return processResults(response);
+  }
+}
+```
+
+## Error Handling
+
+Both use `status: "failed"` with same error structure:
+
+```json
+{
+  "status": "failed",
+  "message": "Insufficient inventory for your targeting criteria",
+  "context_id": "ctx-123",
+  "error_code": "insufficient_inventory",
+  "suggestions": ["Expand targeting", "Increase CPM"]
+}
+```
+
+## Choosing a Protocol
+
+### Choose MCP if you're using:
+- Claude Desktop or Claude Code
+- MCP-compatible AI assistants
+- Simple tool-based integrations
+- Direct JSON responses
+
+### Choose A2A if you're using:
+- Google AI agents or Agent Engine
+- Multi-modal workflows (text + files)
+- Real-time streaming updates
+- Artifact-based data handling
+
+### Both protocols provide:
+- Same AdCP tasks and capabilities
+- Unified status system for clear client logic
+- Context management for conversations
+- Async operation support
+- Human-in-the-loop workflows
+- Error handling and recovery
+
+## Next Steps
+
+- **MCP Guide**: See [MCP Guide](/docs/building/integration/mcp-guide) for tool calls and context management
+- **A2A Guide**: See [A2A Guide](/docs/building/integration/a2a-guide) for artifacts and streaming
+- **Both protocols**: Provide the same capabilities with unified status handling

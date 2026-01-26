@@ -1,0 +1,269 @@
+---
+title: Context & Sessions
+description: Managing conversation state and session continuity in AdCP
+---
+
+AdCP uses identifiers and data fields to maintain state across requests. Understanding these is essential for building effective integrations.
+
+## Key Identifiers
+
+AdCP uses two distinct identifiers for different purposes:
+
+### context_id vs task_id
+
+| Identifier | Purpose | Lifespan | Scope |
+|------------|---------|----------|-------|
+| **context_id** | Conversation/session continuity | ~1 hour | Across multiple task calls |
+| **task_id** | Tracking specific operations | Until completion (hours to days) | Single operation |
+
+**context_id**:
+- Comes from the protocol layer (built into A2A, manual in MCP)
+- Provides conversation history and session continuity
+- Used for maintaining state across multiple task calls
+- Expires after conversation timeout (typically 1 hour)
+
+**task_id**:
+- Specific to individual requests that could be asynchronous
+- Lives beyond the conversation
+- Used for tracking operation progress over time
+- Persists until the task completes (may be days for complex media buys)
+- Can be referenced across different conversations or sessions
+
+### Usage Example
+
+```javascript
+// First call - establishes context and creates task
+const result = await call('create_media_buy', {
+  brief: "Launch summer campaign"
+});
+
+const contextId = result.context_id;  // For conversation continuity
+const taskId = result.task_id;        // For tracking this specific media buy
+
+// Later in same conversation - uses context_id
+const update1 = await call('update_media_buy', {
+  context_id: contextId,    // Maintains conversation state
+  task_id: taskId,          // References the specific media buy
+  updates: {...}
+});
+
+// Days later in new conversation - only task_id needed
+const delivery = await call('get_media_buy_delivery', {
+  task_id: taskId          // No context_id - this is a new conversation
+});
+```
+
+## Protocol Differences
+
+- **A2A**: Context is handled automatically by the protocol
+- **MCP**: Requires manual context_id management
+
+### A2A Context (Automatic)
+
+A2A handles sessions natively - you don't need to manage context:
+
+```javascript
+// A2A maintains context automatically
+const task = await a2a.send({ message: {...} });
+// contextId is managed by A2A protocol
+
+// Follow-ups automatically use the same context
+const followUp = await a2a.send({
+  contextId: task.contextId,  // Optional - A2A tracks this
+  message: {...}
+});
+```
+
+### MCP Context (Manual)
+
+MCP requires explicit context management to maintain state:
+
+```javascript
+// First call - no context
+const result1 = await mcp.call('get_products', {
+  brief: "Video ads"
+});
+const contextId = result1.context_id;  // Save this!
+
+// Follow-up - must include context_id
+const result2 = await mcp.call('get_products', {
+  context_id: contextId,  // Required for continuity
+  brief: "Focus on premium inventory"
+});
+```
+
+### MCP Context Management Pattern
+
+```javascript
+class MCPSession {
+  constructor(mcp) {
+    this.mcp = mcp;
+    this.contextId = null;
+  }
+
+  async call(method, params) {
+    const result = await this.mcp.call(method, {
+      ...params,
+      context_id: this.contextId
+    });
+    this.contextId = result.context_id;  // Update for next call
+    return result;
+  }
+}
+```
+
+## What Context Maintains
+
+The `context_id` maintains conversation state, regardless of protocol:
+- Current media buy and products being discussed
+- Search results and applied filters
+- Conversation history and user intent
+- User preferences expressed in the session
+- Workflow state and temporary decisions
+
+Note: Long-term task state (like media buy status, creative assets, performance data) is tracked via `task_id`, not `context_id`.
+
+## Extension Fields (`ext`)
+
+Extension fields enable platform-specific functionality while maintaining protocol compatibility.
+
+### Schema Pattern
+
+Extensions appear consistently across requests, responses, and domain objects:
+
+```json
+{
+  "product_id": "ctv_premium",
+  "name": "Connected TV Premium Inventory",
+  "ext": {
+    "gam": {
+      "order_id": "1234567890",
+      "dashboard_url": "https://..."
+    },
+    "roku": {
+      "content_genres": ["comedy", "drama"]
+    }
+  }
+}
+```
+
+The `ext` object:
+- Is always **optional** (never required)
+- Accepts any valid JSON structure
+- Must be preserved by implementations (even unknown fields)
+- Is not validated by AdCP schemas (implementation-specific validation allowed)
+
+### Namespacing (Critical)
+
+Extensions MUST use vendor/platform namespacing:
+
+```json
+// ✅ Correct - Namespaced
+{
+  "ext": {
+    "gam": { "test_mode": true },
+    "roku": { "app_ids": ["123"] }
+  }
+}
+
+// ❌ Incorrect - Not namespaced
+{
+  "ext": {
+    "test_mode": true,  // Missing namespace!
+    "app_ids": ["123"]  // Which platform?
+  }
+}
+```
+
+## Application Context (`context`)
+
+Context provides opaque correlation data that is echoed unchanged in responses and webhooks.
+
+### Key Properties
+
+- Agents NEVER parse or use context to affect behavior
+- Exists solely for the initiator's internal tracking needs
+- Echoed unchanged in responses and webhook payloads
+
+### Schema Pattern
+
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "nike_q1_campaign_2025",
+    "packages": [...],
+    "context": {
+      "ui_session_id": "sess_abc123",
+      "trace_id": "trace_xyz789",
+      "internal_campaign_id": "camp_456"
+    }
+  }
+}
+```
+
+Response echoes the context:
+
+```json
+{
+  "status": "input-required",
+  "message": "Media buy requires manual approval before activation.",
+  "context_id": "ctx_ghi789",
+  "context": {
+    "ui_session_id": "sess_abc123",
+    "trace_id": "trace_xyz789",
+    "internal_campaign_id": "camp_456"
+  }
+}
+```
+
+### Common Context Uses
+
+1. **UI/Session tracking** - Maintaining state across async operations
+2. **Request correlation** - Tracing requests through distributed systems
+3. **Internal identifiers** - Mapping to your internal data structures
+4. **Organization context** - Multi-tenant tracking
+
+## When to Use What
+
+| Field | Purpose | Agent Reads? | Agent Modifies? |
+|-------|---------|--------------|-----------------|
+| `context_id` | Session continuity | Yes | Yes (creates/updates) |
+| `task_id` | Operation tracking | Yes | Yes (creates) |
+| `ext` | Platform-specific config | MAY | MAY add response data |
+| `context` | Opaque correlation | NEVER | NEVER |
+
+### Use `ext` when:
+- Platform needs to parse the data
+- Data MAY affect operational behavior
+- Data represents platform-specific configuration
+- Data should persist across operations
+
+### Use `context` when:
+- Data is only for caller's internal use
+- Data should never affect agent behavior
+- Data is for correlation/tracking only
+- Data needs to be echoed unchanged
+
+## Best Practices
+
+### For A2A
+- Let the protocol handle context
+- Use contextId for explicit conversation threading
+- Trust the session management
+
+### For MCP
+- Always preserve context_id between calls
+- Implement a session wrapper (see pattern above)
+- Handle context expiration (1 hour timeout)
+- Start fresh context for new workflows
+
+### For Extensions
+- Always namespace under vendor keys
+- Document your extensions extensively
+- Consider proposing standardization for common patterns
+
+### For Application Context
+- Keep it opaque - don't structure for agents to parse
+- Avoid large payloads - context is echoed in every response
+- Use for correlation only - never for operational data

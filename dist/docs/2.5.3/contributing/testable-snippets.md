@@ -19,7 +19,6 @@ To mark an entire page as testable, add `testable: true` to the frontmatter:
 ```markdown
 ---
 title: get_products
-sidebar_position: 1
 testable: true
 ---
 

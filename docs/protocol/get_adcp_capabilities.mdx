@@ -1,6 +1,5 @@
 ---
 title: get_adcp_capabilities
-sidebar_position: 1
 testable: false
 ---
 
@@ -186,7 +185,7 @@ Array of extension namespaces this agent supports. Buyers can expect meaningful 
 |-------|------|-------------|
 | `extensions_supported` | string[] | Extension namespaces (e.g., `["scope3", "garm"]`) |
 
-Extension schemas are published in the [AdCP extension registry](/docs/reference/extensions-and-context). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
+Extension schemas are published in the [AdCP extension registry](/docs/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
 
 **Example:**
 ```json

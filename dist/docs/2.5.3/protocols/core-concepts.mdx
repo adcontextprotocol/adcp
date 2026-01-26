@@ -1,5 +1,4 @@
 ---
-sidebar_position: 1
 title: Core Concepts
 description: Essential AdCP concepts that work across all protocols (MCP, A2A). Understanding task states, status handling, and async operations.
 keywords: [AdCP core concepts, task status, async operations, status handling, protocol agnostic]
@@ -493,7 +492,7 @@ input-required → → → → →
 - **`completed`**: Success, process results
 - **`failed`**: Error, handle appropriately
 
-For detailed timing expectations and polling patterns, see **[Task Management](/docs/protocols/task-management.mdx#task-status-lifecycle)**.
+For detailed timing expectations and polling patterns, see **[Task Management](/docs/building/implementation/task-lifecycle.mdx#task-status-lifecycle)**.
 
 ## Webhook Reliability
 
@@ -1355,8 +1354,8 @@ function getStatus(response) {
 
 ## Next Steps
 
-- **MCP Integration**: See [MCP Guide](/docs/protocols/mcp-guide) for tool calls and context management
-- **A2A Integration**: See [A2A Guide](/docs/protocols/a2a-guide) for artifacts and streaming
-- **Protocol Comparison**: See [Protocol Comparison](/docs/protocols/protocol-comparison) for choosing between MCP and A2A
+- **MCP Integration**: See [MCP Guide](/docs/building/integration/mcp-guide) for tool calls and context management
+- **A2A Integration**: See [A2A Guide](/docs/building/integration/a2a-guide) for artifacts and streaming
+- **Protocol Comparison**: See [Protocol Comparison](/docs/building/understanding/protocol-comparison) for choosing between MCP and A2A
 
 This unified status approach ensures consistent behavior across all AdCP implementations while making client development more predictable and robust.
