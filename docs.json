@@ -282,7 +282,7 @@
           {
             "group": "Governance Protocol",
             "pages": [
-              "docs/governance/index",
+              "docs/governance/overview",
               {
                 "group": "Property Governance",
                 "pages": [

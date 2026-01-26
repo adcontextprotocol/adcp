@@ -1,5 +1,5 @@
 ---
-title: Governance Protocol
+title: Overview
 ---
 
 <Warning>
@@ -31,8 +31,8 @@ The AAO Governance Working Group is developing standards across six areas that i
 
 | Area | Focus | Protocol Impact |
 |------|-------|-----------------|
-| Brand Safety & Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering |
-| Brand Manifesto & Standards Library | Machine-readable brand policies | [Brand Manifest](/docs/creative/brand-manifest), Content Standards |
+| Brand Safety & Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering, adagents.json |
+| Brand Manifest & Standards Library | Machine-readable brand policies | [Brand Manifest](/docs/creative/brand-manifest), Content Standards |
 | Creative Standards & Validation | Technical and ethical creative criteria | Creative Governance |
 | Process & Human Oversight | Human-in-the-loop checkpoints | All protocols |
 | Regulatory & Compliance | Legal and regional frameworks | All protocols |
@@ -43,35 +43,33 @@ The AAO Governance Working Group is developing standards across six areas that i
 Governance agents operate across the **full campaign lifecycle**:
 
 - **Setup time**: Configure property lists, brand requirements, and compliance rules
-- **Real-time**: Influence bid-time decisions through cached rules and scoring
-- **Post-bid**: Measurement, verification, and reporting on compliance
+- **Execution time**: Filter inventory and validate placements through cached rules and scoring
+- **Post-delivery**: Measurement, verification, and reporting on compliance
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           BUYER AGENT                                    │
-│  - Aggregates governance from specialized agents                         │
-│  - Issues auth_tokens for sellers to access governance data              │
-│  - Source of truth for compliant lists and brand requirements            │
-└───────────────────────────┬─────────────────────────────────────────────┘
-                            │ create_property_list, webhooks
-        ┌───────────────────┼───────────────────┐
-        ▼                   ▼                   ▼
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│ Consent Agent │   │ Scope3 Agent  │   │ Brand Safety  │
-│ (Compliance)  │   │               │   │    Agent      │
-├───────────────┤   ├───────────────┤   ├───────────────┤
-│ consent_qual  │   │ carbon_score  │   │ content_cat   │
-│ tcf_version   │   │ climate_risk  │   │ brand_risk    │
-│ coppa_cert    │   │ green_host    │   │ sentiment     │
-└───────────────┘   └───────────────┘   └───────────────┘
-                            │
-                            │ get_property_list (with auth_token)
-                            ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         SELLER AGENT (DSP/SSP)                          │
-│  - Caches resolved property lists for bid-time decisions                 │
-│  - Receives updates via webhooks when lists change                       │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph buyer["Buyer Agent"]
+        buyer_desc["Aggregates governance from specialized agents<br/>Issues auth_tokens for sellers to access governance data<br/>Source of truth for compliant lists and brand requirements"]
+    end
+
+    subgraph governance["Governance Agents"]
+        subgraph consent["Consent Agent"]
+            consent_features["consent_qual<br/>tcf_version<br/>coppa_cert"]
+        end
+        subgraph scope3["Scope3 Agent"]
+            scope3_features["carbon_score<br/>climate_risk<br/>green_host"]
+        end
+        subgraph brand["Brand Safety Agent"]
+            brand_features["content_cat<br/>brand_risk<br/>sentiment"]
+        end
+    end
+
+    subgraph seller["Seller Agent (DSP/SSP)"]
+        seller_desc["Caches resolved property lists for bid-time decisions<br/>Receives updates via webhooks when lists change"]
+    end
+
+    buyer -->|"create_property_list, webhooks"| governance
+    governance -->|"get_property_list (with auth_token)"| seller
 ```
 
 ## Common Patterns
