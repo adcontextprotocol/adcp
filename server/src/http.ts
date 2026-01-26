@@ -473,24 +473,36 @@ export class HTTPServer {
 
       const entries = await fs.readdir(schemasPath, { withFileTypes: true });
       const versions = entries
-        .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+        .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+(-[a-zA-Z]+\.\d+)?$/.test(e.name))
         .map(e => e.name)
         .sort((a, b) => {
-          // Sort by semver (descending)
-          const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
-          const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
-          if (aMajor !== bMajor) return bMajor - aMajor;
-          if (aMinor !== bMinor) return bMinor - aMinor;
-          return bPatch - aPatch;
+          // Sort by semver (descending), prereleases come after stable
+          const parseVersion = (v: string) => {
+            const [base, prerelease] = v.split('-');
+            const [major, minor, patch] = base.split('.').map(Number);
+            return { major, minor, patch, prerelease };
+          };
+          const av = parseVersion(a);
+          const bv = parseVersion(b);
+          if (av.major !== bv.major) return bv.major - av.major;
+          if (av.minor !== bv.minor) return bv.minor - av.minor;
+          if (av.patch !== bv.patch) return bv.patch - av.patch;
+          // Stable versions come before prereleases (no prerelease = higher precedence)
+          if (!av.prerelease && bv.prerelease) return -1;
+          if (av.prerelease && !bv.prerelease) return 1;
+          // Both have prereleases, sort alphabetically (beta.1 < beta.2)
+          if (av.prerelease && bv.prerelease) return av.prerelease.localeCompare(bv.prerelease);
+          return 0;
         });
 
       versionCache = { versions, timestamp: now };
       return versions;
     }
 
-    function parseSemver(version: string): { major: number, minor: number, patch: number } {
-      const [major, minor, patch] = version.split('.').map(Number);
-      return { major, minor, patch };
+    function parseSemver(version: string): { major: number, minor: number, patch: number, prerelease?: string } {
+      const [base, prerelease] = version.split('-');
+      const [major, minor, patch] = base.split('.').map(Number);
+      return { major, minor, patch, prerelease };
     }
 
     function findMatchingVersion(versions: string[], requestedMajor: number, requestedMinor?: number): string | undefined {
