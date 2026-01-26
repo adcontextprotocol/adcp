@@ -182,53 +182,6 @@
       background: var(--color-danger-light);
       color: var(--color-danger);
     }
-    .variant-card {
-      background: var(--color-gray-50);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-    }
-    .variant-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    .variant-name {
-      font-weight: 600;
-      color: var(--color-text-heading);
-    }
-    .variant-stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-      margin-bottom: 12px;
-    }
-    .variant-stat {
-      text-align: center;
-    }
-    .variant-stat-value {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--color-text-heading);
-    }
-    .variant-stat-label {
-      font-size: 11px;
-      color: var(--color-text-secondary);
-      text-transform: uppercase;
-    }
-    .variant-tags {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .variant-tag {
-      padding: 2px 8px;
-      background: var(--color-gray-200);
-      border-radius: 4px;
-      font-size: 12px;
-      color: var(--color-text-secondary);
-    }
     .test-accounts-list {
       display: flex;
       flex-wrap: wrap;
@@ -414,7 +367,6 @@
     <div class="tabs">
       <button class="tab active" onclick="showTab('history')">History</button>
       <button class="tab" onclick="showTab('analytics')">Analytics</button>
-      <button class="tab" onclick="showTab('variants')">A/B Variants</button>
       <button class="tab" onclick="showTab('test-accounts')">Test Accounts</button>
     </div>
 
@@ -429,7 +381,6 @@
               <th>Date</th>
               <th>User</th>
               <th>Type</th>
-              <th>Variant</th>
               <th>Responded</th>
               <th>Insight</th>
               <th>Thread</th>
@@ -493,16 +444,6 @@
       </div>
     </div>
 
-    <!-- A/B Variants Tab -->
-    <div id="tab-variants" class="tab-content">
-      <div class="section-header">
-        <h2>Message Variants</h2>
-        <button class="btn btn-secondary" onclick="openVariantModal()">+ New Variant</button>
-      </div>
-      <div id="variants-loading" class="loading">Loading variants...</div>
-      <div id="variants-list"></div>
-    </div>
-
     <!-- Test Accounts Tab -->
     <div id="tab-test-accounts" class="tab-content">
       <div class="card">
@@ -520,56 +461,10 @@
     </div>
   </div>
 
-  <!-- Variant Modal -->
-  <div id="variant-modal" class="modal-overlay">
-    <div class="modal">
-      <h2 id="variant-modal-title">New Variant</h2>
-      <div id="variant-error" class="error-message" style="display: none;"></div>
-      <form id="variant-form" onsubmit="handleVariantSubmit(event)">
-        <input type="hidden" id="variant-id">
-        <div class="form-group">
-          <label for="variant-name">Name *</label>
-          <input type="text" id="variant-name" required placeholder="e.g., Professional + Direct">
-        </div>
-        <div class="form-group">
-          <label for="variant-tone">Tone *</label>
-          <select id="variant-tone" required>
-            <option value="professional">Professional</option>
-            <option value="casual">Casual</option>
-            <option value="brief">Brief</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="variant-approach">Approach *</label>
-          <select id="variant-approach" required>
-            <option value="conversational">Conversational</option>
-            <option value="direct">Direct</option>
-            <option value="minimal">Minimal</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="variant-template">Message Template *</label>
-          <textarea id="variant-template" required placeholder="Use {{user_name}} and {{goal_question}} as placeholders"></textarea>
-          <small>Available placeholders: {{user_name}}, {{goal_question}}</small>
-        </div>
-        <div class="form-group">
-          <label for="variant-weight">Weight</label>
-          <input type="number" id="variant-weight" value="100" min="1" max="1000">
-          <small>Higher weight = more likely to be selected (default: 100)</small>
-        </div>
-        <div class="modal-buttons">
-          <button type="button" class="btn btn-secondary" onclick="closeVariantModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="variant-submit-btn">Create</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <div id="adcp-footer"></div>
 
   <script>
     let outreachMode = 'disabled';
-    let variantStats = [];
     let history = [];
     let testAccounts = [];
 
@@ -579,7 +474,6 @@
         loadMode(),
         loadStats(),
         loadHistory(),
-        loadVariants(),
         loadTestAccounts(),
         loadAnalytics(),
       ]);
@@ -674,7 +568,6 @@
           <td>${formatDate(item.sent_at)}</td>
           <td>${escapeHtml(userName)}</td>
           <td><span class="badge badge-info">${item.outreach_type}</span></td>
-          <td>${item.tone ? `${item.tone} / ${item.approach}` : '—'}</td>
           <td>
             <span class="badge ${item.user_responded ? 'badge-success' : 'badge-warning'}">
               ${item.user_responded ? 'Yes' : 'No'}
@@ -703,79 +596,6 @@
           }
         });
       }, 0);
-    }
-
-    async function loadVariants() {
-      const loading = document.getElementById('variants-loading');
-      const list = document.getElementById('variants-list');
-
-      loading.style.display = 'block';
-      list.innerHTML = '';
-
-      try {
-        const [variantsRes, statsRes] = await Promise.all([
-          fetch('/api/admin/outreach/variants'),
-          fetch('/api/admin/outreach/variants/stats'),
-        ]);
-
-        if (!variantsRes.ok || !statsRes.ok) throw new Error('Failed to load variants');
-
-        const variants = await variantsRes.json();
-        variantStats = await statsRes.json();
-
-        loading.style.display = 'none';
-        renderVariants(variants);
-      } catch (err) {
-        loading.style.display = 'none';
-        list.innerHTML = `<div class="error-message">${err.message}</div>`;
-      }
-    }
-
-    function renderVariants(variants) {
-      const list = document.getElementById('variants-list');
-      if (variants.length === 0) {
-        list.innerHTML = '<div class="empty-state">No variants configured yet.</div>';
-        return;
-      }
-
-      list.innerHTML = variants.map(v => {
-        const stats = variantStats.find(s => s.variant_id === v.id) || {};
-        return `
-          <div class="variant-card">
-            <div class="variant-header">
-              <span class="variant-name">${escapeHtml(v.name)}</span>
-              <div>
-                <span class="badge ${v.is_active ? 'badge-success' : 'badge-warning'}">
-                  ${v.is_active ? 'Active' : 'Inactive'}
-                </span>
-                <button class="btn btn-secondary btn-small" onclick="editVariant(${v.id})">Edit</button>
-              </div>
-            </div>
-            <div class="variant-stats">
-              <div class="variant-stat">
-                <div class="variant-stat-value">${stats.total_sent || 0}</div>
-                <div class="variant-stat-label">Sent</div>
-              </div>
-              <div class="variant-stat">
-                <div class="variant-stat-value">${stats.response_rate_pct || 0}%</div>
-                <div class="variant-stat-label">Response Rate</div>
-              </div>
-              <div class="variant-stat">
-                <div class="variant-stat-value">${stats.insight_rate_pct || 0}%</div>
-                <div class="variant-stat-label">Insight Rate</div>
-              </div>
-              <div class="variant-stat">
-                <div class="variant-stat-value">${v.weight}</div>
-                <div class="variant-stat-label">Weight</div>
-              </div>
-            </div>
-            <div class="variant-tags">
-              <span class="variant-tag">Tone: ${v.tone}</span>
-              <span class="variant-tag">Approach: ${v.approach}</span>
-            </div>
-          </div>
-        `;
-      }).join('');
     }
 
     async function loadTestAccounts() {
@@ -896,80 +716,6 @@
       // Update tab content
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       document.getElementById(`tab-${tabName}`).classList.add('active');
-    }
-
-    function openVariantModal(variant = null) {
-      document.getElementById('variant-modal-title').textContent = variant ? 'Edit Variant' : 'New Variant';
-      document.getElementById('variant-submit-btn').textContent = variant ? 'Save' : 'Create';
-      document.getElementById('variant-form').reset();
-      document.getElementById('variant-id').value = variant?.id || '';
-      document.getElementById('variant-error').style.display = 'none';
-
-      if (variant) {
-        document.getElementById('variant-name').value = variant.name;
-        document.getElementById('variant-tone').value = variant.tone;
-        document.getElementById('variant-approach').value = variant.approach;
-        document.getElementById('variant-template').value = variant.message_template;
-        document.getElementById('variant-weight').value = variant.weight;
-      }
-
-      document.getElementById('variant-modal').style.display = 'flex';
-    }
-
-    function closeVariantModal() {
-      document.getElementById('variant-modal').style.display = 'none';
-    }
-
-    async function editVariant(id) {
-      try {
-        const response = await fetch('/api/admin/outreach/variants');
-        if (!response.ok) throw new Error('Failed to load variants');
-        const variants = await response.json();
-        const variant = variants.find(v => v.id === id);
-        if (variant) {
-          openVariantModal(variant);
-        }
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    async function handleVariantSubmit(event) {
-      event.preventDefault();
-      const error = document.getElementById('variant-error');
-      error.style.display = 'none';
-
-      const id = document.getElementById('variant-id').value;
-      const data = {
-        name: document.getElementById('variant-name').value.trim(),
-        tone: document.getElementById('variant-tone').value,
-        approach: document.getElementById('variant-approach').value,
-        message_template: document.getElementById('variant-template').value.trim(),
-        weight: parseInt(document.getElementById('variant-weight').value, 10) || 100,
-        is_active: true,
-      };
-
-      try {
-        const url = id ? `/api/admin/outreach/variants/${id}` : '/api/admin/outreach/variants';
-        const method = id ? 'PUT' : 'POST';
-
-        const response = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error || 'Failed to save variant');
-        }
-
-        closeVariantModal();
-        loadVariants();
-      } catch (err) {
-        error.textContent = err.message;
-        error.style.display = 'block';
-      }
     }
 
     function formatDate(dateStr) {
