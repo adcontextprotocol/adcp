@@ -1,12 +1,9 @@
 ---
-sidebar_position: 12
-title: AdCP Ecosystem
+title: The Ecosystem
 description: AdCP organizations, repositories, and how components fit together
 ---
 
-# AdCP Ecosystem Reference
-
-Token-efficient reference for understanding AdCP's organizations, repositories, and component relationships. Designed for both human readers and AI agents.
+Understanding how the pieces fit together helps when navigating AdCP resources.
 
 ## Organizations
 
@@ -17,35 +14,7 @@ Token-efficient reference for understanding AdCP's organizations, repositories, 
 
 **Key distinction**: AgenticAdvertising.org is the *community*. AdCP is the *protocol*. Members join AgenticAdvertising.org to develop and adopt AdCP.
 
-## Repositories
-
-All repos are under the `adcontextprotocol` GitHub organization.
-
-| Repo | Purpose | Key Contents |
-|------|---------|--------------|
-| **adcp** | Protocol and AgenticAdvertising.org | JSON schemas, TypeScript/Python SDKs, protocol docs, AgenticAdvertising.org server (Addie AI, membership, profiles) |
-| **salesagent** | Reference sales agent implementation | Sales agent code, salesagent docs, deployment configs |
-| **creative-agent** | Reference creative agent | Creative workflows, standard formats, format validation |
-
-## Channel-to-Repo Mapping
-
-For Slack channels → GitHub issues:
-
-| Channel Pattern | Target Repo | Reason |
-|-----------------|-------------|--------|
-| `#salesagent-*` | salesagent | Sales agent implementation and docs |
-| `#creative-*` | creative-agent | Creative agent and formats |
-| `#adcp-dev`, `#protocol-*` | adcp | Core protocol and schemas |
-| `#general`, `#community`, `#membership` | adcp | AgenticAdvertising.org server and community features |
-
-## SDK Packages
-
-| Language | Package | Install |
-|----------|---------|---------|
-| JavaScript/TypeScript | `@adcp/client` | `npm install @adcp/client` |
-| Python | `adcp` | `pip install adcp` |
-
-## Protocol Components
+## Component Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -58,7 +27,7 @@ For Slack channels → GitHub issues:
 │                  ORCHESTRATING AGENTS                       │
 │         (AI Agents executing media buying tasks)            │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ AdCP Tasks (MCP/A2A/REST)
+                      │ AdCP Tasks (MCP/A2A)
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    SALES AGENTS                             │
@@ -72,6 +41,40 @@ For Slack channels → GitHub issues:
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Principals
+
+The humans or organizations with authority to spend money:
+- Advertisers
+- Agencies
+- Brands
+
+Principals authenticate and authorize orchestrating agents to act on their behalf.
+
+### Orchestrating Agents
+
+AI agents that execute media buying workflows:
+- Receive instructions from principals
+- Call AdCP tasks on sales agents
+- Handle clarifications and approvals
+- Report results back to principals
+
+### Sales Agents
+
+Server implementations that expose AdCP tasks:
+- Translate AdCP to platform-specific APIs
+- Handle inventory discovery and pricing
+- Manage creative workflows
+- Process media buy orders
+
+### Ad Platforms
+
+The underlying advertising systems:
+- Google Ad Manager
+- The Trade Desk
+- Meta Business Manager
+- Amazon Ads
+- And more...
+
 ## Core AdCP Tasks
 
 | Task | Purpose | Category |
@@ -80,12 +83,31 @@ For Slack channels → GitHub issues:
 | `list_creative_formats` | Get supported creative formats | Discovery |
 | `create_media_buy` | Purchase advertising inventory | Execution |
 | `get_media_buy` | Check campaign status | Execution |
-| `modify_media_buy` | Update running campaigns | Execution |
+| `update_media_buy` | Modify running campaigns | Execution |
 | `sync_creatives` | Upload/register creative assets | Creative |
-| `discover_signals` | Find targeting signals | Signals |
+| `get_signals` | Find targeting signals | Signals |
 | `activate_signal` | Enable signal for targeting | Signals |
 
+## Repositories
+
+All repos are under the `adcontextprotocol` GitHub organization.
+
+| Repo | Purpose | Key Contents |
+|------|---------|--------------|
+| **adcp** | Protocol and AgenticAdvertising.org | JSON schemas, TypeScript/Python SDKs, protocol docs |
+| **salesagent** | Reference sales agent implementation | Sales agent code, deployment configs |
+| **creative-agent** | Reference creative agent | Creative workflows, format validation |
+
+## SDK Packages
+
+| Language | Package | Install |
+|----------|---------|---------|
+| JavaScript/TypeScript | `@adcp/client` | `npm install @adcp/client` |
+| Python | `adcp` | `pip install adcp` |
+
 ## Reference Agents
+
+For testing and examples:
 
 | Agent | URL | Purpose |
 |-------|-----|---------|
@@ -98,6 +120,7 @@ For Slack channels → GitHub issues:
 - **Core schemas**: `/schemas/v2/core/` (product, media-buy, creative, error)
 - **Task schemas**: `/schemas/v2/media-buy/` and `/schemas/v2/signals/`
 - **Enum schemas**: `/schemas/v2/enums/`
+- **Registry**: [`/schemas/v2/index.json`](https://adcontextprotocol.org/schemas/v2/index.json)
 
 ## Quick Links
 
@@ -105,7 +128,3 @@ For Slack channels → GitHub issues:
 - [AgenticAdvertising.org](https://agenticadvertising.org)
 - [GitHub: adcontextprotocol](https://github.com/adcontextprotocol)
 - [JSON Schema Registry](https://adcontextprotocol.org/schemas/v2/index.json)
-
----
-
-*This is a placeholder document. Content will be enhanced in future updates.*

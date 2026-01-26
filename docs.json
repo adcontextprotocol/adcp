@@ -237,28 +237,50 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
-              "docs/quickstart"
+              "docs/quickstart",
+              "docs/reference/migrating-to-v3"
             ]
           },
           {
-            "group": "Protocols",
+            "group": "Building with AdCP",
             "pages": [
-              "docs/protocols/getting-started",
-              "docs/protocols/core-concepts",
-              "docs/protocol/get_adcp_capabilities",
+              "docs/building/index",
               {
-                "group": "Choose Your Protocol",
+                "group": "Understanding AdCP",
                 "pages": [
-                  "docs/protocols/mcp-guide",
-                  "docs/protocols/a2a-guide",
-                  "docs/protocols/a2a-response-format"
+                  "docs/building/understanding/index",
+                  "docs/building/understanding/how-it-works",
+                  "docs/building/understanding/ecosystem",
+                  "docs/building/understanding/protocol-comparison",
+                  "docs/building/understanding/ad-tech-primer"
                 ]
               },
-              "docs/protocols/protocol-comparison",
-              "docs/protocols/context-management",
-              "docs/protocols/task-management",
-              "docs/protocols/envelope-examples",
-              "docs/protocols/error-handling"
+              {
+                "group": "Foundations",
+                "pages": [
+                  "docs/building/integration/index",
+                  "docs/building/integration/mcp-guide",
+                  "docs/building/integration/a2a-guide",
+                  "docs/building/integration/a2a-response-format",
+                  "docs/protocol/get_adcp_capabilities",
+                  "docs/building/integration/context-sessions",
+                  "docs/building/integration/authentication",
+                  "docs/building/integration/data-models",
+                  "docs/building/integration/schema-versioning"
+                ]
+              },
+              {
+                "group": "Implementation Patterns",
+                "pages": [
+                  "docs/building/implementation/index",
+                  "docs/building/implementation/task-lifecycle",
+                  "docs/building/implementation/async-operations",
+                  "docs/building/implementation/webhooks",
+                  "docs/building/implementation/orchestrator-design",
+                  "docs/building/implementation/error-handling",
+                  "docs/building/implementation/security"
+                ]
+              }
             ]
           },
           {
@@ -451,23 +473,14 @@
           {
             "group": "Reference",
             "pages": [
-              "docs/reference/media-buy-quick-reference",
-              "docs/reference/creative-quick-reference",
-              "docs/reference/signals-quick-reference",
+              "docs/media-buy/quick-reference",
+              "docs/creative/quick-reference",
+              "docs/signals/quick-reference",
               "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
-              "docs/reference/adcp-ecosystem",
-              "docs/reference/ad-tech-primer",
-              "docs/reference/migrating-to-v3",
               "docs/reference/roadmap",
               "docs/reference/release-notes",
               "docs/reference/changelog",
-              "docs/reference/schema-versioning",
-              "docs/reference/extensions-and-context",
-              "docs/reference/error-codes",
-              "docs/reference/data-models",
-              "docs/reference/authentication",
-              "docs/reference/security",
               "docs/reference/implementor-faq",
               "docs/reference/glossary"
             ]

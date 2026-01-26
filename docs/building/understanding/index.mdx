@@ -1,0 +1,64 @@
+---
+title: Overview
+description: Conceptual foundation for the Ad Context Protocol
+---
+
+Before integrating with AdCP, understand how it works and where it fits in the advertising ecosystem.
+
+## In This Section
+
+<CardGroup cols={2}>
+  <Card title="How AdCP Works" icon="diagram-project" href="/docs/building/understanding/how-it-works">
+    Design principles, architecture, and how the pieces fit together.
+  </Card>
+  <Card title="The Ecosystem" icon="globe" href="/docs/building/understanding/ecosystem">
+    The players, relationships, and landscape of agentic advertising.
+  </Card>
+  <Card title="Protocol Comparison" icon="code-compare" href="/docs/building/understanding/protocol-comparison">
+    MCP vs A2A - when to use which, and what's the same.
+  </Card>
+  <Card title="Ad Tech Primer" icon="graduation-cap" href="/docs/building/understanding/ad-tech-primer">
+    Digital advertising fundamentals for AI agents and developers.
+  </Card>
+</CardGroup>
+
+## Key Concepts
+
+### What AdCP Provides
+
+AdCP is an open standard for AI-powered advertising workflows. It provides:
+
+- **Unified interface** for media buying across diverse advertising platforms
+- **Protocol-agnostic tasks** that work with both MCP and A2A
+- **Async-first design** for operations that may take seconds, hours, or days
+- **Human-in-the-loop support** for approvals and manual oversight
+
+### Design Philosophy
+
+1. **AI-Optimized**: Designed for AI agents, not just human users
+2. **Platform Agnostic**: Works across ad platforms (Google, Meta, Amazon, etc.)
+3. **Asynchronous**: Operations may complete immediately or require manual approval
+4. **MCP-Based**: Built on the Model Context Protocol foundation
+5. **Human-in-the-Loop**: Optional manual approval for sensitive operations
+
+### The AdCP Stack
+
+```
+Your Application / AI Agent
+          ↓
+    [MCP or A2A Protocol]
+          ↓
+      AdCP Tasks
+          ↓
+    Sales Agents (Ad Servers)
+          ↓
+   Ad Platforms & Publishers
+```
+
+Both protocols provide the same AdCP tasks - they're just different ways to communicate.
+
+## Next Steps
+
+- **New to AdCP?** Start with [How AdCP Works](/docs/building/understanding/how-it-works)
+- **Evaluating protocols?** See [Protocol Comparison](/docs/building/understanding/protocol-comparison)
+- **Ready to integrate?** Jump to [Integration](/docs/building/integration)

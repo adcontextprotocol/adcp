@@ -1,12 +1,11 @@
 ---
-sidebar_position: 2
 title: MCP Guide
 description: Integrate AdCP with Model Context Protocol (MCP). Transport-specific guide for tool calls, context management, and wire format.
 keywords: [MCP integration, Model Context Protocol, tool calls, context management, wire format]
 ---
 
 
-Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/docs/protocols/core-concepts).
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
 
 ## Testing AdCP via MCP
 
@@ -86,7 +85,7 @@ MCP responses use a **flat structure** where task-specific fields are at the top
 - **status**: Same values as A2A protocol for consistency
 - Task-specific fields (e.g., `products`, `media_buy_id`, `creatives`) are at the top level, not wrapped in a `data` object
 
-**Status Handling**: See [Core Concepts](/docs/protocols/core-concepts) for complete status handling patterns.
+**Status Handling**: See [Task Lifecycle](/docs/building/implementation/task-lifecycle) for complete status handling patterns.
 
 ## Available Tools
 
@@ -122,7 +121,7 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 
 **Task Parameters**: See individual task documentation in [Media Buy](/docs/media-buy) and [Signals](/docs/signals/overview) sections.
 
-**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](/docs/protocols/task-management).
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Webhooks](/docs/building/implementation/webhooks).
 
 ## Context Management (MCP-Specific)
 
@@ -545,7 +544,7 @@ const response = await session.call('create_media_buy',
 // You don't need to poll - just wait for the webhook
 ```
 
-See [Task Management](/docs/protocols/task-management) for webhook payload formats and handling examples.
+See [Webhooks](/docs/building/implementation/webhooks) for webhook payload formats and handling examples.
 
 ### Handling Different Statuses
 
@@ -690,7 +689,7 @@ if (adcpMeta) {
 **Benefits:**
 - Clients can discover AdCP capabilities without making test calls
 - Declare which protocol domains you implement (media_buy, creative, signals)
-- Declare which [typed extensions](/docs/reference/extensions-and-context#typed-extensions) you support
+- Declare which typed extensions you support (see [Context & Sessions](/docs/building/integration/context-sessions#extension-fields-ext))
 - Enable compatibility checks based on version
 
 **Note:** The `_meta` field uses reverse DNS namespacing per the [MCP server.json spec](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md). AdCP servers should support both `/.well-known/mcp.json` and `/.well-known/server.json` locations.
@@ -724,9 +723,9 @@ try {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Core Concepts](/docs/protocols/core-concepts) for status handling and workflows
+- **Core Concepts**: Read [Task Lifecycle](/docs/building/implementation/task-lifecycle) for status handling and workflows
 - **Task Reference**: See [Media Buy Tasks](/docs/media-buy) and [Signals](/docs/signals/overview)
-- **Protocol Comparison**: Compare with [A2A integration](/docs/protocols/a2a-guide)
+- **Protocol Comparison**: Compare with [A2A integration](/docs/building/integration/a2a-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Core Concepts](/docs/protocols/core-concepts) - this guide focuses on MCP transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/docs/building/implementation/task-lifecycle) - this guide focuses on MCP transport specifics only.**
