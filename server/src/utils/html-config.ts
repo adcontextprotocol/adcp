@@ -186,10 +186,10 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
 
   let result = html;
 
-  // Replace page title
+  // Replace page title (preserve id attribute for client-side updates)
   result = result.replace(
     /<title[^>]*>Loading\.\.\.[^<]*<\/title>/i,
-    `<title>${safeTitle} | AgenticAdvertising.org</title>`
+    `<title id="pageTitle">${safeTitle} | AgenticAdvertising.org</title>`
   );
 
   // Replace meta description
