@@ -41,12 +41,12 @@ const createResult = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'display_pkg',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_auction',
+    pricing_option_id: 'cpm_usd_fixed',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 10000,
+    budget: 800,
     bid_price: 5.00
   }],
   start_time: startDate.toISOString(),
@@ -86,7 +86,7 @@ console.log(`Campaign ${updated.media_buy_id} paused`);
 import asyncio
 import time
 from datetime import datetime, timedelta
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def create_and_pause_campaign():
     # First, create a media buy to update
@@ -105,12 +105,12 @@ async def create_and_pause_campaign():
         packages=[{
             'buyer_ref': 'display_pkg',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_auction',
+            'pricing_option_id': 'cpm_usd_fixed',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
             }],
-            'budget': 10000,
+            'budget': 800,
             'bid_price': 5.00
         }],
         start_time=start_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -241,7 +241,7 @@ if (pkg) {
 
 ```python test=false Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 from adcp.types import UpdateMediaBuyRequest
 
 async def increase_budget():
@@ -297,7 +297,7 @@ console.log(`Effective: ${validated.implementation_date}`);
 
 ```python test=false Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 from adcp.types import UpdateMediaBuyRequest
 
 async def extend_campaign():
@@ -355,7 +355,7 @@ console.log('Targeting updated successfully');
 
 ```python test=false Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 from adcp.types import UpdateMediaBuyRequest
 
 async def update_targeting():
@@ -422,7 +422,7 @@ console.log(`Assigned ${assignmentCount} creatives`);
 
 ```python test=false Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 from adcp.types import UpdateMediaBuyRequest
 
 async def replace_creatives():
@@ -494,7 +494,7 @@ console.log(`Updated ${validated.affected_packages?.length || 0} packages`);
 
 ```python test=false Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 from adcp.types import UpdateMediaBuyRequest
 
 async def update_multiple_packages():

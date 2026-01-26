@@ -61,7 +61,7 @@ if ("creatives" in validated) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_creatives(
@@ -258,7 +258,7 @@ if ("creatives" in validated) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_creatives(
@@ -373,7 +373,7 @@ if ("creatives" in validated) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_creatives(
@@ -451,7 +451,7 @@ if ("errors" in validated && validated.errors && validated.errors.length > 0) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_creatives(
@@ -552,7 +552,7 @@ if ("creatives" in validated) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     # Update just 2 creatives out of 100+ in the library

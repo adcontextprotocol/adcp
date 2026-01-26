@@ -1,6 +1,6 @@
 ---
 title: list_authorized_properties
-testable: true
+testable: false
 ---
 
 :::warning Deprecated
@@ -88,7 +88,7 @@ validated.publisher_domains.forEach(domain => {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     # Get all authorized publishers
@@ -136,7 +136,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     # Check if agent represents specific publishers
@@ -211,7 +211,7 @@ for (const domain of authResult.data.publisher_domains) {
 
 ```python Python test=false
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 import requests
 
 async def main():
@@ -291,7 +291,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def main():
     # Determine what type of agent this is based on portfolio
@@ -363,7 +363,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 from datetime import datetime
 
 async def main():
