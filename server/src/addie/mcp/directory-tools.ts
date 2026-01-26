@@ -23,7 +23,7 @@ const federatedIndex = new FederatedIndexService();
 export const DIRECTORY_TOOLS: AddieTool[] = [
   {
     name: 'list_members',
-    description: 'List AgenticAdvertising.org member organizations. Can filter by offerings (buyer_agent, sales_agent, creative_agent, signals_agent, publisher, consulting), markets (North America, EMEA, APAC, LATAM, Global), or search term.',
+    description: 'List AgenticAdvertising.org member organizations. Can filter by offerings (buyer_agent, sales_agent, creative_agent, signals_agent, si_agent, governance_agent, publisher, consulting), markets (North America, EMEA, APAC, LATAM, Global), or search term.',
     usage_hints: 'Use when asked about AAO members, member organizations, who is in the directory, or companies that offer specific services.',
     input_schema: {
       type: 'object',
@@ -32,7 +32,7 @@ export const DIRECTORY_TOOLS: AddieTool[] = [
           type: 'array',
           items: {
             type: 'string',
-            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'other'],
+            enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'si_agent', 'governance_agent', 'publisher', 'consulting', 'other'],
           },
           description: 'Filter by member offerings',
         },

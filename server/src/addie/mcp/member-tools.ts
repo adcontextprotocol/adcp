@@ -658,7 +658,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Natural language search query' },
-        offerings: { type: 'array', items: { type: 'string', enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher', 'consulting', 'managed_services', 'implementation', 'other'] }, description: 'Filter by offerings' },
+        offerings: { type: 'array', items: { type: 'string', enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'si_agent', 'governance_agent', 'publisher', 'consulting', 'other'] }, description: 'Filter by offerings' },
         limit: { type: 'number', description: 'Max results (default 5)' },
       },
       required: ['query'],

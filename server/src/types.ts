@@ -222,6 +222,8 @@ export type MemberOffering =
   | 'sales_agent'
   | 'creative_agent'
   | 'signals_agent'
+  | 'si_agent'
+  | 'governance_agent'
   | 'publisher'
   | 'consulting'
   | 'other';
@@ -234,6 +236,8 @@ export const VALID_MEMBER_OFFERINGS: readonly MemberOffering[] = [
   'sales_agent',
   'creative_agent',
   'signals_agent',
+  'si_agent',
+  'governance_agent',
   'publisher',
   'consulting',
   'other',
