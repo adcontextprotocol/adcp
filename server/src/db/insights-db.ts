@@ -54,19 +54,6 @@ export interface InsightGoal {
   requires_mapped: boolean;
 }
 
-export interface OutreachVariant {
-  id: number;
-  name: string;
-  description: string | null;
-  tone: OutreachTone;
-  approach: OutreachApproach;
-  message_template: string;
-  is_active: boolean;
-  weight: number;
-  created_at: Date;
-  updated_at: Date;
-}
-
 export interface OutreachTestAccount {
   id: number;
   slack_user_id: string;
@@ -85,7 +72,6 @@ export interface MemberOutreach {
   thread_id: string | null;
   dm_channel_id: string | null;
   initial_message: string | null;
-  variant_id: number | null;
   tone: string | null;
   approach: string | null;
   user_responded: boolean;
@@ -135,23 +121,12 @@ export interface CreateInsightInput {
   created_by?: string;
 }
 
-export interface CreateVariantInput {
-  name: string;
-  description?: string;
-  tone: OutreachTone;
-  approach: OutreachApproach;
-  message_template: string;
-  is_active?: boolean;
-  weight?: number;
-}
-
 export interface CreateOutreachInput {
   slack_user_id: string;
   outreach_type: OutreachType;
   thread_id?: string;
   dm_channel_id?: string;
   initial_message?: string;
-  variant_id?: number;
   tone?: string;
   approach?: string;
 }
@@ -242,18 +217,6 @@ export interface FlaggedConversation {
   responseGiven: string | null;
   wasDeflected: boolean;
   createdAt: Date;
-}
-
-export interface OutreachVariantStats {
-  variant_id: number;
-  variant_name: string;
-  tone: string;
-  approach: string;
-  total_sent: number;
-  total_responded: number;
-  total_insights: number;
-  response_rate_pct: number | null;
-  insight_rate_pct: number | null;
 }
 
 export interface OutreachStats {
@@ -634,122 +597,6 @@ export class InsightsDatabase {
     }));
   }
 
-  // ============== Outreach Variants ==============
-
-  /**
-   * Convert PostgreSQL BigInt fields to JavaScript Number
-   */
-  private normalizeVariant(row: OutreachVariant): OutreachVariant {
-    return {
-      ...row,
-      id: Number(row.id),
-      weight: Number(row.weight),
-    };
-  }
-
-  /**
-   * Create a new outreach variant
-   */
-  async createVariant(input: CreateVariantInput): Promise<OutreachVariant> {
-    const result = await query<OutreachVariant>(
-      `INSERT INTO outreach_variants (name, description, tone, approach, message_template, is_active, weight)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING *`,
-      [
-        input.name,
-        input.description || null,
-        input.tone,
-        input.approach,
-        input.message_template,
-        input.is_active ?? true,
-        input.weight ?? 100,
-      ]
-    );
-    return this.normalizeVariant(result.rows[0]);
-  }
-
-  /**
-   * Get all outreach variants
-   */
-  async listVariants(activeOnly = false): Promise<OutreachVariant[]> {
-    const whereClause = activeOnly ? 'WHERE is_active = TRUE' : '';
-    const result = await query<OutreachVariant>(
-      `SELECT * FROM outreach_variants ${whereClause} ORDER BY name`
-    );
-    return result.rows.map(row => this.normalizeVariant(row));
-  }
-
-  /**
-   * Get variant by ID
-   */
-  async getVariant(id: number): Promise<OutreachVariant | null> {
-    const result = await query<OutreachVariant>(
-      'SELECT * FROM outreach_variants WHERE id = $1',
-      [id]
-    );
-    return result.rows[0] ? this.normalizeVariant(result.rows[0]) : null;
-  }
-
-  /**
-   * Update an outreach variant
-   */
-  async updateVariant(
-    id: number,
-    updates: Partial<CreateVariantInput>
-  ): Promise<OutreachVariant | null> {
-    const setClauses: string[] = [];
-    const values: unknown[] = [];
-    let paramIndex = 1;
-
-    const fields: Array<keyof CreateVariantInput> = [
-      'name', 'description', 'tone', 'approach', 'message_template', 'is_active', 'weight',
-    ];
-
-    for (const field of fields) {
-      if (updates[field] !== undefined) {
-        setClauses.push(`${field} = $${paramIndex++}`);
-        values.push(updates[field]);
-      }
-    }
-
-    if (setClauses.length === 0) return this.getVariant(id);
-
-    setClauses.push('updated_at = NOW()');
-    values.push(id);
-
-    const result = await query<OutreachVariant>(
-      `UPDATE outreach_variants SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-      values
-    );
-    return result.rows[0] ? this.normalizeVariant(result.rows[0]) : null;
-  }
-
-  /**
-   * Delete an outreach variant
-   */
-  async deleteVariant(id: number): Promise<boolean> {
-    const result = await query('DELETE FROM outreach_variants WHERE id = $1', [id]);
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  /**
-   * Get variant stats for A/B testing analysis
-   */
-  async getVariantStats(): Promise<OutreachVariantStats[]> {
-    const result = await query<OutreachVariantStats>(
-      'SELECT * FROM outreach_variant_stats ORDER BY total_sent DESC'
-    );
-    return result.rows.map(row => ({
-      ...row,
-      variant_id: Number(row.variant_id),
-      total_sent: Number(row.total_sent),
-      total_responded: Number(row.total_responded),
-      total_insights: Number(row.total_insights),
-      response_rate_pct: row.response_rate_pct ? Number(row.response_rate_pct) : null,
-      insight_rate_pct: row.insight_rate_pct ? Number(row.insight_rate_pct) : null,
-    }));
-  }
-
   // ============== Outreach Test Accounts ==============
 
   /**
@@ -807,8 +654,8 @@ export class InsightsDatabase {
     const result = await query<MemberOutreach>(
       `INSERT INTO member_outreach (
         slack_user_id, outreach_type, thread_id, dm_channel_id,
-        initial_message, variant_id, tone, approach
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        initial_message, tone, approach
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *`,
       [
         input.slack_user_id,
@@ -816,7 +663,6 @@ export class InsightsDatabase {
         input.thread_id || null,
         input.dm_channel_id || null,
         input.initial_message || null,
-        input.variant_id || null,
         input.tone || null,
         input.approach || null,
       ]
@@ -933,6 +779,21 @@ export class InsightsDatabase {
         );
       }
     }
+
+    // Update linked user_goal_history status to 'responded'
+    // This ensures the response is counted in goal stats
+    const goalStatus = analysis.sentiment === 'refusal' ? 'declined' : 'responded';
+    await query(
+      `UPDATE user_goal_history
+       SET status = $2,
+           response_text = $3,
+           response_sentiment = $4,
+           response_intent = $5,
+           updated_at = NOW()
+       WHERE outreach_id = $1
+         AND status = 'sent'`,
+      [id, goalStatus, responseText, analysis.sentiment, analysis.intent]
+    );
 
     return analysis;
   }

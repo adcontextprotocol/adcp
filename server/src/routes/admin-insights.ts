@@ -382,103 +382,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
   });
 
   // =========================================================================
-  // OUTREACH VARIANTS API
-  // =========================================================================
-
-  // GET /api/admin/outreach/variants - List all variants
-  apiRouter.get('/outreach/variants', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const activeOnly = req.query.activeOnly === 'true';
-      const variants = await insightsDb.listVariants(activeOnly);
-      res.json(variants);
-    } catch (error) {
-      logger.error({ err: error }, 'Error listing outreach variants');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/admin/outreach/variants/stats - Get A/B test statistics
-  apiRouter.get('/outreach/variants/stats', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const stats = await insightsDb.getVariantStats();
-      res.json(stats);
-    } catch (error) {
-      logger.error({ err: error }, 'Error getting variant stats');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/admin/outreach/variants - Create variant
-  apiRouter.post('/outreach/variants', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { name, description, tone, approach, message_template, is_active, weight } = req.body;
-
-      if (!name || !tone || !approach || !message_template) {
-        return res.status(400).json({ error: 'name, tone, approach, and message_template are required' });
-      }
-
-      const variant = await insightsDb.createVariant({
-        name,
-        description,
-        tone,
-        approach,
-        message_template,
-        is_active,
-        weight,
-      });
-
-      logger.info({ variantId: variant.id, name }, 'Created outreach variant');
-      res.status(201).json(variant);
-    } catch (error) {
-      logger.error({ err: error }, 'Error creating outreach variant');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // PUT /api/admin/outreach/variants/:id - Update variant
-  apiRouter.put('/outreach/variants/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const variant = await insightsDb.updateVariant(id, req.body);
-
-      if (!variant) {
-        return res.status(404).json({ error: 'Variant not found' });
-      }
-
-      logger.info({ variantId: variant.id }, 'Updated outreach variant');
-      res.json(variant);
-    } catch (error) {
-      logger.error({ err: error }, 'Error updating outreach variant');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // DELETE /api/admin/outreach/variants/:id - Delete variant
-  apiRouter.delete('/outreach/variants/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseIntId(req.params.id);
-      if (id === null) {
-        return res.status(400).json({ error: 'Invalid ID format' });
-      }
-
-      const deleted = await insightsDb.deleteVariant(id);
-      if (!deleted) {
-        return res.status(404).json({ error: 'Variant not found' });
-      }
-
-      logger.info({ variantId: id }, 'Deleted outreach variant');
-      res.json({ success: true });
-    } catch (error) {
-      logger.error({ err: error }, 'Error deleting outreach variant');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =========================================================================
   // OUTREACH STATS & HISTORY API
   // =========================================================================
 
@@ -699,7 +602,7 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       const { slackUserId } = req.params;
       const pool = getPool();
 
-      // Get user info
+      // Get user info with goal from unified_contacts view
       const userResult = await pool.query(`
         SELECT
           sm.*,
@@ -716,82 +619,37 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       }
 
       const user = userResult.rows[0];
-
-      // Use the goal from unified_contacts_with_goals which considers all factors
-      // including whether the account is already linked
       const goalKey = user.goal_key;
 
-      // Map goal_key to outreach_type for variant selection
+      // Map goal_key to outreach_type
       let outreachType: string;
       if (goalKey === 'link_account') {
-        // User needs to link their Slack to AAO
         outreachType = 'account_link';
       } else if (!user.last_outreach_at && !user.workos_user_id) {
-        // Never contacted and no AAO account
         outreachType = 'introduction';
       } else {
-        // User is already linked or has been contacted before
-        // Use goal-based outreach
         outreachType = goalKey || 'insight_goal';
       }
 
-      // Get active variant appropriate for the outreach type
-      // For linked users (not needing account_link), prefer engagement-focused variants
-      const needsLinking = goalKey === 'link_account';
+      // Get the goal and its message template
+      const goalResult = await pool.query(`
+        SELECT id, name, description, message_template, category
+        FROM outreach_goals
+        WHERE is_enabled = TRUE
+        ORDER BY base_priority DESC
+        LIMIT 1
+      `);
 
-      // Use separate queries to avoid dynamic SQL construction
-      let variantQuery: string;
-      if (needsLinking) {
-        variantQuery = `
-          SELECT name, message_template, tone, approach
-          FROM outreach_variants
-          WHERE is_active = TRUE
-          ORDER BY weight DESC
-          LIMIT 1
-        `;
-      } else {
-        // Exclude account-linking focused variants for already-linked users
-        variantQuery = `
-          SELECT name, message_template, tone, approach
-          FROM outreach_variants
-          WHERE is_active = TRUE
-            AND message_template NOT LIKE '%connected to Slack%'
-            AND message_template NOT LIKE '%linked to Slack%'
-            AND message_template NOT LIKE '%link your Slack%'
-          ORDER BY weight DESC
-          LIMIT 1
-        `;
-      }
-      const variantResult = await pool.query(variantQuery);
+      const goal = goalResult.rows[0];
 
-      const variant = variantResult.rows[0];
-
-      // Get outreach goal description if applicable (for {{goal_question}} placeholder)
-      let goalQuestion: string | null = null;
-      if (outreachType === 'insight_goal') {
-        const goalResult = await pool.query(`
-          SELECT description FROM outreach_goals
-          WHERE is_enabled = TRUE AND requires_mapped = TRUE
-          ORDER BY base_priority DESC
-          LIMIT 1
-        `);
-        if (goalResult.rows.length > 0) {
-          goalQuestion = goalResult.rows[0].description;
-        }
-      }
-
-      // Build preview message
+      // Build preview message from goal template
       const userName = user.slack_display_name || user.slack_real_name || 'there';
-      let previewMessage: string;
-
-      // Use the variant's message template (already filtered to exclude linking messages for linked users)
-      previewMessage = variant?.message_template || '[No active outreach variant configured]';
+      const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+      let previewMessage = goal?.message_template || '[No active outreach goal configured]';
       previewMessage = previewMessage.replace(/\{\{user_name\}\}/g, userName);
-      if (goalQuestion) {
-        previewMessage = previewMessage.replace(/\{\{goal_question\}\}/g, goalQuestion);
-      }
+      previewMessage = previewMessage.replace(/\{\{link_url\}\}/g, linkUrl);
 
-      // Check eligibility - use standard checks for all users (linked or not)
+      // Check eligibility
       const eligibility = await canContactUser(slackUserId);
 
       res.json({
@@ -808,10 +666,10 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
           goal_name: user.goal_name,
           reasoning: user.goal_reasoning,
         },
-        variant: variant ? {
-          name: variant.name,
-          tone: variant.tone,
-          approach: variant.approach,
+        goal: goal ? {
+          id: goal.id,
+          name: goal.name,
+          category: goal.category,
         } : null,
         preview_message: previewMessage,
         eligibility,
@@ -892,9 +750,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
           mo.response_sentiment,
           mo.response_intent,
           mo.insight_extracted,
-          mo.variant_id,
-          ov.name as variant_name,
-          ov.tone as variant_tone,
           -- Goal info from user_goal_history if linked
           ugh.goal_id,
           og.name as goal_name,
@@ -902,7 +757,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
           ugh.status as goal_status,
           ugh.attempt_count
         FROM member_outreach mo
-        LEFT JOIN outreach_variants ov ON ov.id = mo.variant_id
         LEFT JOIN user_goal_history ugh ON ugh.outreach_id = mo.id
         LEFT JOIN outreach_goals og ON og.id = ugh.goal_id
         WHERE mo.slack_user_id = $1
@@ -937,11 +791,6 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
             sentiment: row.response_sentiment,
             intent: row.response_intent,
             insight_extracted: row.insight_extracted,
-          } : null,
-          variant: row.variant_id ? {
-            id: row.variant_id,
-            name: row.variant_name,
-            tone: row.variant_tone,
           } : null,
           goal: row.goal_id ? {
             id: row.goal_id,

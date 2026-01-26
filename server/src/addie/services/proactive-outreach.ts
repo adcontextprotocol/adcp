@@ -3,16 +3,12 @@
  *
  * Manages proactive outreach to Slack users via DMs.
  * Uses the OutboundPlanner for intelligent goal selection.
- * Handles eligibility checking, rate limiting, business hours, and A/B testing.
+ * Handles eligibility checking, rate limiting, and business hours.
  */
 
 import { logger } from '../../logger.js';
 import { query } from '../../db/client.js';
-import {
-  InsightsDatabase,
-  type OutreachVariant,
-  type InsightGoal,
-} from '../../db/insights-db.js';
+import { InsightsDatabase } from '../../db/insights-db.js';
 import {
   assignUserStakeholder,
   createActionItem,
@@ -271,71 +267,6 @@ async function getEligibleCandidates(limit = 10): Promise<OutreachCandidate[]> {
 }
 
 /**
- * Select an A/B test variant using weighted random selection
- */
-async function selectVariant(): Promise<OutreachVariant | null> {
-  const variants = await insightsDb.listVariants(true); // activeOnly
-  if (variants.length === 0) {
-    return null;
-  }
-
-  const totalWeight = variants.reduce((sum, v) => sum + (v.weight || 100), 0);
-  let random = Math.random() * totalWeight;
-
-  for (const variant of variants) {
-    random -= variant.weight || 100;
-    if (random <= 0) {
-      return variant;
-    }
-  }
-
-  return variants[0]; // Fallback
-}
-
-/**
- * Determine outreach type based on user state
- */
-function determineOutreachType(candidate: OutreachCandidate): OutreachType {
-  // Unmapped users should be asked to link their account
-  if (!candidate.workos_user_id) {
-    return 'account_link';
-  }
-
-  // First time being contacted = introduction
-  if (!candidate.last_outreach_at) {
-    return 'introduction';
-  }
-
-  // Default to insight goal questions
-  return 'insight_goal';
-}
-
-/**
- * Build outreach message from variant template
- */
-function buildMessage(
-  variant: OutreachVariant,
-  candidate: OutreachCandidate,
-  goal?: InsightGoal
-): string {
-  let message = variant.message_template;
-
-  // Replace placeholders
-  const userName = candidate.slack_display_name || candidate.slack_real_name || 'there';
-  message = message.replace(/\{\{user_name\}\}/g, userName);
-
-  // Build account link URL with slack_user_id for auto-linking
-  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
-  message = message.replace(/\{\{link_url\}\}/g, linkUrl);
-
-  if (goal) {
-    message = message.replace(/\{\{goal_question\}\}/g, goal.question);
-  }
-
-  return message;
-}
-
-/**
  * Open a DM channel with a user using Addie's bot token
  */
 async function openDmChannel(slackUserId: string): Promise<string | null> {
@@ -492,78 +423,12 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
 }
 
 /**
- * Initiate outreach to a single candidate (legacy method)
- * @deprecated Use initiateOutreachWithPlanner for intelligent goal selection
- */
-async function initiateOutreach(candidate: OutreachCandidate): Promise<OutreachResult> {
-  const outreachType = determineOutreachType(candidate);
-
-  // Select variant for A/B testing
-  const variant = await selectVariant();
-  if (!variant) {
-    return { success: false, error: 'No active outreach variants configured' };
-  }
-
-  // Get active goal if applicable
-  let goal: InsightGoal | undefined;
-  if (outreachType === 'insight_goal') {
-    const goals = await insightsDb.getActiveGoalsForUser(!candidate.workos_user_id);
-    goal = goals[0]; // Take highest priority goal
-  }
-
-  // Build message
-  const message = buildMessage(variant, candidate, goal);
-
-  // Open DM channel
-  const channelId = await openDmChannel(candidate.slack_user_id);
-  if (!channelId) {
-    return { success: false, error: 'Failed to open DM channel' };
-  }
-
-  // Send message
-  const messageTs = await sendDmMessage(channelId, message);
-  if (!messageTs) {
-    return { success: false, error: 'Failed to send DM message' };
-  }
-
-  // Record outreach in database
-  const outreach = await insightsDb.recordOutreach({
-    slack_user_id: candidate.slack_user_id,
-    outreach_type: outreachType,
-    dm_channel_id: channelId,
-    initial_message: message,
-    variant_id: variant.id,
-    tone: variant.tone,
-    approach: variant.approach,
-  });
-
-  // Update user's last_outreach_at
-  await updateLastOutreach(candidate.slack_user_id);
-
-  logger.info({
-    outreachId: outreach.id,
-    slackUserId: candidate.slack_user_id,
-    outreachType,
-    variant: variant.name,
-  }, 'Sent proactive outreach');
-
-  return {
-    success: true,
-    outreach_id: outreach.id,
-    dm_channel_id: channelId,
-  };
-}
-
-/**
  * Run the outreach scheduler
  * Called periodically (e.g., every 30 minutes) by background job
- *
- * @param options.usePlanner - Use the OutboundPlanner for intelligent goal selection (default: true)
  */
 export async function runOutreachScheduler(options: {
   limit?: number;
   forceRun?: boolean;
-  usePlanner?: boolean;
 } = {}): Promise<{
   processed: number;
   sent: number;
@@ -571,7 +436,6 @@ export async function runOutreachScheduler(options: {
   errors: number;
 }> {
   const limit = options.limit ?? 5;
-  const usePlanner = options.usePlanner ?? true;
 
   // Check kill switch
   if (!OUTREACH_ENABLED) {
@@ -579,7 +443,7 @@ export async function runOutreachScheduler(options: {
     return { processed: 0, sent: 0, skipped: 0, errors: 0 };
   }
 
-  logger.debug({ limit, usePlanner }, 'Running outreach scheduler');
+  logger.debug({ limit }, 'Running outreach scheduler');
 
   // Get candidates (we'll check business hours per-user based on their timezone)
   const candidates = await getEligibleCandidates(limit * 3); // Fetch more since some may be outside business hours
@@ -612,9 +476,7 @@ export async function runOutreachScheduler(options: {
     }
 
     try {
-      const result = usePlanner
-        ? await initiateOutreachWithPlanner(candidate)
-        : await initiateOutreach(candidate);
+      const result = await initiateOutreachWithPlanner(candidate);
 
       if (result.success) {
         sent++;
@@ -645,16 +507,11 @@ export async function runOutreachScheduler(options: {
 /**
  * Manually trigger outreach to a specific user (admin function)
  * When an admin sends outreach, they become the account owner if no owner exists.
- *
- * @param options.usePlanner - Use the OutboundPlanner for intelligent goal selection (default: true)
  */
 export async function manualOutreach(
   slackUserId: string,
-  triggeredBy?: { id: string; name: string; email: string },
-  options?: { usePlanner?: boolean }
+  triggeredBy?: { id: string; name: string; email: string }
 ): Promise<OutreachResult> {
-  const usePlanner = options?.usePlanner ?? true;
-
   // Look up user
   const result = await query<SlackUserMapping>(
     `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`,
@@ -671,9 +528,7 @@ export async function manualOutreach(
     priority: calculatePriority(user),
   };
 
-  const outreachResult = usePlanner
-    ? await initiateOutreachWithPlanner(candidate)
-    : await initiateOutreach(candidate);
+  const outreachResult = await initiateOutreachWithPlanner(candidate);
 
   // If outreach was successful and we know who triggered it, auto-assign them as owner
   if (outreachResult.success && triggeredBy) {
