@@ -1943,8 +1943,8 @@
 
       let options = '<option value="">Unassigned</option>';
       for (const member of teamMembers) {
-        const isMe = member.workos_user_id === currentUserId;
-        options += `<option value="${member.workos_user_id}">${isMe ? 'Me' : member.name || member.email}</option>`;
+        const isMe = member.user_id === currentUserId;
+        options += `<option value="${member.user_id}">${isMe ? 'Me' : member.user_name || member.user_email}</option>`;
       }
 
       ownerSelect.innerHTML = options;
