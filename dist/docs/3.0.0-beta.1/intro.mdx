@@ -1,0 +1,312 @@
+---
+title: Introduction
+description: AdCP is an open standard for advertising automation that works over MCP and A2A protocols. Learn how to integrate AI-powered advertising workflows.
+keywords: [advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API]
+---
+
+<Info>
+**Latest Documentation**
+
+You're viewing the latest development documentation. For the stable release, switch to version 2.5 using the version selector above.
+</Info>
+
+# Introduction to AdCP
+
+Welcome to the Ad Context Protocol (AdCP) documentation—the open standard for agentic advertising.
+
+## The Opportunity
+
+RTB unlocked programmatic. AdCP unlocks the rest.
+
+90% of ad spend never touches RTB—it lives in walled gardens, direct deals, and premium inventory. Execution costs limit how many media partners advertisers can work with. The opportunity isn't optimizing existing platforms better—it's expanding to more partners without scaling headcount.
+
+AI agents collapse this complexity cost. AdCP gives them a standard way to buy media, build creatives, and activate audiences across any platform.
+
+## What is AdCP?
+
+AdCP is an **open standard for advertising automation** that enables AI agents to interact with advertising platforms through unified interfaces:
+
+- **One Protocol**: Single interface for all advertising platforms
+- **AI-Native**: Works over MCP and A2A protocols for seamless agent integration
+- **Platform Agnostic**: Works with any compatible advertising platform
+
+AdCP uses a task-first architecture where core advertising tasks (like creating media buys or discovering signals) can be accessed through multiple protocols:
+- **MCP (Model Context Protocol)**: For direct AI assistant integration
+- **A2A (Agent2Agent Protocol)**: For complex workflows and agent collaboration
+
+All tasks and data models are defined with JSON schemas for validation and client code generation.
+
+## Protocol Architecture
+
+AdCP operates at multiple layers, providing a clean separation between the business roles, orchestration layer, and technical execution:
+
+```mermaid
+flowchart TB
+    subgraph Business["Business Principals"]
+        BP["**Buying Principal**<br/>Advertiser, agency, retail media network, curator"]
+        MS["**Media Seller**<br/>Publisher, sales house, rep firm, SSP, or ad network"]
+        BP <-->|"imps & money"| MS
+    end
+
+    subgraph Orchestration["Orchestration Layer"]
+        MOP["**Media Orchestration Platform**<br/>Evaluates sellers and audiences; executes strategies"]
+        SA["**Signals Agent**<br/>Signals discovery → activation"]
+        SalesA["**Sales Agent**<br/>Media product discovery + execution"]
+        MOP -->|"MCP"| SA
+        MOP -->|"MCP"| SalesA
+    end
+
+    subgraph Technical["Technical Execution"]
+        AXE["**Agent Execution Environment**<br/>Real-time decisioning for brand safety, fcaps, 1p data"]
+        DP["**Decisioning Platform**<br/>Selects impression to serve (direct or programmatic)"]
+        AXE <-->|"KV or RTB"| DP
+    end
+
+    subgraph Governance["Governance (cross-cutting)"]
+        GOV["**Governance Agents**<br/>Brand safety, consent, property lists, compliance"]
+        HITL["**Human Oversight**<br/>Manual approval checkpoints"]
+    end
+
+    Business --> Orchestration
+    Orchestration --> Technical
+    GOV -.-> Business
+    GOV -.-> Orchestration
+    GOV -.-> Technical
+    HITL -.-> Orchestration
+```
+
+### The AdCP Ecosystem Layers
+
+#### Top Layer: Business Principals
+
+**Buying Principal (Left)**
+The demand side of advertising, including:
+- **Advertisers**: Brands with products/services to promote
+- **Agencies**: Acting on behalf of advertisers
+- **Retail Media Networks**: Retailers monetizing their audiences
+- **Curators**: Packaging inventory and data for specific use cases
+
+**Media Seller (Right)**
+The supply side of advertising, including:
+- **Publishers**: Content creators with audience reach
+- **Sales Houses**: Representing multiple publishers
+- **Rep Firms**: Specialized sales representation
+- **SSPs**: Supply-side platforms aggregating inventory
+- **Ad Networks**: Aggregating and reselling inventory
+
+These parties exchange impressions and money through the orchestration layer below.
+
+#### Middle Layer: Orchestration
+
+**Media Orchestration Platform (Left)**
+Platforms that evaluate sellers and audiences, and execute buying strategies:
+- **Examples**: Scope3, custom orchestration solutions
+- **Function**: Strategy execution, seller evaluation, optimization
+- **Integration**: Uses MCP to communicate with both Audience and Sales Agents
+
+**Signal Agent (Right, Top)**
+MCP servers that provide:
+- **Signal Discovery**: Finding relevant signals (audiences, contextual, geographical, temporal) using natural language
+- **Signal Activation**: Pushing signals to decisioning platforms
+- **Integration**: Exposes data provider capabilities via MCP
+
+**Sales Agent (Right, Bottom)**
+MCP servers that provide:
+- **Media Product Discovery**: Natural language inventory search
+- **Media Execution**: Creating and managing campaigns
+- **Integration**: Exposes publisher capabilities via MCP
+
+#### Bottom Layer: Technical Execution
+
+**Agentic eXecution Engine (AXE) (Left)**
+Real-time execution layer for:
+- **Brand Safety**: Ensuring appropriate ad placement
+- **Frequency Capping**: Managing exposure limits
+- **First-Party Data**: Activating advertiser data
+- **Dynamic Audience Targeting**: Applying buyer segments at impression time
+- **Integration**: Connects via key-value pairs or RTB protocols
+
+See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for details.
+
+**Decisioning Platform (Right)**
+The technical infrastructure that:
+- **Selects Impressions**: Decides which ad to serve
+- **Delivery Method**: Direct campaigns or programmatic (RTB)
+- **Examples**: DSPs, SSPs, Ad Servers, Google Ad Manager, Kevel
+
+#### Cross-Cutting: Governance & Human Oversight
+
+**Governance Agents**
+Specialized agents that provide compliance and quality control across all layers:
+- **Property Lists**: Define where ads can and cannot run
+- **Brand Safety**: Content filtering and suitability scoring
+- **Consent & Compliance**: Privacy regulations (COPPA, TCF, etc.)
+- **Integration**: Operates at setup time, real-time, and post-bid
+
+See [Governance Protocol](/docs/governance/) for details.
+
+**Human-in-the-Loop**
+AdCP supports optional manual approval at key decision points:
+- **Campaign Approval**: Publishers can require human review before activation
+- **Creative Review**: Manual sign-off on ad content
+- **Budget Thresholds**: Automatic escalation above certain spend levels
+- **Policy Exceptions**: Human judgment for edge cases
+
+This is not a real-time protocol - operations may take minutes to days when human approval is required.
+
+## The Complete AdCP Flow with Creative Agents
+
+The AdCP ecosystem extends beyond media transactions to include creative production and delivery:
+
+```mermaid
+flowchart LR
+    subgraph Creative["Creative flow"]
+        direction LR
+        CA[Creative Agent]
+    end
+
+    subgraph Business["Business flow"]
+        direction LR
+        ADV[Advertiser] --> PRIN[Principal] --> MSELL[Media Seller]
+    end
+
+    subgraph Tech["Technical flow"]
+        direction LR
+        BA[Brand Agent] <-.-> MA[Media Agent] <-.-> SAL[Sales Agent] --> DP[Decisioning Platform]
+    end
+
+    subgraph Data["Data flow"]
+        direction LR
+        SIG1[Signals Agent<br/>buyer signals]
+        SIG2[Signals Agent<br/>pub signals]
+    end
+
+    subgraph Delivery["Delivery"]
+        direction LR
+        PROP[Property] --> CONS[Consumer]
+    end
+
+    AXE[AXE]
+
+    CA --> PROP
+    ADV --> CA
+    SIG1 --> MA
+    SIG2 --> SAL
+    MA --> AXE
+    AXE --> DP
+    DP --> PROP
+```
+
+### Three Interconnected Flows
+
+**Creative Flow (Top)**
+- **Creative Agent**: AI-powered creative generation and optimization
+- **Property**: The publisher or platform displaying the ad
+- **Consumer**: The end user viewing the advertisement
+
+**Business Flow (Middle)**
+- **Advertiser**: The brand with a message to deliver
+- **Principal**: The buying principal (agency, trading desk, or brand itself)
+- **Media Seller**: The supply-side entity selling ad inventory
+
+**Technical Flow (Bottom)**
+- **Brand Agent**: Represents the advertiser's objectives and brand guidelines
+- **Media Agent**: Orchestrates the media buying process
+- **Sales Agent**: Facilitates inventory discovery and transaction execution
+- **Decisioning Platform**: Makes real-time ad serving decisions
+- **AXE (Agentic eXecution Engine)**: Provides real-time execution capabilities
+
+## Protocol Domains
+
+AdCP covers multiple advertising domains:
+
+| Domain | Purpose | Key Tasks |
+|--------|---------|-----------|
+| **Media Buy** | Inventory discovery and purchasing | `get_products`, `create_media_buy` |
+| **Creative** | Ad creative management | `build_creative`, `sync_creatives` |
+| **Signals** | Audience and targeting signals | `get_signals`, `activate_signal` |
+| **Sponsored Intelligence** | AI-powered conversational ads | `si_initiate_session`, `si_send_message` |
+
+## Quick Start
+
+<CardGroup cols={2}>
+  <Card title="Interactive Testing" icon="flask" href="https://testing.adcontextprotocol.org">
+    Test all AdCP tasks in your browser—no code required
+  </Card>
+  <Card title="AdAgents.json Builder" icon="hammer" href="https://adcontextprotocol.org/adagents">
+    Validate or create your publisher's adagents.json file
+  </Card>
+  <Card title="Quickstart Guide" icon="rocket" href="/docs/quickstart">
+    Get started in 5 minutes
+  </Card>
+  <Card title="Building with AdCP" icon="code" href="/docs/building">
+    Choose between MCP and A2A
+  </Card>
+</CardGroup>
+
+### Client Libraries
+
+#### JavaScript/TypeScript
+
+```bash
+npm install @adcp/client
+```
+
+- **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client)
+- **GitHub**: [adcp-client](https://github.com/adcontextprotocol/adcp-client)
+
+#### Python
+
+```bash
+pip install adcp
+```
+
+- **PyPI**: [adcp](https://pypi.org/project/adcp/)
+- **GitHub**: [adcp-python](https://github.com/adcontextprotocol/adcp-python)
+
+## Example: Natural Language Advertising
+
+Instead of navigating multiple platforms, you can now say:
+
+> "Find audience signals of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
+
+The AI assistant will:
+1. Search for relevant signals across connected platforms
+2. Show you options with transparent pricing
+3. Activate your chosen signals for use on decisioning platforms
+
+## For Platform Providers
+
+AI is buying ads. Make sure it can buy yours.
+
+If you operate a data platform, DSP, or ad tech solution, AdCP lets AI agents discover and purchase your inventory. [Review the Protocol Specifications](/docs/signals/specification) to get started.
+
+## For Advertisers & Agencies
+
+AI that sells products and builds brands.
+
+AdCP-enabled AI assistants can work across all your media partners through a single interface:
+
+1. Check if your platforms support AdCP
+2. Configure your AI assistant with AdCP-enabled platforms
+3. Start using natural language for your campaigns
+
+## Reference Implementations
+
+- [Signals Agent](https://github.com/adcontextprotocol/signals-agent)
+- [Sales Agent](https://github.com/adcontextprotocol/salesagent)
+
+## Organizations
+
+| Organization | Purpose |
+|--------------|---------|
+| **AgenticAdvertising.org** | Membership community, working groups |
+| **AdCP (Ad Context Protocol)** | Protocol specification, schemas, documentation |
+
+AgenticAdvertising.org is the *community*. AdCP is the *protocol*. Members join AgenticAdvertising.org to develop and adopt AdCP.
+
+## Need Help?
+
+- Browse the documentation
+- Ask in [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- Email: support@adcontextprotocol.org

@@ -1,0 +1,174 @@
+---
+title: Specification
+---
+
+**Status**: Request for Comments
+**Last Updated**: January 25, 2026
+
+This document defines the Signals Protocol specification. The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Abstract
+
+The Signals Protocol defines a standard interface for AI-powered signal discovery, activation, and management systems. This protocol enables AI assistants to help marketers discover, activate, and manage data signals (audiences, contextual, geographical, temporal, and multi-dimensional data) through natural language interactions.
+
+## Protocol Overview
+
+The Signals Protocol provides:
+
+- Natural language signal discovery based on marketing objectives
+- Multi-platform signal discovery in a single request
+- Signal activation for specific platforms and accounts
+- Transparent pricing with CPM and revenue share models
+- Signal size reporting with unit types (individuals, devices, households)
+
+## Transport Requirements
+
+Signal agents MUST support at least one of the following transports:
+
+| Transport | Protocol | Description |
+|-----------|----------|-------------|
+| MCP | Model Context Protocol | Tool-based interaction via JSON-RPC |
+| A2A | Agent-to-Agent | Message-based interaction |
+
+Signal agents SHOULD support MCP as the preferred transport.
+
+Signal agents MUST declare Signals Protocol support via `get_adcp_capabilities`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/protocol/get-adcp-capabilities-response.json",
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["signals"]
+}
+```
+
+## Core Concepts
+
+### Request Roles
+
+Every signal request involves two roles:
+
+- **Orchestrator**: The platform making the API request (e.g., Scope3, Claude)
+- **Principal**: The entity on whose behalf the request is made (e.g., Nike, Omnicom)
+
+### Signal Agent Types
+
+**Private Signal Agents** — owned by the principal with exclusive access:
+- Signal agents MUST return `AGENT_NOT_FOUND` for unauthorized principals
+- Signal agents MUST NOT expose private signals to other principals
+
+**Marketplace Signal Agents** — license signal data to multiple principals:
+- Signal agents MUST support public catalog access without principal registration
+- Signal agents SHOULD support personalized catalogs for registered principals
+
+### Identifiers
+
+- **`signal_agent_segment_id`**: Unique identifier for a signal. Signal agents MUST return this for each signal. Orchestrators MUST use this in `activate_signal` requests.
+
+- **`activation_key`**: Key for campaign targeting. Signal agents MUST return this when `is_live: true` AND the caller has access to the deployment. Orchestrators MUST use this for targeting (not `signal_agent_segment_id`).
+
+## Tasks
+
+The Signals Protocol defines two tasks. See task reference pages for complete request/response schemas and examples.
+
+### get_signals
+
+**Schema**: [`get-signals-request.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json) / [`get-signals-response.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json)
+
+**Reference**: [`get_signals` task](/docs/signals/tasks/get_signals)
+
+Discover signals matching campaign criteria.
+
+**Requirements:**
+- Orchestrators MUST include `signal_spec` and `deliver_to`
+- Signal agents MUST return all required fields per response schema
+- Signal agents MUST include `activation_key` when `is_live: true` AND caller has deployment access
+
+### activate_signal
+
+**Schema**: [`activate-signal-request.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json) / [`activate-signal-response.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json)
+
+**Reference**: [`activate_signal` task](/docs/signals/tasks/activate_signal)
+
+Activate a signal for use on a decisioning platform.
+
+**Requirements:**
+- Orchestrators MUST include `signal_agent_segment_id` and `deployments`
+- On success, signal agents MUST return a `deployments` array with `is_live` for each deployment
+- Signal agents MUST return `activation_key` when `is_live: true` AND caller has deployment access
+- On failure, signal agents MUST return an `errors` array (with no `deployments` array)
+
+## Error Handling
+
+Signal agents MUST return errors using the [standard AdCP error schema](/docs/building/implementation/error-handling).
+
+Signal agents MUST use Signals Protocol error codes as defined in the [Error Handling Reference](/docs/building/implementation/error-handling).
+
+## Security Considerations
+
+### Transport Security
+
+All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
+
+### Authentication
+
+- Orchestrators MUST authenticate with signal agents using valid credentials
+- Signal agents MUST validate credentials before processing requests
+- Signal agents SHOULD use principal context to determine catalog access level
+
+### Activation Key Security
+
+- Signal agents MUST only return `activation_key` to authenticated callers with deployment access
+- Signal agents MUST NOT return activation keys for deployments the caller cannot access
+
+### Data Minimization
+
+- Signal agents MUST NOT return signals the principal is not authorized to access
+
+## Conformance
+
+### Signal Agent Conformance
+
+A conformant Signals Protocol agent MUST:
+
+1. Support at least one specified transport (MCP or A2A)
+2. Implement `get_signals` and `activate_signal` tasks per schema
+3. Return required fields as defined in response schemas
+4. Use specified error codes
+5. Enforce access control for private signals and activation keys
+
+### Orchestrator Conformance
+
+A conformant Signals Protocol orchestrator MUST:
+
+1. Authenticate with signal agents
+2. Include required fields as defined in request schemas
+3. Handle async activation responses
+4. Use `activation_key` for campaign targeting
+
+## Implementation Notes
+
+### Multi-Platform Discovery
+
+Orchestrators MAY request signals across multiple platforms in a single `get_signals` call.
+
+Signal agents SHOULD return deployment information for all requested platforms.
+
+### Activation Timing
+
+Signal activation is typically asynchronous:
+- Simple activations: 1-2 hours
+- Complex deployments: up to 24-48 hours
+
+Orchestrators MUST NOT assume immediate availability after activation request.
+
+## Schema Reference
+
+| Schema | Description |
+|--------|-------------|
+| [`signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json) | get_signals request |
+| [`signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json) | get_signals response |
+| [`signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json) | activate_signal request |
+| [`signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json) | activate_signal response |
+| [`core/deployment.json`](https://adcontextprotocol.org/schemas/v2/core/deployment.json) | Deployment target |
+| [`core/activation-key.json`](https://adcontextprotocol.org/schemas/v2/core/activation-key.json) | Activation key |

@@ -1,0 +1,700 @@
+---
+title: Property List Management
+---
+
+<Info>
+**AdCP 3.0 Proposal** - These tasks are under development for AdCP 3.0.
+</Info>
+
+**Tasks**: Create, update, get, list, and delete property lists.
+
+Property lists are managed resources that combine static property sets with dynamic filters. When resolved, filters are applied to produce the final property set.
+
+## Architecture: Setup Time, Not Real-Time
+
+Property lists are designed for **setup-time** operations, not real-time bid decisions:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SETUP TIME (Campaign Planning)              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Buyer creates/updates property list on governance agent     │
+│  2. Buyer resolves list to get current properties               │
+│  3. Buyer provides list_id to orchestrator/seller               │
+│  4. Orchestrator/seller fetches and caches resolved list        │
+│  5. Campaign targets only cached compliant properties           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                     BID TIME (Milliseconds)                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  • Orchestrator/seller uses LOCAL cache only                    │
+│  • NO calls to governance agent                                 │
+│  • Pass/fail from cached property set                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                     REFRESH (Periodic)                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  • Orchestrator/seller re-fetches list on schedule              │
+│  • Frequency based on cache_valid_until                         │
+│  • Typically every 1-24 hours                                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+This enables:
+
+- **Static lists**: Curated sets of approved properties
+- **Dynamic lists**: Properties matching criteria (country, channel, score thresholds)
+- **Hybrid lists**: Base set modified by filters
+
+## Tasks Overview
+
+| Task | Purpose | Response Time |
+|------|---------|---------------|
+| `create_property_list` | Create a new property list | ~500ms |
+| `update_property_list` | Modify an existing list | ~500ms |
+| `get_property_list` | Retrieve list with resolved properties | ~2-5s (depending on size) |
+| `list_property_lists` | List all property lists | ~500ms |
+| `delete_property_list` | Delete a property list | ~200ms |
+
+## Property List Structure
+
+A property list contains:
+
+```json
+{
+  "list_id": "uk_premium_news_q1",
+  "name": "UK Premium News Sites Q1 2026",
+  "description": "High-quality UK news sites for Q1 campaign",
+  "principal": "did:principal:brand-x",
+  "base_properties": [
+    {
+      "selection_type": "publisher_tags",
+      "publisher_domain": "raptive.com",
+      "tags": ["premium_news", "uk_tier1"]
+    }
+  ],
+  "filters": {
+    "countries_all": ["UK"],
+    "channels_any": ["display", "video"],
+    "feature_requirements": [
+      { "feature_id": "consent_quality", "min_value": 90, "max_value": 100 }
+    ]
+  },
+  "brand_manifest": {
+    "industry": "retail",
+    "target_audience": "general"
+  },
+  "created_at": "2026-01-03T10:00:00Z",
+  "updated_at": "2026-01-03T10:00:00Z",
+  "property_count": 847
+}
+```
+
+## Brand Manifest
+
+Instead of manually specifying all filters, provide a brand manifest and let the governance agent apply appropriate rules based on who you are:
+
+```json
+{
+  "brand_manifest": {
+    "name": "ToyBrand",
+    "industry": "toys",
+    "target_audience": "children under 13",
+    "tone": "playful and safe"
+  }
+}
+```
+
+The agent interprets the manifest based on its domain expertise:
+- A consent agent applies COPPA requirements based on `target_audience`
+- A brand safety agent infers content categories from `industry`
+- A sustainability agent applies requirements from the brand's profile
+
+The brand manifest uses the standard [core/brand-manifest](https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json) schema which includes fields for `industry`, `target_audience`, `tone`, and other brand identity information.
+
+## Webhooks
+
+Configure webhooks via `update_property_list` to receive notifications when the resolved list changes.
+
+**Important**: Webhooks provide **notification only**. They tell you that the list has changed, but do not stream the updated properties. After receiving a webhook, you must call `get_property_list` to retrieve the updated property set.
+
+### Webhook Flow
+
+```
+1. Governance agent re-evaluates properties (periodically or on trigger)
+2. Agent detects changes to the resolved property list
+3. Webhook fires with change summary (counts, not full list)
+4. Recipient calls get_property_list(list_id, resolve=true)
+5. Recipient updates local cache with new properties
+```
+
+### Webhook Payload
+
+```json
+{
+  "event": "property_list_changed",
+  "list_id": "uk_premium_news_q1",
+  "list_name": "UK Premium News Sites Q1 2026",
+  "change_summary": {
+    "properties_added": 12,
+    "properties_removed": 3,
+    "total_properties": 856
+  },
+  "resolved_at": "2026-01-03T18:00:00Z",
+  "cache_valid_until": "2026-01-04T18:00:00Z"
+}
+```
+
+The webhook payload includes counts but NOT the actual properties. This keeps payloads small and avoids redundant data transfer when recipients may not need the full list immediately.
+
+### Webhook Use Cases
+
+1. **Buyer agent aggregation**: Receive updates from multiple specialized agents, intersect results
+2. **Seller cache invalidation**: Know when to re-fetch the compliant property list
+3. **Alerting**: Notify when significant changes occur to compliance status
+
+## Filters
+
+Filters are applied when the list is resolved (via `get_property_list`):
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| `countries_all` | string[] | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - property must have feature data for ALL (required) |
+| `channels_any` | string[] | Advertising channels - property must support ANY (required) |
+| `property_types` | string[] | Property types (website, mobile_app, ctv_app, etc.) |
+| `feature_requirements` | FeatureRequirement[] | Requirements based on agent-provided features |
+| `exclude_identifiers` | Identifier[] | Identifiers to always exclude |
+
+### Feature Requirements
+
+Feature requirements reference features discovered via `list_property_features`. Each agent exposes different features (consent_quality, carbon_score, coppa_certified, etc.).
+
+For **quantitative** features (scores, ranges):
+```json
+{ "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+```
+
+For **binary** features (true/false):
+```json
+{ "feature_id": "coppa_certified", "allowed_values": [true] }
+```
+
+For **categorical** features (enum values):
+```json
+{ "feature_id": "content_category", "allowed_values": ["news", "sports", "technology"] }
+```
+
+### Handling Missing Coverage
+
+When a property doesn't have data for a required feature, you can control the behavior with `if_not_covered`:
+
+```json
+{
+  "feature_id": "viewability_score",
+  "min_value": 70,
+  "if_not_covered": "include"
+}
+```
+
+| Value | Behavior | Use Case |
+|-------|----------|----------|
+| `exclude` (default) | Property is removed from the list | Strict enforcement - only include properties with verified data |
+| `include` | Property passes this requirement | Lenient enforcement - don't penalize for coverage gaps |
+
+When `if_not_covered: "include"` is used, the response includes a `coverage_gaps` field showing which properties were included despite missing data:
+
+```json
+{
+  "identifiers": [...],
+  "coverage_gaps": {
+    "viewability_score": [
+      { "type": "domain", "value": "app.example.com" },
+      { "type": "domain", "value": "ctv.example.com" }
+    ]
+  }
+}
+```
+
+This transparency helps agencies distinguish between properties that passed a requirement vs. those that couldn't be evaluated.
+
+### Required Filters
+
+Every property list must include at least:
+- One country in `countries_all` (ISO 3166-1 alpha-2 code, case-insensitive)
+- One channel in `channels_any` (display, video, audio, etc.)
+
+These are required because governance agents need to know which jurisdiction and context to evaluate properties against.
+
+### Filter Logic
+
+The filter field names make the logic explicit:
+
+- **`countries_all`**: Property must have feature data for **ALL** listed countries.
+- **`channels_any`**: Property must support **ANY** of the listed channels.
+- **`feature_requirements`**: Property must pass **ALL** requirements (AND).
+
+### Base Properties
+
+`base_properties` is an array of property sources to evaluate. Each entry is a **discriminated union** with `selection_type` as the discriminator:
+
+```json
+{
+  "base_properties": [
+    {
+      "selection_type": "publisher_tags",
+      "publisher_domain": "raptive.com",
+      "tags": ["premium_news", "tier1"]
+    },
+    {
+      "selection_type": "publisher_tags",
+      "publisher_domain": "mediavine.com",
+      "tags": ["lifestyle"]
+    },
+    {
+      "selection_type": "identifiers",
+      "identifiers": [
+        { "type": "domain", "value": "bbc.co.uk" },
+        { "type": "domain", "value": "ft.com" }
+      ]
+    }
+  ]
+}
+```
+
+Each entry must include `selection_type`:
+
+| selection_type | Required Fields | Description |
+|-------------|-----------------|-------------|
+| `publisher_tags` | `publisher_domain`, `tags` | All properties matching these tags within the publisher |
+| `publisher_ids` | `publisher_domain`, `property_ids` | Specific property IDs within the publisher |
+| `identifiers` | `identifiers` | Direct domain/app identifiers (no publisher context) |
+
+If `base_properties` is omitted, the agent queries its entire property database for properties matching the filters.
+
+See the [base-property-source schema](https://adcontextprotocol.org/schemas/v2/property/base-property-source.json) for the full specification.
+
+---
+
+## create_property_list
+
+Create a new property list.
+
+### Request
+
+```json
+{
+  "tool": "create_property_list",
+  "arguments": {
+    "name": "UK Premium News Q1",
+    "description": "High-quality UK news sites for Q1 campaign",
+    "base_properties": [
+      {
+        "selection_type": "publisher_tags",
+        "publisher_domain": "raptive.com",
+        "tags": ["premium_news"]
+      }
+    ],
+    "filters": {
+      "countries_all": ["UK"],
+      "channels_any": ["display", "video"],
+      "feature_requirements": [
+        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+      ]
+    }
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Created property list 'UK Premium News Q1'.",
+  "context_id": "ctx-gov-list-123",
+  "list": {
+    "list_id": "pl_abc123",
+    "name": "UK Premium News Q1",
+    "description": "High-quality UK news sites for Q1 campaign",
+    "principal": "did:principal:brand-x",
+    "base_properties": [
+      {
+        "selection_type": "publisher_tags",
+        "publisher_domain": "raptive.com",
+        "tags": ["premium_news"]
+      }
+    ],
+    "filters": {
+      "countries_all": ["UK"],
+      "channels_any": ["display", "video"],
+      "feature_requirements": [
+        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+      ]
+    },
+    "created_at": "2026-01-03T16:30:00Z",
+    "updated_at": "2026-01-03T16:30:00Z",
+    "property_count": 847
+  },
+  "auth_token": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+### Dynamic List (Filters Only)
+
+Create a list that dynamically queries the governance agent's database (no base_properties - uses agent's full coverage):
+
+```json
+{
+  "tool": "create_property_list",
+  "arguments": {
+    "name": "GDPR-Compliant DE Video",
+    "description": "All DE properties supporting video with strong consent",
+    "filters": {
+      "countries_all": ["DE"],
+      "channels_any": ["video"],
+      "feature_requirements": [
+        { "feature_id": "consent_quality", "min_value": 90, "max_value": 100 }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## update_property_list
+
+Modify an existing property list.
+
+### Request - Update Filters
+
+```json
+{
+  "tool": "update_property_list",
+  "arguments": {
+    "list_id": "pl_abc123",
+    "filters": {
+      "countries_all": ["UK"],
+      "channels_any": ["display", "video"],
+      "feature_requirements": [
+        { "feature_id": "consent_quality", "min_value": 80, "max_value": 100 }
+      ]
+    }
+  }
+}
+```
+
+### Request - Replace Base Properties
+
+```json
+{
+  "tool": "update_property_list",
+  "arguments": {
+    "list_id": "pl_abc123",
+    "base_properties": [
+      {
+        "selection_type": "publisher_tags",
+        "publisher_domain": "raptive.com",
+        "tags": ["premium_news", "uk_tier1"]
+      }
+    ]
+  }
+}
+```
+
+### Request - Add Exclusions
+
+```json
+{
+  "tool": "update_property_list",
+  "arguments": {
+    "list_id": "pl_abc123",
+    "filters": {
+      "exclude_identifiers": [
+        { "type": "domain", "value": "excluded-site.com" }
+      ]
+    }
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Updated property list 'UK Premium News Q1'.",
+  "context_id": "ctx-gov-list-456",
+  "list": {
+    "list_id": "pl_abc123",
+    "name": "UK Premium News Q1",
+    "updated_at": "2026-01-03T17:00:00Z",
+    "property_count": 845
+  }
+}
+```
+
+---
+
+## get_property_list
+
+Retrieve a property list with optional resolution of filters.
+
+### Request - Get Resolved Properties
+
+```json
+{
+  "tool": "get_property_list",
+  "arguments": {
+    "list_id": "pl_abc123",
+    "resolve": true,
+    "max_results": 100
+  }
+}
+```
+
+### Response
+
+The response returns a compact list of **identifiers only** (not full property objects) for efficiency. Only identifiers that pass the feature requirements are included - no scores or metadata.
+
+```json
+{
+  "message": "Retrieved property list 'UK Premium News Q1' with 847 resolved identifiers.",
+  "context_id": "ctx-gov-list-789",
+  "list_id": "pl_abc123",
+  "identifiers": [
+    { "type": "domain", "value": "bbc.co.uk" },
+    { "type": "domain", "value": "news.sky.com" },
+    { "type": "domain", "value": "ft.com" },
+    { "type": "domain", "value": "theguardian.com" }
+  ],
+  "total_count": 847,
+  "returned_count": 100,
+  "pagination": {
+    "has_more": true,
+    "cursor": "eyJvZmZzZXQiOjEwMH0="
+  },
+  "resolved_at": "2026-01-03T17:15:00Z",
+  "cache_valid_until": "2026-01-04T17:15:00Z"
+}
+```
+
+<Note>
+The `auth_token` is only returned when the list is created via `create_property_list`. Store it securely - you'll need it to share access with sellers.
+</Note>
+
+### Request - Get Metadata Only
+
+```json
+{
+  "tool": "get_property_list",
+  "arguments": {
+    "list_id": "pl_abc123",
+    "resolve": false
+  }
+}
+```
+
+### Response (Metadata Only)
+
+```json
+{
+  "message": "Retrieved property list 'UK Premium News Q1' metadata.",
+  "context_id": "ctx-gov-list-790",
+  "list": {
+    "list_id": "pl_abc123",
+    "name": "UK Premium News Q1",
+    "description": "High-quality UK news sites for Q1 campaign",
+    "base_properties": [
+      {
+        "selection_type": "publisher_tags",
+        "publisher_domain": "raptive.com",
+        "tags": ["premium_news"]
+      }
+    ],
+    "filters": {
+      "countries_all": ["UK"],
+      "channels_any": ["display", "video"],
+      "feature_requirements": [
+        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+      ]
+    },
+    "created_at": "2026-01-03T16:30:00Z",
+    "updated_at": "2026-01-03T17:00:00Z",
+    "property_count": 847
+  }
+}
+```
+
+---
+
+## list_property_lists
+
+List all property lists accessible to the authenticated principal.
+
+### Request
+
+```json
+{
+  "tool": "list_property_lists",
+  "arguments": {
+    "name_contains": "UK",
+    "max_results": 50
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Found 3 property lists matching 'UK'.",
+  "context_id": "ctx-gov-list-list-123",
+  "lists": [
+    {
+      "list_id": "pl_abc123",
+      "name": "UK Premium News Q1",
+      "description": "High-quality UK news sites for Q1 campaign",
+      "created_at": "2026-01-03T16:30:00Z",
+      "updated_at": "2026-01-03T17:00:00Z",
+      "property_count": 847
+    },
+    {
+      "list_id": "pl_def456",
+      "name": "UK Sports Sites",
+      "description": "UK sports content for sponsorship",
+      "created_at": "2026-01-02T10:00:00Z",
+      "updated_at": "2026-01-02T10:00:00Z",
+      "property_count": 156
+    }
+  ],
+  "total_count": 3,
+  "returned_count": 3,
+  "pagination": {
+    "has_more": false
+  }
+}
+```
+
+---
+
+## delete_property_list
+
+Delete a property list.
+
+### Request
+
+```json
+{
+  "tool": "delete_property_list",
+  "arguments": {
+    "list_id": "pl_abc123"
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Deleted property list 'UK Premium News Q1'.",
+  "context_id": "ctx-gov-list-del-123",
+  "deleted": true,
+  "list_id": "pl_abc123"
+}
+```
+
+---
+
+## Integration with Other Tasks
+
+### Using Lists in score_properties
+
+Reference a property list instead of passing properties inline:
+
+```json
+{
+  "tool": "score_properties",
+  "arguments": {
+    "property_list_ref": {
+      "agent_url": "https://governance.example.com",
+      "list_id": "pl_abc123"
+    },
+    "scoring_context": {
+      "jurisdiction": "GDPR"
+    }
+  }
+}
+```
+
+### Using Lists in Media Buys
+
+Pass property lists to media buy creation:
+
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "packages": [{
+      "property_list_ref": {
+        "agent_url": "https://governance.example.com",
+        "list_id": "pl_abc123"
+      }
+    }]
+  }
+}
+```
+
+---
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `LIST_NOT_FOUND` | Property list ID doesn't exist |
+| `LIST_ACCESS_DENIED` | Principal doesn't have access to this list |
+| `INVALID_FILTER` | Filter configuration is invalid |
+| `LIST_NAME_EXISTS` | A list with this name already exists |
+
+## Caching and Refresh
+
+The `get_property_list` response includes caching guidance:
+
+| Field | Description |
+|-------|-------------|
+| `resolved_at` | When filters were applied and properties resolved |
+| `cache_valid_until` | When consumers should re-fetch the list |
+
+**Typical flow for orchestrators/sellers:**
+
+```python
+# Initial setup
+response = governance_agent.get_property_list(list_id, resolve=True)
+local_cache = build_property_lookup(response.properties)
+cache_expiry = response.cache_valid_until
+
+# Periodic refresh (background job)
+if now() >= cache_expiry:
+    response = governance_agent.get_property_list(list_id, resolve=True)
+    local_cache = build_property_lookup(response.properties)
+    cache_expiry = response.cache_valid_until
+
+# Bid time (no external calls)
+def should_bid(property_domain):
+    return property_domain in local_cache
+```
+
+## Usage Notes
+
+1. **Setup time only**: Governance agents are not in the real-time bid path; resolve lists during campaign setup
+2. **Local caching**: Orchestrators/sellers must cache resolved properties locally for bid-time decisions
+3. **Refresh on schedule**: Re-fetch lists based on `cache_valid_until` (typically every 1-24 hours)
+4. **Dynamic vs Static**: Use filters-only lists when you want the agent to maintain the property set; use base_properties when you need explicit control
+5. **Pagination**: Large lists may require multiple requests with cursor-based pagination
+6. **No score leakage**: Raw scores are kept internal to governance agents; responses contain pass/fail lists, not scores
