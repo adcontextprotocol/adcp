@@ -5760,14 +5760,6 @@ Disallow: /api/admin/
           } catch (statsError) {
             logger.debug({ err: statsError, url }, 'Failed to fetch products');
           }
-          try {
-            const pubResult = await client.listAuthorizedProperties({});
-            if (pubResult.data?.publisher_domains) {
-              stats.publisher_count = pubResult.data.publisher_domains.length;
-            }
-          } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch publishers');
-          }
         }
 
         return res.json({
@@ -5900,60 +5892,12 @@ Disallow: /api/admin/
       }
     });
 
-    // GET /api/public/agent-publishers - Public endpoint to fetch authorized publishers from a sales agent
-    this.app.get('/api/public/agent-publishers', async (req, res) => {
-      const { url } = req.query;
-
-      if (!url || typeof url !== 'string') {
-        return res.status(400).json({ error: 'URL is required' });
-      }
-
-      try {
-        const client = new SingleAgentClient({
-          id: 'publishers-discovery',
-          name: 'publishers-discovery-client',
-          agent_uri: url,
-          protocol: 'mcp',
-        });
-
-        const result = await client.listAuthorizedProperties({});
-        const publishers = (result.data as any)?.publisher_domains || [];
-
-        // Build enriched publisher info
-        const enrichedPublishers = publishers.map((domain: string) => {
-          const properties = (result.data as any)?.properties?.filter((p: any) => p.domain === domain) || [];
-          return {
-            domain,
-            property_count: properties.length,
-            property_types: [...new Set(properties.map((p: any) => p.type))],
-            properties: properties.slice(0, 10).map((p: any) => ({
-              type: p.type,
-              name: p.name,
-              value: p.value,
-            })),
-          };
-        });
-
-        return res.json({
-          success: true,
-          publishers: enrichedPublishers,
-          total_properties: (result.data as any)?.properties?.length || 0,
-        });
-      } catch (error) {
-        logger.error({ err: error, url }, 'Agent publishers fetch error');
-
-        if (error instanceof Error && error.name === 'TimeoutError') {
-          return res.status(504).json({
-            error: 'Connection timeout',
-            message: 'Agent did not respond within the timeout period',
-          });
-        }
-
-        return res.status(500).json({
-          error: 'Failed to fetch publishers',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
+    // GET /api/public/agent-publishers - Deprecated: listAuthorizedProperties was removed from AdCP SDK
+    this.app.get('/api/public/agent-publishers', async (_req, res) => {
+      return res.status(501).json({
+        error: 'Not Implemented',
+        message: 'The list_authorized_properties task is no longer supported in the current SDK version',
+      });
     });
 
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
@@ -6168,14 +6112,6 @@ Disallow: /api/admin/
             }
           } catch (statsError) {
             logger.debug({ err: statsError, url }, 'Failed to fetch products');
-          }
-          try {
-            const pubResult = await client.listAuthorizedProperties({});
-            if (pubResult.data?.publisher_domains) {
-              stats.publisher_count = pubResult.data.publisher_domains.length;
-            }
-          } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch publishers');
           }
         }
 

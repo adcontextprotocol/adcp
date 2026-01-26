@@ -42,27 +42,27 @@ const result = await testAgent.createMediaBuy({
     {
       buyer_ref: 'display_package_1',
       product_id: 'prod_d979b543',
-      pricing_option_id: 'cpm_usd_auction',
+      pricing_option_id: 'cpm_usd_fixed',
       format_ids: [
         {
           agent_url: 'https://creative.adcontextprotocol.org',
           id: 'display_300x250_image'
         }
       ],
-      budget: 5000,
+      budget: 2500,
       bid_price: 5.00
     },
     {
       buyer_ref: 'display_package_2',
       product_id: 'prod_e8fd6012',
-      pricing_option_id: 'cpm_usd_auction',
+      pricing_option_id: 'cpm_usd_fixed',
       format_ids: [
         {
           agent_url: 'https://creative.adcontextprotocol.org',
           id: 'display_300x250_html'
         }
       ],
-      budget: 5000,
+      budget: 2500,
       bid_price: 4.50
     }
   ],
@@ -93,7 +93,7 @@ if ('media_buy_id' in validated) {
 import asyncio
 import time
 from datetime import datetime, timedelta, timezone
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def create_campaign():
     # Calculate dates dynamically - start tomorrow, end in 90 days
@@ -110,27 +110,27 @@ async def create_campaign():
             {
                 'buyer_ref': 'ctv_package',
                 'product_id': 'prod_d979b543',
-                'pricing_option_id': 'cpm_usd_auction',
+                'pricing_option_id': 'cpm_usd_fixed',
                 'format_ids': [
                     {
                         'agent_url': 'https://creative.adcontextprotocol.org',
                         'id': 'display_300x250_image'
                     }
                 ],
-                'budget': 5000,
+                'budget': 2500,
                 'bid_price': 5.00
             },
             {
                 'buyer_ref': 'audio_package',
                 'product_id': 'prod_e8fd6012',
-                'pricing_option_id': 'cpm_usd_auction',
+                'pricing_option_id': 'cpm_usd_fixed',
                 'format_ids': [
                     {
                         'agent_url': 'https://creative.adcontextprotocol.org',
                         'id': 'display_300x250_html'
                     }
                 ],
-                'budget': 5000,
+                'budget': 2500,
                 'bid_price': 4.50
             }
         ],
@@ -153,7 +153,7 @@ asyncio.run(create_campaign())
 npx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   create_media_buy \
-  '{"buyer_ref":"summer_campaign_2025","brand_manifest":{"name":"Nike","url":"https://nike.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  '{"buyer_ref":"summer_campaign_2025","brand_manifest":{"name":"Nike","url":"https://nike.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -243,12 +243,12 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'ctv_regional',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_auction',
+    pricing_option_id: 'cpm_usd_fixed',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 5000,
+    budget: 2500,
     bid_price: 5.00,
     targeting_overlay: {
       geo_country_any_of: ['US'],
@@ -280,7 +280,7 @@ if ('media_buy_id' in validated) {
 import asyncio
 import time
 from datetime import datetime, timedelta, timezone
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def create_targeted_campaign():
     # Calculate end date dynamically - 90 days from now
@@ -295,12 +295,12 @@ async def create_targeted_campaign():
         packages=[{
             'buyer_ref': 'ctv_regional',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_auction',
+            'pricing_option_id': 'cpm_usd_fixed',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
             }],
-            'budget': 5000,
+            'budget': 2500,
             'bid_price': 5.00,
             'targeting_overlay': {
                 'geo_country_any_of': ['US'],
@@ -347,12 +347,12 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'ctv_package',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_auction',
+    pricing_option_id: 'cpm_usd_fixed',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 5000,
+    budget: 2500,
     bid_price: 5.00,
     creatives: [{
       creative_id: 'hero_video_30s',
@@ -392,7 +392,7 @@ if ('packages' in validated) {
 import asyncio
 import time
 from datetime import datetime, timedelta, timezone
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def create_with_creatives():
     # Calculate end date dynamically - 90 days from now
@@ -407,12 +407,12 @@ async def create_with_creatives():
         packages=[{
             'buyer_ref': 'ctv_package',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_auction',
+            'pricing_option_id': 'cpm_usd_fixed',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
             }],
-            'budget': 5000,
+            'budget': 2500,
             'bid_price': 5.00,
             'creatives': [{
                 'creative_id': 'hero_video_30s',
@@ -467,12 +467,12 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'ctv_package',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_auction',
+    pricing_option_id: 'cpm_usd_fixed',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 5000,
+    budget: 2500,
     bid_price: 5.00
   }],
   start_time: 'asap',
@@ -506,7 +506,7 @@ if ('media_buy_id' in validated) {
 import asyncio
 import time
 from datetime import datetime, timedelta, timezone
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def create_with_reporting():
     # Calculate end date dynamically - 90 days from now
@@ -521,12 +521,12 @@ async def create_with_reporting():
         packages=[{
             'buyer_ref': 'ctv_package',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_auction',
+            'pricing_option_id': 'cpm_usd_fixed',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
             }],
-            'budget': 5000,
+            'budget': 2500,
             'bid_price': 5.00
         }],
         start_time='asap',
@@ -558,7 +558,7 @@ Execute a proposal from `get_products` without manually constructing packages:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { CreateMediaBuyResponseSchema } from '@adcp/client';
 
@@ -597,11 +597,11 @@ if ('media_buy_id' in validated) {
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 import time
 from datetime import datetime, timedelta, timezone
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def execute_proposal():
     # Calculate end date dynamically - 90 days from now
@@ -787,7 +787,7 @@ This task can complete instantly or take days depending on complexity and approv
 The task completed synchronously. No async handling needed.
 
 **Request:**
-```javascript
+```javascript test=false
 const response = await session.call('create_media_buy', {
   buyer_ref: 'summer_campaign_2025',
   brand_manifest: { name: 'Nike', url: 'https://nike.com' },
@@ -824,7 +824,7 @@ const response = await session.call('create_media_buy', {
 The task is queued for manual approval. Configure a webhook to receive updates.
 
 **Request with webhook:**
-```javascript
+```javascript test=false
 const response = await session.call('create_media_buy',
   {
     buyer_ref: 'enterprise_campaign',
@@ -904,7 +904,7 @@ const response = await session.call('create_media_buy',
 ### Immediate Success (`completed`)
 
 **Request:**
-```javascript
+```javascript test=false
 const response = await a2a.send({
   message: {
     parts: [{
@@ -993,7 +993,7 @@ Task is actively processing. Use SSE streaming or poll for updates.
 ### Long-Running (`submitted`)
 
 **Request with push notification:**
-```javascript
+```javascript test=false
 const response = await a2a.send({
   message: {
     parts: [{
@@ -1081,7 +1081,7 @@ Task is paused waiting for clarification or approval.
 ```
 
 **Follow-up to approve:**
-```javascript
+```javascript test=false
 await a2a.send({
   contextId: 'ctx_456',  // Continue the conversation
   message: {

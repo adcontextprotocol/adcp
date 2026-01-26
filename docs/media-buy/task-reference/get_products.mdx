@@ -47,7 +47,7 @@ for (const product of validated.products) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_products():
     result = await test_agent.simple.get_products(
@@ -100,7 +100,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_with_filters():
     result = await test_agent.simple.get_products(
@@ -223,7 +223,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_standard_catalog():
     # No brief = standard catalog products for maximum reach
@@ -269,7 +269,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_multi_format():
     # Find products supporting both video and display
@@ -313,7 +313,7 @@ const result = await testAgent.getProducts({
       currency: 'USD'
     },
     countries: ['US', 'CA'],
-    channels: ['display', 'ctv', 'streaming_audio'],
+    channels: ['display', 'ctv', 'podcast'],
     delivery_type: 'guaranteed'
   }
 });
@@ -325,7 +325,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_with_budget_and_dates():
     # Find products within budget and date range for specific countries and channels
@@ -344,7 +344,7 @@ async def discover_with_budget_and_dates():
                 'currency': 'USD'
             },
             'countries': ['US', 'CA'],
-            'channels': ['web', 'ctv', 'streaming_audio'],
+            'channels': ['display', 'ctv', 'podcast'],
             'delivery_type': 'guaranteed'
         }
     )
@@ -383,7 +383,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_property_tags():
     # Get products with property tags
@@ -433,7 +433,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_guaranteed():
     # Find guaranteed delivery products for measurement
@@ -480,7 +480,7 @@ if (result.success && result.data) {
 
 ```python Python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_standard_formats():
     # Find products that only accept IAB standard formats
@@ -537,9 +537,9 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def discover_with_property_list():
     # Filter products by property list from governance agent
@@ -626,7 +626,7 @@ console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_opt
 
 ```python Python
 import asyncio
-from adcp import test_agent, test_agent_no_auth
+from adcp.testing import test_agent, test_agent_no_auth
 
 async def compare_auth():
     # WITH authentication - full catalog with pricing

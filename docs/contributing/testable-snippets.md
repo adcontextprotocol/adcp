@@ -71,7 +71,7 @@ const publicCatalog = await testAgentNoAuth.getProducts({
 **Python:**
 ```python
 import asyncio
-from adcp import test_agent, test_agent_no_auth
+from adcp.testing import test_agent, test_agent_no_auth
 
 async def example():
     # Authenticated access

@@ -24,7 +24,7 @@ console.log(`✓ Found ${result.data?.formats?.length || 0} creative formats`);
 
 ```python
 import asyncio
-from adcp import test_agent
+from adcp.testing import test_agent
 
 async def list_formats():
     result = await test_agent.simple.list_creative_formats()
