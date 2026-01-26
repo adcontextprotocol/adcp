@@ -31,30 +31,8 @@
       "minimum": 0
     },
     "price_guidance": {
-      "type": "object",
-      "description": "Optional pricing guidance for auction-based bidding. Helps buyers calibrate bids with historical percentiles.",
-      "properties": {
-        "p25": {
-          "type": "number",
-          "description": "25th percentile winning price",
-          "minimum": 0
-        },
-        "p50": {
-          "type": "number",
-          "description": "Median winning price",
-          "minimum": 0
-        },
-        "p75": {
-          "type": "number",
-          "description": "75th percentile winning price",
-          "minimum": 0
-        },
-        "p90": {
-          "type": "number",
-          "description": "90th percentile winning price",
-          "minimum": 0
-        }
-      }
+      "description": "Optional pricing guidance for auction-based bidding",
+      "$ref": "/schemas/pricing-options/price-guidance.json"
     },
     "min_spend_per_package": {
       "type": "number",
