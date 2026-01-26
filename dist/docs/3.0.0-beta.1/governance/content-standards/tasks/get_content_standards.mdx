@@ -1,0 +1,78 @@
+---
+title: get_content_standards
+---
+
+# get_content_standards
+
+Retrieve content safety policies for a specific standards configuration.
+
+## Request
+
+**Schema**: [get-content-standards-request.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-content-standards-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | Identifier for the standards configuration |
+
+## Response
+
+**Schema**: [get-content-standards-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-content-standards-response.json)
+
+### Success Response
+
+```json
+{
+  "standards_id": "emea_digital_safety",
+  "name": "EMEA - all digital channels",
+  "countries_all": ["GB", "DE", "FR"],
+  "channels_any": ["display", "video", "ctv"],
+  "languages_any": ["en", "de", "fr"],
+  "policy": "Sports and fitness content is ideal. Lifestyle content about health and wellness is good. Entertainment content is generally acceptable. Avoid content about violence, controversial political topics, adult themes, or content that portrays sedentary lifestyle positively. Block hate speech, illegal activities, or content disparaging athletes.",
+  "calibration_exemplars": {
+    "pass": [
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-championship", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" }
+    ],
+    "fail": [
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
+      { "type": "url", "value": "https://news.example.com/controversial-politics-article", "language": "en" }
+    ]
+  }
+}
+```
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `standards_id` | Unique identifier for this standards configuration |
+| `name` | Human-readable name |
+| `countries_all` | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - standards apply in ALL listed countries |
+| `channels_any` | Ad channels - standards apply to ANY of the listed channels |
+| `languages_any` | ISO 639-1 or BCP 47 language tags (case-insensitive, lowercase recommended) - standards apply to content in ANY of these languages |
+| `policy` | Natural language policy describing acceptable and unacceptable content contexts |
+| `calibration_exemplars` | Training/test set of content contexts (pass/fail) to calibrate policy interpretation |
+
+<Note>
+**Brand Safety Floor Requirement**
+
+Implementors MUST apply a brand safety floor regardless of what policy is defined. AdCP does not define the floor specification.
+</Note>
+
+### Error Response
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [calibrate_content](./calibrate_content) - Collaborative calibration against these standards
+- [list_content_standards](./list_content_standards) - List available standards configurations

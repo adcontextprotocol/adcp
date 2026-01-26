@@ -1,0 +1,576 @@
+---
+title: Migrating to v3
+description: Comprehensive guide to upgrading from AdCP v2.x to v3.x, including breaking changes, new features, and step-by-step migration instructions
+keywords: [migration, upgrade, v3, breaking changes, AdCP 3.0]
+---
+
+# Migrating to AdCP v3
+
+AdCP v3 is a major release that expands the protocol's scope beyond media buying into governance, brand safety, and conversational brand experiences. This guide covers everything you need to upgrade from v2.x.
+
+## What's Different in v3
+
+Version 3 represents a strategic expansion of AdCP:
+
+| Area | v2.x | v3.x |
+|------|------|------|
+| **Protocol Scope** | Media Buy, Signals, Creative | + Governance, Sponsored Intelligence |
+| **Channel Model** | 5 format-oriented channels | 19 planning-oriented channels |
+| **Capability Discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
+| **Creative Assignment** | Simple ID arrays | Weighted assignments with placement targeting |
+| **Geo Targeting** | Implicit US-centric | Explicit named systems (global) |
+
+### Key Themes
+
+1. **Media Planning Alignment** - The new channel taxonomy reflects how buyers actually plan and allocate budgets across media types, not just how ads render technically.
+
+2. **Governance & Brand Safety** - The Governance Protocol enables property lists and content standards for enterprise brand safety workflows.
+
+3. **Conversational Commerce** - The Sponsored Intelligence Protocol defines how AI assistants invoke brand agents for rich conversational experiences.
+
+4. **Global Targeting** - Named geo systems support international markets without US-centric assumptions.
+
+5. **Runtime Discovery** - `get_adcp_capabilities` replaces static agent card extensions with dynamic capability discovery.
+
+### Migration by Role
+
+Your migration path depends on what you're building:
+
+**Seller Agents** (publishers, SSPs, networks):
+- **Breaking changes** - Update all data structures to v3 format (channels, pricing, geo targeting)
+- **New implementations** - Implement `get_adcp_capabilities` task for runtime discovery
+- **New integrations** - Support property list filtering in `get_products` if working with governance agents
+
+**Buyer Agents & Orchestrators** (DSPs, agencies, brands):
+- **Breaking changes** - Update all requests and response handling to v3 format
+- **New consumption** - Use `get_adcp_capabilities` to discover seller capabilities at runtime
+- **New integrations** - Pass property lists to filter inventory; invoke SI sessions for conversational brand experiences
+
+**Signals Agents** (data providers, measurement vendors):
+- **Breaking changes** - Update schema references from v2 to v3
+- **No channel changes** - Signals Protocol doesn't use media channels in its core model
+
+**Creative Agents** (creative management, DCO providers):
+- **Breaking changes** - Support `assets` array with `required` boolean for full asset discovery
+- **No channel changes** - Format `type` field (video, display, audio) is IAB creative classification, not media channels
+
+**Governance Agents** (verification vendors, brand safety platforms) - *new in v3*:
+- **New protocol** - Implement property lists and content standards tasks
+- See [Governance Protocol](/docs/governance) for implementation details
+
+**Sponsored Intelligence Agents** (brand agents) - *new in v3*:
+- **New protocol** - Implement SI session tasks for conversational brand experiences
+- See [Sponsored Intelligence](/docs/sponsored-intelligence/overview) for implementation details
+
+---
+
+## Breaking Changes
+
+### Media Channel Taxonomy
+
+The channel enum has been completely replaced with 19 planning-oriented channels.
+
+<Warning>
+All code that reads or writes channel values must be updated.
+</Warning>
+
+**v2.x channels (5):**
+```json
+["display", "video", "audio", "native", "retail"]
+```
+
+**v3.x channels (19):**
+```json
+[
+  "display", "olv", "social", "search", "ctv", "linear_tv",
+  "radio", "streaming_audio", "podcast", "dooh", "ooh",
+  "print", "cinema", "email", "gaming", "retail_media",
+  "influencer", "affiliate", "product_placement"
+]
+```
+
+#### Channel Mapping Guide
+
+| v2 Channel | v3 Channel(s) | Notes |
+|------------|---------------|-------|
+| `display` | `display` | No change for standard display |
+| `video` | `olv`, `ctv`, `linear_tv`, `cinema` | Split by distribution context |
+| `audio` | `radio`, `streaming_audio`, `podcast` | Split by format and distribution |
+| `native` | Removed | Use format-level `native` property instead |
+| `retail` | `retail_media` | Renamed for clarity |
+
+See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) for complete definitions.
+
+#### Migration Steps
+
+1. **Audit channel usage** - Find all places your code reads or writes channel values
+2. **Map old to new** - Use the mapping table above to convert values
+3. **Update filters** - If filtering by channel, update to new values
+4. **Test thoroughly** - Channel mismatches will cause validation errors
+
+---
+
+### Pricing Option Field Renames
+
+Pricing options have been updated for clearer semantics and better separation of hard constraints vs soft hints.
+
+**v2.x:**
+```json
+{
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "price_guidance": {
+    "floor": 10.00,
+    "p50": 15.00,
+    "p75": 18.00
+  }
+}
+```
+
+**v3.x:**
+```json
+{
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "floor_price": 10.00,
+  "price_guidance": {
+    "p50": 15.00,
+    "p75": 18.00
+  }
+}
+```
+
+#### Field Changes
+
+| v2 Field | v3 Field | Notes |
+|----------|----------|-------|
+| `fixed_rate` | `fixed_price` | Renamed for clarity (it's a price, not a rate) |
+| `price_guidance.floor` | `floor_price` | Moved to top level as hard constraint |
+
+#### Semantic Distinction
+
+- **Hard constraints** (`fixed_price`, `floor_price`) - Publisher-enforced prices that cause bid rejection if violated
+- **Soft hints** (`price_guidance.p25`, `.p50`, `.p75`, `.p90`) - Historical percentiles to help buyers calibrate bids
+
+#### Migration Steps
+
+1. **Rename `fixed_rate`** → `fixed_price` in all pricing options
+2. **Move `floor`** from inside `price_guidance` to top-level `floor_price`
+3. **Update readers** to look for new field names
+4. **Test auction bids** to verify floor enforcement works correctly
+
+<Note>
+**Transition Period Handling**: During migration, readers may encounter both old and new field names. Consider checking for both:
+```javascript
+const price = option.fixed_price ?? option.fixed_rate;
+const floor = option.floor_price ?? option.price_guidance?.floor;
+```
+v3 writers should only emit the new field names. Old field names (`fixed_rate`, `is_fixed`, `price_guidance.floor`) are not recognized by v3 readers.
+</Note>
+
+---
+
+### Creative Assignments with Weighting
+
+Replace `creative_ids` arrays with `creative_assignments` objects.
+
+**v2.x:**
+```json
+{
+  "creative_ids": ["creative_1", "creative_2"]
+}
+```
+
+**v3.x:**
+```json
+{
+  "creative_assignments": [
+    { "creative_id": "creative_1", "weight": 60 },
+    { "creative_id": "creative_2", "weight": 40 }
+  ]
+}
+```
+
+#### What Weighting Enables
+
+- **Traffic allocation** - Control what percentage of impressions each creative receives
+- **Placement targeting** - Assign specific creatives to specific placements within a product
+- **A/B testing** - Split traffic between creative variants
+
+#### Simple Migration (Equal Weights)
+
+If you don't need weighting, omit the `weight` field for equal distribution:
+
+```json
+{
+  "creative_assignments": [
+    { "creative_id": "creative_1" },
+    { "creative_id": "creative_2" }
+  ]
+}
+```
+
+#### Placement Targeting
+
+Target specific placements within a product:
+
+```json
+{
+  "creative_assignments": [
+    { "creative_id": "hero_video", "placement_ids": ["homepage_hero"] },
+    { "creative_id": "sidebar_banner", "placement_ids": ["article_sidebar"] }
+  ]
+}
+```
+
+---
+
+### Geo Targeting with Named Systems
+
+Metro and postal targeting now require explicit system specification.
+
+**v2.x:**
+```json
+{
+  "targeting": {
+    "geo_metros": ["501", "602"],
+    "geo_postal_codes": ["10001", "90210"]
+  }
+}
+```
+
+**v3.x:**
+```json
+{
+  "targeting": {
+    "geo_metros": [
+      { "system": "nielsen_dma", "code": "501" },
+      { "system": "nielsen_dma", "code": "602" }
+    ],
+    "geo_postal_areas": [
+      { "system": "us_zip", "code": "10001" },
+      { "system": "us_zip", "code": "90210" }
+    ]
+  }
+}
+```
+
+#### Why Named Systems?
+
+v2.x assumed US-centric targeting (Nielsen DMAs, ZIP codes). v3.x supports global markets:
+
+**Metro Systems:**
+| System | Coverage | Example |
+|--------|----------|---------|
+| `nielsen_dma` | US | `501` (New York) |
+| `uk_itl1` | UK regions | `UKC` (North East) |
+| `uk_itl2` | UK sub-regions | `UKC1` (Tees Valley) |
+| `eurostat_nuts2` | EU regions | `DE11` (Stuttgart) |
+
+**Postal Systems:**
+| System | Coverage | Example |
+|--------|----------|---------|
+| `us_zip` | US | `10001` |
+| `gb_outward` | UK (area) | `SW1` |
+| `gb_full` | UK (full) | `SW1A 1AA` |
+| `ca_fsa` | Canada | `M5V` |
+| `de_plz` | Germany | `10115` |
+| `fr_code_postal` | France | `75001` |
+| `au_postcode` | Australia | `2000` |
+
+#### Migration Steps
+
+1. **Identify geo targeting** - Find all uses of `geo_metros` and `geo_postal_codes`
+2. **Add system specification** - Wrap values in `{ "system": "...", "code": "..." }`
+3. **Rename field** - `geo_postal_codes` → `geo_postal_areas`
+4. **Verify systems** - Use `get_adcp_capabilities` to check what systems sellers support
+
+---
+
+### Unified Asset Discovery
+
+Formats now use an `assets` array with `required` boolean instead of `assets_required`.
+
+**v2.x:**
+```json
+{
+  "assets_required": ["main_image", "headline"]
+}
+```
+
+**v3.x:**
+```json
+{
+  "assets": [
+    { "asset_id": "main_image", "required": true },
+    { "asset_id": "headline", "required": true },
+    { "asset_id": "impression_tracker", "required": false }
+  ]
+}
+```
+
+#### What This Enables
+
+- **Full asset discovery** - See ALL assets a format supports, not just required ones
+- **Optional asset usage** - Use optional assets like trackers when available
+- **Better AI integration** - Agents can see the complete asset interface
+
+The `assets_required` field is deprecated but still supported through v3.x. It will be removed in v4.0.
+
+---
+
+## New Features
+
+### get_adcp_capabilities Task
+
+Protocol-level capability discovery replacing agent card extensions.
+
+```json
+// Request
+{
+  "task": "get_adcp_capabilities"
+}
+
+// Response
+{
+  "adcp": {
+    "major_versions": [3]
+  },
+  "supported_protocols": ["media_buy", "signals", "governance"],
+  "extensions_supported": ["scope3", "garm"],
+  "media_buy": {
+    "features": {
+      "inline_creative_management": true,
+      "property_list_filtering": true
+    },
+    "portfolio": {
+      "publisher_domains": ["publisher.com"],
+      "channels": ["display", "ctv"],
+      "countries": ["US", "CA"]
+    },
+    "execution": {
+      "targeting": {
+        "geo_metros": [{ "system": "nielsen_dma" }],
+        "geo_postal_areas": [{ "system": "us_zip" }]
+      }
+    }
+  },
+  "governance": {
+    "property_features": [
+      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+      { "feature_id": "garm_category", "type": "categorical", "categories": ["adult", "arms", "crime"] }
+    ]
+  }
+}
+```
+
+#### Benefits Over Agent Card Extensions
+
+| Agent Card Extension | get_adcp_capabilities |
+|---------------------|----------------------|
+| Static JSON file | Runtime discovery |
+| Single file location | Works with any transport |
+| Limited schema | Rich capability declaration |
+| No validation | Schema-validated responses |
+
+#### Migration Steps
+
+1. **Remove agent card extension** - Delete `adcp-extension.json` from your agent card
+2. **Implement get_adcp_capabilities** - Add the task to your agent
+3. **Update buyers** - Call `get_adcp_capabilities` instead of parsing agent cards
+
+---
+
+### Governance Protocol
+
+Brand safety and inventory curation capabilities.
+
+#### Property Lists
+
+Managed lists of properties for targeting or exclusion:
+
+```json
+// Create a property list
+{
+  "task": "create_property_list",
+  "name": "Premium News Sites",
+  "filters": {
+    "mfa_score": { "max": 30 },
+    "garm_categories": { "exclude": ["adult", "arms"] }
+  }
+}
+```
+
+**Tasks:**
+- `create_property_list` - Create a new list
+- `get_property_list` - Retrieve with resolved properties
+- `update_property_list` - Modify filters
+- `delete_property_list` - Remove a list
+- `list_property_lists` - Enumerate available lists
+
+#### Content Standards
+
+Define and enforce brand safety policies:
+
+```json
+// Create content standards
+{
+  "task": "create_content_standards",
+  "name": "Family Brand Standards",
+  "policies": [
+    { "category": "adult", "action": "block" },
+    { "category": "alcohol", "action": "allow_with_warning" }
+  ]
+}
+```
+
+**Tasks:**
+- `create_content_standards` - Define policies
+- `get_content_standards` - Retrieve configuration
+- `update_content_standards` - Modify policies
+- `calibrate_content` - Collaborative dialogue for alignment
+- `validate_content_delivery` - Batch validate delivery records
+
+#### Property List Filtering in get_products
+
+Pass property lists to filter product discovery:
+
+```json
+{
+  "task": "get_products",
+  "brief": "Premium video inventory for auto brand",
+  "property_list": {
+    "governance_agent_url": "https://governance.example.com",
+    "list_id": "premium_news_sites"
+  }
+}
+```
+
+---
+
+### Sponsored Intelligence Protocol
+
+Conversational brand experiences in AI assistants.
+
+SI defines how AI assistants invoke brand agent endpoints for rich brand engagement without breaking the conversational flow.
+
+#### The Flow
+
+1. **User expresses interest** → Host identifies opportunity
+2. **Consent prompt** → User decides whether to share identity
+3. **Session initiation** → Host invokes brand agent with context
+4. **Conversational engagement** → Brand interacts via text, voice, or UI components
+5. **Session termination** → Handoff for transaction (via ACP) or completion
+
+#### Key Tasks
+
+- `si_check_availability` - Check if brand agent is available
+- `si_initiate_session` - Start a brand conversation
+- `si_send_message` - Exchange messages during session
+- `si_terminate_session` - End session with optional transaction handoff
+
+#### Example Session
+
+```json
+// Initiate session
+{
+  "task": "si_initiate_session",
+  "context": "User wants to fly to Boston next Tuesday",
+  "identity": {
+    "consent_granted": true,
+    "user": { "email": "jane@example.com", "name": "Jane Smith" }
+  }
+}
+
+// Response with product card
+{
+  "session_id": "sess_abc123",
+  "response": {
+    "message": "I found DL632 at 6:15 AM. As a Gold member, you qualify for a free upgrade!",
+    "ui_elements": [
+      {
+        "type": "product_card",
+        "data": {
+          "title": "DL632 to Boston",
+          "price": "$199",
+          "badge": "Free Premium Economy Upgrade"
+        }
+      }
+    ]
+  }
+}
+```
+
+See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
+
+---
+
+## Deprecations
+
+| Deprecated | Replacement | Support Until |
+|------------|-------------|---------------|
+| `adcp-extension.json` agent card | `get_adcp_capabilities` task | 4.0.0 |
+| `list_property_features` task | `get_adcp_capabilities` governance section | 4.0.0 |
+| `assets_required` in formats | `assets` array with `required` boolean | 4.0.0 |
+| `creative_ids` in packages | `creative_assignments` array | 4.0.0 |
+| `geo_postal_codes` | `geo_postal_areas` | 4.0.0 |
+
+---
+
+## Migration Checklist
+
+### All Implementations
+
+These breaking changes affect anyone reading or writing AdCP data:
+
+- [ ] Update channel enum values to [new taxonomy](/docs/reference/media-channel-taxonomy)
+- [ ] Rename `fixed_rate` → `fixed_price` in pricing options
+- [ ] Move `price_guidance.floor` → `floor_price` (top-level)
+- [ ] Replace `creative_ids` with `creative_assignments`
+- [ ] Add system specification to metro/postal targeting
+- [ ] Rename `geo_postal_codes` → `geo_postal_areas`
+- [ ] Update format parsing to use `assets` array
+- [ ] Validate all requests/responses against v3 schemas
+
+### Seller Agents
+
+- [ ] Implement `get_adcp_capabilities` task
+- [ ] Remove `adcp-extension.json` from agent card
+- [ ] Support property list filtering in `get_products` if integrating with governance agents
+
+### Buyer Agents & Orchestrators
+
+- [ ] Update to call `get_adcp_capabilities` for runtime discovery
+- [ ] Pass property lists to filter inventory when working with governance agents
+- [ ] Invoke SI sessions when connecting users with brand agents
+
+### Signals Agents
+
+- [ ] Update schema references from v2 to v3
+- [ ] Ensure `get_adcp_capabilities` returns `major_versions: [3]`
+
+### Creative Agents
+
+- [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
+- [ ] Update schema references from v2 to v3
+
+### Governance Agents (new in v3)
+
+- [ ] Implement property list tasks (`create_property_list`, `get_property_list`, etc.)
+- [ ] Implement content standards tasks (`create_content_standards`, `calibrate_content`, etc.)
+- [ ] Implement `get_adcp_capabilities` with `governance` in `supported_protocols`
+
+### Sponsored Intelligence Agents (new in v3)
+
+- [ ] Implement SI session tasks (`si_initiate_session`, `si_send_message`, `si_terminate_session`)
+- [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols`
+
+---
+
+## Getting Help
+
+- **Community**: [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- **Issues**: [GitHub Issues](https://github.com/adcontextprotocol/adcp/issues)
+- **Support**: support@adcontextprotocol.org

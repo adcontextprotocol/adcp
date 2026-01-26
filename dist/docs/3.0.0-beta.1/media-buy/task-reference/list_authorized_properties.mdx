@@ -1,0 +1,507 @@
+---
+title: list_authorized_properties
+testable: true
+---
+
+:::warning Deprecated
+`list_authorized_properties` is deprecated. Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) instead, which provides expanded capability declaration including protocol versions, execution features, and portfolio information.
+
+The portfolio fields from this task are available in the `media_buy.portfolio` section of `get_adcp_capabilities` response.
+:::
+
+Discover which publishers a sales agent is authorized to represent. Returns publisher domains only - buyers fetch full property definitions from each publisher's adagents.json.
+
+**Response Time**: ~2 seconds (database lookup)
+
+**Purpose**:
+- Authorization discovery - which publishers does this agent represent?
+- Single source of truth - property definitions come from publisher's adagents.json
+- One-time discovery to cache publisher-agent relationships
+
+**Request Schema**: [`/schemas/v2/media-buy/list-authorized-properties-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-authorized-properties-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/list-authorized-properties-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-authorized-properties-response.json)
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `publisher_domains` | string[] | No | Filter to specific publisher domains (e.g., `["cnn.com", "espn.com"]`) |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `publisher_domains` | Array of publisher domains this agent represents |
+| `primary_channels` | Optional main advertising channels (e.g., `display`, `ctv`, `social`, `streaming_audio`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
+| `primary_countries` | Optional main countries (ISO 3166-1 alpha-2 codes, case-insensitive) |
+| `portfolio_description` | Optional markdown description of portfolio and capabilities |
+| `last_updated` | Optional ISO 8601 timestamp of last publisher list update |
+
+See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/list-authorized-properties-response.json) for complete field list.
+
+## Authorization Workflow
+
+This tool is the first step in understanding what a sales agent represents:
+
+1. **Discovery**: Buyer calls `list_authorized_properties()` to get publisher domains
+2. **Fetch Details**: Buyer fetches each publisher's `https://publisher.com/.well-known/adagents.json`
+3. **Validate**: Buyer verifies agent is in publisher's `authorized_agents` array
+4. **Resolve Scope**: Buyer resolves authorization scope (property_ids, property_tags, or all properties)
+5. **Cache**: Buyer caches properties for future product validation
+
+### Key Insight: Publishers Own Property Definitions
+
+Unlike traditional SSPs:
+- **Publishers** define properties in their own `adagents.json` file
+- **Sales agents** reference those definitions via domain list
+- **Buyers** fetch property details from publishers, not agents
+- This ensures single source of truth and prevents property definition drift
+
+## Common Scenarios
+
+### Discover Agent Portfolio
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListAuthorizedPropertiesResponseSchema } from '@adcp/client';
+
+// Get all authorized publishers
+const result = await testAgent.listAuthorizedProperties({});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = ListAuthorizedPropertiesResponseSchema.parse(result.data);
+
+console.log(`Agent represents ${validated.publisher_domains.length} publishers`);
+console.log(`Primary channels: ${validated.primary_channels?.join(', ')}`);
+console.log(`Countries: ${validated.primary_countries?.join(', ')}`);
+
+validated.publisher_domains.forEach(domain => {
+  console.log(`- ${domain}`);
+});
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    # Get all authorized publishers
+    result = await test_agent.simple.list_authorized_properties()
+
+    # Check for errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Agent represents {len(result['publisher_domains'])} publishers")
+    print(f"Primary channels: {', '.join(result.get('primary_channels', []))}")
+    print(f"Countries: {', '.join(result.get('primary_countries', []))}")
+
+    for domain in result['publisher_domains']:
+        print(f"- {domain}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Filter by Publisher
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+// Check if agent represents specific publishers
+const result = await testAgent.listAuthorizedProperties({
+  publisher_domains: ['cnn.com', 'espn.com']
+});
+
+if (result.success && result.data) {
+  if (result.data.publisher_domains.length > 0) {
+    console.log(`Agent represents ${result.data.publisher_domains.length} of requested publishers`);
+    result.data.publisher_domains.forEach(domain => {
+      console.log(`✓ ${domain}`);
+    });
+  } else {
+    console.log('Agent does not represent any of the requested publishers');
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    # Check if agent represents specific publishers
+    result = await test_agent.simple.list_authorized_properties(
+        publisher_domains=['cnn.com', 'espn.com']
+    )
+
+    # Check for errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+    elif result['publisher_domains']:
+        print(f"Agent represents {len(result['publisher_domains'])} of requested publishers")
+        for domain in result['publisher_domains']:
+            print(f"✓ {domain}")
+    else:
+        print('Agent does not represent any of the requested publishers')
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Fetch Publisher Property Definitions
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/client/testing';
+
+// Step 1: Get authorized publishers
+const authResult = await testAgent.listAuthorizedProperties({});
+
+if (!authResult.success) {
+  throw new Error(`Failed to get authorized properties: ${authResult.error}`);
+}
+
+// Step 2: Fetch property definitions from each publisher
+const publisherProperties = {};
+
+for (const domain of authResult.data.publisher_domains) {
+  const response = await fetch(`https://${domain}/.well-known/adagents.json`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${domain}: ${response.status}`);
+  }
+  const adagents = await response.json();
+
+  // Find this agent in publisher's authorized list
+  const agentAuth = adagents.authorized_agents.find(
+    a => a.url === 'https://test-agent.adcontextprotocol.org/mcp'
+  );
+
+  if (agentAuth) {
+    // Resolve authorized properties based on scope
+    let properties;
+    if (agentAuth.property_ids) {
+      properties = adagents.properties.filter(
+        p => agentAuth.property_ids.includes(p.property_id)
+      );
+    } else if (agentAuth.property_tags) {
+      properties = adagents.properties.filter(
+        p => p.tags?.some(tag => agentAuth.property_tags.includes(tag))
+      );
+    } else {
+      properties = adagents.properties; // All properties
+    }
+
+    publisherProperties[domain] = properties;
+    console.log(`${domain}: ${properties.length} properties authorized`);
+  }
+}
+```
+
+```python Python test=false
+import asyncio
+from adcp import test_agent
+import requests
+
+async def main():
+    # Step 1: Get authorized publishers
+    auth_result = await test_agent.simple.list_authorized_properties()
+
+    # Check for errors first
+    if hasattr(auth_result, 'errors') and auth_result.errors:
+        raise Exception(f"Failed to get authorized properties: {auth_result.errors}")
+
+    # Step 2: Fetch property definitions from each publisher
+    publisher_properties = {}
+
+    for domain in auth_result['publisher_domains']:
+        response = requests.get(f"https://{domain}/.well-known/adagents.json")
+        response.raise_for_status()
+        adagents = response.json()
+
+        # Find this agent in publisher's authorized list
+        agent_auth = next(
+            (a for a in adagents['authorized_agents'] if a['url'] == 'https://test-agent.adcontextprotocol.org/mcp'),
+            None
+        )
+
+        if agent_auth:
+            # Resolve authorized properties based on scope
+            if 'property_ids' in agent_auth:
+                properties = [p for p in adagents['properties']
+                             if p['property_id'] in agent_auth['property_ids']]
+            elif 'property_tags' in agent_auth:
+                properties = [p for p in adagents['properties']
+                             if any(tag in agent_auth['property_tags']
+                                   for tag in p.get('tags', []))]
+            else:
+                properties = adagents['properties']  # All properties
+
+            publisher_properties[domain] = properties
+            print(f"{domain}: {len(properties)} properties authorized")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Check Authorization Scope
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+// Determine what type of agent this is based on portfolio
+const result = await testAgent.listAuthorizedProperties({});
+
+if (result.success && result.data) {
+  // Check for CTV specialists
+  if (result.data.primary_channels?.includes('ctv')) {
+    console.log('CTV specialist');
+  }
+
+  // Check geographic focus
+  if (result.data.primary_countries?.includes('US')) {
+    console.log('US market focus');
+  }
+
+  // Check for multi-channel capability
+  if (result.data.primary_channels && result.data.primary_channels.length > 2) {
+    console.log(`Multi-channel agent (${result.data.primary_channels.join(', ')})`);
+  }
+
+  // Read portfolio description
+  if (result.data.portfolio_description) {
+    console.log(`\nAbout: ${result.data.portfolio_description}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    # Determine what type of agent this is based on portfolio
+    result = await test_agent.simple.list_authorized_properties()
+
+    # Check for errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    # Check for CTV specialists
+    if 'ctv' in result.get('primary_channels', []):
+        print('CTV specialist')
+
+    # Check geographic focus
+    if 'US' in result.get('primary_countries', []):
+        print('US market focus')
+
+    # Check for multi-channel capability
+    channels = result.get('primary_channels', [])
+    if len(channels) > 2:
+        print(f"Multi-channel agent ({', '.join(channels)})")
+
+    # Read portfolio description
+    if result.get('portfolio_description'):
+        print(f"\nAbout: {result['portfolio_description']}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Cache Validation with last_updated
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+// Use last_updated to determine if cache is stale
+const result = await testAgent.listAuthorizedProperties({});
+
+if (result.success && result.data) {
+  // Example cache from previous fetch (in practice, load from storage)
+  const cache = {
+    'example-publisher.com': {
+      last_updated: '2024-01-15T10:00:00Z',
+      properties: []
+    }
+  };
+
+  for (const domain of result.data.publisher_domains) {
+    const cached = cache[domain];
+
+    if (cached && result.data.last_updated) {
+      const cachedDate = new Date(cached.last_updated);
+      const agentDate = new Date(result.data.last_updated);
+
+      if (cachedDate >= agentDate) {
+        console.log(`${domain}: Using cached data (still fresh)`);
+        continue;
+      }
+    }
+
+    console.log(`${domain}: Fetching updated property definitions`);
+    // Fetch from publisher's adagents.json...
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+from datetime import datetime
+
+async def main():
+    # Use last_updated to determine if cache is stale
+    result = await test_agent.simple.list_authorized_properties()
+
+    # Check for errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    # Example cache from previous fetch (in practice, load from storage)
+    cache = {
+        'example-publisher.com': {
+            'last_updated': '2024-01-15T10:00:00Z',
+            'properties': []
+        }
+    }
+
+    for domain in result['publisher_domains']:
+        cached = cache.get(domain)
+
+        if cached and result.get('last_updated'):
+            cached_date = datetime.fromisoformat(cached['last_updated'].replace('Z', '+00:00'))
+            agent_date = datetime.fromisoformat(result['last_updated'].replace('Z', '+00:00'))
+
+            if cached_date >= agent_date:
+                print(f"{domain}: Using cached data (still fresh)")
+                continue
+
+        print(f"{domain}: Fetching updated property definitions")
+        # Fetch from publisher's adagents.json...
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Portfolio Metadata
+
+Optional fields provide high-level portfolio information for quick filtering:
+
+### primary_channels
+
+Main advertising channels in portfolio:
+- Values: `display`, `olv`, `dooh`, `ctv`, `podcast`, `retail_media`, etc.
+- See [Channels enum](https://adcontextprotocol.org/schemas/v2/enums/channels.json)
+- Use case: Filter "Do you have DOOH?" before examining properties
+
+### primary_countries
+
+Main countries (ISO 3166-1 alpha-2):
+- Where bulk of properties are concentrated
+- Use case: Filter "Do you have US inventory?"
+
+### portfolio_description
+
+Markdown description:
+- Inventory types and characteristics
+- Audience profiles
+- Special features or capabilities
+
+### Example Portfolios
+
+**DOOH Network**:
+```json
+{
+  "primary_channels": ["dooh"],
+  "primary_countries": ["US", "CA"],
+  "portfolio_description": "Premium digital out-of-home across airports and transit. Business traveler focus with proof-of-play."
+}
+```
+
+**News Publisher**:
+```json
+{
+  "primary_channels": ["display", "olv"],
+  "primary_countries": ["US", "GB", "AU"],
+  "portfolio_description": "News and business publisher network. Desktop and mobile web with professional audience."
+}
+```
+
+## Use Cases
+
+### Third-Party Sales Networks
+CTV network representing multiple publishers:
+- Returns list of publisher domains
+- Buyers fetch property details from each publisher
+- No duplication of property data across agents
+
+### Publisher Direct Sales
+Publisher selling own inventory:
+- Returns own domain
+- Buyers fetch from publisher's adagents.json
+- Consistent with third-party agent flow
+
+### Authorization Validation
+Buyer validating seller authorization:
+- Discover which publishers agent claims to represent
+- Fetch each publisher's adagents.json to verify
+- Check agent URL in authorized_agents list
+- Cache validated relationships
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `INVALID_REQUEST` | Invalid publisher_domains parameter | Check domain format |
+| `NO_PUBLISHERS` | Agent represents no publishers | Agent may be misconfigured |
+
+## Best Practices
+
+**1. Cache Publisher Property Definitions**
+Fetch once and cache - properties rarely change. Use `last_updated` to detect staleness.
+
+**2. Validate Authorization from Publisher**
+Always verify agent is in publisher's `authorized_agents` array - don't trust agent claims alone.
+
+**3. Resolve Authorization Scope**
+Check property_ids, property_tags, or assume all properties based on publisher's authorization entry.
+
+**4. Use Portfolio Metadata for Filtering**
+Check `primary_channels` and `primary_countries` before fetching detailed properties.
+
+**5. Handle Fetch Failures Gracefully**
+Publishers may be temporarily unavailable - cache and retry with backoff.
+
+## Next Steps
+
+After discovering authorized properties:
+
+1. **Fetch Properties**: GET `https://publisher.com/.well-known/adagents.json`
+2. **Validate Authorization**: Find agent in publisher's `authorized_agents` array
+3. **Cache Properties**: Store for use in product validation
+4. **Discover Products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with cached property context
+
+## Learn More
+
+- [adagents.json Specification](/docs/governance/property/adagents) - Publisher authorization file format
+- [Property Schema](https://adcontextprotocol.org/schemas/v2/core/property.json) - Property definition structure
+- [Authorization Guide](/docs/building/integration/authentication) - How authorization works in AdCP
