@@ -249,10 +249,7 @@
                 "group": "Understanding AdCP",
                 "pages": [
                   "docs/building/understanding/index",
-                  "docs/building/understanding/how-it-works",
-                  "docs/building/understanding/ecosystem",
-                  "docs/building/understanding/protocol-comparison",
-                  "docs/building/understanding/ad-tech-primer"
+                  "docs/building/understanding/protocol-comparison"
                 ]
               },
               "docs/building/schemas-and-sdks",
