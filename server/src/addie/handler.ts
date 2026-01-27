@@ -58,6 +58,10 @@ import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
+import {
+  SCHEMA_TOOLS,
+  createSchemaToolHandlers,
+} from './mcp/schema-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -158,6 +162,15 @@ export async function initializeAddie(): Promise<void> {
   const directoryHandlers = createDirectoryToolHandlers();
   for (const tool of DIRECTORY_TOOLS) {
     const handler = directoryHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register schema tools (validate JSON, get schemas, list schemas)
+  const schemaHandlers = createSchemaToolHandlers();
+  for (const tool of SCHEMA_TOOLS) {
+    const handler = schemaHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
