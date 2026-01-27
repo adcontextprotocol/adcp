@@ -43,7 +43,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
 export const TOOL_SETS: Record<string, ToolSet> = {
   knowledge: {
     name: 'knowledge',
-    description: 'Search documentation, code repos, Slack history, and curated resources for protocol questions, implementation help, and community discussions',
+    description: 'Search documentation, code repos, Slack history, curated resources, and validate JSON against AdCP schemas for protocol questions, implementation help, and community discussions',
     tools: [
       'search_docs',
       'get_doc',
@@ -54,6 +54,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_recent_news',
       'fetch_url',
       'read_slack_file',
+      // Schema validation tools
+      'validate_json',
+      'get_schema',
+      'list_schemas',
+      'compare_schema_versions',
     ],
   },
 
