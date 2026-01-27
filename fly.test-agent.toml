@@ -30,7 +30,7 @@ primary_region = "iad"
     timeout = "10s"
 
 [vm]
-  memory = "1gb"
+  memory = "2gb"
   cpu_kind = "shared"
   cpus = 1
 
