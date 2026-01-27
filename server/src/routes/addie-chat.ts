@@ -31,6 +31,10 @@ import {
   createBillingToolHandlers,
 } from "../addie/mcp/billing-tools.js";
 import {
+  SCHEMA_TOOLS,
+  createSchemaToolHandlers,
+} from "../addie/mcp/schema-tools.js";
+import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
 } from "../addie/mcp/member-tools.js";
@@ -90,6 +94,15 @@ async function initializeChatClient(): Promise<void> {
   const billingHandlers = createBillingToolHandlers();
   for (const tool of BILLING_TOOLS) {
     const handler = billingHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register schema tools (validate JSON, get schemas, list schemas)
+  const schemaHandlers = createSchemaToolHandlers();
+  for (const tool of SCHEMA_TOOLS) {
+    const handler = schemaHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
