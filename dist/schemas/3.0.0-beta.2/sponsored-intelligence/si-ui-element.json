@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/sponsored-intelligence/si-ui-element.json",
+  "title": "SI UI Element",
+  "description": "Standard visual component that brand returns and host renders",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["text", "link", "image", "product_card", "carousel", "action_button", "app_handoff", "integration_actions"],
+      "description": "Component type"
+    },
+    "data": {
+      "type": "object",
+      "description": "Component-specific data",
+      "additionalProperties": true
+    }
+  },
+  "required": ["type"],
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "text" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string", "description": "Text message content" }
+            },
+            "required": ["message"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "link" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "format": "uri", "description": "Link URL" },
+              "label": { "type": "string", "description": "Link text" },
+              "preview": { "type": "boolean", "description": "Show link preview" }
+            },
+            "required": ["url", "label"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "image" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "format": "uri", "description": "Image URL" },
+              "alt": { "type": "string", "description": "Alt text" },
+              "caption": { "type": "string", "description": "Image caption" }
+            },
+            "required": ["url", "alt"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "product_card" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "description": "Product title" },
+              "subtitle": { "type": "string", "description": "Product subtitle" },
+              "price": { "type": "string", "description": "Price display string" },
+              "image_url": { "type": "string", "format": "uri", "description": "Product image" },
+              "description": { "type": "string", "description": "Product description" },
+              "badge": { "type": "string", "description": "Badge text (e.g., 'Free Upgrade')" },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "action": { "type": "string" }
+                }
+              }
+            },
+            "required": ["title", "price"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "carousel" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "description": "Carousel title" },
+              "items": {
+                "type": "array",
+                "description": "Carousel items (product cards or images)",
+                "items": { "type": "object" }
+              }
+            },
+            "required": ["items"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "action_button" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string", "description": "Button label" },
+              "action": { "type": "string", "description": "Action identifier (e.g., 'acp_checkout')" },
+              "payload": { "type": "object", "description": "Action payload" }
+            },
+            "required": ["label", "action"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "app_handoff" } } },
+      "then": {
+        "properties": {
+          "apps": {
+            "type": "object",
+            "description": "Platform-specific app handoff targets",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "app_id": { "type": "string" },
+                "deep_link": { "type": "string" },
+                "url": { "type": "string", "format": "uri" }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "integration_actions" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "actions": {
+                "type": "array",
+                "description": "Available integration actions",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["mcp", "a2a"],
+                      "description": "Integration type"
+                    },
+                    "label": {
+                      "type": "string",
+                      "description": "User-facing button label"
+                    },
+                    "highlighted": {
+                      "type": "boolean",
+                      "description": "Whether this action should be visually emphasized"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "URL for the integration endpoint"
+                    }
+                  },
+                  "required": ["type", "label"]
+                }
+              }
+            },
+            "required": ["actions"]
+          }
+        }
+      }
+    }
+  ]
+}

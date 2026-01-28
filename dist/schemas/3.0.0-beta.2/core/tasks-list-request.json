@@ -1,0 +1,192 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/core/tasks-list-request.json",
+  "title": "Tasks List Request",
+  "description": "Request parameters for listing and filtering async tasks across all AdCP domains with state reconciliation capabilities",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "type": "object",
+      "description": "Filter criteria for querying tasks",
+      "properties": {
+        "domain": {
+          "$ref": "/schemas/3.0.0-beta.2/enums/adcp-domain.json",
+          "description": "Filter by single AdCP domain"
+        },
+        "domains": {
+          "type": "array",
+          "description": "Filter by multiple AdCP domains",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.2/enums/adcp-domain.json"
+          }
+        },
+        "status": {
+          "$ref": "/schemas/3.0.0-beta.2/enums/task-status.json",
+          "description": "Filter by single task status"
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Filter by multiple task statuses",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.2/enums/task-status.json"
+          }
+        },
+        "task_type": {
+          "$ref": "/schemas/3.0.0-beta.2/enums/task-type.json",
+          "description": "Filter by single task type"
+        },
+        "task_types": {
+          "type": "array",
+          "description": "Filter by multiple task types",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.2/enums/task-type.json"
+          }
+        },
+        "created_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter tasks created after this date (ISO 8601)"
+        },
+        "created_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter tasks created before this date (ISO 8601)"
+        },
+        "updated_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter tasks last updated after this date (ISO 8601)"
+        },
+        "updated_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter tasks last updated before this date (ISO 8601)"
+        },
+        "task_ids": {
+          "type": "array",
+          "description": "Filter by specific task IDs",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100
+        },
+        "context_contains": {
+          "type": "string",
+          "description": "Filter tasks where context contains this text (searches buyer_ref, media_buy_id, signal_id, etc.)"
+        },
+        "has_webhook": {
+          "type": "boolean",
+          "description": "Filter tasks that have webhook configuration when true"
+        }
+      },
+      "additionalProperties": true
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": [
+            "created_at",
+            "updated_at",
+            "status",
+            "task_type",
+            "domain"
+          ],
+          "default": "created_at",
+          "description": "Field to sort by"
+        },
+        "direction": {
+          "$ref": "/schemas/3.0.0-beta.2/enums/sort-direction.json",
+          "default": "desc",
+          "description": "Sort direction"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination parameters",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of tasks to return"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Number of tasks to skip"
+        }
+      },
+      "additionalProperties": true
+    },
+    "include_history": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include full conversation history for each task (may significantly increase response size)"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all pending tasks across domains",
+      "data": {
+        "filters": {
+          "statuses": [
+            "submitted",
+            "working",
+            "input-required"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Find media-buy tasks requiring attention",
+      "data": {
+        "filters": {
+          "domain": "media-buy",
+          "statuses": [
+            "input-required",
+            "failed"
+          ]
+        },
+        "sort": {
+          "field": "updated_at",
+          "direction": "asc"
+        }
+      }
+    },
+    {
+      "description": "Recent signal operations",
+      "data": {
+        "filters": {
+          "domain": "signals",
+          "created_after": "2025-01-01T00:00:00Z"
+        },
+        "pagination": {
+          "limit": 20
+        }
+      }
+    },
+    {
+      "description": "State reconciliation for specific campaign",
+      "data": {
+        "filters": {
+          "context_contains": "nike_q1_2025"
+        },
+        "include_history": true
+      }
+    }
+  ]
+}

@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.0.0-beta.2
+
+### Minor Changes
+
+- 8b8b63c: Add A2UI and MCP Apps support to Sponsored Intelligence for agent-driven UI rendering.
+- 1d7c687: Add governance and SI agent types to Addie with complete AdCP protocol tool coverage. Adds 21 new tools for update_media_buy, list_creatives, provide_performance_feedback, property lists, content standards, sponsored intelligence, and get_adcp_capabilities.
+
+### Patch Changes
+
+- cef3dfc: Add committee leadership tools for Addie - allows committee leaders to add/remove co-leaders for their own committees (working groups, councils, chapters, industry gatherings) without requiring admin access
+- 00cd9b8: Extract shared PriceGuidance schema to fix duplicate type generation
+
+  **Schema Changes:**
+
+  - Create new `/schemas/pricing-options/price-guidance.json` shared schema
+  - Update all 7 pricing option schemas to use `$ref` instead of inline definitions
+
+  **Issue Fixed:**
+
+  - Fixes #884 (Issue 1): Duplicate `PriceGuidance` classes causing mypy arg-type errors
+  - When Python types are generated, there will now be a single `PriceGuidance` class instead of 7 identical copies
+
+  **Note:** Issue 2 (RootModel wrappers) requires Python library changes to export type aliases for union types.
+
+- d66bf3d: Remove deprecated v3 features: list_property_features task, list_authorized_properties task, adcp-extension.json schema, assets_required format field, and preview_image format field. All removed items have replacements via get_adcp_capabilities and the new assets discovery model.
+
 ## 3.0.0-beta.1
 
 ### Major Changes
