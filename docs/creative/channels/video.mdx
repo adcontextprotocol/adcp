@@ -135,6 +135,12 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 
 ### CTV/OTT Video
 
+CTV platforms have strict technical requirements that differ significantly from web video. Creative agents must produce assets that precisely match these specifications to avoid rejection.
+
+#### Standard CTV Video (30s)
+
+This format represents common CTV requirements across most platforms:
+
 ```json
 {
   "format_id": {
@@ -149,14 +155,182 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
       "asset_role": "hero_video",
       "required": true,
       "requirements": {
-        "duration": "30s",
-        "format": ["MP4"],
-        "codec": "H.264",
-        "resolution": "1920x1080",
-        "max_file_size_mb": 35,
-        "bitrate_min": "4Mbps",
-        "bitrate_max": "8Mbps",
-        "audio_codec": "AAC",
+        "duration_seconds": 30,
+        "acceptable_formats": ["mp4", "mov"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080"],
+        "aspect_ratio": "16:9",
+        "min_bitrate_mbps": 6,
+        "max_bitrate_mbps": 15,
+        "max_file_size_mb": 500,
+        "acceptable_frame_rates": ["23.976", "24", "25", "29.97", "30"],
+        "frame_rate_type": "constant",
+        "scan_type": "progressive",
+        "color_space": "rec709",
+        "hdr_format": "sdr",
+        "chroma_subsampling": ["4:2:0"],
+        "video_bit_depth": [8],
+        "gop_interval_seconds_min": 1,
+        "gop_interval_seconds_max": 2,
+        "gop_type": "closed",
+        "moov_atom_position": "start",
+        "audio_required": true,
+        "audio_codec": ["aac", "pcm"],
+        "audio_sampling_rate_hz": [48000],
+        "audio_channels": "stereo",
+        "audio_bit_depth": [16, 24],
+        "audio_bitrate_kbps_min": 192,
+        "audio_loudness_lufs": -24,
+        "audio_loudness_tolerance_db": 2,
+        "audio_true_peak_dbfs": -2
+      }
+    }
+  ]
+}
+```
+
+#### Platform-Specific CTV Examples
+
+Different CTV platforms have varying requirements. Sales agents should define formats matching their specific platform needs.
+
+**Roku-Compliant Format:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.example.com",
+    "id": "video_30s_roku"
+  },
+  "type": "video",
+  "assets": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 30,
+        "acceptable_formats": ["mp4", "mov"],
+        "acceptable_codecs": ["h264", "prores"],
+        "acceptable_resolutions": ["1920x1080"],
+        "min_bitrate_mbps": 6,
+        "acceptable_frame_rates": ["23.976", "25", "29.97"],
+        "frame_rate_type": "constant",
+        "scan_type": "progressive",
+        "audio_codec": ["pcm", "aac"],
+        "audio_sampling_rate_hz": [48000],
+        "audio_channels": "stereo",
+        "audio_bit_depth": [16, 24],
+        "audio_bitrate_kbps_min": 192,
+        "audio_loudness_lufs": -23,
+        "audio_loudness_tolerance_db": 2
+      }
+    }
+  ]
+}
+```
+
+**Hulu-Compliant Format:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.example.com",
+    "id": "video_30s_hulu"
+  },
+  "type": "video",
+  "assets": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 30,
+        "acceptable_formats": ["mp4", "mov"],
+        "acceptable_codecs": ["h264", "prores"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "min_bitrate_mbps": 10,
+        "max_bitrate_mbps": 40,
+        "max_file_size_mb": 10240,
+        "acceptable_frame_rates": ["23.976", "24", "25", "29.97", "30"],
+        "frame_rate_type": "constant",
+        "scan_type": "progressive",
+        "chroma_subsampling": ["4:2:0", "4:2:2"],
+        "audio_codec": ["pcm", "aac"],
+        "audio_sampling_rate_hz": [48000],
+        "audio_channels": "stereo",
+        "audio_bit_depth": [16, 24],
+        "audio_bitrate_kbps_min": 192,
+        "audio_bitrate_kbps_max": 256,
+        "audio_loudness_lufs": -24,
+        "audio_loudness_tolerance_db": 2
+      }
+    }
+  ]
+}
+```
+
+**YouTube CTV Format:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.example.com",
+    "id": "video_30s_youtube_ctv"
+  },
+  "type": "video",
+  "assets": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 30,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "acceptable_frame_rates": ["24", "25", "30", "48", "50", "60"],
+        "scan_type": "progressive",
+        "moov_atom_position": "start",
+        "audio_codec": ["aac"],
+        "audio_sampling_rate_hz": [48000],
+        "audio_channels": "stereo",
+        "audio_bitrate_kbps_min": 128,
+        "audio_loudness_lufs": -14
+      }
+    }
+  ]
+}
+```
+
+#### SSAI-Ready CTV Format
+
+For server-side ad insertion (SSAI) compatibility, GOP structure is critical:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://sales.example.com",
+    "id": "video_30s_ssai"
+  },
+  "type": "video",
+  "assets": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 30,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080"],
+        "min_bitrate_mbps": 15,
+        "acceptable_frame_rates": ["29.97", "30"],
+        "frame_rate_type": "constant",
+        "scan_type": "progressive",
+        "gop_interval_seconds_min": 1,
+        "gop_interval_seconds_max": 2,
+        "gop_type": "closed",
+        "moov_atom_position": "start",
+        "audio_required": true,
+        "audio_codec": ["aac"],
+        "audio_sampling_rate_hz": [48000],
         "audio_channels": "stereo"
       }
     }
@@ -524,41 +698,107 @@ VPAID (Video Player Ad-Serving Interface Definition) enables interactive video a
 ## File Specifications
 
 ### Video Codecs
-- **H.264** - Most widely supported
-- **H.265/HEVC** - Better compression, limited support
-- **VP8/VP9** - Open codec, growing support
+- **H.264** - Most widely supported, required for CTV
+- **H.265/HEVC** - Better compression, growing CTV support
+- **ProRes** - High quality mezzanine, accepted by premium CTV
+- **VP8/VP9** - Open codec, web-focused
+- **AV1** - Next-gen open codec, emerging support
 
 ### Audio Codecs
-- **AAC** - Recommended for MP4
-- **MP3** - Legacy support
-- **Opus** - High quality, growing support
+- **AAC/AAC-LC** - Standard for MP4, widely supported
+- **HE-AAC** - High-efficiency AAC for lower bitrates
+- **PCM** - Uncompressed, preferred by some CTV platforms
+- **AC-3/E-AC-3** - Dolby Digital, used in broadcast
 
 ### Container Formats
-- **MP4** - Industry standard
-- **WebM** - Open format
-- **MOV** - Apple format, transcoded by publishers
+- **MP4** - Industry standard, required for most platforms
+- **MOV** - QuickTime format, accepted by premium CTV
+- **WebM** - Open format, web-focused
 
-### Bitrate Ranges
-- **High Quality (1080p):** 8-10 Mbps
+### Video Bitrate Ranges
+- **Premium CTV (mezzanine):** 15-50 Mbps
+- **Standard CTV:** 6-15 Mbps
+- **High Quality Web (1080p):** 8-10 Mbps
 - **Standard Quality (720p):** 4-6 Mbps
 - **Mobile Optimized (480p):** 2-3 Mbps
-- **CTV/OTT:** 4-8 Mbps (file size limits apply)
 
 ### Frame Rates
-- 23.976 fps, 24 fps, 25 fps, 29.97 fps, 30 fps, 60 fps
+- **Film:** 23.976 fps, 24 fps
+- **PAL:** 25 fps
+- **NTSC:** 29.97 fps, 30 fps
+- **High frame rate:** 48 fps, 50 fps, 60 fps
+
+CTV platforms require constant frame rate (CFR). Variable frame rate (VFR) will be rejected.
 
 ### Common Resolutions
 
 **16:9 Landscape:**
-- 1920x1080 (1080p Full HD)
+- 1920x1080 (1080p Full HD) - Standard CTV
 - 1280x720 (720p HD)
 - 854x480 (480p SD)
+- 3840x2160 (4K UHD) - Premium CTV
 
 **9:16 Portrait:**
 - 1080x1920 (Mobile vertical)
 
 **1:1 Square:**
 - 1080x1080 (Social video)
+
+### Scan Type
+CTV universally requires **progressive scan**. Interlaced content will be rejected.
+
+### Color Space
+- **Rec.709** - Standard for HD/SDR content (required by most CTV)
+- **Rec.2020** - UHD/4K content
+- **Rec.2100** - HDR content (HDR10, HLG)
+- **sRGB** - Web content
+
+### Chroma Subsampling
+- **4:2:0** - Standard for delivery
+- **4:2:2** - Broadcast/mezzanine quality
+
+### Video Bit Depth
+- **8-bit** - Standard SDR
+- **10-bit** - HDR and premium SDR
+- **12-bit** - Professional HDR
+
+### GOP Structure (SSAI Critical)
+For server-side ad insertion compatibility:
+- **Keyframe interval:** 1-2 seconds
+- **GOP type:** Closed GOP required
+- **moov atom:** Must be at file start for progressive download
+
+## Audio Specifications
+
+### Sampling Rate
+- **48 kHz** - Required for CTV (Roku, Hulu, Snapchat mandate this)
+- **44.1 kHz** - CD quality, accepted by some platforms
+- **96 kHz** - High resolution, accepted but not required
+
+### Channel Configuration
+- **Stereo (2 channels)** - Required for CTV ads
+- **Mono** - Acceptable for some web/mobile
+- **5.1/7.1** - Not supported for CTV ads
+
+### Audio Bit Depth
+- **16-bit** - Standard
+- **24-bit** - High quality, accepted by premium CTV
+
+### Audio Bitrate
+- **CTV minimum:** 192 kbps
+- **Standard web:** 128 kbps
+- **High quality:** 256 kbps
+
+### Loudness Standards
+Different platforms normalize to different targets:
+
+| Platform | Target LUFS | Tolerance | Standard |
+|----------|-------------|-----------|----------|
+| Broadcast/CTV | -24 LUFS | ±2 dB | ATSC A/85 |
+| Spotify | -16 LUFS | ±1.5 dB | - |
+| YouTube | -14 LUFS | - | - |
+
+**True Peak:** Should not exceed -1 to -2 dBFS to prevent clipping
 
 ## Related Documentation
 
