@@ -177,6 +177,16 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  committee_leadership: {
+    name: 'committee_leadership',
+    description: 'Manage committee co-leaders - add or remove co-leaders for committees you lead (working groups, councils, chapters, industry gatherings)',
+    tools: [
+      'add_committee_co_leader',
+      'remove_committee_co_leader',
+      'list_committee_co_leaders',
+    ],
+  },
+
   admin: {
     name: 'admin',
     description: 'Administrative operations - manage prospects, organizations, feeds, flagged conversations, insights (admin only)',
