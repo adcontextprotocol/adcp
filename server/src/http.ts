@@ -3714,6 +3714,31 @@ Disallow: /api/admin/
         // Enrich with health, capabilities, and/or properties
         const enriched = await Promise.all(
           agents.map(async (agent): Promise<AgentWithStats> => {
+            const enrichedAgent: AgentWithStats = { ...agent } as AgentWithStats;
+
+            // First, discover capabilities to infer agent type
+            if (withCapabilities) {
+              const capProfile = await this.capabilityDiscovery.discoverCapabilities(agent as Agent);
+              if (capProfile) {
+                enrichedAgent.capabilities = {
+                  tools_count: capProfile.discovered_tools?.length || 0,
+                  tools: capProfile.discovered_tools || [],
+                  standard_operations: capProfile.standard_operations,
+                  creative_capabilities: capProfile.creative_capabilities,
+                  signals_capabilities: capProfile.signals_capabilities,
+                };
+
+                // Infer agent type from discovered capabilities if not already set
+                if (!enrichedAgent.type || enrichedAgent.type === 'unknown') {
+                  const inferredType = this.capabilityDiscovery.inferTypeFromProfile(capProfile);
+                  if (inferredType !== 'unknown') {
+                    enrichedAgent.type = inferredType;
+                  }
+                }
+              }
+            }
+
+            // Now run parallel enrichments with the correct type known
             const promises = [];
 
             if (withHealth) {
@@ -3723,14 +3748,9 @@ Disallow: /api/admin/
               );
             }
 
-            if (withCapabilities) {
-              promises.push(
-                this.capabilityDiscovery.discoverCapabilities(agent as Agent)
-              );
-            }
-
             // For properties, query from database (populated by crawler)
-            if (withProperties && agent.type === "sales") {
+            // Use enrichedAgent.type which may have been inferred from capabilities
+            if (withProperties && enrichedAgent.type === "sales") {
               promises.push(
                 federatedIndex.getPropertiesForAgent(agent.url),
                 federatedIndex.getPublisherDomainsForAgent(agent.url)
@@ -3738,8 +3758,6 @@ Disallow: /api/admin/
             }
 
             const results = await Promise.all(promises);
-
-            const enrichedAgent: AgentWithStats = { ...agent } as AgentWithStats;
             let resultIndex = 0;
 
             if (withHealth) {
@@ -3747,20 +3765,7 @@ Disallow: /api/admin/
               enrichedAgent.stats = results[resultIndex++] as any;
             }
 
-            if (withCapabilities) {
-              const capProfile = results[resultIndex++] as any;
-              if (capProfile) {
-                enrichedAgent.capabilities = {
-                  tools_count: capProfile.discovered_tools?.length || 0,
-                  tools: capProfile.discovered_tools || [],
-                  standard_operations: capProfile.standard_operations,
-                  creative_capabilities: capProfile.creative_capabilities,
-                  signals_capabilities: capProfile.signals_capabilities,
-                };
-              }
-            }
-
-            if (withProperties && agent.type === "sales") {
+            if (withProperties && enrichedAgent.type === "sales") {
               const properties = results[resultIndex++] as any[];
               const publisherDomains = results[resultIndex++] as string[];
 

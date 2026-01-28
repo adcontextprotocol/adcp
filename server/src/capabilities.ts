@@ -64,6 +64,11 @@ export class CapabilityDiscovery {
       const protocol = agent.protocol || "mcp";
       const tools = await this.discoverTools(agent.url, protocol);
 
+      // Infer agent type from tools if not already set
+      const agentType = agent.type && agent.type !== 'unknown'
+        ? agent.type
+        : this.inferAgentType(tools);
+
       const profile: AgentCapabilityProfile = {
         agent_url: agent.url,
         protocol,
@@ -71,12 +76,12 @@ export class CapabilityDiscovery {
         last_discovered: new Date().toISOString(),
       };
 
-      // Analyze tools to determine standard operations
-      if (agent.type === "sales") {
+      // Analyze tools to determine standard operations based on inferred type
+      if (agentType === "sales") {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
-      } else if (agent.type === "creative") {
+      } else if (agentType === "creative") {
         profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools);
-      } else if (agent.type === "signals") {
+      } else if (agentType === "signals") {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
       }
 
@@ -157,6 +162,36 @@ export class CapabilityDiscovery {
     }
   }
 
+  /**
+   * Infer agent type from discovered tools.
+   * Sales agents have: get_products, create_media_buy, list_authorized_properties
+   * Creative agents have: list_creative_formats, build_creative, validate_creative
+   * Signals agents have: get_signals, match_audience, activate_signal
+   */
+  private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
+    const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
+
+    // Check for sales-specific tools
+    const salesTools = ['get_products', 'create_media_buy', 'list_authorized_properties'];
+    const hasSalesTools = salesTools.some(t => toolNames.has(t));
+
+    // Check for creative-specific tools
+    const creativeTools = ['list_creative_formats', 'build_creative', 'generate_creative', 'validate_creative'];
+    const hasCreativeTools = creativeTools.some(t => toolNames.has(t));
+
+    // Check for signals-specific tools
+    const signalsTools = ['get_signals', 'list_signals', 'match_audience', 'activate_signal', 'activate_audience'];
+    const hasSignalsTools = signalsTools.some(t => toolNames.has(t));
+
+    // Return the most specific match
+    if (hasSalesTools && !hasCreativeTools && !hasSignalsTools) return 'sales';
+    if (hasCreativeTools && !hasSalesTools && !hasSignalsTools) return 'creative';
+    if (hasSignalsTools && !hasSalesTools && !hasCreativeTools) return 'signals';
+
+    // If multiple types detected or none, return unknown
+    return 'unknown';
+  }
+
   private analyzeSalesCapabilities(tools: ToolCapability[]): StandardOperations {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
@@ -219,5 +254,16 @@ export class CapabilityDiscovery {
 
   getCapabilities(agentUrl: string): AgentCapabilityProfile | undefined {
     return this.cache.get(agentUrl);
+  }
+
+  /**
+   * Infer agent type from a capability profile.
+   * Use this to avoid duplicating the type inference logic.
+   */
+  inferTypeFromProfile(profile: AgentCapabilityProfile): 'sales' | 'creative' | 'signals' | 'unknown' {
+    if (profile.standard_operations) return 'sales';
+    if (profile.creative_capabilities) return 'creative';
+    if (profile.signals_capabilities) return 'signals';
+    return 'unknown';
   }
 }
