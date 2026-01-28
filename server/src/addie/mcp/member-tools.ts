@@ -1216,14 +1216,28 @@ export function createMemberToolHandlers(
     const postType = (input.post_type as string) || 'discussion';
     const linkUrl = input.link_url as string | undefined;
 
+    if (!title?.trim()) {
+      return 'Title is required to create a post.';
+    }
+
+    // Generate post slug from title with timestamp for uniqueness
+    const timestamp = Date.now().toString(36);
+    const baseSlug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 50);
+    const postSlug = baseSlug ? `${baseSlug}-${timestamp}` : timestamp;
+
     const body: Record<string, unknown> = {
       title,
       content,
-      post_type: postType,
+      content_type: postType,
+      post_slug: postSlug,
     };
 
     if (postType === 'link' && linkUrl) {
-      body.link_url = linkUrl;
+      body.external_url = linkUrl;
     }
 
     const result = await callApi(
