@@ -3,6 +3,7 @@ import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } f
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { MemberDatabase } from "./db/member-db.js";
+import { CapabilityDiscovery } from "./capabilities.js";
 
 export class CrawlerService {
   private crawler: PropertyCrawler;
@@ -13,12 +14,14 @@ export class CrawlerService {
   private federatedIndex: FederatedIndexService;
   private adAgentsManager: AdAgentsManager;
   private memberDb: MemberDatabase;
+  private capabilityDiscovery: CapabilityDiscovery;
 
   constructor() {
     this.crawler = new PropertyCrawler({ logLevel: 'debug' });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
     this.memberDb = new MemberDatabase();
+    this.capabilityDiscovery = new CapabilityDiscovery();
   }
 
   async crawlAllAgents(agents: Agent[]): Promise<CrawlResult> {
@@ -267,6 +270,105 @@ export class CrawlerService {
     } catch {
       // Stats are optional
     }
+
+    // 3. Probe all agents to discover and save their types
+    await this.probeAndUpdateAgentTypes(agents);
+  }
+
+  /**
+   * Probe agents to discover their capabilities and infer their type.
+   * Updates the database with the inferred type for each agent.
+   *
+   * Type indicators:
+   * - Sales: get_products, create_media_buy, list_authorized_properties
+   * - Creative: list_creative_formats, build_creative, generate_creative, validate_creative
+   * - Signals: get_signals, list_signals, match_audience, activate_signal, activate_audience
+   *
+   * Returns 'unknown' if no type-specific tools found or multiple types detected (hybrid agent).
+   */
+  private async probeAndUpdateAgentTypes(agents: Agent[]): Promise<void> {
+    console.log("Probing agents to discover types...");
+
+    // Get all unique agent URLs (from both registered and discovered)
+    const allAgents = await this.federatedIndex.listAllAgents();
+
+    // Build a map of known types to skip already-typed agents
+    const knownTypes = new Map<string, string>();
+    for (const a of allAgents) {
+      if (a.type && a.type !== 'unknown') {
+        knownTypes.set(a.url, a.type);
+      }
+    }
+
+    const agentUrls = new Set([
+      ...agents.map(a => a.url),
+      ...allAgents.map(a => a.url),
+    ]);
+
+    // Filter out agents that already have a type
+    const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url));
+
+    if (urlsToProbe.length === 0) {
+      console.log("All agents already have types assigned, skipping probe.");
+      return;
+    }
+
+    console.log(`Probing ${urlsToProbe.length} agents (${knownTypes.size} already typed)...`);
+
+    // Probe agents in parallel with concurrency limit
+    const CONCURRENCY = 5;
+    const PROBE_TIMEOUT_MS = 10000;
+    let updated = 0;
+    let failed = 0;
+
+    // Process in batches for controlled concurrency
+    for (let i = 0; i < urlsToProbe.length; i += CONCURRENCY) {
+      const batch = urlsToProbe.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (url) => {
+          const agent: Agent = {
+            name: url,
+            url,
+            type: 'unknown',
+            protocol: 'mcp',
+            description: '',
+            mcp_endpoint: url,
+            contact: { name: '', email: '', website: '' },
+            added_date: new Date().toISOString().split('T')[0],
+          };
+
+          // Add timeout to prevent hanging on unresponsive agents
+          const profile = await Promise.race([
+            this.capabilityDiscovery.discoverCapabilities(agent),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
+            ),
+          ]);
+
+          // Infer type from capabilities
+          const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
+
+          if (inferredType !== 'unknown') {
+            await this.federatedIndex.updateAgentMetadata(url, {
+              agent_type: inferredType,
+              protocol: profile.protocol,
+            });
+            return 'updated';
+          }
+          return 'skipped';
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value === 'updated') {
+          updated++;
+        } else if (result.status === 'rejected') {
+          failed++;
+        }
+      }
+    }
+
+    console.log(`Agent type discovery complete: ${updated} types inferred, ${failed} agents unreachable`);
   }
 
   /**
