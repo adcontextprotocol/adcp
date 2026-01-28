@@ -62,6 +62,11 @@ import {
   SCHEMA_TOOLS,
   createSchemaToolHandlers,
 } from './mcp/schema-tools.js';
+import {
+  COMMITTEE_LEADER_TOOLS,
+  createCommitteeLeaderToolHandlers,
+  isCommitteeLeader,
+} from './mcp/committee-leader-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -318,6 +323,17 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie: Meeting tools enabled for this user');
+  }
+
+  // Add committee leadership tools if user leads any committees
+  const isLeader = slackUserId ? await isCommitteeLeader(slackUserId) : false;
+  if (isLeader) {
+    const committeeHandlers = createCommitteeLeaderToolHandlers(memberContext, slackUserId);
+    allTools.push(...COMMITTEE_LEADER_TOOLS);
+    for (const [name, handler] of committeeHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Committee leadership tools enabled for this user');
   }
 
   // Override bookmark_resource handler with user-scoped version (for attribution)
