@@ -37,10 +37,15 @@ interface UserIdentity {
 
 interface SiResponse {
   message: string;
+  /** @deprecated Use surface instead */
   ui_elements?: Array<{
     type: string;
     data: Record<string, unknown>;
   }>;
+  /** A2UI surface with interactive components */
+  surface?: A2UISurface;
+  /** MCP resource URI for hosts with MCP Apps support */
+  mcp_resource_uri?: string;
   session_status: "active" | "pending_handoff" | "complete";
   handoff?: {
     type: "transaction" | "complete";
@@ -52,6 +57,221 @@ interface SiResponse {
     skill_description: string;
     skill_type: string;
   }>;
+}
+
+// ============================================================================
+// A2UI Types
+// ============================================================================
+
+interface A2UIBoundValue {
+  literalString?: string;
+  literalNumber?: number;
+  literalBoolean?: boolean;
+  path?: string;
+}
+
+interface A2UIAction {
+  name: string;
+  context?: Record<string, A2UIBoundValue>;
+}
+
+interface A2UIComponent {
+  id: string;
+  parentId?: string;
+  component: Record<string, Record<string, unknown>>;
+}
+
+interface A2UISurface {
+  surfaceId: string;
+  catalogId?: string;
+  components: A2UIComponent[];
+  rootId?: string;
+  dataModel?: Record<string, unknown>;
+}
+
+// ============================================================================
+// A2UI Builders
+// ============================================================================
+
+let componentIdCounter = 0;
+
+function resetComponentIds(): void {
+  componentIdCounter = 0;
+}
+
+function generateComponentId(prefix: string): string {
+  return `${prefix}-${++componentIdCounter}`;
+}
+
+function literal(value: string | number | boolean): A2UIBoundValue {
+  if (typeof value === "string") return { literalString: value };
+  if (typeof value === "number") return { literalNumber: value };
+  return { literalBoolean: value };
+}
+
+function path(p: string): A2UIBoundValue {
+  return { path: p };
+}
+
+function buildText(text: string | A2UIBoundValue, variant?: string): A2UIComponent {
+  const id = generateComponentId("text");
+  return {
+    id,
+    component: {
+      Text: {
+        text: typeof text === "string" ? literal(text) : text,
+        ...(variant && { variant }),
+      },
+    },
+  };
+}
+
+function buildButton(
+  label: string | A2UIBoundValue,
+  action: A2UIAction,
+  variant?: "primary" | "secondary" | "text"
+): A2UIComponent {
+  const id = generateComponentId("btn");
+  return {
+    id,
+    component: {
+      Button: {
+        label: typeof label === "string" ? literal(label) : label,
+        action,
+        ...(variant && { variant }),
+      },
+    },
+  };
+}
+
+function buildLink(
+  label: string | A2UIBoundValue,
+  url: string | A2UIBoundValue,
+  external = true
+): A2UIComponent {
+  const id = generateComponentId("link");
+  return {
+    id,
+    component: {
+      Link: {
+        label: typeof label === "string" ? literal(label) : label,
+        url: typeof url === "string" ? literal(url) : url,
+        external,
+      },
+    },
+  };
+}
+
+function buildProductCard(
+  title: string | A2UIBoundValue,
+  price: string | A2UIBoundValue,
+  options?: {
+    image?: string | A2UIBoundValue;
+    description?: string | A2UIBoundValue;
+    badge?: string | A2UIBoundValue;
+    ctaLabel?: string | A2UIBoundValue;
+    action?: A2UIAction;
+  }
+): A2UIComponent {
+  const id = generateComponentId("product");
+  return {
+    id,
+    component: {
+      ProductCard: {
+        title: typeof title === "string" ? literal(title) : title,
+        price: typeof price === "string" ? literal(price) : price,
+        ...(options?.image && {
+          image: typeof options.image === "string" ? literal(options.image) : options.image,
+        }),
+        ...(options?.description && {
+          description: typeof options.description === "string" ? literal(options.description) : options.description,
+        }),
+        ...(options?.badge && {
+          badge: typeof options.badge === "string" ? literal(options.badge) : options.badge,
+        }),
+        ...(options?.ctaLabel && {
+          ctaLabel: typeof options.ctaLabel === "string" ? literal(options.ctaLabel) : options.ctaLabel,
+        }),
+        ...(options?.action && { action: options.action }),
+      },
+    },
+  };
+}
+
+function buildList(
+  itemsPath: string,
+  templateId: string,
+  layout: "vertical" | "horizontal" | "grid" = "vertical"
+): A2UIComponent {
+  const id = generateComponentId("list");
+  return {
+    id,
+    component: {
+      List: {
+        items: path(itemsPath),
+        template: { componentId: templateId },
+        layout,
+      },
+    },
+  };
+}
+
+function buildRow(childIds: string[], gap = "8px"): A2UIComponent {
+  const id = generateComponentId("row");
+  return {
+    id,
+    component: {
+      Row: {
+        children: childIds,
+        gap,
+      },
+    },
+  };
+}
+
+function buildColumn(childIds: string[], gap = "8px"): A2UIComponent {
+  const id = generateComponentId("col");
+  return {
+    id,
+    component: {
+      Column: {
+        children: childIds,
+        gap,
+      },
+    },
+  };
+}
+
+function buildIntegrationAction(
+  type: "mcp" | "a2a",
+  label: string,
+  options?: { url?: string; highlighted?: boolean }
+): A2UIComponent {
+  const id = generateComponentId("integration");
+  return {
+    id,
+    component: {
+      IntegrationAction: {
+        type,
+        label: literal(label),
+        ...(options?.url && { url: literal(options.url) }),
+        ...(options?.highlighted && { highlighted: true }),
+      },
+    },
+  };
+}
+
+function buildSurface(
+  surfaceId: string,
+  components: A2UIComponent[],
+  dataModel?: Record<string, unknown>
+): A2UISurface {
+  return {
+    surfaceId,
+    catalogId: "si-standard",
+    components,
+    ...(dataModel && { dataModel }),
+  };
 }
 
 /**
@@ -581,7 +801,7 @@ export class SiAgentService {
       const rawText = textContent?.type === "text" ? textContent.text : "";
 
       // Try to parse as JSON response (for structured output)
-      const parsed = this.parseAgentResponse(rawText, member, skills, isInitialMessage);
+      const parsed = this.parseAgentResponse(rawText, member, skills, isInitialMessage, session.session_id);
 
       return parsed;
     } catch (error) {
@@ -667,7 +887,7 @@ export class SiAgentService {
       const rawText = textChunks.join("");
 
       // Parse the complete response
-      const parsed = this.parseAgentResponse(rawText, member, skills, isInitialMessage);
+      const parsed = this.parseAgentResponse(rawText, member, skills, isInitialMessage, session.session_id);
 
       yield { type: "done", response: parsed };
     } catch (error) {
@@ -753,7 +973,8 @@ For normal conversation, just respond with plain text.`;
     rawText: string,
     member: SiMemberProfile,
     skills: SiSkill[],
-    isInitialMessage: boolean = false
+    isInitialMessage: boolean = false,
+    sessionId?: string
   ): SiResponse {
     // Try to parse as JSON
     try {
@@ -765,20 +986,47 @@ For normal conversation, just respond with plain text.`;
         if (parsed.action) {
           const skill = skills.find((s) => s.skill_name === parsed.action);
 
+          if (skill) {
+            // Generate A2UI surface for action button
+            resetComponentIds();
+            const button = buildButton(
+              this.getSkillButtonLabel(skill.skill_type),
+              {
+                name: skill.skill_name,
+                context: parsed.action_data
+                  ? Object.fromEntries(
+                      Object.entries(parsed.action_data).map(([k, v]) => [k, literal(v as string | number | boolean)])
+                    )
+                  : undefined,
+              },
+              "primary"
+            );
+            const surface = buildSurface(`si-action-${sessionId || "default"}`, [button]);
+
+            return {
+              message: parsed.message || `Let me help you with ${parsed.action}.`,
+              ui_elements: [
+                {
+                  type: "action_button",
+                  data: {
+                    label: this.getSkillButtonLabel(skill.skill_type),
+                    action: skill.skill_name,
+                    payload: parsed.action_data || {},
+                  },
+                },
+              ],
+              surface,
+              session_status: "active",
+              available_skills: skills.map((s) => ({
+                skill_name: s.skill_name,
+                skill_description: s.skill_description,
+                skill_type: s.skill_type,
+              })),
+            };
+          }
+
           return {
             message: parsed.message || `Let me help you with ${parsed.action}.`,
-            ui_elements: skill
-              ? [
-                  {
-                    type: "action_button",
-                    data: {
-                      label: this.getSkillButtonLabel(skill.skill_type),
-                      action: skill.skill_name,
-                      payload: parsed.action_data || {},
-                    },
-                  },
-                ]
-              : undefined,
             session_status: "active",
             available_skills: skills.map((s) => ({
               skill_name: s.skill_name,
@@ -790,9 +1038,11 @@ For normal conversation, just respond with plain text.`;
 
         // Check if this is asking to add as tool
         if (parsed.show_integration_options) {
+          const { ui_element, surface } = this.generateIntegrationActions(member, sessionId);
           return {
             message: parsed.message || rawText,
-            ui_elements: [this.generateIntegrationActions(member)],
+            ui_elements: [ui_element],
+            surface,
             session_status: "active",
           };
         }
@@ -808,11 +1058,12 @@ For normal conversation, just respond with plain text.`;
     }
 
     // For initial message, add rich UI elements
-    if (isInitialMessage) {
-      const welcomeElements = this.generateWelcomeUiElements(member, skills);
+    if (isInitialMessage && sessionId) {
+      const { ui_elements, surface } = this.generateWelcomeUiElements(member, skills, sessionId);
       return {
         message: rawText,
-        ui_elements: welcomeElements.length > 0 ? welcomeElements : undefined,
+        ui_elements: ui_elements.length > 0 ? ui_elements : undefined,
+        surface: ui_elements.length > 0 ? surface : undefined,
         session_status: "active",
       };
     }
@@ -833,9 +1084,11 @@ For normal conversation, just respond with plain text.`;
     const hasIntegrationIntent = integrationPhrases.some((phrase) => lowerText.includes(phrase));
 
     if (hasIntegrationIntent) {
+      const { ui_element, surface } = this.generateIntegrationActions(member, sessionId);
       return {
         message: rawText,
-        ui_elements: [this.generateIntegrationActions(member)],
+        ui_elements: [ui_element],
+        surface,
         session_status: "active",
       };
     }
@@ -866,26 +1119,56 @@ For normal conversation, just respond with plain text.`;
 
   /**
    * Generate a rich welcome message with UI components
+   * Returns both legacy ui_elements and A2UI surface
    */
   private generateWelcomeUiElements(
     member: SiMemberProfile,
-    skills: SiSkill[]
-  ): Array<{ type: string; data: Record<string, unknown> }> {
+    skills: SiSkill[],
+    sessionId: string
+  ): { ui_elements: Array<{ type: string; data: Record<string, unknown> }>; surface: A2UISurface } {
     const elements: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const components: A2UIComponent[] = [];
+    resetComponentIds();
 
     // Add product carousel if member has offerings
     if (member.offerings && member.offerings.length > 1) {
+      // Legacy format
       elements.push({
         type: "carousel",
         data: {
           title: `Explore ${member.display_name}`,
-          items: member.offerings.slice(0, 5).map((offering, index) => ({
+          items: member.offerings.slice(0, 5).map((offering) => ({
             title: offering,
             subtitle: member.display_name,
             action: "learn_more",
           })),
         },
       });
+
+      // A2UI format - create list with product cards
+      const offeringsData = member.offerings.slice(0, 5).map((offering, idx) => ({
+        id: `offering-${idx}`,
+        title: offering,
+        subtitle: member.display_name,
+      }));
+
+      // Create template for list items
+      const cardTemplate = buildProductCard(
+        path("/item/title"),
+        path("/item/subtitle"),
+        {
+          action: {
+            name: "learn_more",
+            context: { offering_id: path("/item/id") },
+          },
+        }
+      );
+      cardTemplate.id = "offering-card-template";
+      components.push(cardTemplate);
+
+      // Create list that uses the template
+      const listComponent = buildList("/offerings", "offering-card-template", "horizontal");
+      components.push(listComponent);
     }
 
     // Add quick action buttons based on available skills
@@ -893,8 +1176,10 @@ For normal conversation, just respond with plain text.`;
       ["demo_request", "contact_sales", "documentation"].includes(s.skill_type)
     ).slice(0, 3);
 
+    const buttonIds: string[] = [];
     if (quickActions.length > 0) {
       for (const skill of quickActions) {
+        // Legacy format
         elements.push({
           type: "action_button",
           data: {
@@ -903,34 +1188,101 @@ For normal conversation, just respond with plain text.`;
             variant: skill.skill_type === "demo_request" ? "primary" : "secondary",
           },
         });
+
+        // A2UI format
+        const variant = skill.skill_type === "demo_request" ? "primary" : "secondary";
+        const button = buildButton(
+          this.getSkillButtonLabel(skill.skill_type),
+          { name: skill.skill_name },
+          variant
+        );
+        components.push(button);
+        buttonIds.push(button.id);
+      }
+
+      // Wrap buttons in a row for A2UI
+      if (buttonIds.length > 1) {
+        const buttonRow = buildRow(buttonIds, "12px");
+        components.push(buttonRow);
       }
     }
 
-    return elements;
+    // Build surface with dataModel for offerings
+    const dataModel: Record<string, unknown> = {};
+    if (member.offerings && member.offerings.length > 1) {
+      dataModel.offerings = member.offerings.slice(0, 5).map((offering, idx) => ({
+        id: `offering-${idx}`,
+        title: offering,
+        subtitle: member.display_name,
+      }));
+    }
+
+    const surface = buildSurface(
+      `si-welcome-${sessionId}`,
+      components,
+      Object.keys(dataModel).length > 0 ? dataModel : undefined
+    );
+
+    return { ui_elements: elements, surface };
   }
 
   /**
    * Generate integration actions (MCP/A2A handoff options)
+   * Returns both legacy format and A2UI components
    */
   private generateIntegrationActions(
-    member: SiMemberProfile
-  ): { type: string; data: Record<string, unknown> } {
+    member: SiMemberProfile,
+    sessionId?: string
+  ): {
+    ui_element: { type: string; data: Record<string, unknown> };
+    surface: A2UISurface;
+  } {
+    const components: A2UIComponent[] = [];
+    resetComponentIds();
+
+    // MCP integration action
+    const mcpAction = buildIntegrationAction(
+      "mcp",
+      `Add ${member.display_name} as MCP Tool`,
+      {
+        url: member.contact_website ? `${member.contact_website}/mcp` : undefined,
+        highlighted: true,
+      }
+    );
+    components.push(mcpAction);
+
+    // A2A integration action
+    const a2aAction = buildIntegrationAction("a2a", "Connect via A2A");
+    components.push(a2aAction);
+
+    // Wrap in a column layout
+    const actionColumn = buildColumn([mcpAction.id, a2aAction.id], "8px");
+    components.push(actionColumn);
+
+    const surface = buildSurface(
+      `si-integration-${sessionId || "default"}`,
+      components
+    );
+
     return {
-      type: "integration_actions",
-      data: {
-        actions: [
-          {
-            type: "mcp",
-            label: `Add ${member.display_name} as MCP Tool`,
-            highlighted: true,
-            endpoint: member.contact_website ? `${member.contact_website}/mcp` : null,
-          },
-          {
-            type: "a2a",
-            label: "Connect via A2A",
-          },
-        ],
+      ui_element: {
+        type: "integration_actions",
+        data: {
+          actions: [
+            {
+              type: "mcp",
+              label: `Add ${member.display_name} as MCP Tool`,
+              highlighted: true,
+              endpoint: member.contact_website ? `${member.contact_website}/mcp` : null,
+            },
+            {
+              type: "a2a",
+              label: "Connect via A2A",
+            },
+          ],
+        },
       },
+      surface,
     };
   }
 

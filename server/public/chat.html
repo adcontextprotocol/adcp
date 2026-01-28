@@ -1977,6 +1977,67 @@
       opacity: 1;
     }
 
+    /* A2UI Surface Styles */
+    .si-a2ui-surface {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .si-a2ui-text {
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--color-text);
+    }
+
+    .si-a2ui-text.variant-heading {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .si-a2ui-text.variant-caption {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    .si-a2ui-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .si-a2ui-list.horizontal {
+      flex-direction: row;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .si-a2ui-list.horizontal > * {
+      flex-shrink: 0;
+      min-width: 150px;
+      max-width: 200px;
+    }
+
+    .si-a2ui-list.grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .si-a2ui-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .si-a2ui-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     /* Mobile responsive */
     @media (max-width: 640px) {
       .si-modal-overlay {
@@ -3813,7 +3874,7 @@
           if (data.messages && data.messages.length > 0) {
             for (const msg of data.messages) {
               const role = msg.role === 'user' ? 'user' : 'assistant';
-              siAddMessage(role, msg.content, msg.ui_elements);
+              siAddMessage(role, msg.content, msg.ui_elements, msg.surface);
             }
           }
 
@@ -3893,11 +3954,11 @@
               }
             }
 
-            // Load messages from API (includes UI elements)
+            // Load messages from API (includes UI elements and surfaces)
             if (data.messages && data.messages.length > 0) {
               for (const msg of data.messages) {
                 const role = msg.role === 'user' ? 'user' : 'assistant';
-                siAddMessage(role, msg.content, msg.ui_elements);
+                siAddMessage(role, msg.content, msg.ui_elements, msg.surface);
               }
               messagesLoaded = true;
             }
@@ -3912,7 +3973,7 @@
           if (typeof response === 'string') {
             siAddMessage('assistant', response);
           } else if (response.message) {
-            siAddMessage('assistant', response.message, response.ui_elements);
+            siAddMessage('assistant', response.message, response.ui_elements, response.surface);
           }
         }
 
@@ -3955,7 +4016,7 @@
       }
 
       // Add a message to the SI modal
-      function siAddMessage(role, content, uiElements = null) {
+      function siAddMessage(role, content, uiElements = null, surface = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `si-message ${role}`;
 
@@ -3971,8 +4032,13 @@
 
         messageDiv.appendChild(contentDiv);
 
-        // Render UI elements if present
-        if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
+        // Prefer A2UI surface if present, fall back to legacy ui_elements
+        if (surface && surface.components && surface.components.length > 0) {
+          const uiContainer = document.createElement('div');
+          uiContainer.className = 'si-ui-elements si-a2ui-surface';
+          siRenderA2UISurface(uiContainer, surface);
+          messageDiv.appendChild(uiContainer);
+        } else if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
           const uiContainer = document.createElement('div');
           uiContainer.className = 'si-ui-elements';
           siRenderUiElements(uiContainer, uiElements);
@@ -4137,6 +4203,354 @@
         }
       }
 
+      // =======================================================================
+      // A2UI Surface Rendering
+      // =======================================================================
+
+      /**
+       * Resolve a BoundValue to its actual value
+       * @param {Object} boundValue - A2UI BoundValue (literalString, literalNumber, literalBoolean, or path)
+       * @param {Object} dataModel - The surface's data model
+       * @param {Object} itemContext - Current item context for list templates (optional)
+       */
+      function siResolveBoundValue(boundValue, dataModel, itemContext = null) {
+        if (!boundValue) return null;
+
+        // Literal values
+        if ('literalString' in boundValue) return boundValue.literalString;
+        if ('literalNumber' in boundValue) return boundValue.literalNumber;
+        if ('literalBoolean' in boundValue) return boundValue.literalBoolean;
+
+        // Path resolution
+        if ('path' in boundValue) {
+          const path = boundValue.path;
+
+          // Item-relative paths (for list templates)
+          if (path.startsWith('/item/') && itemContext) {
+            const itemPath = path.slice(6); // Remove '/item/'
+            return siGetValueByPath(itemContext, itemPath);
+          }
+
+          // Absolute paths from dataModel
+          if (path.startsWith('/') && dataModel) {
+            return siGetValueByPath(dataModel, path.slice(1));
+          }
+
+          return null;
+        }
+
+        // If it's a plain string/number/boolean, return as-is
+        if (typeof boundValue === 'string' || typeof boundValue === 'number' || typeof boundValue === 'boolean') {
+          return boundValue;
+        }
+
+        return null;
+      }
+
+      /**
+       * Get value from object by dot/slash path
+       */
+      function siGetValueByPath(obj, path) {
+        const parts = path.split('/').filter(Boolean);
+        let current = obj;
+        for (const part of parts) {
+          if (current === null || current === undefined) return null;
+          current = current[part];
+        }
+        return current;
+      }
+
+      /**
+       * Render an A2UI surface
+       * @param {HTMLElement} container - Container to render into
+       * @param {Object} surface - A2UI surface object
+       */
+      function siRenderA2UISurface(container, surface) {
+        if (!surface || !surface.components) return;
+
+        const dataModel = surface.dataModel || {};
+        const componentMap = new Map();
+
+        // Index components by ID
+        for (const comp of surface.components) {
+          componentMap.set(comp.id, comp);
+        }
+
+        // Find root components (no parentId or parentId not in componentMap)
+        const rootComponents = surface.components.filter(
+          comp => !comp.parentId || !componentMap.has(comp.parentId)
+        );
+
+        // Render each root component
+        for (const comp of rootComponents) {
+          const el = siRenderA2UIComponent(comp, componentMap, dataModel, null);
+          if (el) container.appendChild(el);
+        }
+      }
+
+      /**
+       * Render a single A2UI component
+       */
+      function siRenderA2UIComponent(comp, componentMap, dataModel, itemContext) {
+        if (!comp || !comp.component) return null;
+
+        // Get component type and props
+        const [type, props] = Object.entries(comp.component)[0];
+
+        switch (type) {
+          case 'Text':
+            return siRenderA2UIText(props, dataModel, itemContext);
+
+          case 'Button':
+            return siRenderA2UIButton(props, dataModel, itemContext);
+
+          case 'Link':
+            return siRenderA2UILink(props, dataModel, itemContext);
+
+          case 'Image':
+            return siRenderA2UIImage(props, dataModel, itemContext);
+
+          case 'ProductCard':
+            return siRenderA2UIProductCard(props, dataModel, itemContext);
+
+          case 'List':
+            return siRenderA2UIList(props, componentMap, dataModel);
+
+          case 'Row':
+            return siRenderA2UIRow(props, componentMap, dataModel, itemContext);
+
+          case 'Column':
+            return siRenderA2UIColumn(props, componentMap, dataModel, itemContext);
+
+          case 'IntegrationAction':
+            return siRenderA2UIIntegrationAction(props, dataModel, itemContext);
+
+          case 'Card':
+            return siRenderA2UICard(props, dataModel, itemContext);
+
+          default:
+            console.warn('Unknown A2UI component type:', type);
+            return null;
+        }
+      }
+
+      function siRenderA2UIText(props, dataModel, itemContext) {
+        const el = document.createElement('div');
+        el.className = 'si-a2ui-text';
+        if (props.variant) el.classList.add(`variant-${props.variant}`);
+        el.textContent = siResolveBoundValue(props.text, dataModel, itemContext) || '';
+        return el;
+      }
+
+      function siRenderA2UIButton(props, dataModel, itemContext) {
+        const btn = document.createElement('button');
+        btn.className = 'si-action-button';
+        if (props.variant === 'secondary') btn.classList.add('secondary');
+        if (props.variant === 'text') btn.classList.add('text-only');
+
+        btn.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || 'Button';
+
+        if (props.action) {
+          btn.addEventListener('click', () => {
+            const actionContext = {};
+            if (props.action.context) {
+              for (const [key, value] of Object.entries(props.action.context)) {
+                actionContext[key] = siResolveBoundValue(value, dataModel, itemContext);
+              }
+            }
+            siSendAction(props.action.name, actionContext);
+          });
+        }
+
+        return btn;
+      }
+
+      function siRenderA2UILink(props, dataModel, itemContext) {
+        const link = document.createElement('a');
+        link.className = 'si-ui-link';
+        link.href = siResolveBoundValue(props.url, dataModel, itemContext) || '#';
+        if (props.external !== false) link.target = '_blank';
+        link.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || link.href;
+        return link;
+      }
+
+      function siRenderA2UIImage(props, dataModel, itemContext) {
+        const container = document.createElement('div');
+        container.className = 'si-image';
+
+        const img = document.createElement('img');
+        img.src = siResolveBoundValue(props.url, dataModel, itemContext) || '';
+        img.alt = siResolveBoundValue(props.alt, dataModel, itemContext) || '';
+        container.appendChild(img);
+
+        const caption = siResolveBoundValue(props.caption, dataModel, itemContext);
+        if (caption) {
+          const captionEl = document.createElement('div');
+          captionEl.className = 'si-image-caption';
+          captionEl.textContent = caption;
+          container.appendChild(captionEl);
+        }
+
+        return container;
+      }
+
+      function siRenderA2UIProductCard(props, dataModel, itemContext) {
+        const card = document.createElement('div');
+        card.className = 'si-product-card';
+
+        const imageUrl = siResolveBoundValue(props.image, dataModel, itemContext);
+        const title = siResolveBoundValue(props.title, dataModel, itemContext);
+        const price = siResolveBoundValue(props.price, dataModel, itemContext);
+        const description = siResolveBoundValue(props.description, dataModel, itemContext);
+        const badge = siResolveBoundValue(props.badge, dataModel, itemContext);
+        const ctaLabel = siResolveBoundValue(props.ctaLabel, dataModel, itemContext);
+
+        card.innerHTML = `
+          ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title || '')}" class="si-product-image">` : ''}
+          <div class="si-product-info">
+            ${badge ? `<div class="si-product-badge">${escapeHtml(badge)}</div>` : ''}
+            <div class="si-product-title">${escapeHtml(title || '')}</div>
+            ${price ? `<div class="si-product-price">${escapeHtml(price)}</div>` : ''}
+            ${description ? `<div class="si-product-description">${escapeHtml(description)}</div>` : ''}
+          </div>
+        `;
+
+        // Add action handler
+        if (props.action) {
+          const ctaDiv = document.createElement('div');
+          ctaDiv.className = 'si-product-cta';
+          const ctaBtn = document.createElement('button');
+          ctaBtn.textContent = ctaLabel || 'Select';
+          ctaBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const actionContext = {};
+            if (props.action.context) {
+              for (const [key, value] of Object.entries(props.action.context)) {
+                actionContext[key] = siResolveBoundValue(value, dataModel, itemContext);
+              }
+            }
+            siSendAction(props.action.name, actionContext);
+          });
+          ctaDiv.appendChild(ctaBtn);
+          card.querySelector('.si-product-info').appendChild(ctaDiv);
+        }
+
+        return card;
+      }
+
+      function siRenderA2UIList(props, componentMap, dataModel) {
+        const container = document.createElement('div');
+        container.className = 'si-a2ui-list';
+
+        const layout = props.layout || 'vertical';
+        if (layout === 'horizontal') {
+          container.classList.add('horizontal');
+        } else if (layout === 'grid') {
+          container.classList.add('grid');
+        }
+
+        // Get items from dataModel
+        const items = siResolveBoundValue(props.items, dataModel, null) || [];
+        const templateId = props.template?.componentId;
+        const templateComp = templateId ? componentMap.get(templateId) : null;
+
+        for (const item of items) {
+          if (templateComp) {
+            const el = siRenderA2UIComponent(templateComp, componentMap, dataModel, item);
+            if (el) container.appendChild(el);
+          }
+        }
+
+        return container;
+      }
+
+      function siRenderA2UIRow(props, componentMap, dataModel, itemContext) {
+        const container = document.createElement('div');
+        container.className = 'si-a2ui-row';
+        if (props.gap) container.style.gap = props.gap;
+
+        const children = props.children || [];
+        for (const childId of children) {
+          const childComp = componentMap.get(childId);
+          if (childComp) {
+            const el = siRenderA2UIComponent(childComp, componentMap, dataModel, itemContext);
+            if (el) container.appendChild(el);
+          }
+        }
+
+        return container;
+      }
+
+      function siRenderA2UIColumn(props, componentMap, dataModel, itemContext) {
+        const container = document.createElement('div');
+        container.className = 'si-a2ui-column';
+        if (props.gap) container.style.gap = props.gap;
+
+        const children = props.children || [];
+        for (const childId of children) {
+          const childComp = componentMap.get(childId);
+          if (childComp) {
+            const el = siRenderA2UIComponent(childComp, componentMap, dataModel, itemContext);
+            if (el) container.appendChild(el);
+          }
+        }
+
+        return container;
+      }
+
+      function siRenderA2UIIntegrationAction(props, dataModel, itemContext) {
+        const btn = document.createElement('button');
+        btn.className = 'si-integration-button';
+        if (props.highlighted) btn.classList.add('highlighted');
+
+        const icon = props.type === 'mcp' ? getSiIcon('plug') : getSiIcon('link');
+        const label = siResolveBoundValue(props.label, dataModel, itemContext) || '';
+        btn.innerHTML = icon + ' ' + escapeHtml(label);
+
+        btn.addEventListener('click', () => {
+          const url = siResolveBoundValue(props.url, dataModel, itemContext);
+          if (props.type === 'mcp') {
+            siHandleMcpHandoff({ endpoint: url });
+          } else if (props.type === 'a2a') {
+            siHandleA2aHandoff({ url });
+          }
+        });
+
+        return btn;
+      }
+
+      function siRenderA2UICard(props, dataModel, itemContext) {
+        const card = document.createElement('div');
+        card.className = 'si-product-card';
+
+        const title = siResolveBoundValue(props.title, dataModel, itemContext);
+        const subtitle = siResolveBoundValue(props.subtitle, dataModel, itemContext);
+        const image = siResolveBoundValue(props.image, dataModel, itemContext);
+
+        card.innerHTML = `
+          ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(title || '')}" class="si-product-image">` : ''}
+          <div class="si-product-info">
+            <div class="si-product-title">${escapeHtml(title || '')}</div>
+            ${subtitle ? `<div class="si-product-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+          </div>
+        `;
+
+        if (props.action) {
+          card.style.cursor = 'pointer';
+          card.addEventListener('click', () => {
+            const actionContext = {};
+            if (props.action.context) {
+              for (const [key, value] of Object.entries(props.action.context)) {
+                actionContext[key] = siResolveBoundValue(value, dataModel, itemContext);
+              }
+            }
+            siSendAction(props.action.name, actionContext);
+          });
+        }
+
+        return card;
+      }
+
       // Get SVG icon for SI components
       function getSiIcon(name) {
         const icons = {
@@ -4234,7 +4648,7 @@
           const data = await response.json();
 
           if (data.response) {
-            siAddMessage('assistant', data.response.message, data.response.ui_elements);
+            siAddMessage('assistant', data.response.message, data.response.ui_elements, data.response.surface);
 
             if (data.response.session_status === 'completed' || data.response.handoff) {
               setTimeout(() => siCloseModal(false), 2000);
@@ -4292,6 +4706,7 @@
 
         let streamedText = '';
         let uiElements = null;
+        let surface = null;
         let sessionStatus = 'active';
         let hasHandoff = false;
 
@@ -4343,8 +4758,9 @@
                     }
                     siModalMessages.scrollTop = siModalMessages.scrollHeight;
                   } else if (event.type === 'done') {
-                    // Store UI elements and session info for final render
+                    // Store UI elements, surface, and session info for final render
                     uiElements = event.response?.ui_elements;
+                    surface = event.response?.surface;
                     sessionStatus = event.response?.session_status;
                     hasHandoff = !!event.response?.handoff;
                   } else if (event.type === 'error') {
@@ -4358,8 +4774,14 @@
             }
           }
 
-          // Render UI elements after stream completes
-          if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
+          // Render A2UI surface or legacy UI elements after stream completes
+          // Prefer surface if present
+          if (surface && surface.components && surface.components.length > 0) {
+            const uiContainer = document.createElement('div');
+            uiContainer.className = 'si-ui-elements si-a2ui-surface';
+            siRenderA2UISurface(uiContainer, surface);
+            messageDiv.appendChild(uiContainer);
+          } else if (uiElements && Array.isArray(uiElements) && uiElements.length > 0) {
             const uiContainer = document.createElement('div');
             uiContainer.className = 'si-ui-elements';
             siRenderUiElements(uiContainer, uiElements);

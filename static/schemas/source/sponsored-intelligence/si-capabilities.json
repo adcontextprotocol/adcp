@@ -108,6 +108,28 @@
         }
       },
       "additionalProperties": true
+    },
+    "a2ui": {
+      "type": "object",
+      "description": "A2UI (Agent-to-UI) capabilities",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Supports A2UI surface rendering",
+          "default": false
+        },
+        "catalogs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Supported A2UI component catalogs (e.g., 'si-standard', 'standard')"
+        }
+      },
+      "additionalProperties": true
+    },
+    "mcp_apps": {
+      "type": "boolean",
+      "description": "Supports MCP Apps for rendering A2UI surfaces in iframes",
+      "default": false
     }
   },
   "additionalProperties": true
