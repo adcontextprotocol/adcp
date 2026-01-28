@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/a2ui/component.json",
+  "title": "A2UI Component",
+  "description": "A component in an A2UI surface",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this component within the surface"
+    },
+    "parentId": {
+      "type": "string",
+      "description": "ID of the parent component (null for root)"
+    },
+    "component": {
+      "type": "object",
+      "description": "Component definition (keyed by component type)",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "description": "Component properties"
+      }
+    }
+  },
+  "required": ["id", "component"],
+  "additionalProperties": true
+}
