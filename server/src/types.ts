@@ -1,9 +1,9 @@
-export type AgentType = "creative" | "signals" | "sales" | "unknown";
+export type AgentType = "creative" | "signals" | "sales" | "governance" | "si" | "unknown";
 
 /**
  * Valid agent type values for runtime validation
  */
-export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "unknown"] as const;
+export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "governance", "si", "unknown"] as const;
 
 /**
  * Type guard to check if a string is a valid AgentType
@@ -259,7 +259,7 @@ export interface AgentConfig {
   is_public: boolean;
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
-  type?: 'sales' | 'creative' | 'signals' | 'buyer' | 'unknown';
+  type?: AgentType | 'buyer';
 }
 
 /**
@@ -621,7 +621,7 @@ export interface CommitteeDocumentActivity {
 export interface FederatedAgent {
   url: string;
   name?: string;
-  type?: AgentType | 'buyer' | 'unknown';
+  type?: AgentType | 'buyer';
   protocol?: 'mcp' | 'a2a';
   source: 'registered' | 'discovered';
   // For registered agents

@@ -69,14 +69,14 @@ export const DIRECTORY_TOOLS: AddieTool[] = [
   },
   {
     name: 'list_agents',
-    description: 'List all public AdCP agents from member organizations. Can filter by type: creative (asset generation), signals (audience data), or sales (media buying).',
+    description: 'List all public AdCP agents from member organizations. Can filter by type: creative (asset generation), signals (audience data), sales (media buying), governance (property lists and content standards), or si (sponsored intelligence/conversational commerce).',
     usage_hints: 'Use when asked about registered agents, what agents are available, or agents of a specific type.',
     input_schema: {
       type: 'object',
       properties: {
         type: {
           type: 'string',
-          enum: ['creative', 'signals', 'sales'],
+          enum: ['creative', 'signals', 'sales', 'governance', 'si'],
           description: 'Filter by agent type',
         },
       },

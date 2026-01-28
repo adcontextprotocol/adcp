@@ -113,21 +113,46 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   adcp_operations: {
     name: 'adcp_operations',
-    description: 'Execute AdCP protocol operations - discover products, create media buys, manage creatives, work with signals, and interact with sales/creative/signal agents',
+    description: 'Execute AdCP protocol operations - discover products, create/update media buys, manage creatives, work with signals, governance (property lists, content standards), sponsored intelligence (SI), and interact with sales/creative/signals/governance/si agents',
     tools: [
       // Media Buy tools
       'get_products',
       'create_media_buy',
+      'update_media_buy',
       'sync_creatives',
+      'list_creatives',
       'list_creative_formats',
       'list_authorized_properties',
       'get_media_buy_delivery',
+      'provide_performance_feedback',
       // Creative tools
       'build_creative',
       'preview_creative',
       // Signals tools
       'get_signals',
       'activate_signal',
+      // Governance - Property Lists
+      'create_property_list',
+      'update_property_list',
+      'get_property_list',
+      'list_property_lists',
+      'delete_property_list',
+      // Governance - Content Standards
+      'create_content_standards',
+      'get_content_standards',
+      'update_content_standards',
+      'list_content_standards',
+      'delete_content_standards',
+      'calibrate_content',
+      'get_media_buy_artifacts',
+      'validate_content_delivery',
+      // Sponsored Intelligence (SI)
+      'si_initiate_session',
+      'si_send_message',
+      'si_get_offering',
+      'si_terminate_session',
+      // Protocol
+      'get_adcp_capabilities',
       // Agent management
       'save_agent',
       'list_saved_agents',
