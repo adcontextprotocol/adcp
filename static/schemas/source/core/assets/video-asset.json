@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/video-asset.json",
   "title": "Video Asset",
-  "description": "Video asset with URL and specifications",
+  "description": "Video asset with URL and technical specifications including audio track properties",
   "type": "object",
   "properties": {
     "url": {
@@ -25,14 +25,106 @@
       "description": "Video duration in milliseconds",
       "minimum": 1
     },
-    "format": {
-      "type": "string",
-      "description": "Video file format (mp4, webm, mov, etc.)"
-    },
-    "bitrate_kbps": {
+    "file_size_bytes": {
       "type": "integer",
-      "description": "Video bitrate in kilobits per second",
+      "description": "File size in bytes",
       "minimum": 1
+    },
+    "container_format": {
+      "type": "string",
+      "description": "Video container format (mp4, webm, mov, etc.)"
+    },
+    "video_codec": {
+      "type": "string",
+      "description": "Video codec used (h264, h265, vp9, av1, prores, etc.)"
+    },
+    "video_bitrate_kbps": {
+      "type": "integer",
+      "description": "Video stream bitrate in kilobits per second",
+      "minimum": 1
+    },
+    "frame_rate": {
+      "type": "string",
+      "description": "Frame rate as string to preserve precision (e.g., '23.976', '29.97', '30')"
+    },
+    "frame_rate_type": {
+      "type": "string",
+      "enum": ["constant", "variable"],
+      "description": "Whether the video uses constant (CFR) or variable (VFR) frame rate"
+    },
+    "scan_type": {
+      "type": "string",
+      "enum": ["progressive", "interlaced"],
+      "description": "Scan type of the video"
+    },
+    "color_space": {
+      "type": "string",
+      "enum": ["rec709", "rec2020", "rec2100", "srgb", "dci_p3"],
+      "description": "Color space of the video"
+    },
+    "hdr_format": {
+      "type": "string",
+      "enum": ["sdr", "hdr10", "hdr10_plus", "hlg", "dolby_vision"],
+      "description": "HDR format if applicable, or 'sdr' for standard dynamic range"
+    },
+    "chroma_subsampling": {
+      "type": "string",
+      "enum": ["4:2:0", "4:2:2", "4:4:4"],
+      "description": "Chroma subsampling format"
+    },
+    "video_bit_depth": {
+      "type": "integer",
+      "enum": [8, 10, 12],
+      "description": "Video bit depth"
+    },
+    "gop_interval_seconds": {
+      "type": "number",
+      "description": "GOP/keyframe interval in seconds"
+    },
+    "gop_type": {
+      "type": "string",
+      "enum": ["closed", "open"],
+      "description": "GOP structure type"
+    },
+    "moov_atom_position": {
+      "type": "string",
+      "enum": ["start", "end"],
+      "description": "Position of moov atom in MP4 container"
+    },
+    "has_audio": {
+      "type": "boolean",
+      "description": "Whether the video contains an audio track"
+    },
+    "audio_codec": {
+      "type": "string",
+      "description": "Audio codec used (aac, aac_lc, he_aac, pcm, mp3, ac3, eac3, etc.)"
+    },
+    "audio_sampling_rate_hz": {
+      "type": "integer",
+      "description": "Audio sampling rate in Hz (e.g., 44100, 48000)"
+    },
+    "audio_channels": {
+      "type": "string",
+      "enum": ["mono", "stereo", "5.1", "7.1"],
+      "description": "Audio channel configuration"
+    },
+    "audio_bit_depth": {
+      "type": "integer",
+      "enum": [16, 24, 32],
+      "description": "Audio bit depth"
+    },
+    "audio_bitrate_kbps": {
+      "type": "integer",
+      "description": "Audio bitrate in kilobits per second",
+      "minimum": 1
+    },
+    "audio_loudness_lufs": {
+      "type": "number",
+      "description": "Integrated loudness in LUFS"
+    },
+    "audio_true_peak_dbfs": {
+      "type": "number",
+      "description": "True peak level in dBFS"
     }
   },
   "required": [
