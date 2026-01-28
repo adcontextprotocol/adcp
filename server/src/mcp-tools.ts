@@ -9,7 +9,14 @@ import { AgentService } from "./agent-service.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { AgentValidator } from "./validator.js";
 import { FederatedIndexService } from "./federated-index.js";
+import { siDb } from "./db/si-db.js";
+import { readFile } from "fs/promises";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { AgentType, MemberOffering } from "./types.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Tool definitions for the AdCP Directory MCP server.
@@ -263,6 +270,12 @@ export const RESOURCE_DEFINITIONS = [
     name: "All Publishers",
     mimeType: "application/json",
     description: "All public publisher domains hosting adagents.json",
+  },
+  {
+    uri: "ui://si/{session_id}",
+    name: "SI Agent UI",
+    mimeType: "text/html",
+    description: "Interactive A2UI surface for an SI agent session, rendered via MCP Apps",
   },
 ];
 
@@ -781,6 +794,13 @@ export class MCPToolHandler {
   async handleResourceRead(uri: string): Promise<{
     contents: Array<{ uri: string; mimeType: string; text: string }>;
   }> {
+    // Handle SI agent UI resource (MCP Apps)
+    const siMatch = uri.match(/^ui:\/\/si\/(.+)$/);
+    if (siMatch) {
+      const sessionId = siMatch[1];
+      return this.handleSiUiResource(uri, sessionId);
+    }
+
     // Handle members resource
     if (uri === "members://directory") {
       const members = await this.memberDb.getPublicProfiles({});
@@ -856,6 +876,66 @@ export class MCPToolHandler {
           uri,
           mimeType: "application/json",
           text: JSON.stringify(agents, null, 2),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Handle SI UI resource request - serves MCP Apps shell with A2UI surface
+   */
+  private async handleSiUiResource(uri: string, sessionId: string): Promise<{
+    contents: Array<{ uri: string; mimeType: string; text: string }>;
+  }> {
+    // Get the session to retrieve the latest A2UI surface
+    const session = await siDb.getSession(sessionId);
+    if (!session) {
+      throw new Error(`SI session not found: ${sessionId}`);
+    }
+
+    // Get the most recent message with a surface
+    const messages = await siDb.getSessionMessages(sessionId, 1);
+    const latestMessage = messages[0];
+
+    // Build a surface from ui_elements if we don't have a native surface yet
+    // This provides backwards compatibility during migration
+    let surface = latestMessage?.ui_elements
+      ? {
+          surfaceId: `si-session-${sessionId}`,
+          catalogId: "si-standard",
+          components: (latestMessage.ui_elements as Array<{ type: string; data: Record<string, unknown> }>).map((el, idx) => ({
+            id: `elem-${idx}`,
+            component: { [el.type]: el.data },
+          })),
+        }
+      : {
+          surfaceId: `si-session-${sessionId}`,
+          catalogId: "si-standard",
+          components: [],
+        };
+
+    // Read the shell template
+    const shellPath = join(__dirname, "../public/si-apps/shell.html");
+    let shellHtml: string;
+    try {
+      shellHtml = await readFile(shellPath, "utf-8");
+    } catch {
+      throw new Error("SI Apps shell template not found");
+    }
+
+    // Inject the surface data into the shell
+    const surfaceScript = `window.__SI_SURFACE__ = ${JSON.stringify(surface)};`;
+    const injectedHtml = shellHtml.replace(
+      /\/\/ This will be replaced by server-side injection[\s\S]*?\/\/ window\.__SI_SURFACE__ = .*$/m,
+      surfaceScript
+    );
+
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "text/html",
+          text: injectedHtml,
         },
       ],
     };

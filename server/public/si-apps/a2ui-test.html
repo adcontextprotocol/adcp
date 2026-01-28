@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A2UI Rendering Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    .test-container {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .test-label {
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .si-a2ui-surface {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .si-a2ui-text { line-height: 1.5; }
+    .si-a2ui-text.variant-heading { font-size: 1.25rem; font-weight: 600; color: #1a1a2e; }
+    .si-a2ui-text.variant-body { font-size: 1rem; color: #333; }
+    .si-a2ui-text.variant-caption { font-size: 0.875rem; color: #666; }
+    .si-a2ui-list { display: flex; flex-direction: column; gap: 8px; }
+    .si-a2ui-list.horizontal { flex-direction: row; overflow-x: auto; padding-bottom: 8px; }
+    .si-a2ui-list.horizontal > * { flex-shrink: 0; }
+    .si-a2ui-list.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .si-a2ui-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .si-a2ui-column { display: flex; flex-direction: column; gap: 8px; }
+    .si-a2ui-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .si-a2ui-button.variant-primary { background: #4f46e5; color: white; }
+    .si-a2ui-button.variant-primary:hover { background: #4338ca; }
+    .si-a2ui-button.variant-secondary { background: #e5e7eb; color: #374151; }
+    .si-a2ui-button.variant-secondary:hover { background: #d1d5db; }
+    .si-a2ui-link { color: #4f46e5; text-decoration: none; }
+    .si-a2ui-link:hover { text-decoration: underline; }
+    .si-a2ui-image { max-width: 100%; height: auto; border-radius: 8px; }
+    .si-a2ui-product-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      background: white;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .si-a2ui-product-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; }
+    .si-a2ui-product-card .title { font-weight: 600; color: #1a1a2e; }
+    .si-a2ui-product-card .price { color: #4f46e5; font-weight: 600; }
+    .si-a2ui-product-card .description { font-size: 0.875rem; color: #666; }
+    .si-a2ui-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      background: white;
+    }
+    .si-a2ui-integration-action {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .si-a2ui-integration-action:hover { border-color: #4f46e5; background: #f8f7ff; }
+    .si-a2ui-integration-action .icon { width: 24px; height: 24px; }
+    .si-a2ui-integration-action .label { font-weight: 500; }
+    .status { padding: 10px; border-radius: 8px; margin-top: 20px; }
+    .status.success { background: #d1fae5; color: #065f46; }
+    .status.error { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <h1>A2UI Rendering Test</h1>
+  <p>This page tests the A2UI rendering functions from chat.html</p>
+
+  <div class="test-container">
+    <div class="test-label">Test 1: Basic Text Components</div>
+    <div id="test1" class="si-a2ui-surface"></div>
+  </div>
+
+  <div class="test-container">
+    <div class="test-label">Test 2: Product Cards with Data Binding</div>
+    <div id="test2" class="si-a2ui-surface"></div>
+  </div>
+
+  <div class="test-container">
+    <div class="test-label">Test 3: List with Template</div>
+    <div id="test3" class="si-a2ui-surface"></div>
+  </div>
+
+  <div class="test-container">
+    <div class="test-label">Test 4: Buttons and Actions</div>
+    <div id="test4" class="si-a2ui-surface"></div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <script>
+    // Copy the A2UI rendering functions from chat.html
+    function siGetValueByPath(obj, path) {
+      const parts = path.split('/').filter(p => p);
+      let current = obj;
+      for (const part of parts) {
+        if (current === null || current === undefined) return null;
+        current = current[part];
+      }
+      return current;
+    }
+
+    function siResolveBoundValue(boundValue, dataModel, itemContext = null) {
+      if (!boundValue) return null;
+      if ('literalString' in boundValue) return boundValue.literalString;
+      if ('literalNumber' in boundValue) return boundValue.literalNumber;
+      if ('literalBoolean' in boundValue) return boundValue.literalBoolean;
+      if ('path' in boundValue) {
+        const path = boundValue.path;
+        if (path.startsWith('/item/') && itemContext) {
+          const itemPath = path.slice(6);
+          return siGetValueByPath(itemContext, itemPath);
+        }
+        if (path.startsWith('/') && dataModel) {
+          return siGetValueByPath(dataModel, path.slice(1));
+        }
+        return null;
+      }
+      if (typeof boundValue === 'string' || typeof boundValue === 'number' || typeof boundValue === 'boolean') {
+        return boundValue;
+      }
+      return null;
+    }
+
+    function siRenderA2UISurface(container, surface) {
+      if (!surface || !surface.components) return;
+      const dataModel = surface.dataModel || {};
+      const componentMap = new Map();
+      for (const comp of surface.components) {
+        componentMap.set(comp.id, comp);
+      }
+      const rootComponents = surface.components.filter(
+        comp => !comp.parentId || !componentMap.has(comp.parentId)
+      );
+      for (const comp of rootComponents) {
+        const el = siRenderA2UIComponent(comp, componentMap, dataModel, null);
+        if (el) container.appendChild(el);
+      }
+    }
+
+    function siRenderA2UIComponent(comp, componentMap, dataModel, itemContext) {
+      const props = comp.properties || {};
+      switch (comp.type) {
+        case 'text': return siRenderA2UIText(props, dataModel, itemContext);
+        case 'button': return siRenderA2UIButton(props, dataModel, itemContext);
+        case 'link': return siRenderA2UILink(props, dataModel, itemContext);
+        case 'image': return siRenderA2UIImage(props, dataModel, itemContext);
+        case 'productCard': return siRenderA2UIProductCard(props, dataModel, itemContext);
+        case 'list': return siRenderA2UIList(props, componentMap, dataModel);
+        case 'row': return siRenderA2UIRow(props, componentMap, dataModel, itemContext);
+        case 'column': return siRenderA2UIColumn(props, componentMap, dataModel, itemContext);
+        case 'integrationAction': return siRenderA2UIIntegrationAction(props, dataModel, itemContext);
+        case 'card': return siRenderA2UICard(props, dataModel, itemContext);
+        default:
+          console.warn('Unknown A2UI component type:', comp.type);
+          return null;
+      }
+    }
+
+    function siRenderA2UIText(props, dataModel, itemContext) {
+      const el = document.createElement('div');
+      el.className = 'si-a2ui-text';
+      if (props.variant) el.classList.add('variant-' + props.variant);
+      el.textContent = siResolveBoundValue(props.content, dataModel, itemContext) || '';
+      return el;
+    }
+
+    function siRenderA2UIButton(props, dataModel, itemContext) {
+      const btn = document.createElement('button');
+      btn.className = 'si-a2ui-button';
+      btn.classList.add('variant-' + (props.variant || 'primary'));
+      btn.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || 'Button';
+      if (props.action) {
+        btn.onclick = () => {
+          console.log('A2UI Button action:', props.action);
+          alert('Action: ' + JSON.stringify(props.action));
+        };
+      }
+      return btn;
+    }
+
+    function siRenderA2UILink(props, dataModel, itemContext) {
+      const link = document.createElement('a');
+      link.className = 'si-a2ui-link';
+      link.href = siResolveBoundValue(props.url, dataModel, itemContext) || '#';
+      link.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || 'Link';
+      link.target = '_blank';
+      return link;
+    }
+
+    function siRenderA2UIImage(props, dataModel, itemContext) {
+      const img = document.createElement('img');
+      img.className = 'si-a2ui-image';
+      img.src = siResolveBoundValue(props.url, dataModel, itemContext) || '';
+      img.alt = siResolveBoundValue(props.alt, dataModel, itemContext) || '';
+      if (props.width) img.style.width = props.width + 'px';
+      if (props.height) img.style.height = props.height + 'px';
+      return img;
+    }
+
+    function siRenderA2UIProductCard(props, dataModel, itemContext) {
+      const card = document.createElement('div');
+      card.className = 'si-a2ui-product-card';
+
+      const imageUrl = siResolveBoundValue(props.imageUrl, dataModel, itemContext);
+      if (imageUrl) {
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = siResolveBoundValue(props.title, dataModel, itemContext) || '';
+        card.appendChild(img);
+      }
+
+      const title = siResolveBoundValue(props.title, dataModel, itemContext);
+      if (title) {
+        const titleEl = document.createElement('div');
+        titleEl.className = 'title';
+        titleEl.textContent = title;
+        card.appendChild(titleEl);
+      }
+
+      const price = siResolveBoundValue(props.price, dataModel, itemContext);
+      if (price) {
+        const priceEl = document.createElement('div');
+        priceEl.className = 'price';
+        priceEl.textContent = price;
+        card.appendChild(priceEl);
+      }
+
+      const description = siResolveBoundValue(props.description, dataModel, itemContext);
+      if (description) {
+        const descEl = document.createElement('div');
+        descEl.className = 'description';
+        descEl.textContent = description;
+        card.appendChild(descEl);
+      }
+
+      if (props.action) {
+        const btn = document.createElement('button');
+        btn.className = 'si-a2ui-button variant-primary';
+        btn.textContent = props.action.label || 'View';
+        btn.onclick = () => {
+          console.log('Product card action:', props.action);
+          alert('Action: ' + JSON.stringify(props.action));
+        };
+        card.appendChild(btn);
+      }
+
+      return card;
+    }
+
+    function siRenderA2UIList(props, componentMap, dataModel) {
+      const container = document.createElement('div');
+      container.className = 'si-a2ui-list';
+      if (props.layout === 'horizontal') container.classList.add('horizontal');
+      if (props.layout === 'grid') container.classList.add('grid');
+
+      const items = siResolveBoundValue(props.items, dataModel, null);
+      const template = props.template;
+
+      if (Array.isArray(items) && template) {
+        for (const item of items) {
+          const el = siRenderA2UIComponent(
+            { type: template.type, properties: template.properties },
+            componentMap,
+            dataModel,
+            item
+          );
+          if (el) container.appendChild(el);
+        }
+      }
+
+      return container;
+    }
+
+    function siRenderA2UIRow(props, componentMap, dataModel, itemContext) {
+      const row = document.createElement('div');
+      row.className = 'si-a2ui-row';
+      if (props.children) {
+        for (const child of props.children) {
+          const el = siRenderA2UIComponent(child, componentMap, dataModel, itemContext);
+          if (el) row.appendChild(el);
+        }
+      }
+      return row;
+    }
+
+    function siRenderA2UIColumn(props, componentMap, dataModel, itemContext) {
+      const col = document.createElement('div');
+      col.className = 'si-a2ui-column';
+      if (props.children) {
+        for (const child of props.children) {
+          const el = siRenderA2UIComponent(child, componentMap, dataModel, itemContext);
+          if (el) col.appendChild(el);
+        }
+      }
+      return col;
+    }
+
+    function siRenderA2UIIntegrationAction(props, dataModel, itemContext) {
+      const action = document.createElement('div');
+      action.className = 'si-a2ui-integration-action';
+      action.innerHTML = `
+        <div class="icon">&#128279;</div>
+        <div class="label">${siResolveBoundValue(props.label, dataModel, itemContext) || 'Integration'}</div>
+      `;
+      action.onclick = () => {
+        console.log('Integration action:', props);
+        alert('Integration: ' + (props.integrationType || 'unknown'));
+      };
+      return action;
+    }
+
+    function siRenderA2UICard(props, dataModel, itemContext) {
+      const card = document.createElement('div');
+      card.className = 'si-a2ui-card';
+      if (props.children) {
+        for (const child of props.children) {
+          const el = siRenderA2UIComponent(child, {}, dataModel, itemContext);
+          if (el) card.appendChild(el);
+        }
+      }
+      return card;
+    }
+
+    // Test data
+    const test1Surface = {
+      surfaceId: 'test1',
+      components: [
+        { id: 'h1', type: 'text', properties: { content: { literalString: 'Welcome to Our Store' }, variant: 'heading' } },
+        { id: 'p1', type: 'text', properties: { content: { literalString: 'Check out our latest products below.' }, variant: 'body' } },
+        { id: 'c1', type: 'text', properties: { content: { literalString: 'Free shipping on orders over $50' }, variant: 'caption' } }
+      ]
+    };
+
+    const test2Surface = {
+      surfaceId: 'test2',
+      dataModel: {
+        products: [
+          { title: 'Wireless Headphones', price: '$79.99', description: 'Premium sound quality', image: 'https://via.placeholder.com/200x120?text=Headphones' },
+          { title: 'Smart Watch', price: '$199.99', description: 'Track your fitness', image: 'https://via.placeholder.com/200x120?text=Watch' }
+        ]
+      },
+      components: [
+        {
+          id: 'list1',
+          type: 'list',
+          properties: {
+            layout: 'horizontal',
+            items: { path: '/products' },
+            template: {
+              type: 'productCard',
+              properties: {
+                title: { path: '/item/title' },
+                price: { path: '/item/price' },
+                description: { path: '/item/description' },
+                imageUrl: { path: '/item/image' },
+                action: { type: 'view_product', label: 'View Details' }
+              }
+            }
+          }
+        }
+      ]
+    };
+
+    const test3Surface = {
+      surfaceId: 'test3',
+      dataModel: {
+        features: [
+          { name: 'Fast Delivery', desc: 'Get your order in 2 days' },
+          { name: 'Easy Returns', desc: '30-day return policy' },
+          { name: '24/7 Support', desc: 'We\'re always here to help' }
+        ]
+      },
+      components: [
+        {
+          id: 'features',
+          type: 'list',
+          properties: {
+            layout: 'vertical',
+            items: { path: '/features' },
+            template: {
+              type: 'card',
+              properties: {
+                children: [
+                  { type: 'text', properties: { content: { path: '/item/name' }, variant: 'heading' } },
+                  { type: 'text', properties: { content: { path: '/item/desc' }, variant: 'body' } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    };
+
+    const test4Surface = {
+      surfaceId: 'test4',
+      components: [
+        {
+          id: 'row1',
+          type: 'row',
+          properties: {
+            children: [
+              { type: 'button', properties: { label: { literalString: 'Add to Cart' }, variant: 'primary', action: { type: 'add_to_cart' } } },
+              { type: 'button', properties: { label: { literalString: 'Save for Later' }, variant: 'secondary', action: { type: 'save' } } },
+              { type: 'link', properties: { label: { literalString: 'View All Products' }, url: { literalString: 'https://example.com/products' } } }
+            ]
+          }
+        },
+        {
+          id: 'mcp1',
+          type: 'integrationAction',
+          properties: {
+            label: { literalString: 'Connect with MCP' },
+            integrationType: 'mcp',
+            endpoint: 'https://example.com/mcp'
+          }
+        }
+      ]
+    };
+
+    // Run tests
+    try {
+      siRenderA2UISurface(document.getElementById('test1'), test1Surface);
+      siRenderA2UISurface(document.getElementById('test2'), test2Surface);
+      siRenderA2UISurface(document.getElementById('test3'), test3Surface);
+      siRenderA2UISurface(document.getElementById('test4'), test4Surface);
+
+      document.getElementById('status').className = 'status success';
+      document.getElementById('status').textContent = 'All A2UI rendering tests passed! Components rendered successfully.';
+    } catch (err) {
+      document.getElementById('status').className = 'status error';
+      document.getElementById('status').textContent = 'Error: ' + err.message;
+      console.error(err);
+    }
+  </script>
+</body>
+</html>

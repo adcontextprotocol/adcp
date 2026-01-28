@@ -17,15 +17,24 @@
           "type": "string",
           "description": "Conversational message from brand agent"
         },
+        "surface": {
+          "$ref": "/schemas/a2ui/surface.json",
+          "description": "A2UI surface with interactive components"
+        },
         "ui_elements": {
           "type": "array",
           "items": {
             "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
           },
-          "description": "Visual components to render"
+          "description": "Visual components to render (DEPRECATED: use surface instead)",
+          "deprecated": true
         }
       },
       "additionalProperties": true
+    },
+    "mcp_resource_uri": {
+      "type": "string",
+      "description": "MCP resource URI for hosts with MCP Apps support (e.g., ui://si/session-abc123)"
     },
     "session_status": {
       "type": "string",
