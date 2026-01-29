@@ -154,59 +154,43 @@
       margin-bottom: var(--space-2);
     }
 
-    /* Join CTA Banner */
+    /* Join CTA Card */
     .join-cta {
-      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
+      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
+      border: var(--border-2) solid var(--color-brand);
       border-radius: var(--card-radius);
-      padding: var(--space-6) var(--space-8);
+      padding: var(--space-8);
       margin-bottom: var(--space-8);
-      box-shadow: var(--shadow-lg);
+      text-align: center;
     }
-    .join-cta-content {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-8);
+    .join-cta h3 {
+      font-size: var(--text-2xl);
+      color: var(--color-brand);
+      margin-bottom: var(--space-4);
+      margin-top: 0;
     }
-    .join-cta-text {
-      flex: 1;
-    }
-    .join-cta-text h2 {
-      color: white;
-      font-size: var(--text-xl);
-      margin-bottom: var(--space-2);
-    }
-    .join-cta-text p {
-      color: rgba(255, 255, 255, 0.9);
-      font-size: var(--text-sm);
-      margin: 0;
+    .join-cta p {
+      color: var(--color-text-body);
+      margin-bottom: var(--space-6);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
     }
     .join-cta-btn {
       display: inline-block;
-      padding: var(--space-3) var(--space-7);
-      background: white;
-      color: var(--color-brand);
+      padding: var(--space-3) var(--space-6);
+      background: var(--color-brand);
+      color: white;
       text-decoration: none;
       border-radius: var(--radius-lg);
       font-weight: var(--font-semibold);
       font-size: var(--text-base);
-      white-space: nowrap;
       transition: var(--transition-all);
-      box-shadow: var(--shadow-md);
     }
     .join-cta-btn:hover {
+      background: var(--color-brand-hover);
       transform: translateY(-2px);
-      box-shadow: var(--shadow-lg);
-    }
-    @media (max-width: 640px) {
-      .join-cta-content {
-        flex-direction: column;
-        text-align: center;
-      }
-      .join-cta-btn {
-        width: 100%;
-        text-align: center;
-      }
+      box-shadow: var(--shadow-md);
     }
 
     /* Member Detail View */
@@ -1127,15 +1111,11 @@
     </div>
 
     <div class="container">
-      <!-- Join CTA Banner -->
+      <!-- Join CTA Card -->
       <div class="join-cta">
-        <div class="join-cta-content">
-          <div class="join-cta-text">
-            <h2>Join AgenticAdvertising.org</h2>
-            <p>Become a founding member and help shape the future of agentic advertising</p>
-          </div>
-          <a href="/membership" class="join-cta-btn">Become a Member</a>
-        </div>
+        <h3>Ready to Join?</h3>
+        <p>Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.</p>
+        <a href="/membership#pricing" class="join-cta-btn">View Membership Options</a>
       </div>
 
       <div class="search-section">
@@ -1278,13 +1258,15 @@
         const marketParam = urlParams.get('market');
 
         // Apply URL params to filters (validate against known values)
+        // Normalize hyphens to underscores for URL compatibility (e.g., sales-agent -> sales_agent)
         const validFilters = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'consulting'];
-        if (typeParam && validFilters.includes(typeParam)) {
-          currentFilter = typeParam;
+        const normalizedType = typeParam ? typeParam.replace(/-/g, '_') : null;
+        if (normalizedType && validFilters.includes(normalizedType)) {
+          currentFilter = normalizedType;
           // Update filter button UI
           document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.classList.remove('active');
-            if (btn.getAttribute('data-filter') === typeParam) {
+            if (btn.getAttribute('data-filter') === normalizedType) {
               btn.classList.add('active');
             }
           });
@@ -1374,7 +1356,8 @@
 
     function updateUrlParams() {
       const params = new URLSearchParams();
-      if (currentFilter) params.set('type', currentFilter);
+      // Use hyphens in URLs for better readability (sales_agent -> sales-agent)
+      if (currentFilter) params.set('type', currentFilter.replace(/_/g, '-'));
       if (currentSearch) params.set('search', currentSearch);
       if (currentMarket) params.set('market', currentMarket);
 
