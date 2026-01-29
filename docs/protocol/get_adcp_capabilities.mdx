@@ -9,7 +9,7 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 
 **Purpose**:
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
-- **Protocol support** - Which domain protocols (media_buy, signals)?
+- **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative)?
 - **Detailed capabilities** - Features, AXE integrations, geo targeting, portfolio
 
 **Request Schema**: [`/schemas/v1/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-request.json)
@@ -40,7 +40,7 @@ The agent card extension (`adcp-extension.json`) has been removed in v3. Use too
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`). If omitted, returns all supported protocols. |
+| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`). If omitted, returns all supported protocols. |
 
 ## Response Structure
 
