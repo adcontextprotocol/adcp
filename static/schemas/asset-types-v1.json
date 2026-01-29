@@ -39,7 +39,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["mp4", "webm", "mov"]
+              "enum": ["mp4", "webm", "mov", "avi", "m4v", "mpeg"]
             },
             "description": "List of acceptable video container formats"
           },
@@ -47,7 +47,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["h264", "h265", "vp8", "vp9", "av1"]
+              "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores", "mpeg2", "mpeg4"]
             },
             "description": "List of acceptable video codecs"
           },
@@ -57,6 +57,14 @@
               "type": "string"
             },
             "description": "List of acceptable resolutions (e.g., '1920x1080', '1280x720')"
+          },
+          "min_width": {
+            "type": "integer",
+            "description": "Minimum width in pixels"
+          },
+          "min_height": {
+            "type": "integer",
+            "description": "Minimum height in pixels"
           },
           "aspect_ratio": {
             "type": "string",
@@ -68,18 +76,132 @@
           },
           "min_bitrate_mbps": {
             "type": "number",
-            "description": "Minimum bitrate in megabits per second"
+            "description": "Minimum video bitrate in megabits per second"
           },
           "max_bitrate_mbps": {
             "type": "number",
-            "description": "Maximum bitrate in megabits per second"
+            "description": "Maximum video bitrate in megabits per second"
+          },
+          "acceptable_frame_rates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of acceptable frame rates (e.g., '23.976', '24', '25', '29.97', '30', '60')"
+          },
+          "frame_rate_type": {
+            "type": "string",
+            "enum": ["constant", "variable"],
+            "description": "Whether constant (CFR) or variable (VFR) frame rate is required. CTV typically requires constant."
+          },
+          "scan_type": {
+            "type": "string",
+            "enum": ["progressive", "interlaced"],
+            "description": "Required scan type. CTV requires progressive."
+          },
+          "color_space": {
+            "type": "string",
+            "enum": ["rec709", "rec2020", "rec2100", "srgb", "dci_p3"],
+            "description": "Required color space. rec709 for SDR HD, rec2020/rec2100 for UHD/HDR."
+          },
+          "hdr_format": {
+            "type": "string",
+            "enum": ["sdr", "hdr10", "hdr10_plus", "hlg", "dolby_vision"],
+            "description": "HDR format requirement. Most CTV currently requires SDR."
+          },
+          "chroma_subsampling": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["4:2:0", "4:2:2", "4:4:4"]
+            },
+            "description": "Acceptable chroma subsampling formats. 4:2:0 is standard for delivery, 4:2:2 for broadcast."
+          },
+          "video_bit_depth": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [8, 10, 12]
+            },
+            "description": "Acceptable video bit depths. 8-bit for SDR, 10/12-bit for HDR."
+          },
+          "gop_interval_seconds_min": {
+            "type": "number",
+            "description": "Minimum GOP/keyframe interval in seconds. SSAI typically requires 1-2 seconds."
+          },
+          "gop_interval_seconds_max": {
+            "type": "number",
+            "description": "Maximum GOP/keyframe interval in seconds. SSAI typically requires 1-2 seconds."
+          },
+          "gop_type": {
+            "type": "string",
+            "enum": ["closed", "open"],
+            "description": "GOP structure requirement. Closed GOP required for SSAI ad insertion."
+          },
+          "moov_atom_position": {
+            "type": "string",
+            "enum": ["start", "end"],
+            "description": "Required moov atom position in MP4 container. 'start' required for progressive download/streaming."
+          },
+          "audio_required": {
+            "type": "boolean",
+            "description": "Whether audio track is required. Most video ads require audio."
+          },
+          "audio_codec": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["aac", "aac_lc", "he_aac", "pcm", "mp3", "ac3", "eac3"]
+            },
+            "description": "Acceptable audio codecs. AAC and PCM are most widely supported for CTV."
+          },
+          "audio_sampling_rate_hz": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [44100, 48000, 96000]
+            },
+            "description": "Acceptable audio sampling rates in Hz. 48000 Hz (48kHz) is required for most CTV platforms."
+          },
+          "audio_channels": {
+            "type": "string",
+            "enum": ["mono", "stereo", "5.1", "7.1"],
+            "description": "Required audio channel configuration. CTV typically requires stereo (2 channels)."
+          },
+          "audio_bit_depth": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [16, 24, 32]
+            },
+            "description": "Acceptable audio bit depths. 16 or 24-bit typically required."
+          },
+          "audio_bitrate_kbps_min": {
+            "type": "integer",
+            "description": "Minimum audio bitrate in kilobits per second. Typically 128-192 kbps minimum."
+          },
+          "audio_bitrate_kbps_max": {
+            "type": "integer",
+            "description": "Maximum audio bitrate in kilobits per second."
+          },
+          "audio_loudness_lufs": {
+            "type": "number",
+            "description": "Target integrated loudness in LUFS. Varies by platform: -24 LUFS (broadcast), -16 LUFS (Spotify), -14 LUFS (YouTube)."
+          },
+          "audio_loudness_tolerance_db": {
+            "type": "number",
+            "description": "Allowed deviation from target loudness in dB. Typically +/- 1 to 2 dB."
+          },
+          "audio_true_peak_dbfs": {
+            "type": "number",
+            "description": "Maximum true peak level in dBFS. Typically -1 to -2 dBFS to prevent clipping."
           },
           "features": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Additional video features (e.g., 'non-skippable', 'sound on')"
+            "description": "Additional video features (e.g., 'non-skippable', 'sound_on', 'clickable', 'interactive')"
           }
         },
         "required": ["asset_id", "asset_type", "required"]
@@ -227,32 +349,91 @@
       "schema": {
         "type": "object",
         "properties": {
+          "asset_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "description": "Unique identifier for this asset within the format"
+          },
           "asset_type": {
             "type": "string",
             "const": "audio"
           },
           "required": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether this asset is mandatory for the format"
           },
           "duration_seconds": {
-            "type": "number"
+            "type": "number",
+            "description": "Expected duration in seconds"
+          },
+          "min_duration_seconds": {
+            "type": "number",
+            "description": "Minimum allowed duration in seconds"
+          },
+          "max_duration_seconds": {
+            "type": "number",
+            "description": "Maximum allowed duration in seconds"
           },
           "acceptable_formats": {
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["mp3", "m4a", "aac", "ogg"]
-            }
+              "enum": ["mp3", "m4a", "aac", "ogg", "wav", "flac"]
+            },
+            "description": "List of acceptable audio container/file formats"
+          },
+          "acceptable_codecs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["aac", "aac_lc", "he_aac", "pcm", "mp3", "vorbis", "opus", "flac", "ac3", "eac3"]
+            },
+            "description": "List of acceptable audio codecs"
+          },
+          "sampling_rate_hz": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [44100, 48000, 96000]
+            },
+            "description": "Acceptable sampling rates in Hz. 48000 Hz (48kHz) is standard for video/broadcast."
+          },
+          "channels": {
+            "type": "string",
+            "enum": ["mono", "stereo", "5.1", "7.1"],
+            "description": "Required channel configuration"
+          },
+          "bit_depth": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [16, 24, 32]
+            },
+            "description": "Acceptable bit depths"
           },
           "min_bitrate_kbps": {
-            "type": "number",
+            "type": "integer",
             "description": "Minimum bitrate in kilobits per second"
           },
-          "max_file_size_mb": {
-            "type": "number"
+          "max_bitrate_kbps": {
+            "type": "integer",
+            "description": "Maximum bitrate in kilobits per second"
           },
-          "stereo_required": {
-            "type": "boolean"
+          "max_file_size_mb": {
+            "type": "number",
+            "description": "Maximum file size in megabytes"
+          },
+          "loudness_lufs": {
+            "type": "number",
+            "description": "Target integrated loudness in LUFS"
+          },
+          "loudness_tolerance_db": {
+            "type": "number",
+            "description": "Allowed deviation from target loudness in dB"
+          },
+          "true_peak_dbfs": {
+            "type": "number",
+            "description": "Maximum true peak level in dBFS"
           }
         },
         "required": ["asset_id", "asset_type", "required"]
