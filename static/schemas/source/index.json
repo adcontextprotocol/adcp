@@ -281,7 +281,7 @@
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
-          "description": "AdCP protocol domains (media-buy, signals, governance)"
+          "description": "AdCP protocol domains (media-buy, signals, governance, creative)"
         },
         "http-method": {
           "$ref": "/schemas/enums/http-method.json",
