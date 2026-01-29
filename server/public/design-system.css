@@ -1924,6 +1924,8 @@ html {
 
 /* -----------------------------------------------------------------------------
    13.10 Pull-to-Refresh & Overscroll Behavior
+   Note: Do not add overflow-x: hidden to html - it breaks scrolling in Chrome
+   when combined with overscroll-behavior-y below. See section 13.1.
    ----------------------------------------------------------------------------- */
 html {
   overscroll-behavior-y: none;
