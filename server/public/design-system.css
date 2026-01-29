@@ -1537,7 +1537,9 @@ a.btn-success:hover {
    ----------------------------------------------------------------------------- */
 
 /* Prevent horizontal scroll on mobile */
-html, body {
+/* Note: overflow-x: hidden on html element breaks vertical scrolling in Chrome
+   when combined with overscroll-behavior-y: none. Only apply to body. */
+body {
   overflow-x: hidden;
   max-width: 100vw;
 }
