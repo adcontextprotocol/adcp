@@ -382,6 +382,7 @@
         <a href="#about-aao">About AAO</a>
         <a href="/membership">Membership</a>
         <a href="#leadership">Leadership</a>
+        <a href="#organization-details">Organization Details</a>
         <a href="#news">News</a>
       </div>
     </div>
@@ -541,6 +542,27 @@
       </div>
     </section>
 
+    <!-- Organization Details Section -->
+    <section class="section" id="organization-details">
+      <h2>Organization Details</h2>
+
+      <h3>Legal Status</h3>
+      <p>
+        AgenticAdvertising.org is a <strong>501(c)(6)</strong> nonprofit trade organization incorporated in the State of Delaware. We do not engage in lobbying activities.
+      </p>
+
+      <h3>Administrative Information</h3>
+      <ul>
+        <li><strong>EIN:</strong> 41-3039297</li>
+        <li><strong>Registered Address:</strong> 228 Park Ave S PMB 24984, New York, NY 10003</li>
+      </ul>
+
+      <h3>Vendor & Billing Inquiries</h3>
+      <p>
+        For vendor onboarding, W-9 requests, or billing inquiries, contact <a href="mailto:support@agenticadvertising.org">support@agenticadvertising.org</a>.
+      </p>
+    </section>
+
     <!-- News Section -->
     <section class="section" id="news">
       <h2>News & Press</h2>
@@ -591,11 +613,14 @@
     window.addEventListener('scroll', updateActiveNav);
     updateActiveNav();
 
-    // Smooth scroll for sub-nav links
+    // Smooth scroll for sub-nav links (only for anchor links)
     navLinks.forEach(link => {
       link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (!href.startsWith('#')) return;
+
         e.preventDefault();
-        const targetId = link.getAttribute('href').slice(1);
+        const targetId = href.slice(1);
         const target = document.getElementById(targetId);
         if (target) {
           target.scrollIntoView({ behavior: 'smooth' });
