@@ -19,5 +19,9 @@ Updated schemas:
 - `create-media-buy-request.json`: Added optional `account_id` field
 - `create-media-buy-response.json`: Added account in response
 - `get-products-request.json`: Added optional `account_id` for rate card context
+- `sync-creatives-request.json`: Added optional `account_id` field for creative ownership
+- `sync-creatives-response.json`: Added account attribution in response
+- `list-creatives-response.json`: Added account attribution per creative
+- `creative-filters.json`: Added `account_ids` filter for querying by account
 
 Deprecates the "Principal" terminology in favor of the more precise Account/Agent distinction.

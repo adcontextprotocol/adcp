@@ -5,6 +5,13 @@
   "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
   "type": "object",
   "properties": {
+    "account_ids": {
+      "type": "array",
+      "description": "Filter creatives by owning accounts. Useful for agencies managing multiple client accounts.",
+      "items": {
+        "type": "string"
+      }
+    },
     "formats": {
       "type": "array",
       "description": "Filter by creative format types (e.g., video, audio, display)",
