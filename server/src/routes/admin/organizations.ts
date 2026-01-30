@@ -1205,7 +1205,7 @@ export function setupOrganizationRoutes(
 
   // POST /api/admin/organizations/audit-admins - Find and fix orgs without admins
   // Query params:
-  //   fix=true - Actually promote users to admin (otherwise just returns report)
+  //   fix=true - Auto-promote single-member orgs (multi-member orgs need manual review)
   apiRouter.post(
     "/organizations/audit-admins",
     requireAuth,
@@ -1238,15 +1238,19 @@ export function setupOrganizationRoutes(
           orgId: string;
           orgName: string;
           memberCount: number;
-          firstMember?: { userId: string; email: string };
+          members: Array<{ userId: string; membershipId: string; email: string }>;
           fixed: boolean;
         }> = [];
 
         for (const org of orgsResult.rows) {
           try {
+            // Note: Using limit=100 to check first page only. Orgs with 100+ members
+            // where admin is on a later page may show false positives. Acceptable for
+            // this admin audit tool since most orgs have few members.
             const memberships =
               await workos.userManagement.listOrganizationMemberships({
                 organizationId: org.workos_organization_id,
+                limit: 100,
               });
 
             if (memberships.data.length === 0) continue;
@@ -1258,34 +1262,40 @@ export function setupOrganizationRoutes(
             });
 
             if (!hasAdmin) {
-              const firstMember = memberships.data[0];
-              let firstMemberInfo:
-                | { userId: string; email: string }
-                | undefined;
+              // Fetch user details for all members
+              const members: Array<{
+                userId: string;
+                membershipId: string;
+                email: string;
+              }> = [];
 
-              if (firstMember) {
+              for (const membership of memberships.data) {
                 try {
                   const user = await workos.userManagement.getUser(
-                    firstMember.userId
+                    membership.userId
                   );
-                  firstMemberInfo = {
-                    userId: firstMember.userId,
+                  members.push({
+                    userId: membership.userId,
+                    membershipId: membership.id,
                     email: user.email,
-                  };
+                  });
                 } catch {
-                  firstMemberInfo = {
-                    userId: firstMember.userId,
+                  members.push({
+                    userId: membership.userId,
+                    membershipId: membership.id,
                     email: "unknown",
-                  };
+                  });
                 }
               }
 
               let fixed = false;
 
-              if (fix && firstMember) {
+              // Only auto-fix single-member orgs
+              if (fix && members.length === 1) {
+                const member = members[0];
                 try {
                   await workos.userManagement.updateOrganizationMembership(
-                    firstMember.id,
+                    member.membershipId,
                     { roleSlug: "admin" }
                   );
 
@@ -1294,7 +1304,7 @@ export function setupOrganizationRoutes(
                     `UPDATE organization_memberships
                      SET role = 'admin', updated_at = NOW()
                      WHERE workos_organization_id = $1 AND workos_user_id = $2`,
-                    [org.workos_organization_id, firstMember.userId]
+                    [org.workos_organization_id, member.userId]
                   );
 
                   fixed = true;
@@ -1303,10 +1313,10 @@ export function setupOrganizationRoutes(
                     {
                       orgId: org.workos_organization_id,
                       orgName: org.name,
-                      userId: firstMember.userId,
+                      userId: member.userId,
                       adminEmail: req.user!.email,
                     },
-                    "Admin audit: promoted user to admin"
+                    "Admin audit: promoted single-member org user to admin"
                   );
                 } catch (err) {
                   logger.error(
@@ -1319,8 +1329,8 @@ export function setupOrganizationRoutes(
               orgsWithoutAdmin.push({
                 orgId: org.workos_organization_id,
                 orgName: org.name,
-                memberCount: memberships.data.length,
-                firstMember: firstMemberInfo,
+                memberCount: members.length,
+                members,
                 fixed,
               });
             }
@@ -1332,17 +1342,28 @@ export function setupOrganizationRoutes(
           }
         }
 
+        const singleMemberOrgs = orgsWithoutAdmin.filter(
+          (o) => o.memberCount === 1
+        );
+        const multiMemberOrgs = orgsWithoutAdmin.filter(
+          (o) => o.memberCount > 1
+        );
+
         res.json({
           total_orgs: orgsResult.rows.length,
           orgs_without_admin: orgsWithoutAdmin.length,
           fix_mode: fix,
-          fixed: orgsWithoutAdmin.filter((o) => o.fixed).length,
+          auto_fixed: singleMemberOrgs.filter((o) => o.fixed).length,
+          single_member_orgs: singleMemberOrgs.length,
+          needs_review: multiMemberOrgs.length,
           details: orgsWithoutAdmin.map((o) => ({
             org_id: o.orgId,
             org_name: o.orgName,
             has_admin: false,
             member_count: o.memberCount,
-            promoted_user: o.fixed ? o.firstMember?.email : null,
+            members: o.members.map((m) => ({ email: m.email, user_id: m.userId })),
+            promoted_user: o.fixed ? o.members[0]?.email : null,
+            needs_manual_review: o.memberCount > 1,
           })),
         });
       } catch (error) {

@@ -798,9 +798,19 @@
             <strong id="orgAdminStatus" style="color: var(--color-warning-700);"></strong>
             <span id="orgAdminDetails" style="font-size: var(--text-sm); color: var(--color-warning-600);"></span>
           </div>
-          <button id="fixOrgAdminsBtn" class="btn btn-small" style="background: var(--color-warning-600); color: white;" onclick="fixOrgAdmins()">
-            Fix Now
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button id="fixOrgAdminsBtn" class="btn btn-small" style="background: var(--color-warning-600); color: white;" onclick="fixOrgAdmins()">
+              Fix Now
+            </button>
+            <button id="showReviewOrgsBtn" class="btn btn-small btn-secondary" style="display: none;" onclick="toggleReviewOrgsList()">
+              Show Orgs
+            </button>
+          </div>
+        </div>
+        <!-- Multi-member orgs needing review -->
+        <div id="reviewOrgsList" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-top: none; border-radius: 0 0 8px 8px; padding: 12px 16px; margin-top: -8px;">
+          <div style="font-size: var(--text-sm); font-weight: 500; color: var(--color-warning-700); margin-bottom: 8px;">Multi-member orgs needing admin assignment:</div>
+          <div id="reviewOrgsListContent" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
         </div>
 
         <!-- Tabs -->
@@ -1341,31 +1351,71 @@
         }
 
         const result = await response.json();
+        window.orgAdminAuditResult = result; // Store for use in fix function
 
         const banner = document.getElementById('orgAdminBanner');
+        const reviewList = document.getElementById('reviewOrgsList');
+
         if (result.orgs_without_admin === 0) {
           banner.style.display = 'none';
+          reviewList.style.display = 'none';
           return;
         }
 
-        // Show banner with issue details
-        const orgsWithIssues = result.details.filter(d => !d.has_admin);
-        const fixableOrgs = orgsWithIssues.filter(d => d.member_count > 0);
-        const orgNames = orgsWithIssues.slice(0, 3).map(d => d.org_name).join(', ');
-        const moreCount = orgsWithIssues.length > 3 ? ` +${orgsWithIssues.length - 3} more` : '';
+        // Build status message
+        const parts = [];
+        if (result.single_member_orgs > 0) {
+          parts.push(`${result.single_member_orgs} single-member (auto-fixable)`);
+        }
+        if (result.needs_review > 0) {
+          parts.push(`${result.needs_review} multi-member (need review)`);
+        }
 
         document.getElementById('orgAdminStatus').textContent =
           `${result.orgs_without_admin} org${result.orgs_without_admin > 1 ? 's' : ''} without admin`;
-        document.getElementById('orgAdminDetails').textContent = orgNames + moreCount;
+        document.getElementById('orgAdminDetails').textContent = parts.join(', ');
 
-        // Only show fix button if there are orgs with members to promote
-        document.getElementById('fixOrgAdminsBtn').style.display =
-          fixableOrgs.length > 0 ? 'inline-flex' : 'none';
+        // Only show fix button if there are single-member orgs to auto-fix
+        const fixBtn = document.getElementById('fixOrgAdminsBtn');
+        fixBtn.style.display = result.single_member_orgs > 0 ? 'inline-flex' : 'none';
+        fixBtn.disabled = false;
+        fixBtn.textContent = `Fix ${result.single_member_orgs} Single-Member Org${result.single_member_orgs !== 1 ? 's' : ''}`;
+
+        // Show review button if there are multi-member orgs
+        const reviewBtn = document.getElementById('showReviewOrgsBtn');
+        reviewBtn.style.display = result.needs_review > 0 ? 'inline-flex' : 'none';
+        reviewBtn.textContent = `Show ${result.needs_review} Org${result.needs_review !== 1 ? 's' : ''}`;
+
+        // Populate review list
+        const multiMemberOrgs = result.details.filter(d => d.needs_manual_review);
+        const listContent = document.getElementById('reviewOrgsListContent');
+        listContent.innerHTML = multiMemberOrgs.map(org => {
+          const memberEmails = org.members.map(m => m.email).join(', ');
+          return `<a href="/admin/organizations/${encodeURIComponent(org.org_id)}"
+                     class="btn btn-small btn-secondary"
+                     style="font-size: var(--text-xs);"
+                     title="Members: ${memberEmails}">
+                    ${escapeHtml(org.org_name)} (${org.member_count})
+                  </a>`;
+        }).join('');
+
+        // Hide review list initially (user can toggle)
+        reviewList.style.display = 'none';
 
         banner.style.display = 'flex';
       } catch (error) {
         console.error('Error checking org admins:', error);
       }
+    }
+
+    function toggleReviewOrgsList() {
+      const list = document.getElementById('reviewOrgsList');
+      const btn = document.getElementById('showReviewOrgsBtn');
+      const isHidden = list.style.display === 'none';
+      list.style.display = isHidden ? 'block' : 'none';
+      btn.textContent = isHidden
+        ? 'Hide Orgs'
+        : `Show ${window.orgAdminAuditResult?.needs_review || 0} Org${(window.orgAdminAuditResult?.needs_review || 0) !== 1 ? 's' : ''}`;
     }
 
     async function fixOrgAdmins() {
@@ -1382,23 +1432,31 @@
             .map(d => `${d.org_name}: promoted ${d.promoted_user}`)
             .join('\n');
 
-          if (result.fixed > 0) {
-            alert(`Fixed ${result.fixed} organization(s):\n\n${fixedList}`);
+          let message = '';
+          if (result.auto_fixed > 0) {
+            message += `Auto-fixed ${result.auto_fixed} single-member org(s):\n\n${fixedList}`;
+          }
+          if (result.needs_review > 0) {
+            message += `\n\n${result.needs_review} multi-member org(s) still need manual admin assignment.`;
+          }
+
+          if (message) {
+            alert(message.trim());
           }
 
           // Re-check to update banner
           await checkOrgAdmins();
         } else {
           alert('Failed to fix organizations');
-          btn.disabled = false;
-          btn.textContent = 'Fix Now';
         }
       } catch (error) {
         console.error('Error fixing org admins:', error);
         alert('Error fixing org admins');
-        btn.disabled = false;
-        btn.textContent = 'Fix Now';
       }
+
+      // Always reset button state
+      btn.disabled = false;
+      btn.textContent = 'Fix Now';
     }
 
     async function syncSlackUsers() {
