@@ -1,0 +1,389 @@
+---
+title: Accounts and Agents
+description: How AdCP identifies who is advertised, who pays, and who operates
+---
+
+AdCP distinguishes three entities in every billable operation:
+
+| Entity | Question | How Identified |
+|--------|----------|----------------|
+| **Brand** | Whose products are advertised? | Brand manifest |
+| **Account** | Who gets billed? What rates apply? | `account_id` (optional) |
+| **Agent** | Who is placing the buy? | Authentication token |
+
+## Core Concepts
+
+### Brand
+
+The **brand** is the advertiser whose products or services are being promoted. Every billable operation requires a [brand manifest](/docs/creative/brand-manifest) that identifies the brand and provides context for ad serving.
+
+The brand is always explicit in requests—it cannot be inferred.
+
+### Account
+
+An **account** represents a billing relationship between a buyer and a seller. The account determines:
+
+- **Rate card**: What prices apply (negotiated discounts, volume tiers)
+- **Billing entity**: Who receives invoices
+- **Payment terms**: Net 30, prepay, etc.
+- **Credit limit**: Maximum outstanding balance
+
+An account may represent different billing arrangements:
+
+| Account Type | Example | Billing Flow |
+|--------------|---------|--------------|
+| Direct | "Coke" | Publisher → Coke |
+| Via agency | "Coke c/o Publicis" | Publisher → Publicis → Coke |
+| Agency principal | "Publicis" | Publisher → Publicis |
+
+In the "Coke c/o Publicis" case, Coke's negotiated rates apply, but invoices flow through Publicis as the billing proxy.
+
+### Agent
+
+An **agent** is the entity operating on an account—placing buys, uploading creatives, monitoring delivery. The agent is identified by the authentication token and may be:
+
+- A brand's internal team
+- An agency's trading desk
+- An automated buying system
+- An AI agent
+
+An agent may have access to multiple accounts (e.g., an agency managing several clients).
+
+## Request Context
+
+### Required: Brand Manifest
+
+Every billable operation must include the brand manifest:
+
+```json
+{
+  "brand_manifest": {
+    "brand_id": "brand_coke",
+    "name": "Coca-Cola",
+    "domain": "coca-cola.com",
+    "category": "beverages",
+    "logo_url": "https://coca-cola.com/logo.png"
+  },
+  "campaign": {
+    "name": "Summer 2025",
+    ...
+  }
+}
+```
+
+### Optional: Account ID
+
+The `account_id` field specifies which account to bill:
+
+```json
+{
+  "account_id": "acc_coke_publicis",
+  "brand_manifest": { ... },
+  "campaign": { ... }
+}
+```
+
+**When `account_id` is omitted:**
+
+1. If the agent has exactly one account, the seller uses that account
+2. If the agent has multiple accounts, the seller may:
+   - Apply routing logic (e.g., brand + agent → account)
+   - Return an `ACCOUNT_REQUIRED` error
+
+Sellers define their own routing policy. Some sellers implement smart routing; others require explicit account specification.
+
+## Account Routing
+
+Sellers may implement routing logic to determine the account when `account_id` is omitted:
+
+```
+Request: { brand: Coke, agent: Publicis }
+
+Seller routing table:
+  brand=Coke + agent=Publicis → acc_coke_publicis
+  brand=Pepsi + agent=Publicis → acc_pepsi_publicis
+  agent=Publicis (default) → acc_publicis_house
+
+Result: Routes to acc_coke_publicis
+```
+
+This routing is seller-specific and not defined by the protocol.
+
+## Response Attribution
+
+Responses for billable operations include account attribution:
+
+```json
+{
+  "media_buy": {
+    "media_buy_id": "mb_abc123",
+    "account": {
+      "account_id": "acc_coke_publicis",
+      "name": "Coke c/o Publicis",
+      "advertiser": "The Coca-Cola Company",
+      "billing_proxy": "Publicis Media"
+    },
+    "campaign": { ... }
+  }
+}
+```
+
+This attribution enables:
+- Accurate billing and invoicing
+- Rate card application based on advertiser relationships
+- Tracking which account was used
+
+Agent information (who placed the buy) can be included via the `context` field if the seller needs to return it.
+
+## Tasks
+
+### list_accounts
+
+Returns accounts the authenticated agent can operate.
+
+**Request:**
+```json
+{
+  "task": "list_accounts"
+}
+```
+
+**Response:**
+```json
+{
+  "accounts": [
+    {
+      "account_id": "acc_coke_publicis",
+      "name": "Coke c/o Publicis",
+      "advertiser": "The Coca-Cola Company",
+      "billing_proxy": "Publicis Media",
+      "status": "active"
+    },
+    {
+      "account_id": "acc_pepsi_publicis",
+      "name": "Pepsi c/o Publicis",
+      "advertiser": "PepsiCo",
+      "billing_proxy": "Publicis Media",
+      "status": "active"
+    },
+    {
+      "account_id": "acc_publicis",
+      "name": "Publicis",
+      "advertiser": "Publicis Media",
+      "status": "active"
+    }
+  ]
+}
+```
+
+## Error Responses
+
+### ACCOUNT_REQUIRED
+
+Returned when the seller cannot determine which account to use:
+
+```json
+{
+  "error": {
+    "code": "ACCOUNT_REQUIRED",
+    "message": "Multiple accounts available. Please specify account_id.",
+    "available_accounts": [
+      {
+        "account_id": "acc_coke_publicis",
+        "name": "Coke c/o Publicis"
+      },
+      {
+        "account_id": "acc_publicis",
+        "name": "Publicis"
+      }
+    ]
+  }
+}
+```
+
+### ACCOUNT_NOT_FOUND
+
+The specified account does not exist or the agent does not have access:
+
+```json
+{
+  "error": {
+    "code": "ACCOUNT_NOT_FOUND",
+    "message": "Account 'acc_xyz' not found or not accessible"
+  }
+}
+```
+
+### ACCOUNT_SUSPENDED
+
+The account exists but is not in good standing:
+
+```json
+{
+  "error": {
+    "code": "ACCOUNT_SUSPENDED",
+    "message": "Account 'acc_coke_publicis' is suspended due to payment issues"
+  }
+}
+```
+
+### BRAND_MANIFEST_REQUIRED
+
+Billable operation attempted without brand manifest:
+
+```json
+{
+  "error": {
+    "code": "BRAND_MANIFEST_REQUIRED",
+    "message": "Brand manifest is required for this operation"
+  }
+}
+```
+
+## Examples
+
+### Coke buying direct
+
+Coke's internal team buying on their own account:
+
+```json
+{
+  "brand_manifest": {
+    "brand_id": "brand_coke",
+    "name": "Coca-Cola",
+    "domain": "coca-cola.com"
+  },
+  "campaign": {
+    "name": "Summer 2025",
+    "budget": { "amount": 500000, "currency": "USD" }
+  }
+}
+```
+
+Agent has one account (Coke), so `account_id` is omitted.
+
+**Response attribution:**
+```json
+{
+  "account": {
+    "account_id": "acc_coke",
+    "name": "Coke",
+    "advertiser": "The Coca-Cola Company"
+  },
+  "agent": {
+    "agent_id": "agent_coke_internal",
+    "organization": "The Coca-Cola Company"
+  }
+}
+```
+
+### Agency buying for Coke, Coke pays
+
+Publicis buying on Coke's behalf, using Coke's rates, billed through Publicis:
+
+```json
+{
+  "account_id": "acc_coke_publicis",
+  "brand_manifest": {
+    "brand_id": "brand_coke",
+    "name": "Coca-Cola",
+    "domain": "coca-cola.com"
+  },
+  "campaign": {
+    "name": "Summer 2025",
+    "budget": { "amount": 500000, "currency": "USD" }
+  }
+}
+```
+
+**Response attribution:**
+```json
+{
+  "account": {
+    "account_id": "acc_coke_publicis",
+    "name": "Coke c/o Publicis",
+    "advertiser": "The Coca-Cola Company",
+    "billing_proxy": "Publicis Media"
+  },
+  "agent": {
+    "agent_id": "agent_publicis_trading",
+    "organization": "Publicis Media"
+  }
+}
+```
+
+### Agency buying for Coke, agency pays
+
+Publicis buying on their own account (agency rates), for Coke's brand:
+
+```json
+{
+  "account_id": "acc_publicis",
+  "brand_manifest": {
+    "brand_id": "brand_coke",
+    "name": "Coca-Cola",
+    "domain": "coca-cola.com"
+  },
+  "campaign": {
+    "name": "Summer 2025",
+    "budget": { "amount": 500000, "currency": "USD" }
+  }
+}
+```
+
+**Response attribution:**
+```json
+{
+  "account": {
+    "account_id": "acc_publicis",
+    "name": "Publicis",
+    "advertiser": "Publicis Media"
+  },
+  "agent": {
+    "agent_id": "agent_publicis_trading",
+    "organization": "Publicis Media"
+  }
+}
+```
+
+Note: In this case, Publicis's rates apply, not Coke's negotiated rates.
+
+## Account Setup
+
+Account creation is typically a seller-side process involving:
+
+- Credit verification
+- Rate negotiation
+- Legal agreements
+- Payment terms setup
+
+The protocol does not define account creation. Sellers may:
+
+1. **Require out-of-band setup**: Sales process before API access
+2. **Auto-provision**: Create accounts on first buy with standard terms
+3. **Async setup**: Accept requests, provision accounts asynchronously
+
+If an agent attempts a billable operation without a valid account, the seller returns an appropriate error and may provide instructions for account setup.
+
+## Authentication
+
+Agents authenticate using OAuth 2.0 bearer tokens. The token identifies the agent; account access is determined by the seller's authorization system.
+
+```
+Authorization: Bearer <token>
+```
+
+The protocol does not mandate a specific OAuth flow. Sellers implement authentication according to their existing systems.
+
+See [Authentication](/docs/building/integration/authentication) for details.
+
+## Summary
+
+| Aspect | Protocol Defines | Seller Implements |
+|--------|------------------|-------------------|
+| Brand manifest | Required, full object | Validation |
+| Account ID | Optional field | Routing policy |
+| Agent identity | From auth token | Authentication |
+| Response attribution | Required fields | Storage, billing |
+| Account creation | Not defined | Sales process |
+| Error codes | Standard codes | When to return |

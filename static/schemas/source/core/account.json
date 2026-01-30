@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account.json",
+  "title": "Account",
+  "description": "A billing account representing the relationship between a buyer and seller. The account determines rate cards, payment terms, and billing entity.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Unique identifier for this account"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable account name (e.g., 'Coke', 'Coke c/o Publicis')"
+    },
+    "advertiser": {
+      "type": "string",
+      "description": "The advertiser whose rates apply to this account"
+    },
+    "billing_proxy": {
+      "type": "string",
+      "description": "Optional intermediary who receives invoices on behalf of the advertiser (e.g., agency)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "suspended", "closed"],
+      "description": "Account status"
+    },
+    "rate_card": {
+      "type": "string",
+      "description": "Identifier for the rate card applied to this account"
+    },
+    "payment_terms": {
+      "type": "string",
+      "description": "Payment terms (e.g., 'net_30', 'prepay')"
+    },
+    "credit_limit": {
+      "type": "object",
+      "description": "Maximum outstanding balance allowed",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": ["amount", "currency"]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["account_id", "name", "status"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Direct advertiser account",
+      "data": {
+        "account_id": "acc_coke_direct",
+        "name": "Coke",
+        "advertiser": "The Coca-Cola Company",
+        "status": "active",
+        "rate_card": "coke_vip_2024",
+        "payment_terms": "net_30"
+      }
+    },
+    {
+      "description": "Advertiser account with agency billing proxy",
+      "data": {
+        "account_id": "acc_coke_publicis",
+        "name": "Coke c/o Publicis",
+        "advertiser": "The Coca-Cola Company",
+        "billing_proxy": "Publicis Media",
+        "status": "active",
+        "rate_card": "coke_vip_2024",
+        "payment_terms": "net_60"
+      }
+    },
+    {
+      "description": "Agency as principal",
+      "data": {
+        "account_id": "acc_publicis",
+        "name": "Publicis",
+        "advertiser": "Publicis Media",
+        "status": "active",
+        "rate_card": "agency_standard",
+        "payment_terms": "net_45"
+      }
+    }
+  ]
+}

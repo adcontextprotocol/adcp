@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/list-accounts-request.json",
+  "title": "List Accounts Request",
+  "description": "Request parameters for listing accounts accessible to the authenticated agent",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["active", "suspended", "closed", "all"],
+      "default": "active",
+      "description": "Filter accounts by status"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [],
+  "additionalProperties": true
+}

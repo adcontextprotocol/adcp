@@ -13,6 +13,10 @@
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"
     },
+    "account": {
+      "$ref": "/schemas/core/account.json",
+      "description": "Account billed for this media buy"
+    },
     "status": {
       "$ref": "/schemas/enums/media-buy-status.json"
     },
