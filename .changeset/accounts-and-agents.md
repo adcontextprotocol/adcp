@@ -11,7 +11,6 @@ AdCP now distinguishes three entities in billable operations:
 
 New schemas:
 - `account.json`: Billing relationship with rate cards, payment terms, credit limits
-- `agent.json`: Entity operating on accounts (brand team, agency, automated system)
 - `list-accounts-request.json` / `list-accounts-response.json`: Discover accessible accounts
 
 Updated schemas:
