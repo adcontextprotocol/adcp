@@ -793,10 +793,8 @@
         currentUser = data.user;
 
         // If user already has organizations, redirect to dashboard
-        // Skip this check if user explicitly navigated to onboarding (e.g., from signup flow)
-        const urlParams = new URLSearchParams(window.location.search);
-        const fromSignup = urlParams.has('signup');
-        if (!fromSignup && data.organizations && data.organizations.length > 0) {
+        // Users who already have org memberships should go to their dashboard
+        if (data.organizations && data.organizations.length > 0) {
           window.location.href = '/dashboard';
           return;
         }

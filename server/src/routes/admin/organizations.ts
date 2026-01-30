@@ -1202,4 +1202,156 @@ export function setupOrganizationRoutes(
       }
     }
   );
+
+  // POST /api/admin/organizations/audit-admins - Find and fix orgs without admins
+  // Query params:
+  //   fix=true - Actually promote users to admin (otherwise just returns report)
+  apiRouter.post(
+    "/organizations/audit-admins",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const fix = req.query.fix === "true";
+        const pool = getPool();
+
+        if (!workos) {
+          return res.status(500).json({
+            error: "WorkOS not configured",
+          });
+        }
+
+        // Get all non-personal orgs with members
+        const orgsResult = await pool.query<{
+          workos_organization_id: string;
+          name: string;
+        }>(
+          `SELECT DISTINCT o.workos_organization_id, o.name
+           FROM organizations o
+           JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+           WHERE o.is_personal = false
+             AND o.workos_organization_id IS NOT NULL
+           ORDER BY o.name ASC`
+        );
+
+        const orgsWithoutAdmin: Array<{
+          orgId: string;
+          orgName: string;
+          memberCount: number;
+          firstMember?: { userId: string; email: string };
+          fixed: boolean;
+        }> = [];
+
+        for (const org of orgsResult.rows) {
+          try {
+            const memberships =
+              await workos.userManagement.listOrganizationMemberships({
+                organizationId: org.workos_organization_id,
+              });
+
+            if (memberships.data.length === 0) continue;
+
+            // Check for admin or owner
+            const hasAdmin = memberships.data.some((m) => {
+              const role = m.role?.slug;
+              return role === "admin" || role === "owner";
+            });
+
+            if (!hasAdmin) {
+              const firstMember = memberships.data[0];
+              let firstMemberInfo:
+                | { userId: string; email: string }
+                | undefined;
+
+              if (firstMember) {
+                try {
+                  const user = await workos.userManagement.getUser(
+                    firstMember.userId
+                  );
+                  firstMemberInfo = {
+                    userId: firstMember.userId,
+                    email: user.email,
+                  };
+                } catch {
+                  firstMemberInfo = {
+                    userId: firstMember.userId,
+                    email: "unknown",
+                  };
+                }
+              }
+
+              let fixed = false;
+
+              if (fix && firstMember) {
+                try {
+                  await workos.userManagement.updateOrganizationMembership(
+                    firstMember.id,
+                    { roleSlug: "admin" }
+                  );
+
+                  // Update local cache
+                  await pool.query(
+                    `UPDATE organization_memberships
+                     SET role = 'admin', updated_at = NOW()
+                     WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+                    [org.workos_organization_id, firstMember.userId]
+                  );
+
+                  fixed = true;
+
+                  logger.info(
+                    {
+                      orgId: org.workos_organization_id,
+                      orgName: org.name,
+                      userId: firstMember.userId,
+                      adminEmail: req.user!.email,
+                    },
+                    "Admin audit: promoted user to admin"
+                  );
+                } catch (err) {
+                  logger.error(
+                    { err, orgId: org.workos_organization_id },
+                    "Admin audit: failed to promote user"
+                  );
+                }
+              }
+
+              orgsWithoutAdmin.push({
+                orgId: org.workos_organization_id,
+                orgName: org.name,
+                memberCount: memberships.data.length,
+                firstMember: firstMemberInfo,
+                fixed,
+              });
+            }
+          } catch (err) {
+            logger.warn(
+              { err, orgId: org.workos_organization_id },
+              "Admin audit: failed to check org"
+            );
+          }
+        }
+
+        res.json({
+          total_orgs: orgsResult.rows.length,
+          orgs_without_admin: orgsWithoutAdmin.length,
+          fix_mode: fix,
+          fixed: orgsWithoutAdmin.filter((o) => o.fixed).length,
+          details: orgsWithoutAdmin.map((o) => ({
+            org_id: o.orgId,
+            org_name: o.orgName,
+            has_admin: false,
+            member_count: o.memberCount,
+            promoted_user: o.fixed ? o.firstMember?.email : null,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error running admin audit");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to run admin audit",
+        });
+      }
+    }
+  );
 }
