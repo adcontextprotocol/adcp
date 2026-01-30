@@ -84,7 +84,8 @@
                   "docs/building/integration/a2a-response-format",
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication"
+                  "docs/building/integration/authentication",
+                  "docs/building/integration/accounts-and-agents"
                 ]
               },
               {
@@ -513,7 +514,8 @@
                   "docs/building/integration/a2a-response-format",
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication"
+                  "docs/building/integration/authentication",
+                  "docs/building/integration/accounts-and-agents"
                 ]
               },
               {

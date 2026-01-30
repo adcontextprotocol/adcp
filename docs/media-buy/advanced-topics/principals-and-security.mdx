@@ -1,9 +1,9 @@
 ---
-title: Principals & Security
+title: Accounts & Security
 ---
 
 
-A **Principal** represents a distinct client or buyer in AdCP. Sales agents use principals to identify who is making requests and enforce data isolation between different buyers.
+An **Account** represents a billing relationship between a buyer and a seller in AdCP. Sales agents use accounts to determine pricing (rate cards), billing entities, and to enforce data isolation between different buyers.
 
 ## Authentication
 
@@ -13,25 +13,28 @@ All requests must be authenticated using a bearer token in the standard `Authori
 Authorization: Bearer <your_token>
 ```
 
-The server validates this token and associates it with a specific `principal_id`. All subsequent operations within that request are scoped to that authenticated principal.
+The server validates this token and identifies the **agent** making the request. The agent may have access to one or more accounts.
 
 See [Authentication](/docs/building/integration/authentication) for details on obtaining credentials and authentication methods.
 
-### The Principal Model
+### Agents and Accounts
 
-A Principal is defined by:
-- **`principal_id`** (string): A unique identifier for the client (e.g., `"acme_corp"`).
-- **`platform_mappings`** (object): Maps the `principal_id` to identifiers in ad serving platforms (e.g., `{"gam_advertiser_id": 12345}`).
+AdCP distinguishes between:
+
+- **Agent**: The authenticated entity making API calls (e.g., `"publicis_trading_desk"`)
+- **Account**: The billing relationship for a media buy (e.g., `"coke_c/o_publicis"`)
+
+An agent may operate on multiple accounts. For example, an agency trading desk might manage accounts for Coke, Pepsi, and their own house account. See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for details.
 
 ## Data Isolation
 
 Authentication provides the foundation for strict data isolation. Sales agents **MUST** enforce the following rules:
 
-1. When an object like a `MediaBuy` is created, it **MUST** be permanently associated with the `principal_id` from the authenticated request context.
-2. For any subsequent request to read or modify that object, the server **MUST** verify that the `principal_id` from the request matches the `principal_id` stored with the object.
-3. If the IDs do not match, the server **MUST** return a permission denied error.
+1. When an object like a `MediaBuy` is created, it **MUST** be permanently associated with the account used for that request.
+2. For any subsequent request to read or modify that object, the server **MUST** verify that the agent has access to that account.
+3. If the agent does not have access, the server **MUST** return a permission denied error.
 
-This model ensures that one principal can never view or modify another principal's data, as they will not possess the correct bearer token to do so. Passing a `principal_id` in the request body is not required or respected; the identity is based solely on the validated token.
+This model ensures that one account's data cannot be accessed by agents who lack authorization. Passing an `account_id` for an account you don't have access to will result in an error.
 
 ## Security Requirements
 
@@ -40,7 +43,7 @@ This model ensures that one principal can never view or modify another principal
 Sales agent implementations **MUST**:
 
 - Validate bearer tokens on every authenticated request
-- Enforce principal-based data isolation
+- Enforce account-based data isolation
 - Use TLS for all communications
 - Log authentication failures for security monitoring
 
@@ -48,7 +51,7 @@ Sales agent implementations **MUST**:
 
 Sales agent implementations **SHOULD**:
 
-- Implement rate limiting per principal
+- Implement rate limiting per agent and account
 - Support token expiration and refresh
 - Provide audit logging for compliance
-- Support IP allowlisting for high-security principals
+- Support IP allowlisting for high-security accounts
