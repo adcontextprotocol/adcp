@@ -37,6 +37,11 @@ export interface SlackTeamJoinEvent {
   user: SlackUser;
 }
 
+export interface SlackUserChangeEvent {
+  type: 'user_change';
+  user: SlackUser;
+}
+
 export interface SlackMemberJoinedChannelEvent {
   type: 'member_joined_channel';
   user: string; // user ID
@@ -98,6 +103,7 @@ export interface SlackAppMentionEvent {
 
 export type SlackEvent =
   | SlackTeamJoinEvent
+  | SlackUserChangeEvent
   | SlackMemberJoinedChannelEvent
   | SlackMessageEvent
   | SlackReactionAddedEvent
@@ -145,6 +151,7 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
       slack_real_name: realName,
       slack_is_bot: user.is_bot || false,
       slack_is_deleted: user.deleted || false,
+      slack_tz_offset: user.tz_offset ?? null,
     });
 
     // Auto-map by email if they have a web account
@@ -155,6 +162,49 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
     logger.info({ email }, 'New Slack user added');
   } catch (error) {
     logger.error({ error, userId: user.id }, 'Failed to process team_join event');
+  }
+}
+
+/**
+ * Handle user_change event - user profile was updated
+ * Updates our database with the new profile data
+ */
+export async function handleUserChange(event: SlackUserChangeEvent): Promise<void> {
+  const user = event.user;
+
+  if (!user?.id) {
+    logger.warn('user_change event missing user data');
+    return;
+  }
+
+  logger.debug(
+    { userId: user.id, email: user.profile?.email, name: user.profile?.real_name },
+    'Slack user profile changed'
+  );
+
+  try {
+    const email = user.profile?.email || null;
+    const displayName = user.profile?.display_name || user.profile?.display_name_normalized || null;
+    const realName = user.profile?.real_name || user.real_name || null;
+
+    // Upsert the user into our database with updated profile
+    await slackDb.upsertSlackUser({
+      slack_user_id: user.id,
+      slack_email: email,
+      slack_display_name: displayName,
+      slack_real_name: realName,
+      slack_is_bot: user.is_bot || false,
+      slack_is_deleted: user.deleted || false,
+      slack_tz_offset: user.tz_offset ?? null,
+    });
+
+    // Invalidate caches since user data changed
+    invalidateUnifiedUsersCache();
+    invalidateMemberContextCache(user.id);
+
+    logger.debug({ userId: user.id }, 'Slack user profile updated');
+  } catch (error) {
+    logger.error({ error, userId: user.id }, 'Failed to process user_change event');
   }
 }
 
@@ -542,6 +592,10 @@ export async function handleSlackEvent(payload: SlackEventPayload): Promise<void
   switch (event.type) {
     case 'team_join':
       await handleTeamJoin(event as SlackTeamJoinEvent);
+      break;
+
+    case 'user_change':
+      await handleUserChange(event as SlackUserChangeEvent);
       break;
 
     case 'member_joined_channel':

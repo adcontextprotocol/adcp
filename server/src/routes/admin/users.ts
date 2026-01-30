@@ -254,20 +254,23 @@ export function createAdminUsersRouter(): Router {
         slackOnlyContactsResult.rows.map(r => [r.slack_user_id, r])
       );
 
-      // Add Slack-only users (those not linked to any AAO account)
+      // Add Slack users not already processed (Slack-only OR mapped individuals without org)
       for (const slackUser of slackMappings) {
         if (processedSlackIds.has(slackUser.slack_user_id)) continue;
-        if (slackUser.workos_user_id) continue;
 
-        // Check if this Slack user's email matches an AAO user
-        if (slackUser.slack_email) {
+        // Determine if this is a mapped individual (has workos_user_id but no org membership)
+        // or a true Slack-only user (no workos_user_id)
+        const isMappedIndividual = !!slackUser.workos_user_id;
+
+        // Check if this Slack user's email matches an AAO user (skip to avoid duplicates)
+        if (slackUser.slack_email && !isMappedIndividual) {
           const hasAaoMatch = aaoUsersResult.rows.some(
             u => u.email.toLowerCase() === slackUser.slack_email!.toLowerCase()
           );
           if (hasAaoMatch) continue;
         }
 
-        // Skip if filtering by group (Slack-only users have no groups)
+        // Skip if filtering by group (these users have no groups)
         if (filterByGroup) continue;
 
         // Get engagement data for this Slack user
@@ -288,17 +291,17 @@ export function createAdminUsersRouter(): Router {
         }
 
         unifiedUsers.push({
-          workos_user_id: null,
-          email: null,
-          name: null,
+          workos_user_id: isMappedIndividual ? slackUser.workos_user_id : null,
+          email: slackUser.slack_email,
+          name: slackUser.slack_real_name || slackUser.slack_display_name || null,
           org_id: null,
           org_name: null,
           slack_user_id: slackUser.slack_user_id,
           slack_email: slackUser.slack_email,
           slack_display_name: slackUser.slack_display_name,
           slack_real_name: slackUser.slack_real_name,
-          mapping_status: 'slack_only',
-          mapping_source: null,
+          mapping_status: isMappedIndividual ? 'mapped' : 'slack_only',
+          mapping_source: isMappedIndividual ? slackUser.mapping_source : null,
           working_groups: [],
           // Engagement data from unified contacts
           engagement_score: engagement?.engagement_score ?? null,
