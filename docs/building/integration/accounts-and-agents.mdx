@@ -133,7 +133,7 @@ This attribution enables:
 - Rate card application based on advertiser relationships
 - Tracking which account was used
 
-Agent information (who placed the buy) can be included via the `context` field if the seller needs to return it.
+Agent information (who placed the buy) is not part of the standard response schema. Sellers may optionally include it via the `context` or `ext` fields for audit purposes.
 
 ## Tasks
 
@@ -269,13 +269,11 @@ Agent has one account (Coke), so `account_id` is omitted.
     "account_id": "acc_coke",
     "name": "Coke",
     "advertiser": "The Coca-Cola Company"
-  },
-  "agent": {
-    "agent_id": "agent_coke_internal",
-    "organization": "The Coca-Cola Company"
   }
 }
 ```
+
+Sellers may optionally include agent info in `ext` for audit purposes.
 
 ### Agency buying for Coke, Coke pays
 
@@ -304,10 +302,6 @@ Publicis buying on Coke's behalf, using Coke's rates, billed through Publicis:
     "name": "Coke c/o Publicis",
     "advertiser": "The Coca-Cola Company",
     "billing_proxy": "Publicis Media"
-  },
-  "agent": {
-    "agent_id": "agent_publicis_trading",
-    "organization": "Publicis Media"
   }
 }
 ```
@@ -338,10 +332,6 @@ Publicis buying on their own account (agency rates), for Coke's brand:
     "account_id": "acc_publicis",
     "name": "Publicis",
     "advertiser": "Publicis Media"
-  },
-  "agent": {
-    "agent_id": "agent_publicis_trading",
-    "organization": "Publicis Media"
   }
 }
 ```

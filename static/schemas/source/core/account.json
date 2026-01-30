@@ -80,7 +80,7 @@
       }
     },
     {
-      "description": "Agency as principal",
+      "description": "Agency as direct buyer",
       "data": {
         "account_id": "acc_publicis",
         "name": "Publicis",
