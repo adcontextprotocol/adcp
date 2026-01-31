@@ -46,14 +46,14 @@ Publishers declare their properties, authorize sales agents, and reference gover
   ],
   "property_features": [
     {
-      "url": "https://api.scope3.com",
-      "name": "Scope3",
-      "features": ["carbon_score", "sustainability_grade"]
+      "url": "https://api.sustainability-vendor.example",
+      "name": "Sustainability Vendor",
+      "features": ["carbon_score", "green_media_certified"]
     },
     {
-      "url": "https://api.onetrust.com",
-      "name": "OneTrust",
-      "features": ["gdpr_compliant", "tcf_registered"]
+      "url": "https://api.quality-vendor.example",
+      "name": "Quality Vendor",
+      "features": ["mfa_score", "ad_load_rating", "page_speed"]
     }
   ]
 }
@@ -68,14 +68,14 @@ Without `property_features`, buyers would need to query every possible governanc
 | Field | Purpose |
 |-------|---------|
 | `url` | Governance agent's API endpoint |
-| `name` | Human-readable agent name (e.g., "Scope3", "TAG", "OneTrust") |
-| `features` | Feature IDs this agent provides (e.g., `carbon_score`, `gdpr_compliant`) |
+| `name` | Human-readable agent name |
+| `features` | Feature IDs this agent provides (e.g., `carbon_score`, `mfa_score`) |
 | `publisher_id` | Optional identifier for looking up this publisher at the agent |
 
 **Example use cases:**
-- **Sustainability**: Publisher declares Scope3 tracks their carbon emissions
-- **Compliance**: Publisher declares OneTrust manages their consent data
-- **Certification**: Publisher declares TAG has verified their fraud prevention
+- **Sustainability**: Publisher declares a carbon measurement vendor tracks their emissions
+- **Quality**: Publisher declares a verification vendor measures MFA score and ad density
+- **Consumer experience**: Publisher declares a vendor that tracks page speed and ad load
 
 Buyers read `property_features` from adagents.json, then query only the relevant governance agents for detailed data.
 
@@ -85,13 +85,13 @@ See the [adagents.json Tech Spec](/docs/governance/property/adagents) for comple
 
 ### Property Data Providers
 
-Governance agents provide data about properties - compliance scores, brand safety ratings, sustainability metrics, etc. They advertise their capabilities via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `governance.property_features` section:
+Governance agents provide data about properties - compliance scores, brand suitability ratings, sustainability metrics, consumer experience scores, etc. They advertise their capabilities via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `governance.property_features` section:
 
 ```json
 {
   "governance": {
     "property_features": [
-      { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 } },
       { "feature_id": "coppa_certified", "type": "binary" },
       { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } }
     ]
@@ -101,10 +101,10 @@ Governance agents provide data about properties - compliance scores, brand safet
 
 Buyers send property lists to these agents, and the agents filter and score the properties based on their specialized data. Different agents specialize in different data:
 
-- **Compliance vendors** (data integrity, consent quality)
-- **Brand safety providers** (content classification, risk scoring)
-- **Quality measurement** (viewability, fraud detection)
-- **Sustainability providers** (carbon scoring, green hosting)
+- **Brand suitability providers** (content classification, risk scoring)
+- **Quality measurement** (MFA score, ad density, fraud detection)
+- **Sustainability providers** (carbon scoring, green media certification)
+- **Consumer experience** (page speed, ad load, layout shift)
 
 ### Property Selection via Governance Agents
 
@@ -126,7 +126,7 @@ Buyers create **property lists on governance agents** - the agents manage these 
       "countries_all": ["UK"],
       "channels_any": ["display", "video"],
       "feature_requirements": [
-        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+        { "feature_id": "mfa_score", "min_value": 70, "max_value": 100 }
       ]
     },
     "brand_manifest": {
@@ -140,7 +140,7 @@ Buyers create **property lists on governance agents** - the agents manage these 
 
 When you provide a brand manifest, governance agents automatically apply appropriate rules (COPPA for children's brands, content filtering based on industry, etc.).
 
-A buyer agent typically works with **multiple governance agents** (consent, brand safety, sustainability) and aggregates/intersects their results into a final compliant list.
+A buyer agent typically works with **multiple governance agents** (brand suitability, quality, sustainability) and aggregates/intersects their results into a final compliant list.
 
 ## How It Fits Together
 
@@ -159,9 +159,9 @@ flowchart TB
     end
 
     subgraph Governance["GOVERNANCE AGENTS"]
-        CA["Consent Agent<br/>consent_quality<br/>tcf_version<br/>coppa_certified"]
-        S3["Scope3 Agent<br/>carbon_score<br/>climate_risk<br/>green_hosting"]
-        BS["Brand Safety Agent<br/>content_category<br/>brand_risk<br/>sentiment"]
+        SUS["Sustainability Agent<br/>carbon_score<br/>green_media<br/>climate_risk"]
+        QA["Quality Agent<br/>mfa_score<br/>ad_load<br/>page_speed"]
+        BS["Brand Suitability Agent<br/>content_category<br/>brand_risk<br/>sentiment"]
     end
 
     subgraph Seller["SELLER AGENT (DSP/SSP)"]
@@ -170,8 +170,8 @@ flowchart TB
     end
 
     Publisher -->|property_features discovery| Buyer
-    Buyer -->|create_property_list + webhooks| CA
-    Buyer -->|create_property_list + webhooks| S3
+    Buyer -->|create_property_list + webhooks| SUS
+    Buyer -->|create_property_list + webhooks| QA
     Buyer -->|create_property_list + webhooks| BS
 
     Buyer -->|get_property_list with auth_token| Seller
@@ -262,7 +262,7 @@ Both protocols operate on properties but serve different purposes:
 **Publishers:**
 1. Create `/.well-known/adagents.json` with property definitions
 2. Authorize sales agents for your properties
-3. Declare governance agents in `property_features` (Scope3 for carbon, OneTrust for consent, TAG for certification, etc.)
+3. Declare governance agents in `property_features` (sustainability vendors for carbon, quality vendors for MFA and ad load, suitability vendors for content classification, etc.)
 
 **Buyers:**
 1. Discover governance agents by reading `property_features` from publishers' adagents.json files

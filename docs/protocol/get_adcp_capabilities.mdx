@@ -145,7 +145,7 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 
 ### governance
 
-Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents provide property data like compliance scores, brand safety ratings, and sustainability metrics.
+Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents provide property data like compliance scores, brand suitability ratings, quality metrics, and sustainability metrics.
 
 #### property_features
 
@@ -153,7 +153,7 @@ Array of property features this governance agent can evaluate:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `feature_id` | string | **Required.** Unique identifier (e.g., `consent_quality`, `coppa_certified`) |
+| `feature_id` | string | **Required.** Unique identifier (e.g., `mfa_score`, `coppa_certified`) |
 | `type` | string | **Required.** Data type: `binary`, `quantitative`, or `categorical` |
 | `range` | object | For quantitative: `{ min, max }` |
 | `categories` | string[] | For categorical: valid values |
@@ -168,7 +168,7 @@ Array of property features this governance agent can evaluate:
   "supported_protocols": ["governance"],
   "governance": {
     "property_features": [
-      { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Quality score for consent collection practices", "methodology_url": "https://vendor.example.com/methodology/consent-quality" },
+      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising score (lower is better)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
       { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
       { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" },
       { "feature_id": "content_category", "type": "categorical", "categories": ["news", "entertainment", "sports", "finance"], "description": "Primary content category" }
@@ -196,7 +196,7 @@ Extension schemas are published in the [AdCP extension registry](/docs/building/
 
 This tells buyers:
 - Product responses may include `ext.scope3` with Scope3 sustainability data
-- Creative policies may include `ext.garm` with GARM brand safety categorizations
+- Creative policies may include `ext.garm` with GARM brand suitability categorizations
 - Responses may include `ext.iab_tcf` with IAB TCF consent data
 
 ## The Capability Contract

@@ -4,11 +4,11 @@ title: Overview
 
 # Content Standards Protocol
 
-The Content Standards Protocol enables **privacy-preserving brand safety** for ephemeral and sensitive content that cannot leave a publisher's infrastructure.
+The Content Standards Protocol enables **privacy-preserving brand suitability** for ephemeral and sensitive content that cannot leave a publisher's infrastructure.
 
 ## The Problem
 
-Traditional brand safety relies on third-party verification: send your content to IAS or DoubleVerify, they evaluate it, return a verdict. This works for static web pages. It fundamentally cannot work for:
+Traditional brand suitability relies on third-party verification: send your content to IAS or DoubleVerify, they evaluate it, return a verdict. This works for static web pages. It fundamentally cannot work for:
 
 - **AI-generated content** - ChatGPT responses, DALL-E images that exist only in a user session
 - **Private conversations** - Content in messaging apps, private social feeds
@@ -17,7 +17,7 @@ Traditional brand safety relies on third-party verification: send your content t
 
 For these platforms, **there is no traditional verification option**. The content simply cannot leave. OpenAI cannot send user conversations to an external service. A messaging app cannot export private chats. A streaming platform cannot share real-time content before it disappears.
 
-Yet these are exactly the environments where advertising is growing fastest - and where brands most need safety guarantees. Without a privacy-preserving approach, brands either avoid these channels entirely or accept unknown risk.
+Yet these are exactly the environments where advertising is growing fastest - and where brands most need suitability guarantees. Without a privacy-preserving approach, brands either avoid these channels entirely or accept unknown risk.
 
 ## The Solution: Calibration-Based Alignment
 
@@ -31,7 +31,7 @@ Content Standards solves this by **using agents to protect privacy**. It's a thr
 
 This inverts the traditional model. Instead of "send us your content, we'll evaluate it," it's "we'll teach you our standards, you evaluate locally, we'll audit statistically."
 
-**The key insight**: The execution engine runs entirely inside the publisher's infrastructure. For OpenAI, that means brand safety evaluation happens within their firewall - user conversations never leave. For a messaging app, it means private content stays private. The calibration and validation phases provide confidence that the local model is working correctly, without ever requiring access to sensitive data.
+**The key insight**: The execution engine runs entirely inside the publisher's infrastructure. For OpenAI, that means brand suitability evaluation happens within their firewall - user conversations never leave. For a messaging app, it means private content stays private. The calibration and validation phases provide confidence that the local model is working correctly, without ever requiring access to sensitive data.
 
 ## What It Covers
 
@@ -129,7 +129,7 @@ What percentage of traffic should be evaluated by the verification agent?
 
 | Rate | Use Case |
 |------|----------|
-| **100%** | Premium brand safety - every impression validated |
+| **100%** | Premium brand suitability - every impression validated |
 | **10-25%** | Standard monitoring - statistical confidence |
 | **1-5%** | Spot checking - drift detection only |
 
@@ -238,7 +238,7 @@ Before running campaigns, sellers calibrate their local models against the verif
 3. Seller asks follow-up questions about edge cases
 4. Process repeats until alignment is achieved
 
-**Human-in-the-loop**: Calibration often involves humans on both sides. A brand safety specialist at the buyer might review edge cases flagged by the verification agent. A content operations team at the seller might curate calibration samples and validate the local model's learning. The protocol supports async workflows where either party can pause for human review before responding.
+**Human-in-the-loop**: Calibration often involves humans on both sides. A brand suitability specialist at the buyer might review edge cases flagged by the verification agent. A content operations team at the seller might curate calibration samples and validate the local model's learning. The protocol supports async workflows where either party can pause for human review before responding.
 
 ```json
 // Seller: "Does this pass?"
@@ -293,8 +293,8 @@ See [calibrate_content](./tasks/calibrate_content) for the full task specificati
 ## Typical Providers
 
 - **IAS** - Integral Ad Science
-- **DoubleVerify** - Brand safety and verification
-- **Scope3** - Sustainability-focused brand safety with prompt-based policies
+- **DoubleVerify** - Brand suitability and verification
+- **Scope3** - Sustainability-focused brand suitability with prompt-based policies
 - **Custom** - Brand-specific implementations
 
 ## Future: Secure Enclaves
@@ -332,7 +332,7 @@ flowchart TB
 The enclave maintains a narrow, well-defined interface to the verification service:
 
 **Inbound (verification service → enclave):**
-- Updated brand safety models
+- Updated brand suitability models
 - Policy changes and calibration exemplars
 - Configuration updates
 
@@ -358,7 +358,7 @@ This pinhole is the interface that needs standardization - it defines exactly wh
 
 This provides the same privacy guarantees as local execution, but with cryptographic proof that the correct algorithm is running. The brand knows their standards are being enforced faithfully. The publisher proves compliance without exposing content.
 
-This architecture aligns with the [IAB Tech Lab ARTF (Agentic RTB Framework)](https://iabtechlab.com/standards/artf/), which defines how service providers can package offerings as containers deployed into host infrastructure. ARTF enables hosts to "provide greater access to data and more interaction opportunities to service agents without concerns about leakage, misappropriation or latency" - exactly the model Content Standards requires for privacy-preserving brand safety.
+This architecture aligns with the [IAB Tech Lab ARTF (Agentic RTB Framework)](https://iabtechlab.com/standards/artf/), which defines how service providers can package offerings as containers deployed into host infrastructure. ARTF enables hosts to "provide greater access to data and more interaction opportunities to service agents without concerns about leakage, misappropriation or latency" - exactly the model Content Standards requires for privacy-preserving brand suitability.
 
 ## Related
 

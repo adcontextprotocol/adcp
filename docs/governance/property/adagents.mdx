@@ -80,8 +80,8 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 **`property_features`** *(optional)*: Array of governance agents that provide data about properties in this file
   - **`url`** *(required)*: Agent's API endpoint URL (governance agent implementing property governance tasks)
-  - **`name`** *(required)*: Human-readable name of the vendor/agent (e.g., "Scope3", "TAG", "OneTrust")
-  - **`features`** *(required)*: Array of feature IDs this agent provides (e.g., `["carbon_score", "gdpr_compliant"]`)
+  - **`name`** *(required)*: Human-readable name of the vendor/agent
+  - **`features`** *(required)*: Array of feature IDs this agent provides (e.g., `["carbon_score", "mfa_score"]`)
   - **`publisher_id`** *(optional)*: Publisher's identifier at this agent (for lookup)
 
 This field enables **governance agent discovery** - buyers can find which agents have compliance, sustainability, or quality data for properties without querying every possible agent.
@@ -469,7 +469,7 @@ Different agents for different channels:
 
 ### Example 3: Publisher with Governance Agent References
 
-Publishers can declare which governance agents have data about their properties using `property_features`. This enables buyers to discover where to get compliance, sustainability, and quality data.
+Publishers can declare which governance agents have data about their properties using `property_features`. This enables buyers to discover where to get sustainability, quality, and suitability data.
 
 ```json
 {
@@ -494,7 +494,7 @@ Publishers can declare which governance agents have data about their properties 
   "tags": {
     "premium": {
       "name": "Premium Properties",
-      "description": "High-quality, brand-safe properties"
+      "description": "High-quality, brand-suitable properties"
     },
     "news": {
       "name": "News Properties",
@@ -511,21 +511,21 @@ Publishers can declare which governance agents have data about their properties 
   ],
   "property_features": [
     {
-      "url": "https://api.scope3.com",
-      "name": "Scope3",
-      "features": ["carbon_score", "sustainability_grade"],
+      "url": "https://api.sustainability-vendor.example",
+      "name": "Sustainability Vendor",
+      "features": ["carbon_score", "green_media_certified"],
       "publisher_id": "pub_news_12345"
     },
     {
-      "url": "https://api.tagtoday.net",
-      "name": "TAG",
-      "features": ["tag_certified_against_fraud", "tag_brand_safety_certified"]
+      "url": "https://api.quality-vendor.example",
+      "name": "Quality Vendor",
+      "features": ["mfa_score", "ad_density", "page_speed"]
     },
     {
-      "url": "https://api.onetrust.com",
-      "name": "OneTrust",
-      "features": ["gdpr_compliant", "tcf_registered", "ccpa_compliant"],
-      "publisher_id": "ot_news_67890"
+      "url": "https://api.suitability-vendor.example",
+      "name": "Suitability Vendor",
+      "features": ["content_category", "brand_risk_score", "sentiment"],
+      "publisher_id": "suit_news_67890"
     }
   ],
   "last_updated": "2025-01-10T18:00:00Z"
@@ -546,8 +546,8 @@ The `property_features` field solves a key discovery problem: how does a buyer k
 sequenceDiagram
     participant Buyer as Buyer Agent
     participant PubDomain as Publisher Domain
-    participant Scope3 as Scope3 Agent
-    participant OneTrust as OneTrust Agent
+    participant SustAgent as Sustainability Agent
+    participant QualAgent as Quality Agent
 
     Buyer->>PubDomain: GET /.well-known/adagents.json
     PubDomain-->>Buyer: adagents.json with property_features
@@ -555,27 +555,27 @@ sequenceDiagram
     Note over Buyer: Extract governance agents from property_features
 
     par Query governance agents
-        Buyer->>Scope3: get_adcp_capabilities
-        Scope3-->>Buyer: Available features (carbon_score, etc.)
+        Buyer->>SustAgent: get_adcp_capabilities
+        SustAgent-->>Buyer: Available features (carbon_score, etc.)
     and
-        Buyer->>OneTrust: get_adcp_capabilities
-        OneTrust-->>Buyer: Available features (gdpr_compliant, etc.)
+        Buyer->>QualAgent: get_adcp_capabilities
+        QualAgent-->>Buyer: Available features (mfa_score, etc.)
     end
 
     Note over Buyer: Create property lists on each governance agent
 
-    Buyer->>Scope3: create_property_list(filters, brand_manifest)
-    Buyer->>OneTrust: create_property_list(filters, brand_manifest)
+    Buyer->>SustAgent: create_property_list(filters, brand_manifest)
+    Buyer->>QualAgent: create_property_list(filters, brand_manifest)
 ```
 
 ### When to Use property_features
 
 | Scenario | Use property_features? |
 |----------|------------------------|
-| Publisher has carbon scoring from Scope3 | ✅ Yes |
-| Publisher is TAG certified | ✅ Yes |
-| Publisher tracks consent via OneTrust | ✅ Yes |
-| Publisher self-reports brand safety | ❌ No - use property tags |
+| Publisher has carbon scoring from a sustainability vendor | ✅ Yes |
+| Publisher has MFA score measured by a quality vendor | ✅ Yes |
+| Publisher has content classification from a suitability vendor | ✅ Yes |
+| Publisher self-reports brand suitability | ❌ No - use property tags |
 | Sales agent provides quality data | ❌ No - that's agent capability |
 
 ### Vendor Extensions

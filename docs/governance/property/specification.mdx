@@ -152,13 +152,13 @@ The `get_adcp_capabilities` task returns information about what features an agen
 {
   "features": [
     {
-      "feature_id": "consent_quality",
-      "name": "Consent Quality Score",
+      "feature_id": "mfa_score",
+      "name": "Made For Advertising Score",
       "type": "quantitative",
       "range": { "min": 0, "max": 100 },
-      "methodology": "data_integrity_index",
+      "methodology": "mfa_detection",
       "methodology_version": "v2.1",
-      "methodology_url": "https://compliance.example.com/methodology"
+      "methodology_url": "https://quality.example.com/methodology"
     }
   ]
 }
@@ -423,15 +423,15 @@ Publishers declare which governance agents have data about their properties usin
 {
   "property_features": [
     {
-      "url": "https://api.scope3.com",
-      "name": "Scope3",
-      "features": ["carbon_score", "sustainability_grade"],
+      "url": "https://api.sustainability-vendor.example",
+      "name": "Sustainability Vendor",
+      "features": ["carbon_score", "green_media_certified"],
       "publisher_id": "pub_12345"
     },
     {
-      "url": "https://api.onetrust.com",
-      "name": "OneTrust",
-      "features": ["gdpr_compliant", "tcf_registered", "ccpa_compliant"]
+      "url": "https://api.quality-vendor.example",
+      "name": "Quality Vendor",
+      "features": ["mfa_score", "ad_density", "page_speed"]
     }
   ]
 }
@@ -484,7 +484,7 @@ Use `get_adcp_capabilities` for detailed capability discovery:
 }
 ```
 
-Returns the specific features the agent can evaluate (consent_quality, carbon_score, brand_risk, etc.).
+Returns the specific features the agent can evaluate (mfa_score, carbon_score, brand_risk, etc.).
 
 ## Marketplace Architecture
 
@@ -507,13 +507,13 @@ The Property Protocol enables a marketplace of specialized data agents:
         ┌───────────────────┼───────────────────┐
         ▼                   ▼                   ▼
 ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│ Consent Agent │   │ Scope3 Agent  │   │ Brand Safety  │
-│ (Compliant)   │   │               │   │    Agent      │
+│ Quality Agent │   │ Sustainability│   │ Suitability   │
+│               │   │    Agent      │   │    Agent      │
 ├───────────────┤   ├───────────────┤   ├───────────────┤
 │ Features:     │   │ Features:     │   │ Features:     │
-│ consent_qual  │   │ carbon_score  │   │ content_cat   │
-│ tcf_version   │   │ climate_risk  │   │ brand_risk    │
-│ coppa_cert    │   │ green_host    │   │ sentiment     │
+│ mfa_score     │   │ carbon_score  │   │ content_cat   │
+│ ad_density    │   │ climate_risk  │   │ brand_risk    │
+│ page_speed    │   │ green_media   │   │ sentiment     │
 ├───────────────┤   ├───────────────┤   ├───────────────┤
 │ Subscription  │   │ Subscription  │   │ Subscription  │
 └───────────────┘   └───────────────┘   └───────────────┘
