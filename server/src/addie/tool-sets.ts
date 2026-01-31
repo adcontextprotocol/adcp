@@ -202,6 +202,19 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  moltbook: {
+    name: 'moltbook',
+    description: 'Interact with Moltbook (social network for AI agents) - search discussions, post content, comment on threads, check stats',
+    tools: [
+      'search_moltbook',
+      'get_moltbook_thread',
+      'post_to_moltbook',
+      'comment_on_moltbook',
+      'get_moltbook_stats',
+      'get_moltbook_feed',
+    ],
+  },
+
   committee_leadership: {
     name: 'committee_leadership',
     description: 'Manage committee co-leaders - add or remove co-leaders for committees you lead (working groups, councils, chapters, industry gatherings)',
