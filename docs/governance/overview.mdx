@@ -7,7 +7,7 @@ sidebarTitle: Overview
 **Draft for AdCP 3.0** - These governance protocols are under active development by the AAO Governance Working Group. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
 </Warning>
 
-The Governance Protocol provides standardized mechanisms for compliance, brand safety, and quality control across advertising workflows. It enables specialized agents to evaluate, filter, and score advertising entities against configurable criteria.
+The Governance Protocol provides standardized mechanisms for compliance, brand suitability, and quality control across advertising workflows. It enables specialized agents to evaluate, filter, and score advertising entities against configurable criteria.
 
 ## Mission
 
@@ -21,7 +21,7 @@ The Governance Protocol covers four distinct governance domains:
 |--------|-----------------|----------------|
 | **[Property Governance](./property/index)** | Where ads can run | Property lists, compliance filtering, adagents.json authorization |
 | **[Brand Protocol](/docs/brand-protocol/index)** | Brand identity & agents | brand.json discovery, brand agent authorization |
-| **[Content Standards](./content-standards/index)** | Brand safety & suitability | Privacy-preserving content evaluation, calibration, validation |
+| **[Content Standards](./content-standards/index)** | Brand suitability | Privacy-preserving content evaluation, calibration, validation |
 | **Creative Governance** | What creatives are compliant | Format validation, content moderation, accessibility |
 | **Campaign Governance** | What can be bought | Budget controls, approval workflows, policy compliance |
 
@@ -33,7 +33,7 @@ The AAO Governance Working Group is developing standards across six areas that i
 
 | Area | Focus | Protocol Impact |
 |------|-------|-----------------|
-| Brand Safety & Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering, adagents.json |
+| Brand Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering, adagents.json |
 | Brand Manifest & Standards Library | Machine-readable brand policies | [Brand Manifest](/docs/creative/brand-manifest), Content Standards |
 | Creative Standards & Validation | Technical and ethical creative criteria | Creative Governance |
 | Process & Human Oversight | Human-in-the-loop checkpoints | All protocols |
@@ -55,14 +55,14 @@ flowchart TB
     end
 
     subgraph governance["Governance Agents"]
-        subgraph consent["Consent Agent"]
-            consent_features["consent_qual<br/>tcf_version<br/>coppa_cert"]
+        subgraph sustainability["Sustainability Agent"]
+            sustainability_features["carbon_score<br/>green_media<br/>climate_risk"]
         end
-        subgraph scope3["Scope3 Agent"]
-            scope3_features["carbon_score<br/>climate_risk<br/>green_host"]
+        subgraph quality["Quality Agent"]
+            quality_features["mfa_score<br/>ad_load<br/>page_speed"]
         end
-        subgraph brand["Brand Safety Agent"]
-            brand_features["content_cat<br/>brand_risk<br/>sentiment"]
+        subgraph suitability["Brand Suitability Agent"]
+            suitability_features["content_cat<br/>brand_risk<br/>sentiment"]
         end
     end
 
@@ -92,7 +92,7 @@ Response (governance section):
 {
   "governance": {
     "property_features": [
-      { "feature_id": "consent_quality", "type": "quantitative", "range": { "min": 0, "max": 100 } },
+      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 } },
       { "feature_id": "coppa_certified", "type": "binary" },
       { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 } }
     ]
@@ -165,7 +165,7 @@ The Media Buy Protocol consumes governance data at multiple stages:
 ## Getting Started
 
 **Buyers:**
-1. Subscribe to governance agents for property data and brand safety
+1. Subscribe to governance agents for property data and brand suitability
 2. Create property lists with filters and brand manifests
 3. Aggregate results into final compliant lists
 4. Share references with sellers (with auth tokens)
@@ -183,6 +183,6 @@ The Media Buy Protocol consumes governance data at multiple stages:
     Control where ads can run with property lists, compliance filtering, and publisher authorization via adagents.json.
   </Card>
   <Card title="Content Standards" icon="shield-check" href="/docs/governance/content-standards/index">
-    Privacy-preserving brand safety through calibration-based content evaluation and validation.
+    Privacy-preserving brand suitability through calibration-based content evaluation and validation.
   </Card>
 </CardGroup>

@@ -58,13 +58,13 @@ flowchart TB
     end
 
     subgraph Technical["Technical Execution"]
-        AXE["**Agent Execution Environment**<br/>Real-time decisioning for brand safety, fcaps, 1p data"]
+        AXE["**Agent Execution Environment**<br/>Real-time decisioning for brand suitability, fcaps, 1p data"]
         DP["**Decisioning Platform**<br/>Selects impression to serve (direct or programmatic)"]
         AXE <-->|"KV or RTB"| DP
     end
 
     subgraph Governance["Governance (cross-cutting)"]
-        GOV["**Governance Agents**<br/>Brand safety, consent, property lists, compliance"]
+        GOV["**Governance Agents**<br/>Brand suitability, quality, property lists, compliance"]
         HITL["**Human Oversight**<br/>Manual approval checkpoints"]
     end
 
@@ -121,7 +121,7 @@ MCP servers that provide:
 
 **Agentic eXecution Engine (AXE) (Left)**
 Real-time execution layer for:
-- **Brand Safety**: Ensuring appropriate ad placement
+- **Brand Suitability**: Ensuring appropriate ad placement
 - **Frequency Capping**: Managing exposure limits
 - **First-Party Data**: Activating advertiser data
 - **Dynamic Audience Targeting**: Applying buyer segments at impression time
@@ -140,8 +140,9 @@ The technical infrastructure that:
 **Governance Agents**
 Specialized agents that provide compliance and quality control across all layers:
 - **Property Lists**: Define where ads can and cannot run
-- **Brand Safety**: Content filtering and suitability scoring
-- **Consent & Compliance**: Privacy regulations (COPPA, TCF, etc.)
+- **Brand Suitability**: Content filtering and suitability scoring
+- **Quality Measurement**: MFA score, ad density, consumer experience
+- **Compliance**: Privacy regulations (COPPA, TCF, GDPR)
 - **Integration**: Operates at setup time, real-time, and post-bid
 
 See [Governance Protocol](/docs/governance/) for details.

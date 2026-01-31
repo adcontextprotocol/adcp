@@ -6,7 +6,7 @@ description: How to implement the Content Standards Protocol as a sales agent, o
 
 This guide covers implementation patterns for the Content Standards Protocol from three perspectives:
 
-1. **Sales agents** accepting and enforcing brand safety standards
+1. **Sales agents** accepting and enforcing brand suitability standards
 2. **Orchestrators** coordinating content standards across publishers
 3. **Governance agents** providing content evaluation services
 
@@ -18,7 +18,7 @@ Before diving in, understand who does what:
 |------|----------|-----------------|
 | **Orchestrator** | DSP, trading desk, agency platform | Coordinates media buying; passes standards refs to sellers; receives artifacts for validation |
 | **Sales Agent** | Publisher ad server, SSP | Accepts standards; calibrates local model; enforces during delivery; pushes artifacts |
-| **Governance Agent** | IAS, DoubleVerify, brand safety service | Hosts standards; implements `calibrate_content` and `validate_content_delivery` |
+| **Governance Agent** | IAS, DoubleVerify, brand suitability service | Hosts standards; implements `calibrate_content` and `validate_content_delivery` |
 
 The typical flow:
 
@@ -88,7 +88,7 @@ Use the standards document to train or configure your content evaluation system.
 - An LLM with the rules as system prompt
 - A classifier trained on the calibration examples
 - A rules engine for deterministic evaluation
-- A third-party brand safety vendor
+- A third-party brand suitability vendor
 
 The protocol doesn't prescribe your implementation - just that you honor the standards.
 
@@ -183,7 +183,7 @@ Brands create content standards through a governance agent. You might facilitate
 // Standards stored at the governance agent
 {
   "standards_id": "nike_emea_brand_safety",
-  "name": "Nike EMEA Brand Safety Policy",
+  "name": "Nike EMEA Brand Suitability Policy",
   "brand_id": "nike",
   "policy": "Sports and fitness content is ideal. Avoid violence, adult themes, drugs.",
   "calibration_exemplars": {
@@ -244,7 +244,7 @@ async def receive_artifacts(payload: ArtifactWebhookPayload):
     # Log any failures
     for result in validation_result.results:
         if any(f.status == "failed" for f in result.features):
-            log_brand_safety_incident(payload.media_buy_id, result)
+            log_suitability_incident(payload.media_buy_id, result)
 
     return {"status": "received", "batch_id": payload.batch_id}
 ```
@@ -269,7 +269,7 @@ Surface validation results to the brand:
 
 ## For Governance Agents
 
-If you're a governance agent (IAS, DoubleVerify, or brand safety service), you provide content evaluation as a service.
+If you're a governance agent (IAS, DoubleVerify, or brand suitability service), you provide content evaluation as a service.
 
 ### What You Implement
 

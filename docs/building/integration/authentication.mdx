@@ -46,7 +46,7 @@ Authorization: Bearer <token>
 ```
 
 Tokens may be:
-- **Opaque tokens**: Server-validated strings mapped to principals
+- **Opaque tokens**: Server-validated strings mapped to agents
 - **JWT tokens**: Self-contained tokens with embedded claims
 
 ### JWT Token Claims
@@ -55,7 +55,7 @@ When using JWT tokens, include these standard claims:
 
 ```json
 {
-  "sub": "principal_123",
+  "sub": "agent_123",
   "exp": 1706745600,
   "iat": 1706742000
 }
@@ -63,21 +63,16 @@ When using JWT tokens, include these standard claims:
 
 Sales agents may require additional claims for authorization.
 
-## Principal Model
+## Agents and Accounts
 
-```typescript
-interface Principal {
-  principal_id: string;
-  permissions: {
-    products: Permission[];
-    media_buys: Permission[];
-    creatives: Permission[];
-    reports: Permission[];
-  };
-}
+AdCP distinguishes between the **agent** (who is making requests) and the **account** (who gets billed):
 
-type Permission = 'read' | 'write' | 'delete' | 'approve';
-```
+- **Agent**: The authenticated entity making API calls (identified by the token)
+- **Account**: The billing relationship determining rates and invoicing
+
+An agent may have access to multiple accounts (e.g., an agency managing several clients). See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for details on account selection and billing attribution.
+
+For schema definitions, see [`account.json`](https://adcontextprotocol.org/schemas/v3/core/account.json).
 
 ## Protocol Configuration
 
@@ -227,7 +222,7 @@ Consider using aggregation platforms (like Scope3) that manage credentials and r
 {
   "error": {
     "code": "INSUFFICIENT_PERMISSIONS",
-    "message": "Principal does not have required permissions for this operation"
+    "message": "Agent does not have required permissions for this operation"
   }
 }
 ```

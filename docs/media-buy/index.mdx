@@ -86,8 +86,8 @@ Publishers bring expertise and data to optimize campaign delivery. Their needs a
 
 Publishers say: *"Give me money, tell me what you're trying to do, and tell me if it's working."*
 
-#### 2. Principal (Buyer) Role
-Principals maintain control over their brand and campaign strategy:
+#### 2. Buyer Role
+Buyers (advertisers, brands, or their agencies) maintain control over their brand and campaign strategy:
 
 **Upfront Controls:**
 - Campaign brief and objectives
@@ -97,11 +97,11 @@ Principals maintain control over their brand and campaign strategy:
 
 **Real-time Signals:**
 - Audience data
-- Brand safety requirements
+- Brand suitability requirements
 - Frequency capping rules
 - Performance feedback
 
-The principal focuses on high-level campaign goals while giving publishers flexibility to optimize delivery.
+The buyer focuses on high-level campaign goals while giving publishers flexibility to optimize delivery. See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for how buyers are identified.
 
 #### 3. Orchestrator Role
 The orchestrator handles the technical mechanics, similar to a DSP in digital advertising:
@@ -117,7 +117,7 @@ The orchestrator enables principals to stay focused on strategy rather than impl
 
 1. **Expertise Alignment**: Each party focuses on their strengths
 2. **Clear Boundaries**: Well-defined responsibilities prevent conflicts
-3. **Flexibility**: Publishers can optimize within principal constraints
+3. **Flexibility**: Publishers can optimize within buyer constraints
 4. **Scalability**: Orchestrators handle complexity behind the scenes
 5. **Transparency**: Clear signals and feedback loops
 
@@ -151,7 +151,7 @@ The protocol enables systematic tracking of publisher performance against their 
 **Quality Metrics**
 - Audience alignment with targeting promises
 - Creative format compatibility and performance
-- Brand safety compliance and policy adherence
+- Brand suitability compliance and policy adherence
 - Response time and operational reliability
 
 **Historical Performance**
@@ -197,7 +197,7 @@ The following diagram illustrates the complete lifecycle of a media buy in AdCP:
 
 ```mermaid
 sequenceDiagram
-    participant P as Principal
+    participant P as Buyer
     participant G as Governance
     participant MC as Media Company
     participant H as Human
@@ -214,7 +214,7 @@ sequenceDiagram
         Note over P,G: Governance
         P->>G: Apply property lists
         G->>P: Compliant inventory
-        P->>G: Brand safety check
+        P->>G: Brand suitability check
         G->>P: Approved placements
     end
 

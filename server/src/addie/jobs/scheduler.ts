@@ -11,6 +11,8 @@ import { runSummaryGeneratorJob } from './committee-summary-generator.js';
 import { runOutreachScheduler } from '../services/proactive-outreach.js';
 import { enrichMissingOrganizations } from '../../services/enrichment.js';
 import { runSetupNudgesJob } from './setup-nudges.js';
+import { runMoltbookPosterJob } from './moltbook-poster.js';
+import { runMoltbookEngagementJob } from './moltbook-engagement.js';
 
 const logger = baseLogger.child({ module: 'job-scheduler' });
 
@@ -275,6 +277,106 @@ class JobScheduler {
    */
   stopSetupNudges(): void {
     this.stopJob('setup-nudges');
+  }
+
+  /**
+   * Start the Moltbook poster job
+   * Posts high-quality industry articles to Moltbook with Addie's take
+   */
+  startMoltbookPoster(): void {
+    const JOB_NAME = 'moltbook-poster';
+    const INTERVAL_HOURS = 2; // Post every 2 hours
+    const INITIAL_DELAY_MS = 600000; // 10 minute delay on startup
+
+    const job: ScheduledJob = {
+      name: JOB_NAME,
+      intervalId: null,
+      initialTimeoutId: null,
+    };
+
+    // Run after a delay on startup
+    job.initialTimeoutId = setTimeout(async () => {
+      try {
+        const result = await runMoltbookPosterJob({ limit: 1 });
+        if (result.postsCreated > 0) {
+          logger.info(result, 'Moltbook poster: initial run completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Moltbook poster: initial run failed');
+      }
+    }, INITIAL_DELAY_MS);
+
+    // Then run periodically
+    job.intervalId = setInterval(async () => {
+      try {
+        const result = await runMoltbookPosterJob({ limit: 1 });
+        if (result.postsCreated > 0) {
+          logger.info(result, 'Moltbook poster: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Moltbook poster: job failed');
+      }
+    }, INTERVAL_HOURS * 60 * 60 * 1000);
+
+    this.jobs.set(JOB_NAME, job);
+    logger.debug({ intervalHours: INTERVAL_HOURS }, 'Moltbook poster job started');
+  }
+
+  /**
+   * Start the Moltbook engagement job
+   * Searches for advertising discussions and engages thoughtfully
+   */
+  startMoltbookEngagement(): void {
+    const JOB_NAME = 'moltbook-engagement';
+    const INTERVAL_HOURS = 4; // Engage every 4 hours
+    const INITIAL_DELAY_MS = 900000; // 15 minute delay on startup
+
+    const job: ScheduledJob = {
+      name: JOB_NAME,
+      intervalId: null,
+      initialTimeoutId: null,
+    };
+
+    // Run after a delay on startup
+    job.initialTimeoutId = setTimeout(async () => {
+      try {
+        const result = await runMoltbookEngagementJob({ limit: 3 });
+        if (result.commentsCreated > 0 || result.interestingThreads > 0) {
+          logger.info(result, 'Moltbook engagement: initial run completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Moltbook engagement: initial run failed');
+      }
+    }, INITIAL_DELAY_MS);
+
+    // Then run periodically
+    job.intervalId = setInterval(async () => {
+      try {
+        const result = await runMoltbookEngagementJob({ limit: 3 });
+        if (result.commentsCreated > 0 || result.interestingThreads > 0) {
+          logger.info(result, 'Moltbook engagement: job completed');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Moltbook engagement: job failed');
+      }
+    }, INTERVAL_HOURS * 60 * 60 * 1000);
+
+    this.jobs.set(JOB_NAME, job);
+    logger.debug({ intervalHours: INTERVAL_HOURS }, 'Moltbook engagement job started');
+  }
+
+  /**
+   * Stop the Moltbook poster job
+   */
+  stopMoltbookPoster(): void {
+    this.stopJob('moltbook-poster');
+  }
+
+  /**
+   * Stop the Moltbook engagement job
+   */
+  stopMoltbookEngagement(): void {
+    this.stopJob('moltbook-engagement');
   }
 
   /**

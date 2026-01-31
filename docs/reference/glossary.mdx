@@ -5,6 +5,9 @@ title: Glossary
 
 ## A
 
+**Account**
+A billing relationship between a buyer and a seller. The account determines rate cards, payment terms, and billing entity. An agent may have access to multiple accounts (e.g., an agency managing accounts for different clients). See [Accounts and Agents](/docs/building/integration/accounts-and-agents).
+
 **Account Type**
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
@@ -18,10 +21,13 @@ An open standard for AI-powered advertising workflows. AdCP defines domain-speci
 An open standard developed by OpenAI and Stripe for programmatic commerce flows in AI assistants. ACP defines how agents can initiate checkout, delegate payment, and complete transactions without becoming the merchant of record. In the context of Sponsored Intelligence, ACP handles the transaction after a brand agent hands off a user with purchase intent.
 
 **Agentic eXecution Engine (AXE)**
-The real-time execution layer that sits between orchestrators and decisioning platforms, handling dynamic audience targeting, brand safety enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for details.
+The real-time execution layer that sits between orchestrators and decisioning platforms, handling dynamic audience targeting, brand suitability enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for details.
 
 **AgenticAdvertising.org**
 The member organization that stewards the Ad Context Protocol (AdCP) and related open standards for AI-powered advertising.
+
+**Agent** (AdCP Context)
+The authenticated entity making API calls—may be a brand's internal team, an agency's trading desk, or an automated buying system. Identified by the authentication token. Distinct from "Sales Agent" (the MCP server exposing inventory) and "AI Agent" (the AI assistant). See [Accounts and Agents](/docs/building/integration/accounts-and-agents).
 
 ## B
 
@@ -164,7 +170,7 @@ The method by which advertising inventory is priced and billed. AdCP supports CP
 A specific pricing model offered by a publisher for a product, including rate, currency, and parameters.
 
 **Principal**
-An authenticated entity (advertiser, agency, or brand) with unique access credentials and platform mappings.
+*Deprecated term.* See **Account** (billing relationship) and **Agent** (authenticated caller). Previously used to refer to the authenticated entity with its associated platform mappings. AdCP now splits these responsibilities: the **Agent** handles authentication and API access, while the **Account** handles billing, rate cards, and platform mappings.
 
 **Product**
 Advertising inventory available for purchase, discovered through natural language queries.

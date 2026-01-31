@@ -91,6 +91,10 @@
             "type": "string",
             "description": "Unique identifier for the creative"
           },
+          "account": {
+            "$ref": "/schemas/core/account.json",
+            "description": "Account that owns this creative"
+          },
           "name": {
             "type": "string",
             "description": "Human-readable creative name"

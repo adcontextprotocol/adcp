@@ -93,6 +93,7 @@ import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
+import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
@@ -746,6 +747,16 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie Bolt: Meeting tools enabled for this user');
+  }
+
+  // Add Moltbook tools (for all users - Addie's social network presence)
+  if (process.env.MOLTBOOK_API_KEY) {
+    const moltbookHandlers = createMoltbookToolHandlers();
+    allTools.push(...MOLTBOOK_TOOLS);
+    for (const [name, handler] of Object.entries(moltbookHandlers)) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Moltbook tools enabled');
   }
 
   // Override bookmark_resource handler with user-scoped version (for attribution)

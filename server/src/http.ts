@@ -6701,6 +6701,12 @@ Disallow: /api/admin/
     // Start setup nudges job (reminds members about missing logos, taglines, pending requests)
     jobScheduler.startSetupNudges();
 
+    // Start Moltbook jobs (if API key is configured)
+    if (process.env.MOLTBOOK_API_KEY) {
+      jobScheduler.startMoltbookPoster();
+      jobScheduler.startMoltbookEngagement();
+    }
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,

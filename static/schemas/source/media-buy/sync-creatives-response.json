@@ -24,6 +24,10 @@
                 "type": "string",
                 "description": "Creative ID from the request"
               },
+              "account": {
+                "$ref": "/schemas/core/account.json",
+                "description": "Account that owns this creative"
+              },
               "action": {
                 "$ref": "/schemas/enums/creative-action.json",
                 "description": "Action taken for this creative"
