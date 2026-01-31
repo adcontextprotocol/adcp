@@ -85,7 +85,7 @@ A property list contains:
     "countries_all": ["UK"],
     "channels_any": ["display", "video"],
     "feature_requirements": [
-      { "feature_id": "consent_quality", "min_value": 90, "max_value": 100 }
+      { "feature_id": "mfa_score", "min_value": 90, "max_value": 100 }
     ]
   },
   "brand_manifest": {
@@ -175,11 +175,11 @@ Filters are applied when the list is resolved (via `get_property_list`):
 
 ### Feature Requirements
 
-Feature requirements reference features discovered via `get_adcp_capabilities`. Each agent exposes different features (consent_quality, carbon_score, coppa_certified, etc.).
+Feature requirements reference features discovered via `get_adcp_capabilities`. Each agent exposes different features (mfa_score, carbon_score, coppa_certified, etc.).
 
 For **quantitative** features (scores, ranges):
 ```json
-{ "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+{ "feature_id": "mfa_score", "min_value": 85, "max_value": 100 }
 ```
 
 For **binary** features (true/false):
@@ -198,7 +198,7 @@ When a property doesn't have data for a required feature, you can control the be
 
 ```json
 {
-  "feature_id": "viewability_score",
+  "feature_id": "mfa_score",
   "min_value": 70,
   "if_not_covered": "include"
 }
@@ -215,7 +215,7 @@ When `if_not_covered: "include"` is used, the response includes a `coverage_gaps
 {
   "identifiers": [...],
   "coverage_gaps": {
-    "viewability_score": [
+    "mfa_score": [
       { "type": "domain", "value": "app.example.com" },
       { "type": "domain", "value": "ctv.example.com" }
     ]
@@ -306,7 +306,7 @@ Create a new property list.
       "countries_all": ["UK"],
       "channels_any": ["display", "video"],
       "feature_requirements": [
-        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+        { "feature_id": "mfa_score", "min_value": 85, "max_value": 100 }
       ]
     }
   }
@@ -335,7 +335,7 @@ Create a new property list.
       "countries_all": ["UK"],
       "channels_any": ["display", "video"],
       "feature_requirements": [
-        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+        { "feature_id": "mfa_score", "min_value": 85, "max_value": 100 }
       ]
     },
     "created_at": "2026-01-03T16:30:00Z",
@@ -360,7 +360,7 @@ Create a list that dynamically queries the governance agent's database (no base_
       "countries_all": ["DE"],
       "channels_any": ["video"],
       "feature_requirements": [
-        { "feature_id": "consent_quality", "min_value": 90, "max_value": 100 }
+        { "feature_id": "mfa_score", "min_value": 90, "max_value": 100 }
       ]
     }
   }
@@ -384,7 +384,7 @@ Modify an existing property list.
       "countries_all": ["UK"],
       "channels_any": ["display", "video"],
       "feature_requirements": [
-        { "feature_id": "consent_quality", "min_value": 80, "max_value": 100 }
+        { "feature_id": "mfa_score", "min_value": 80, "max_value": 100 }
       ]
     }
   }
@@ -522,7 +522,7 @@ The `auth_token` is only returned when the list is created via `create_property_
       "countries_all": ["UK"],
       "channels_any": ["display", "video"],
       "feature_requirements": [
-        { "feature_id": "consent_quality", "min_value": 85, "max_value": 100 }
+        { "feature_id": "mfa_score", "min_value": 85, "max_value": 100 }
       ]
     },
     "created_at": "2026-01-03T16:30:00Z",

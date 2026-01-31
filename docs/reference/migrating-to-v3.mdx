@@ -6,14 +6,14 @@ keywords: [migration, upgrade, v3, breaking changes, AdCP 3.0]
 
 # Migrating to AdCP v3
 
-AdCP v3 is a major release that expands the protocol's scope beyond media buying into governance, brand safety, and conversational brand experiences. This guide covers everything you need to upgrade from v2.x.
+AdCP v3 is a major release that expands the protocol's scope beyond media buying into governance, brand suitability, and conversational brand experiences. This guide covers everything you need to upgrade from v2.x.
 
 ## Why v3?
 
 - **[Media Channel Taxonomy](/docs/reference/media-channel-taxonomy)** — 19 planning-oriented channels that reflect how buyers allocate budgets
 - **[Proposals](/docs/media-buy/product-discovery/media-products#proposals)** — Structured media plans with conversational refinement and direct execution
 - **[Capability Discovery](/docs/protocol/get_adcp_capabilities)** — Verify seller targeting support (geo systems, etc.) before purchasing
-- **[Governance Protocol](/docs/governance)** — Property lists and content standards for enterprise brand safety
+- **[Governance Protocol](/docs/governance)** — Property lists and content standards for enterprise brand suitability
 - **[Sponsored Intelligence](/docs/sponsored-intelligence/overview)** — Conversational brand experiences in AI assistants
 
 ---
@@ -34,7 +34,7 @@ Version 3 represents a strategic expansion of AdCP:
 
 1. **Media Planning Alignment** - The new channel taxonomy reflects how buyers actually plan and allocate budgets across media types, not just how ads render technically.
 
-2. **Governance & Brand Safety** - The Governance Protocol enables property lists and content standards for enterprise brand safety workflows.
+2. **Governance & Brand Suitability** - The Governance Protocol enables property lists and content standards for enterprise brand suitability workflows.
 
 3. **Conversational Commerce** - The Sponsored Intelligence Protocol defines how AI assistants invoke brand agents for rich conversational experiences.
 
@@ -64,7 +64,7 @@ Your migration path depends on what you're building:
 - **Breaking changes** - Support `assets` array with `required` boolean for full asset discovery
 - **No channel changes** - Format `type` field (video, display, audio) is IAB creative classification, not media channels
 
-**Governance Agents** (verification vendors, brand safety platforms) - *new in v3*:
+**Governance Agents** (verification vendors, brand suitability platforms) - *new in v3*:
 - **New protocol** - Implement property lists and content standards tasks
 - See [Governance Protocol](/docs/governance) for implementation details
 
@@ -395,7 +395,7 @@ Protocol-level capability discovery replacing agent card extensions.
 
 ### Governance Protocol
 
-Brand safety and inventory curation capabilities.
+Brand suitability and inventory curation capabilities.
 
 #### Property Lists
 
@@ -422,7 +422,7 @@ Managed lists of properties for targeting or exclusion:
 
 #### Content Standards
 
-Define and enforce brand safety policies:
+Define and enforce brand suitability policies:
 
 ```json
 // Create content standards

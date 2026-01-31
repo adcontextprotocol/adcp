@@ -1,11 +1,11 @@
 ---
 title: Agentic eXecution Engine (AXE)
-description: Real-time execution layer for brand safety, frequency capping, and dynamic audience targeting in AdCP campaigns.
-keywords: [AXE, agentic execution engine, real-time targeting, brand safety, frequency capping, audience targeting, decisioning]
+description: Real-time execution layer for brand suitability, frequency capping, and dynamic audience targeting in AdCP campaigns.
+keywords: [AXE, agentic execution engine, real-time targeting, brand suitability, frequency capping, audience targeting, decisioning]
 testable: true
 ---
 
-The Agentic eXecution Engine (AXE) is AdCP's real-time execution layer that enables dynamic audience targeting, brand safety enforcement, and frequency management at impression time.
+The Agentic eXecution Engine (AXE) is AdCP's real-time execution layer that enables dynamic audience targeting, brand suitability enforcement, and frequency management at impression time.
 
 ## Two-Phase Workflow
 
@@ -21,7 +21,7 @@ flowchart TB
         direction TB
 
         buyer["**Buyer Agent**<br/>• Campaigns<br/>• Budgets<br/>• Targeting"]
-        signal["**Signal Agent**<br/>• Audiences<br/>• Contextual<br/>• Brand safe"]
+        signal["**Signal Agent**<br/>• Audiences<br/>• Contextual<br/>• Suitability"]
         orch["**Orchestrator**<br/>• Map to AXE segments<br/>• Sync to RTD"]
         sales["**Sales Agent**<br/>Create line items<br/>with AXE targeting"]
 
@@ -33,7 +33,7 @@ flowchart TB
 
 **What happens:**
 1. **Buyer Agent** creates campaigns with targeting and budgets via AdCP
-2. **Signal Agents** attach contextual data (audiences, brand safety rules, weather triggers)
+2. **Signal Agents** attach contextual data (audiences, brand suitability rules, weather triggers)
 3. **Orchestrator** maps campaigns to AXE segments and syncs data to the real-time module
 4. **Sales Agent** creates ad server line items targeting AXE segment key-values
 
@@ -53,7 +53,7 @@ flowchart TB
 
         page --> adserver1 --> prebid --> axe
 
-        axeresponse["**AXE Response**<br/>axei: Include segment<br/>axex: Exclude (brand safety)<br/>axem: Creative macro data"]
+        axeresponse["**AXE Response**<br/>axei: Include segment<br/>axex: Exclude (suitability)<br/>axem: Creative macro data"]
 
         axe --> axeresponse
 
@@ -77,7 +77,7 @@ AXE returns three types of segment values to the ad server:
 | Segment | Key | Purpose | Example |
 |---------|-----|---------|---------|
 | **Include** | `axei` | Audience targeting - user belongs to this segment | `"seg_auto_intenders"` |
-| **Exclude** | `axex` | Brand safety/suppression - block this impression | `"unsafe_content"` |
+| **Exclude** | `axex` | Brand suitability/suppression - block this impression | `"unsafe_content"` |
 | **Macro** | `axem` | Creative personalization data | `"eyJjb250ZXh0IjoiLi4uIn0="` |
 
 ### How Segments Flow to Creatives
@@ -180,7 +180,7 @@ Bring your own DMP/CDP segments to publisher inventory:
 
 **Use cases:** Lookalike targeting, CRM activation, behavioral segments
 
-### 2. Brand Safety
+### 2. Brand Suitability
 
 Real-time content evaluation at impression time:
 
@@ -189,7 +189,7 @@ Real-time content evaluation at impression time:
 - **Keyword blocking** - Brand-specific term avoidance
 - **Adjacency rules** - What other ads are on the page
 
-Brand safety rules flow from Signal Agents through the orchestrator to AXE.
+Brand suitability rules flow from Signal Agents through the orchestrator to AXE.
 
 ### 3. Cross-Publisher Frequency Management
 
@@ -217,14 +217,14 @@ A key AXE design principle is that **segment IDs are intentionally opaque**. The
 
 This could mean:
 - User exceeded frequency cap
-- Page failed brand safety check
+- Page failed brand suitability check
 - User is in a first-party suppression list
 - User matches an audience segment
 
 This opacity protects buyer data. Publishers and ad servers cannot reverse-engineer:
 - Which users are in buyer CRM lists
 - Frequency cap thresholds
-- Brand safety rules
+- Brand suitability rules
 - Audience segment definitions
 
 All the ad server knows is: "AXE says serve" or "AXE says don't serve."
@@ -254,7 +254,7 @@ Orchestrators operate the AXE layer:
 
 1. **Segment ingestion** - Accept audience data from buyers
 2. **Real-time lookups** - Sub-10ms segment membership checks
-3. **Signal integration** - Apply brand safety and contextual signals
+3. **Signal integration** - Apply brand suitability and contextual signals
 4. **Frequency state** - Maintain cross-campaign exposure tracking
 5. **RTD module** - Expose segments via Prebid or OpenRTB
 
@@ -282,7 +282,7 @@ See [Universal Macros](/docs/creative/universal-macros) for details.
 | Target users in my CRM | ✅ Yes | — |
 | Suppress existing customers | ✅ Yes | — |
 | Cross-publisher frequency cap | ✅ Yes | — |
-| Real-time brand safety | ✅ Yes | — |
+| Real-time brand suitability | ✅ Yes | — |
 | Target "millennials in California" | ❌ No | Express in brief |
 | Geographic restrictions | ❌ No | Use `geo_country_any_of` |
 | Publisher's audience segments | ❌ No | Express in brief |
@@ -295,7 +295,7 @@ AXE is designed for ad serving latency requirements:
 | Operation | Target Latency |
 |-----------|----------------|
 | Segment membership lookup | < 10ms |
-| Brand safety evaluation | < 20ms |
+| Brand suitability evaluation | < 20ms |
 | Frequency check | < 5ms |
 | Combined AXE decision | < 50ms |
 
