@@ -23,6 +23,9 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
+import { BrandDatabase } from "./db/brand-db.js";
+import { BrandManager } from "./brand-manager.js";
+import { PropertyDatabase } from "./db/property-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
@@ -47,6 +50,7 @@ import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
+import { isWebUserAdmin } from "./addie/mcp/admin-tools.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -384,6 +388,9 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
+  private brandDb: BrandDatabase;
+  private brandManager: BrandManager;
+  private propertyDb: PropertyDatabase;
   private contentCuratorIntervalId: NodeJS.Timeout | null = null;
   private feedFetcherIntervalId: NodeJS.Timeout | null = null;
   private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
@@ -403,6 +410,9 @@ export class HTTPServer {
     this.capabilityDiscovery = new CapabilityDiscovery();
     this.publisherTracker = new PublisherTracker();
     this.propertiesService = new PropertiesService();
+    this.brandDb = new BrandDatabase();
+    this.brandManager = new BrandManager();
+    this.propertyDb = new PropertyDatabase();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -1880,6 +1890,339 @@ export class HTTPServer {
           error: error instanceof Error ? error.message : 'Unknown error',
           timestamp: new Date().toISOString(),
         });
+      }
+    });
+
+    // ========== Brand Registry API Routes ==========
+
+    // GET /api/brands/registry - List all brands in the registry
+    this.app.get('/api/brands/registry', async (req, res) => {
+      try {
+        const brands = await this.brandDb.getAllBrandsForRegistry({
+          search: req.query.search as string,
+          limit: parseInt(req.query.limit as string) || 100,
+          offset: parseInt(req.query.offset as string) || 0,
+        });
+
+        // Calculate stats
+        const stats = {
+          total: brands.length,
+          brand_json: brands.filter(b => b.source === 'brand_json').length,
+          hosted: brands.filter(b => b.source === 'hosted').length,
+          community: brands.filter(b => b.source === 'community').length,
+          enriched: brands.filter(b => b.source === 'enriched').length,
+        };
+
+        return res.json({ brands, stats });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list brands');
+        return res.status(500).json({ error: 'Failed to list brands' });
+      }
+    });
+
+    // GET /api/brands/resolve - Resolve a domain to canonical brand
+    this.app.get('/api/brands/resolve', async (req, res) => {
+      try {
+        const domain = req.query.domain as string;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain parameter required' });
+        }
+
+        const resolved = await this.brandManager.resolveBrand(domain);
+        if (!resolved) {
+          // Check discovered brands as fallback
+          const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
+          if (discovered) {
+            return res.json({
+              canonical_id: discovered.canonical_domain || discovered.domain,
+              canonical_domain: discovered.canonical_domain || discovered.domain,
+              brand_name: discovered.brand_name,
+              source: discovered.source_type,
+              brand_manifest: discovered.brand_manifest,
+            });
+          }
+          return res.status(404).json({ error: 'Brand not found', domain });
+        }
+
+        return res.json(resolved);
+      } catch (error) {
+        logger.error({ error }, 'Failed to resolve brand');
+        return res.status(500).json({ error: 'Failed to resolve brand' });
+      }
+    });
+
+    // GET /api/brands/enrich - Enrich a brand using Brandfetch
+    this.app.get('/api/brands/enrich', async (req, res) => {
+      try {
+        const domain = req.query.domain as string;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain parameter required' });
+        }
+
+        const { fetchBrandData, isBrandfetchConfigured } = await import('./services/brandfetch.js');
+        if (!isBrandfetchConfigured()) {
+          return res.status(503).json({ error: 'Brandfetch not configured' });
+        }
+
+        const enrichment = await fetchBrandData(domain);
+        return res.json(enrichment);
+      } catch (error) {
+        logger.error({ error }, 'Failed to enrich brand');
+        return res.status(500).json({ error: 'Failed to enrich brand' });
+      }
+    });
+
+    // POST /api/brands/discovered - Save a discovered/enriched brand
+    this.app.post('/api/brands/discovered', async (req, res) => {
+      try {
+        const { domain, brand_name, brand_manifest, source_type } = req.body;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain required' });
+        }
+
+        const brand = await this.brandDb.upsertDiscoveredBrand({
+          domain,
+          brand_name,
+          brand_manifest,
+          has_brand_manifest: !!brand_manifest,
+          source_type: source_type || 'enriched',
+        });
+
+        return res.json(brand);
+      } catch (error) {
+        logger.error({ error }, 'Failed to save discovered brand');
+        return res.status(500).json({ error: 'Failed to save brand' });
+      }
+    });
+
+    // POST /api/brands/hosted - Create a hosted brand
+    this.app.post('/api/brands/hosted', optionalAuth, async (req, res) => {
+      try {
+        const { brand_domain, brand_json } = req.body;
+        if (!brand_domain || !brand_json) {
+          return res.status(400).json({ error: 'brand_domain and brand_json required' });
+        }
+
+        const brand = await this.brandDb.createHostedBrand({
+          brand_domain: brand_domain.toLowerCase(),
+          brand_json,
+          created_by_user_id: req.user?.id,
+          created_by_email: req.user?.email,
+        });
+
+        return res.json(brand);
+      } catch (error) {
+        logger.error({ error }, 'Failed to create hosted brand');
+        return res.status(500).json({ error: 'Failed to create brand' });
+      }
+    });
+
+    // DELETE /api/brands/hosted/:domain - Delete a hosted brand
+    this.app.delete('/api/brands/hosted/:domain', requireAuth, async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain);
+        const brand = await this.brandDb.getHostedBrandByDomain(domain);
+
+        if (!brand) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        // Check ownership - user must be creator or admin
+        const isCreator = brand.created_by_email && brand.created_by_email === req.user?.email;
+        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        if (!isCreator && !isAdmin) {
+          return res.status(403).json({ error: 'Not authorized to delete this brand' });
+        }
+
+        await this.brandDb.deleteHostedBrand(brand.id);
+        return res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Failed to delete hosted brand');
+        return res.status(500).json({ error: 'Failed to delete brand' });
+      }
+    });
+
+    // GET /brand/:id/brand.json - Serve hosted brand.json
+    this.app.get('/brand/:id/brand.json', async (req, res) => {
+      try {
+        const brand = await this.brandDb.getHostedBrandById(req.params.id);
+        if (!brand || !brand.is_public) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.json(brand.brand_json);
+      } catch (error) {
+        logger.error({ error }, 'Failed to serve hosted brand.json');
+        return res.status(500).json({ error: 'Failed to serve brand' });
+      }
+    });
+
+    // ========== Property Registry API Routes ==========
+
+    // GET /api/properties/registry - List all properties in the registry
+    this.app.get('/api/properties/registry', async (req, res) => {
+      try {
+        const properties = await this.propertyDb.getAllPropertiesForRegistry({
+          search: req.query.search as string,
+          limit: parseInt(req.query.limit as string) || 100,
+          offset: parseInt(req.query.offset as string) || 0,
+        });
+
+        // Calculate stats
+        const stats = {
+          total: properties.length,
+          adagents_json: properties.filter(p => p.source === 'adagents_json').length,
+          hosted: properties.filter(p => p.source === 'hosted').length,
+          discovered: properties.filter(p => p.source === 'discovered').length,
+        };
+
+        return res.json({ properties, stats });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list properties');
+        return res.status(500).json({ error: 'Failed to list properties' });
+      }
+    });
+
+    // GET /api/properties/resolve - Resolve a domain to property info
+    this.app.get('/api/properties/resolve', async (req, res) => {
+      try {
+        const domain = req.query.domain as string;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain parameter required' });
+        }
+
+        // Check hosted first
+        const hosted = await this.propertyDb.getHostedPropertyByDomain(domain);
+        if (hosted && hosted.is_public) {
+          return res.json({
+            publisher_domain: hosted.publisher_domain,
+            source: 'hosted',
+            authorized_agents: hosted.adagents_json.authorized_agents,
+            properties: hosted.adagents_json.properties,
+            contact: hosted.adagents_json.contact,
+            verified: hosted.domain_verified,
+          });
+        }
+
+        // Check discovered
+        const discovered = await this.propertyDb.getDiscoveredPropertiesByDomain(domain);
+        if (discovered.length > 0) {
+          const agents = await this.propertyDb.getAgentAuthorizationsForDomain(domain);
+          return res.json({
+            publisher_domain: domain,
+            source: 'adagents_json',
+            authorized_agents: [...new Set(agents.map(a => a.agent_url))].map(url => ({ url })),
+            properties: discovered.map(p => ({
+              id: p.property_id,
+              type: p.property_type,
+              name: p.name,
+              identifiers: p.identifiers,
+              tags: p.tags,
+            })),
+            verified: true,
+          });
+        }
+
+        // Try live validation
+        const validation = await this.adagentsManager.validateDomain(domain);
+        if (validation.valid && validation.raw_data) {
+          return res.json({
+            publisher_domain: domain,
+            source: 'adagents_json',
+            authorized_agents: validation.raw_data.authorized_agents,
+            properties: validation.raw_data.properties,
+            contact: validation.raw_data.contact,
+            verified: true,
+          });
+        }
+
+        return res.status(404).json({ error: 'Property not found', domain });
+      } catch (error) {
+        logger.error({ error }, 'Failed to resolve property');
+        return res.status(500).json({ error: 'Failed to resolve property' });
+      }
+    });
+
+    // GET /api/properties/validate - Validate adagents.json for a domain
+    this.app.get('/api/properties/validate', async (req, res) => {
+      try {
+        const domain = req.query.domain as string;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain parameter required' });
+        }
+
+        const validation = await this.adagentsManager.validateDomain(domain);
+        return res.json(validation);
+      } catch (error) {
+        logger.error({ error }, 'Failed to validate property');
+        return res.status(500).json({ error: 'Failed to validate' });
+      }
+    });
+
+    // POST /api/properties/hosted - Create a hosted property
+    this.app.post('/api/properties/hosted', optionalAuth, async (req, res) => {
+      try {
+        const { publisher_domain, adagents_json, source_type } = req.body;
+        if (!publisher_domain || !adagents_json) {
+          return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
+        }
+
+        const property = await this.propertyDb.createHostedProperty({
+          publisher_domain: publisher_domain.toLowerCase(),
+          adagents_json,
+          source_type: source_type || 'community',
+          created_by_user_id: req.user?.id,
+          created_by_email: req.user?.email,
+        });
+
+        return res.json(property);
+      } catch (error) {
+        logger.error({ error }, 'Failed to create hosted property');
+        return res.status(500).json({ error: 'Failed to create property' });
+      }
+    });
+
+    // DELETE /api/properties/hosted/:domain - Delete a hosted property
+    this.app.delete('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain);
+        const property = await this.propertyDb.getHostedPropertyByDomain(domain);
+
+        if (!property) {
+          return res.status(404).json({ error: 'Property not found' });
+        }
+
+        // Check ownership
+        const isCreator = property.created_by_email && property.created_by_email === req.user?.email;
+        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        if (!isCreator && !isAdmin) {
+          return res.status(403).json({ error: 'Not authorized to delete this property' });
+        }
+
+        await this.propertyDb.deleteHostedProperty(property.id);
+        return res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Failed to delete hosted property');
+        return res.status(500).json({ error: 'Failed to delete property' });
+      }
+    });
+
+    // GET /property/:id/adagents.json - Serve hosted adagents.json
+    this.app.get('/property/:id/adagents.json', async (req, res) => {
+      try {
+        const property = await this.propertyDb.getHostedPropertyById(req.params.id);
+        if (!property || !property.is_public) {
+          return res.status(404).json({ error: 'Property not found' });
+        }
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.json(property.adagents_json);
+      } catch (error) {
+        logger.error({ error }, 'Failed to serve hosted adagents.json');
+        return res.status(500).json({ error: 'Failed to serve property' });
       }
     });
 

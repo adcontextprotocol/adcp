@@ -46,6 +46,8 @@
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/brands', label: 'Brand Registry', icon: '🏷️' },
+          { href: '/admin/properties', label: 'Property Registry', icon: '🌐' },
           { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
           { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
           { href: '/admin/notification-channels', label: 'Alert Channels', icon: '📢' },
