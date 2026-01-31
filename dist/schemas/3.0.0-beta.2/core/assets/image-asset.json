@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/core/assets/image-asset.json",
+  "title": "Image Asset",
+  "description": "Image asset with URL and dimensions",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the image asset"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Width in pixels"
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Height in pixels"
+    },
+    "format": {
+      "type": "string",
+      "description": "Image file format (jpg, png, gif, webp, etc.)"
+    },
+    "alt_text": {
+      "type": "string",
+      "description": "Alternative text for accessibility"
+    }
+  },
+  "required": [
+    "url",
+    "width",
+    "height"
+  ],
+  "additionalProperties": true
+}

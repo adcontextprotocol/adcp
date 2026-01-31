@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/content-standards/list-content-standards-request.json",
+  "title": "List Content Standards Request",
+  "description": "Request parameters for listing content standards configurations",
+  "type": "object",
+  "properties": {
+    "channels": {
+      "type": "array",
+      "items": { "$ref": "/schemas/3.0.0-beta.2/enums/channels.json" },
+      "description": "Filter by channel"
+    },
+    "languages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Filter by BCP 47 language tags"
+    },
+    "countries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Filter by ISO 3166-1 alpha-2 country codes"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

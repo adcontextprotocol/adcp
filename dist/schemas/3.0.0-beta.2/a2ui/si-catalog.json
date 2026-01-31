@@ -1,0 +1,342 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/a2ui/si-catalog.json",
+  "title": "SI Component Catalog",
+  "description": "A2UI component catalog for Sponsored Intelligence",
+  "definitions": {
+    "Text": {
+      "type": "object",
+      "description": "Text display component",
+      "properties": {
+        "text": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Text content to display"
+        },
+        "variant": {
+          "type": "string",
+          "enum": ["body", "heading", "caption", "label"],
+          "default": "body"
+        }
+      },
+      "required": ["text"]
+    },
+    "Button": {
+      "type": "object",
+      "description": "Interactive button component",
+      "properties": {
+        "label": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Button label text"
+        },
+        "action": {
+          "type": "object",
+          "description": "Action to trigger on click",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Action identifier"
+            },
+            "context": {
+              "type": "object",
+              "description": "Context data to include with action",
+              "additionalProperties": {
+                "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json"
+              }
+            }
+          },
+          "required": ["name"]
+        },
+        "variant": {
+          "type": "string",
+          "enum": ["primary", "secondary", "text"],
+          "default": "primary"
+        },
+        "disabled": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json"
+        }
+      },
+      "required": ["label", "action"]
+    },
+    "Link": {
+      "type": "object",
+      "description": "Hyperlink component",
+      "properties": {
+        "label": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Link text"
+        },
+        "url": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "URL to navigate to"
+        },
+        "external": {
+          "type": "boolean",
+          "description": "Opens in new tab if true",
+          "default": true
+        }
+      },
+      "required": ["label", "url"]
+    },
+    "Image": {
+      "type": "object",
+      "description": "Image display component",
+      "properties": {
+        "src": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Image source URL"
+        },
+        "alt": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Alt text for accessibility"
+        },
+        "width": {
+          "type": "integer",
+          "description": "Image width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "description": "Image height in pixels"
+        }
+      },
+      "required": ["src", "alt"]
+    },
+    "Card": {
+      "type": "object",
+      "description": "Card container for grouped content",
+      "properties": {
+        "title": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Card title"
+        },
+        "subtitle": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Card subtitle"
+        },
+        "image": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Card image URL"
+        },
+        "badge": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Badge text (e.g., 'New', 'Sale')"
+        },
+        "action": {
+          "type": "object",
+          "description": "Action to trigger on card click",
+          "properties": {
+            "name": { "type": "string" },
+            "context": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json"
+              }
+            }
+          },
+          "required": ["name"]
+        },
+        "children": {
+          "type": "array",
+          "description": "Child component IDs",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["title"]
+    },
+    "ProductCard": {
+      "type": "object",
+      "description": "Product display card (SI-specific)",
+      "properties": {
+        "title": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Product name"
+        },
+        "price": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Price display string"
+        },
+        "image": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Product image URL"
+        },
+        "description": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Product description"
+        },
+        "badge": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Badge text (e.g., 'Best Seller')"
+        },
+        "ctaLabel": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "CTA button label"
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "context": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json"
+              }
+            }
+          },
+          "required": ["name"]
+        }
+      },
+      "required": ["title", "price"]
+    },
+    "List": {
+      "type": "object",
+      "description": "Data-bound list component",
+      "properties": {
+        "items": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Path to array in data model"
+        },
+        "template": {
+          "type": "object",
+          "description": "Template for list items",
+          "properties": {
+            "componentId": {
+              "type": "string",
+              "description": "ID of component to use as template"
+            }
+          },
+          "required": ["componentId"]
+        },
+        "emptyMessage": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Message to show when list is empty"
+        },
+        "layout": {
+          "type": "string",
+          "enum": ["vertical", "horizontal", "grid"],
+          "default": "vertical"
+        }
+      },
+      "required": ["items", "template"]
+    },
+    "Row": {
+      "type": "object",
+      "description": "Horizontal layout container",
+      "properties": {
+        "children": {
+          "type": "array",
+          "description": "Child component IDs",
+          "items": { "type": "string" }
+        },
+        "gap": {
+          "type": "string",
+          "description": "Gap between children",
+          "default": "8px"
+        },
+        "align": {
+          "type": "string",
+          "enum": ["start", "center", "end", "stretch"],
+          "default": "center"
+        },
+        "justify": {
+          "type": "string",
+          "enum": ["start", "center", "end", "between", "around"],
+          "default": "start"
+        }
+      },
+      "required": ["children"]
+    },
+    "Column": {
+      "type": "object",
+      "description": "Vertical layout container",
+      "properties": {
+        "children": {
+          "type": "array",
+          "description": "Child component IDs",
+          "items": { "type": "string" }
+        },
+        "gap": {
+          "type": "string",
+          "description": "Gap between children",
+          "default": "8px"
+        },
+        "align": {
+          "type": "string",
+          "enum": ["start", "center", "end", "stretch"],
+          "default": "stretch"
+        }
+      },
+      "required": ["children"]
+    },
+    "IntegrationAction": {
+      "type": "object",
+      "description": "MCP/A2A integration action button (SI-specific)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["mcp", "a2a"],
+          "description": "Integration type"
+        },
+        "label": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Button label"
+        },
+        "url": {
+          "$ref": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+          "description": "Integration endpoint URL"
+        },
+        "highlighted": {
+          "type": "boolean",
+          "description": "Visually emphasize this action",
+          "default": false
+        }
+      },
+      "required": ["type", "label"]
+    },
+    "AppHandoff": {
+      "type": "object",
+      "description": "Platform app handoff (SI-specific)",
+      "properties": {
+        "apps": {
+          "type": "object",
+          "description": "Platform-specific app configurations",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "appId": { "type": "string" },
+              "deepLink": { "type": "string" },
+              "url": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      },
+      "required": ["apps"]
+    }
+  },
+  "type": "object",
+  "properties": {
+    "catalogId": {
+      "type": "string",
+      "const": "si-standard",
+      "description": "SI standard component catalog"
+    },
+    "components": {
+      "type": "array",
+      "description": "Available component types",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Text",
+          "Button",
+          "Link",
+          "Image",
+          "Card",
+          "ProductCard",
+          "List",
+          "Row",
+          "Column",
+          "IntegrationAction",
+          "AppHandoff"
+        ]
+      }
+    }
+  }
+}
