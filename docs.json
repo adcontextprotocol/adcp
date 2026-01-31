@@ -84,7 +84,8 @@
                   "docs/building/integration/a2a-response-format",
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication"
+                  "docs/building/integration/authentication",
+                  "docs/building/integration/accounts-and-agents"
                 ]
               },
               {
@@ -239,7 +240,7 @@
                   "docs/media-buy/advanced-topics/pricing-models",
                   "docs/media-buy/advanced-topics/targeting",
                   "docs/media-buy/advanced-topics/agentic-execution-engine",
-                  "docs/media-buy/advanced-topics/principals-and-security",
+                  "docs/media-buy/advanced-topics/accounts-and-security",
                   "docs/media-buy/advanced-topics/testing",
                   "docs/media-buy/advanced-topics/orchestrator-design"
                 ]
@@ -513,7 +514,8 @@
                   "docs/building/integration/a2a-response-format",
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication"
+                  "docs/building/integration/authentication",
+                  "docs/building/integration/accounts-and-agents"
                 ]
               },
               {
@@ -668,7 +670,7 @@
                   "docs/media-buy/advanced-topics/pricing-models",
                   "docs/media-buy/advanced-topics/targeting",
                   "docs/media-buy/advanced-topics/agentic-execution-engine",
-                  "docs/media-buy/advanced-topics/principals-and-security",
+                  "docs/media-buy/advanced-topics/accounts-and-security",
                   "docs/media-buy/advanced-topics/testing",
                   "docs/media-buy/advanced-topics/orchestrator-design"
                 ]

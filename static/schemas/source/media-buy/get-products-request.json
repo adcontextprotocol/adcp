@@ -17,6 +17,10 @@
       "$ref": "/schemas/core/brand-manifest-ref.json",
       "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
     },
+    "account_id": {
+      "type": "string",
+      "description": "Account context for product lookup. When provided, returns products with pricing specific to this account's rate card. Optional if the agent has a single account."
+    },
     "filters": {
       "$ref": "/schemas/core/product-filters.json"
     },

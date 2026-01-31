@@ -30,6 +30,10 @@
           "$ref": "/schemas/core/creative-asset.json",
           "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
+        "account": {
+          "$ref": "/schemas/core/account.json",
+          "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
+        },
         "targeting": {
           "$ref": "/schemas/core/targeting.json",
           "description": "Audience targeting criteria"
