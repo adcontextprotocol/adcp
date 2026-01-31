@@ -637,8 +637,39 @@ For implementations using the legacy `brand_guidelines` field in `build_creative
 }
 ```
 
+## Brand Discovery
+
+For discoverable brand identity, brands can host their manifest via a `brand.json` file at a well-known location:
+
+```
+https://yourdomain.com/.well-known/brand.json
+```
+
+The `brand.json` file provides:
+- **Brand discovery**: Agents can find official brand information for any domain
+- **Agent authorization**: Designate an official brand agent that speaks for the brand
+- **Enterprise auth**: Control access to brand resources via OAuth or API keys
+
+### Example brand.json
+
+A brand with an agent that provides brand manifests via MCP:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "version": "1.0",
+  "brand_agent": {
+    "url": "https://agent.acmecorp.com/mcp",
+    "capabilities": ["creative_generation", "sponsored_intelligence"]
+  }
+}
+```
+
+See [Brand Protocol](/docs/brand-protocol/index) for the complete brand.json specification.
+
 ## Related Documentation
 
+- **[Brand Protocol](/docs/brand-protocol/index)** - Brand discovery via brand.json
 - **[create_media_buy](/docs/media-buy/task-reference/create_media_buy)** - Media buy creation with brand context
 - **[build_creative](/docs/creative/task-reference/build_creative)** - AI-powered creative generation
 - **[Creative Lifecycle](/docs/media-buy/creatives/)** - Managing creative assets

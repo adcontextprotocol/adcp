@@ -1,0 +1,429 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand.json",
+  "title": "Brand Discovery",
+  "description": "Brand identity claim and agent discovery file. Hosted at /.well-known/brand.json on brand domains. Supports multiple variants: brand agent (agent provides brand info via MCP), house portfolio (full brand hierarchy), house redirect (pointer to house domain), or authoritative location redirect.",
+  "definitions": {
+    "domain": {
+      "type": "string",
+      "description": "A valid domain name",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "localized_name": {
+      "type": "object",
+      "description": "A localized name with language code key and name value",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "keller_type": {
+      "type": "string",
+      "enum": ["master", "sub-brand", "endorsed", "independent"],
+      "description": "Brand architecture type from Keller's theory. master: primary brand of house. sub-brand: carries parent name (Nike SB). endorsed: independent identity backed by parent (Air Jordan 'by Nike'). independent: operates separately (Converse under Nike, Inc.)"
+    },
+    "property": {
+      "type": "object",
+      "description": "A digital property owned by a brand",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"],
+          "description": "Property type matching AdCP property-type enum"
+        },
+        "identifier": {
+          "type": "string",
+          "description": "Property identifier - domain for websites, bundle ID for apps",
+          "minLength": 1
+        },
+        "store": {
+          "type": "string",
+          "enum": ["apple", "google", "amazon", "roku", "samsung", "lg", "other"],
+          "description": "App store for mobile/CTV apps"
+        },
+        "region": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code or 'global'",
+          "pattern": "^([A-Z]{2}|global)$"
+        },
+        "primary": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this is the primary property for the brand"
+        }
+      },
+      "required": ["type", "identifier"],
+      "additionalProperties": true
+    },
+    "brand": {
+      "type": "object",
+      "description": "A brand within a house portfolio",
+      "properties": {
+        "canonical_domain": {
+          "$ref": "#/definitions/domain",
+          "description": "The canonical domain that serves as this brand's unique identifier"
+        },
+        "names": {
+          "type": "array",
+          "description": "Localized brand names. Multiple entries per language allowed for aliases.",
+          "items": {
+            "$ref": "#/definitions/localized_name"
+          },
+          "minItems": 1
+        },
+        "keller_type": {
+          "$ref": "#/definitions/keller_type"
+        },
+        "parent_brand": {
+          "$ref": "#/definitions/domain",
+          "description": "Parent brand's canonical domain for sub-brands and endorsed brands"
+        },
+        "properties": {
+          "type": "array",
+          "description": "Digital properties owned by this brand",
+          "items": {
+            "$ref": "#/definitions/property"
+          }
+        },
+        "brand_standards": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to AdCP brand-standards.json for this brand"
+        },
+        "brand_manifest": {
+          "$ref": "/schemas/core/brand-manifest-ref.json",
+          "description": "Brand manifest data (inline object or URL reference)"
+        }
+      },
+      "required": ["canonical_domain", "names"],
+      "additionalProperties": true
+    },
+    "house": {
+      "type": "object",
+      "description": "Corporate or organizational entity that owns brands",
+      "properties": {
+        "canonical_domain": {
+          "$ref": "#/definitions/domain",
+          "description": "The house's canonical domain"
+        },
+        "name": {
+          "type": "string",
+          "description": "Primary display name of the house",
+          "minLength": 1
+        },
+        "names": {
+          "type": "array",
+          "description": "Localized house names including legal name, stock symbol, etc.",
+          "items": {
+            "$ref": "#/definitions/localized_name"
+          }
+        },
+        "architecture": {
+          "type": "string",
+          "enum": ["branded_house", "house_of_brands", "hybrid"],
+          "description": "Brand architecture model: branded_house (Google), house_of_brands (P&G), hybrid (Nike)"
+        }
+      },
+      "required": ["canonical_domain", "name"],
+      "additionalProperties": true
+    },
+    "brand_agent": {
+      "type": "object",
+      "description": "Brand agent for automated interactions. The official agent that speaks for this brand.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Brand agent API endpoint URL (MCP or A2A)"
+        },
+        "capabilities": {
+          "type": "array",
+          "description": "Agent capabilities (e.g., 'creative_generation', 'product_inquiry', 'sponsored_intelligence')",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["url"],
+      "additionalProperties": true
+    },
+    "auth": {
+      "type": "object",
+      "description": "Authentication requirements for accessing brand resources",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether authentication is required to access brand resources"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["api_key", "oauth2", "bearer_token"],
+          "description": "Authentication method"
+        },
+        "token_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth2 token endpoint (required if method is oauth2)"
+        },
+        "scopes": {
+          "type": "array",
+          "description": "Required OAuth2 scopes for brand resource access",
+          "items": {
+            "type": "string"
+          }
+        },
+        "instructions_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to documentation on how to obtain credentials"
+        }
+      },
+      "additionalProperties": true
+    },
+    "contact": {
+      "type": "object",
+      "description": "Contact information for the entity managing this brand.json file",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the entity managing this file",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email for questions or issues",
+          "maxLength": 255
+        },
+        "domain": {
+          "$ref": "#/definitions/domain",
+          "description": "Primary domain of the entity managing this file"
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "title": "Authoritative Location Redirect",
+      "description": "Redirects to a hosted brand.json file at another URL",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this brand.json file"
+        },
+        "authoritative_location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the authoritative brand.json file"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this reference was last updated"
+        }
+      },
+      "required": ["authoritative_location"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "House Redirect",
+      "description": "Redirects to the house domain that contains the full brand portfolio",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this brand.json file"
+        },
+        "house": {
+          "$ref": "#/definitions/domain",
+          "description": "House domain to fetch brand portfolio from"
+        },
+        "region": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code if this is a regional domain",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional explanation (e.g., 'Legacy domain, redirects to nike.com')"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this reference was last updated"
+        }
+      },
+      "required": ["house"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "Brand Agent",
+      "description": "Brand with an agent that provides brand info via MCP. Agent is the authoritative source.",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this brand.json file"
+        },
+        "version": {
+          "type": "string",
+          "description": "Schema version (e.g., '1.0')"
+        },
+        "brand_agent": {
+          "$ref": "#/definitions/brand_agent"
+        },
+        "auth": {
+          "$ref": "#/definitions/auth"
+        },
+        "contact": {
+          "$ref": "#/definitions/contact"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this file was last updated"
+        }
+      },
+      "required": ["brand_agent"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "House Portfolio",
+      "description": "Full house/brand portfolio with hierarchy and properties. The house domain is the authoritative source.",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this brand.json file"
+        },
+        "version": {
+          "type": "string",
+          "description": "Schema version (e.g., '1.0')"
+        },
+        "house": {
+          "$ref": "#/definitions/house"
+        },
+        "brands": {
+          "type": "array",
+          "description": "Brands owned by this house",
+          "items": {
+            "$ref": "#/definitions/brand"
+          },
+          "minItems": 1
+        },
+        "contact": {
+          "$ref": "#/definitions/contact"
+        },
+        "trademarks": {
+          "type": "array",
+          "description": "Trademark registrations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "registry": {
+                "type": "string",
+                "description": "Trademark registry (e.g., USPTO, EUIPO)"
+              },
+              "number": {
+                "type": "string",
+                "description": "Registration number"
+              },
+              "mark": {
+                "type": "string",
+                "description": "The registered mark"
+              }
+            },
+            "required": ["registry", "number", "mark"],
+            "additionalProperties": true
+          }
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this file was last updated"
+        }
+      },
+      "required": ["house", "brands"],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "$schema": "/schemas/brand.json",
+      "authoritative_location": "https://adcontextprotocol.org/brand/abc123/brand.json"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "house": "nikeinc.com",
+      "note": "Redirect to house domain for full brand portfolio"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "brand_agent": {
+        "url": "https://agent.acme.com/mcp",
+        "capabilities": ["creative_generation", "sponsored_intelligence"]
+      },
+      "auth": {
+        "required": true,
+        "method": "oauth2",
+        "token_endpoint": "https://auth.acme.com/oauth/token",
+        "scopes": ["brand:read"]
+      }
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "house": {
+        "canonical_domain": "nikeinc.com",
+        "name": "Nike, Inc.",
+        "architecture": "hybrid"
+      },
+      "brands": [
+        {
+          "canonical_domain": "nike.com",
+          "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+          "keller_type": "master",
+          "properties": [
+            {"type": "website", "identifier": "nike.com", "primary": true},
+            {"type": "website", "identifier": "nike.cn", "region": "CN"},
+            {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+          ]
+        },
+        {
+          "canonical_domain": "jordan.com",
+          "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+          "keller_type": "endorsed",
+          "parent_brand": "nike.com",
+          "properties": [
+            {"type": "website", "identifier": "jordan.com", "primary": true},
+            {"type": "website", "identifier": "jumpman23.com"},
+            {"type": "mobile_app", "store": "apple", "identifier": "com.nike.snkrs"}
+          ]
+        },
+        {
+          "canonical_domain": "converse.com",
+          "names": [{"en": "Converse"}],
+          "keller_type": "independent",
+          "properties": [
+            {"type": "website", "identifier": "converse.com", "primary": true}
+          ]
+        }
+      ],
+      "contact": {
+        "name": "Nike Brand Team",
+        "email": "brand@nike.com"
+      },
+      "last_updated": "2026-01-15T10:00:00Z"
+    }
+  ]
+}

@@ -63,6 +63,14 @@ import {
   createSchemaToolHandlers,
 } from './mcp/schema-tools.js';
 import {
+  BRAND_TOOLS,
+  createBrandToolHandlers,
+} from './mcp/brand-tools.js';
+import {
+  PROPERTY_TOOLS,
+  createPropertyToolHandlers,
+} from './mcp/property-tools.js';
+import {
   COMMITTEE_LEADER_TOOLS,
   createCommitteeLeaderToolHandlers,
   isCommitteeLeader,
@@ -176,6 +184,24 @@ export async function initializeAddie(): Promise<void> {
   const schemaHandlers = createSchemaToolHandlers();
   for (const tool of SCHEMA_TOOLS) {
     const handler = schemaHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register brand tools (research brands, resolve identities, save to registry)
+  const brandHandlers = createBrandToolHandlers();
+  for (const tool of BRAND_TOOLS) {
+    const handler = brandHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register property tools (validate adagents.json, resolve publishers, save hosted properties)
+  const propertyHandlers = createPropertyToolHandlers();
+  for (const tool of PROPERTY_TOOLS) {
+    const handler = propertyHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }

@@ -1,0 +1,348 @@
+---
+title: brand.json Specification
+---
+
+The `brand.json` file provides a standardized way for brands to claim their identity and establish discoverable brand information. It supports four mutually exclusive variants to accommodate different use cases.
+
+## File Location
+
+Brands host the `brand.json` file at:
+
+```
+https://example.com/.well-known/brand.json
+```
+
+Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions.
+
+## Variants
+
+The brand.json file supports four mutually exclusive variants:
+
+### 1. Authoritative Location Redirect
+
+Points to a hosted brand.json at another URL:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "authoritative_location": "https://adcontextprotocol.org/brand/abc123/brand.json"
+}
+```
+
+Use this when:
+- Brand.json is hosted centrally (e.g., by a service provider)
+- CDN distribution is needed
+- Managed brand services
+
+### 2. House Redirect
+
+Points to the house domain that contains the full brand portfolio:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "house": "nikeinc.com",
+  "note": "Regional site - see house for brand portfolio"
+}
+```
+
+Optional fields:
+- `region`: ISO 3166-1 alpha-2 country code (e.g., "CN")
+- `note`: Explanation text
+
+Use this when:
+- Brand domain is owned by a larger house
+- Regional/localized domains point to main house
+- Legacy domains redirect to canonical
+
+### 3. Brand Agent
+
+Designates an MCP agent that provides brand information:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "version": "1.0",
+  "brand_agent": {
+    "url": "https://agent.acme.com/mcp",
+    "capabilities": ["creative_generation", "sponsored_intelligence"]
+  }
+}
+```
+
+Optional fields:
+- `auth`: Authentication requirements (see below)
+- `contact`: Contact information
+
+When a brand has an agent, the agent is the authoritative source for brand information. Agents should provide brand manifests and other data via MCP tools.
+
+### 4. House Portfolio
+
+Contains the full brand hierarchy with all brands and properties:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "version": "1.0",
+  "house": {
+    "canonical_domain": "nikeinc.com",
+    "name": "Nike, Inc.",
+    "architecture": "hybrid"
+  },
+  "brands": [
+    {
+      "canonical_domain": "nike.com",
+      "names": [{"en": "Nike"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "nike.com", "primary": true}
+      ]
+    }
+  ]
+}
+```
+
+## House Definition
+
+The house object represents the corporate entity:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `canonical_domain` | string | Yes | House's primary domain |
+| `name` | string | Yes | Display name |
+| `names` | array | No | Localized names |
+| `architecture` | enum | No | `branded_house`, `house_of_brands`, or `hybrid` |
+
+## Brand Definition
+
+Each brand in the `brands` array:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `canonical_domain` | string | Yes | Brand's primary domain (unique ID) |
+| `names` | array | Yes | Localized names (see below) |
+| `keller_type` | enum | No | `master`, `sub-brand`, `endorsed`, `independent` |
+| `parent_brand` | string | No | Parent brand's canonical_domain |
+| `properties` | array | No | Digital properties owned by brand |
+| `brand_standards` | string | No | URL to brand-standards.json |
+| `brand_manifest` | object/string | No | Inline manifest or URL |
+
+### Names Array
+
+Names are localized with language codes:
+
+```json
+{
+  "names": [
+    {"en": "Nike"},
+    {"en": "The Swoosh"},
+    {"zh": "耐克"},
+    {"ja": "ナイキ"}
+  ]
+}
+```
+
+Multiple entries per language are allowed (for aliases).
+
+### Keller Types
+
+Brand architecture classifications from marketing theory:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `master` | Primary brand of house | Nike for Nike, Inc. |
+| `sub-brand` | Carries parent brand name | Nike SB |
+| `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
+| `independent` | Operates separately from house | Converse |
+
+## Property Definition
+
+Properties are digital touchpoints owned by brands:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | enum | Yes | Property type (see below) |
+| `identifier` | string | Yes | Domain or app ID |
+| `store` | enum | No | App store (`apple`, `google`, etc.) |
+| `region` | string | No | ISO country code or `global` |
+| `primary` | boolean | No | Is this the primary property? |
+
+### Property Types
+
+Matches AdCP property-type enum:
+- `website`
+- `mobile_app`
+- `ctv_app`
+- `desktop_app`
+- `dooh`
+- `podcast`
+- `radio`
+- `streaming_audio`
+
+## Authentication
+
+For enterprise brands requiring authentication:
+
+```json
+{
+  "auth": {
+    "required": true,
+    "method": "oauth2",
+    "token_endpoint": "https://auth.example.com/oauth/token",
+    "scopes": ["brand:read"],
+    "instructions_url": "https://developer.example.com/auth"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `required` | boolean | Whether auth is required (default: false) |
+| `method` | enum | `api_key`, `oauth2`, or `bearer_token` |
+| `token_endpoint` | string | OAuth2 token endpoint URL |
+| `scopes` | array | Required OAuth2 scopes |
+| `instructions_url` | string | URL to credential documentation |
+
+## Resolution Algorithm
+
+To resolve a domain to a canonical brand:
+
+1. Fetch `https://{domain}/.well-known/brand.json`
+2. Check variant:
+   - **authoritative_location**: Fetch from that URL, continue from step 2
+   - **house** (string): Fetch from house domain, continue from step 2
+   - **brand_agent**: Return agent URL (agent provides brand info)
+   - **house** (object) + **brands**: Search for domain in properties
+3. For house portfolio, find the brand whose properties contain the query domain
+4. Return canonical brand information
+
+Maximum redirect depth: 3 hops.
+
+## Complete Examples
+
+### Small Business
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "version": "1.0",
+  "house": {
+    "canonical_domain": "bobsburgers.com",
+    "name": "Bob's Burgers LLC"
+  },
+  "brands": [
+    {
+      "canonical_domain": "bobsburgers.com",
+      "names": [{"en": "Bob's Burgers"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "bobsburgers.com", "primary": true}
+      ],
+      "brand_manifest": {
+        "name": "Bob's Burgers",
+        "url": "https://bobsburgers.com",
+        "colors": {"primary": "#FF6B35"}
+      }
+    }
+  ]
+}
+```
+
+### Enterprise with Agent
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "version": "1.0",
+  "brand_agent": {
+    "url": "https://brand-agent.enterprise.com/mcp",
+    "capabilities": ["creative_generation", "sponsored_intelligence", "product_inquiry"]
+  },
+  "auth": {
+    "required": true,
+    "method": "oauth2",
+    "token_endpoint": "https://auth.enterprise.com/oauth/token",
+    "scopes": ["brand:read", "creative:generate"]
+  },
+  "contact": {
+    "name": "Enterprise Brand Team",
+    "email": "brand@enterprise.com"
+  }
+}
+```
+
+### Multi-Brand Portfolio
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "version": "1.0",
+  "house": {
+    "canonical_domain": "nikeinc.com",
+    "name": "Nike, Inc.",
+    "architecture": "hybrid"
+  },
+  "brands": [
+    {
+      "canonical_domain": "nike.com",
+      "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "nike.com", "primary": true},
+        {"type": "website", "identifier": "nike.cn", "region": "CN"},
+        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+      ]
+    },
+    {
+      "canonical_domain": "jordan.com",
+      "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+      "keller_type": "endorsed",
+      "parent_brand": "nike.com",
+      "properties": [
+        {"type": "website", "identifier": "jordan.com", "primary": true},
+        {"type": "website", "identifier": "jumpman23.com"},
+        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.snkrs"}
+      ]
+    },
+    {
+      "canonical_domain": "converse.com",
+      "names": [{"en": "Converse"}],
+      "keller_type": "independent",
+      "properties": [
+        {"type": "website", "identifier": "converse.com", "primary": true}
+      ]
+    }
+  ],
+  "contact": {
+    "name": "Nike Brand Team",
+    "email": "brand@nike.com"
+  }
+}
+```
+
+### Regional Domain Redirect
+
+On `nike.cn/.well-known/brand.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+  "house": "nikeinc.com",
+  "region": "CN"
+}
+```
+
+## Caching
+
+Recommended cache TTLs:
+- Canonical files: 24 hours
+- Redirect files: 24 hours
+- Failed lookups: 1 hour
+
+## Best Practices
+
+1. **Start simple**: Begin with minimal brand.json and add complexity as needed
+2. **Use redirects for subsidiaries**: Point brand domains to house domain
+3. **List all properties**: Include regional domains, apps, and legacy domains
+4. **Keep names current**: Include localized names and common aliases
+5. **Use brand agents for dynamic data**: If brand info changes frequently, use an agent

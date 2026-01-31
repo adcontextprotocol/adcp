@@ -7,6 +7,7 @@ import type {
   MemberOffering,
   AgentConfig,
   PublisherConfig,
+  BrandConfig,
 } from '../types.js';
 
 /**
@@ -127,6 +128,7 @@ export class MemberDatabase {
       offerings: 'offerings',
       agents: 'agents',
       publishers: 'publishers',
+      brands: 'brands',
       headquarters: 'headquarters',
       markets: 'markets',
       metadata: 'metadata',
@@ -362,10 +364,19 @@ export class MemberDatabase {
         : row.publishers;
     }
 
+    // Parse brands JSONB
+    let brands: BrandConfig[] = [];
+    if (row.brands) {
+      brands = typeof row.brands === 'string'
+        ? JSON.parse(row.brands)
+        : row.brands;
+    }
+
     return {
       ...row,
       agents,
       publishers,
+      brands,
       markets: row.markets || [],
       metadata: typeof row.metadata === 'string'
         ? JSON.parse(row.metadata)

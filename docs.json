@@ -146,6 +146,13 @@
             ]
           },
           {
+            "group": "Brand Protocol",
+            "pages": [
+              "docs/brand-protocol/index",
+              "docs/brand-protocol/brand-json"
+            ]
+          },
+          {
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
@@ -572,6 +579,13 @@
                   }
                 ]
               }
+            ]
+          },
+          {
+            "group": "Brand Protocol",
+            "pages": [
+              "docs/brand-protocol/index",
+              "docs/brand-protocol/brand-json"
             ]
           },
           {

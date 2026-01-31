@@ -812,6 +812,12 @@
       "file_location": "/.well-known/adagents.json",
       "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
     },
+    "brand": {
+      "description": "Brand identity claim file format specification",
+      "$ref": "/schemas/brand.json",
+      "file_location": "/.well-known/brand.json",
+      "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
+    },
     "extensions": {
       "description": "Typed extension schemas for vendor-specific or domain-specific data. Extensions define the structure of data within the ext.{namespace} field. Agents declare which extensions they support in their agent card.",
       "registry": {
