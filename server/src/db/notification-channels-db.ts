@@ -84,6 +84,17 @@ export async function getChannelBySlackId(slackChannelId: string): Promise<Notif
 }
 
 /**
+ * Get a channel by name (case-insensitive)
+ */
+export async function getChannelByName(name: string): Promise<NotificationChannel | null> {
+  const result = await query<NotificationChannel>(
+    `SELECT * FROM notification_channels WHERE LOWER(name) = LOWER($1)`,
+    [name]
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Create a new notification channel
  */
 export async function createChannel(data: NotificationChannelInput): Promise<NotificationChannel> {
