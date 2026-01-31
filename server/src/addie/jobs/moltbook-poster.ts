@@ -25,7 +25,7 @@ import { getChannelByName } from '../../db/notification-channels-db.js';
 const logger = baseLogger.child({ module: 'moltbook-poster' });
 
 // Channel name in notification_channels table
-const MOLTBOOK_CHANNEL_NAME = 'Moltbook';
+const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
 
 interface PosterResult {
   articlesChecked: number;
@@ -128,7 +128,7 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
     // Record the post in our database
     await recordPost({
       moltbookPostId: postResult.post?.id,
-      perspectiveId: article.id,
+      knowledgeId: parseInt(article.id, 10),
       title: article.title,
       content,
       url: postResult.post?.permalink,

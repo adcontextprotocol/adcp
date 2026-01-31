@@ -11,6 +11,7 @@ export interface MoltbookPostRecord {
   id: number;
   moltbook_post_id: string | null;
   perspective_id: string | null;
+  knowledge_id: number | null;
   title: string;
   content: string | null;
   submolt: string | null;
@@ -34,6 +35,7 @@ export interface MoltbookActivityRecord {
 export interface CreatePostInput {
   moltbookPostId?: string;
   perspectiveId?: string;
+  knowledgeId?: number;
   title: string;
   content?: string;
   submolt?: string;
@@ -47,13 +49,14 @@ export interface CreatePostInput {
  */
 export async function recordPost(input: CreatePostInput): Promise<MoltbookPostRecord | null> {
   const result = await query<MoltbookPostRecord>(
-    `INSERT INTO moltbook_posts (moltbook_post_id, perspective_id, title, content, submolt, url)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO moltbook_posts (moltbook_post_id, perspective_id, knowledge_id, title, content, submolt, url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (moltbook_post_id) DO NOTHING
      RETURNING *`,
     [
       input.moltbookPostId || null,
       input.perspectiveId || null,
+      input.knowledgeId || null,
       input.title,
       input.content || null,
       input.submolt || null,
@@ -64,18 +67,18 @@ export async function recordPost(input: CreatePostInput): Promise<MoltbookPostRe
 }
 
 /**
- * Check if a perspective has already been posted to Moltbook
+ * Check if a knowledge item has already been posted to Moltbook
  */
-export async function hasPostedPerspective(perspectiveId: string): Promise<boolean> {
+export async function hasPostedKnowledge(knowledgeId: number): Promise<boolean> {
   const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM moltbook_posts WHERE perspective_id = $1`,
-    [perspectiveId]
+    `SELECT COUNT(*) as count FROM moltbook_posts WHERE knowledge_id = $1`,
+    [knowledgeId]
   );
   return parseInt(result.rows[0].count) > 0;
 }
 
 /**
- * Get posts that haven't been posted to Moltbook yet
+ * Get knowledge items that haven't been posted to Moltbook yet
  * Returns high-quality curated articles (quality_score >= 4)
  */
 export async function getUnpostedArticles(limit = 5): Promise<Array<{
@@ -86,24 +89,32 @@ export async function getUnpostedArticles(limit = 5): Promise<Array<{
   quality_score: number;
 }>> {
   const result = await query<{
-    id: string;
+    id: number;
     title: string;
-    external_url: string;
+    source_url: string;
     addie_notes: string;
     quality_score: number;
   }>(
-    `SELECT p.id, p.title, p.external_url, p.addie_notes, p.quality_score
-     FROM perspectives p
-     LEFT JOIN moltbook_posts mp ON mp.perspective_id = p.id
+    `SELECT k.id, k.title, k.source_url, k.addie_notes, k.quality_score
+     FROM addie_knowledge k
+     LEFT JOIN moltbook_posts mp ON mp.knowledge_id = k.id
      WHERE mp.id IS NULL
-       AND p.quality_score >= 4
-       AND p.addie_notes IS NOT NULL
-       AND p.status = 'curated'
-     ORDER BY p.quality_score DESC, p.created_at DESC
+       AND k.quality_score >= 4
+       AND k.addie_notes IS NOT NULL
+       AND k.is_active = TRUE
+       AND k.source_url IS NOT NULL
+     ORDER BY k.quality_score DESC, k.created_at DESC
      LIMIT $1`,
     [limit]
   );
-  return result.rows;
+  // Map to expected return type
+  return result.rows.map(row => ({
+    id: String(row.id),
+    title: row.title,
+    external_url: row.source_url,
+    addie_notes: row.addie_notes,
+    quality_score: row.quality_score,
+  }));
 }
 
 /**
