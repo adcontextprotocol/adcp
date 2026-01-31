@@ -128,7 +128,7 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
     // Record the post in our database
     await recordPost({
       moltbookPostId: postResult.post?.id,
-      perspectiveId: article.id,
+      knowledgeId: parseInt(article.id, 10),
       title: article.title,
       content,
       url: postResult.post?.permalink,
