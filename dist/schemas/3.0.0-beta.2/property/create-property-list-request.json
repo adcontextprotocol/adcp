@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/property/create-property-list-request.json",
+  "title": "Create Property List Request",
+  "description": "Request parameters for creating a new property list",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the list"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the list's purpose"
+    },
+    "base_properties": {
+      "type": "array",
+      "description": "Array of property sources to evaluate. Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers). If omitted, queries the agent's entire property database.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.2/property/base-property-source.json"
+      }
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.0-beta.2/property/property-list-filters.json",
+      "description": "Dynamic filters to apply when resolving the list"
+    },
+    "brand_manifest": {
+      "$ref": "/schemas/3.0.0-beta.2/core/brand-manifest.json",
+      "description": "Brand identity and requirements. When provided, the agent automatically applies appropriate rules based on brand characteristics (industry, target_audience, etc.)."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.2/core/ext.json"
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

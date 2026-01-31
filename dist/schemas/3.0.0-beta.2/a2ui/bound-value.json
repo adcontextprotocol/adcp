@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/a2ui/bound-value.json",
+  "title": "A2UI Bound Value",
+  "description": "A value that can be a literal or bound to a path in the data model",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Literal string value",
+      "properties": {
+        "literalString": {
+          "type": "string",
+          "description": "Static string value"
+        }
+      },
+      "required": ["literalString"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Literal number value",
+      "properties": {
+        "literalNumber": {
+          "type": "number",
+          "description": "Static number value"
+        }
+      },
+      "required": ["literalNumber"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Literal boolean value",
+      "properties": {
+        "literalBoolean": {
+          "type": "boolean",
+          "description": "Static boolean value"
+        }
+      },
+      "required": ["literalBoolean"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Path to data model value",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "JSON pointer path to value in data model (e.g., '/products/0/title')"
+        }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Literal with path binding (sets default and binds)",
+      "properties": {
+        "literalString": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["literalString", "path"],
+      "additionalProperties": false
+    }
+  ]
+}
