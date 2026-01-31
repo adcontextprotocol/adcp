@@ -168,7 +168,7 @@ Array of property features this governance agent can evaluate:
   "supported_protocols": ["governance"],
   "governance": {
     "property_features": [
-      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising score (lower is better)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
+      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising detection (0=quality content, 100=likely MFA)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
       { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
       { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://scope3.com/methodology/carbon-score" },
       { "feature_id": "content_category", "type": "categorical", "categories": ["news", "entertainment", "sports", "finance"], "description": "Primary content category" }
