@@ -25,7 +25,7 @@ import { getChannelByName } from '../../db/notification-channels-db.js';
 const logger = baseLogger.child({ module: 'moltbook-poster' });
 
 // Channel name in notification_channels table
-const MOLTBOOK_CHANNEL_NAME = 'Moltbook';
+const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
 
 interface PosterResult {
   articlesChecked: number;
