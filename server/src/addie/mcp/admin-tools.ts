@@ -69,6 +69,13 @@ import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from 
 import { workos } from '../../auth/workos-client.js';
 import { DomainDataState } from '@workos-inc/node';
 import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
+import {
+  listEscalations,
+  getEscalation,
+  updateEscalationStatus,
+  type EscalationStatus,
+} from '../../db/escalation-db.js';
+import { sendDirectMessage } from '../../slack/client.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -798,6 +805,27 @@ Returns a list of organizations with open or draft invoices.`,
       required: ['action', 'organization_id'],
     },
   },
+  {
+    name: 'update_org_member_role',
+    description: `Update a user's role within their organization. Use this to change a member's permissions (e.g., promoting to admin so they can manage their team).
+
+Common scenarios:
+- User paid for membership but can't manage team → promote to admin
+- Need to grant someone ability to invite team members → promote to admin
+- User should have full control of their org → promote to admin
+
+Roles: member (default), admin (can manage team)`,
+    usage_hints: 'Get user_id from get_account tool or escalation context. Use when members need elevated permissions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: { type: 'string', description: 'WorkOS organization ID (org_...)' },
+        user_id: { type: 'string', description: 'WorkOS user ID (user_...)' },
+        role: { type: 'string', enum: ['member', 'admin'], description: 'New role' },
+      },
+      required: ['org_id', 'user_id', 'role'],
+    },
+  },
 
   // ============================================
   // PROSPECT OWNERSHIP & PIPELINE TOOLS
@@ -1015,6 +1043,49 @@ Returns a list of organizations with open or draft invoices.`,
       properties: {
         topic: { type: 'string', description: 'Synthesize specific topic (default: all)' },
       },
+    },
+  },
+
+  // ============================================
+  // ESCALATION MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'list_escalations',
+    description: `List escalations that need admin attention. Use this to see what requests Addie couldn't handle and need human action.
+
+Filter by status to see open escalations, ones in progress, or recently resolved.`,
+    usage_hints: 'Check open escalations regularly. Start with status=open.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: { type: 'string', enum: ['open', 'acknowledged', 'in_progress', 'resolved', 'wont_do'], description: 'Filter by status (default: open)' },
+        category: { type: 'string', enum: ['capability_gap', 'needs_human_action', 'complex_request', 'sensitive_topic', 'other'], description: 'Filter by category' },
+        limit: { type: 'number', description: 'Max results (default: 10)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'resolve_escalation',
+    description: `Mark an escalation as resolved and optionally notify the user. Use this after you've handled a request that was previously escalated.
+
+IMPORTANT: Always notify the user unless there's a reason not to (e.g., test escalation, duplicate).
+
+Examples:
+- User needed admin role → used update_org_member_role → resolve and notify
+- User needed co-leader added → used add_committee_co_leader → resolve and notify
+- Duplicate request → resolve with wont_do, no notification needed`,
+    usage_hints: 'After handling an escalated request, resolve it and notify the user.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        escalation_id: { type: 'number', description: 'Escalation ID to resolve' },
+        status: { type: 'string', enum: ['resolved', 'wont_do'], description: 'Resolution status (default: resolved)' },
+        resolution_notes: { type: 'string', description: 'Notes about what was done to resolve' },
+        notify_user: { type: 'boolean', description: 'Send DM to user about resolution (default: true)' },
+        notification_message: { type: 'string', description: 'Custom message to include in notification' },
+      },
+      required: ['escalation_id'],
     },
   },
 ];
@@ -4288,6 +4359,96 @@ Use add_committee_leader to assign a leader.`;
     }
   });
 
+  // Update organization member role
+  handlers.set('update_org_member_role', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const orgId = (input.org_id as string)?.trim();
+    const userId = (input.user_id as string)?.trim();
+    const role = (input.role as string)?.trim().toLowerCase();
+
+    if (!orgId) {
+      return '❌ org_id is required. Use get_account to find the organization ID (starts with org_).';
+    }
+    if (!userId) {
+      return '❌ user_id is required. This is the WorkOS user ID (starts with user_).';
+    }
+    if (!role || !['member', 'admin'].includes(role)) {
+      return '❌ role must be "member" or "admin".';
+    }
+
+    if (!workos) {
+      return '❌ WorkOS is not configured.';
+    }
+
+    const pool = getPool();
+
+    try {
+      // Get org name for response
+      const orgResult = await pool.query(
+        `SELECT name FROM organizations WHERE workos_organization_id = $1`,
+        [orgId]
+      );
+      const orgName = orgResult.rows[0]?.name || orgId;
+
+      // Get user info for response
+      const userResult = await pool.query(
+        `SELECT email, first_name, last_name FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [userId, orgId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return `❌ User ${userId} is not a member of organization ${orgName}. They must join the organization first.`;
+      }
+
+      const user = userResult.rows[0];
+      const userName = user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.email;
+
+      // Get the membership ID from WorkOS
+      const memberships = await workos.userManagement.listOrganizationMemberships({
+        organizationId: orgId,
+        userId: userId,
+      });
+
+      if (memberships.data.length === 0) {
+        return `❌ No WorkOS membership found for user ${userId} in organization ${orgId}.`;
+      }
+
+      const membership = memberships.data[0];
+      const currentRole = membership.role?.slug || 'member';
+
+      if (currentRole === role) {
+        return `ℹ️ ${userName} already has the ${role} role in ${orgName}. No change needed.`;
+      }
+
+      // Update the role in WorkOS
+      await workos.userManagement.updateOrganizationMembership(membership.id, {
+        roleSlug: role,
+      });
+
+      // Update local cache
+      await pool.query(
+        `UPDATE organization_memberships
+         SET role = $1, updated_at = NOW()
+         WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+        [role, orgId, userId]
+      );
+
+      logger.info({ orgId, userId, oldRole: currentRole, newRole: role }, 'Addie: Updated org member role');
+
+      let response = `✅ Updated ${userName}'s role from **${currentRole}** to **${role}** in ${orgName}.\n\n`;
+      if (role === 'admin') {
+        response += `They can now:\n- Invite and manage team members\n- View organization billing\n- Update organization profile`;
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, userId, role }, 'Error updating org member role');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to update role: ${errorMessage}`;
+    }
+  });
+
   // Check domain health
   handlers.set('check_domain_health', async (input) => {
     const adminCheck = requireAdminFromContext();
@@ -5961,6 +6122,143 @@ Use add_committee_leader to assign a leader.`;
       logger.error({ error }, 'Error running synthesis');
       const message = error instanceof Error ? error.message : 'Unknown error';
       return `❌ Synthesis failed: ${message}`;
+    }
+  });
+
+  // ============================================
+  // LIST ESCALATIONS
+  // ============================================
+  handlers.set('list_escalations', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    try {
+      const status = (input.status as EscalationStatus) || 'open';
+      const category = input.category as string | undefined;
+      const limit = (input.limit as number) || 10;
+
+      const escalations = await listEscalations({
+        status,
+        category: category as 'capability_gap' | 'needs_human_action' | 'complex_request' | 'sensitive_topic' | 'other' | undefined,
+        limit,
+      });
+
+      if (escalations.length === 0) {
+        return `📭 No ${status} escalations found.`;
+      }
+
+      const priorityEmoji: Record<string, string> = {
+        urgent: '🚨',
+        high: '⚠️',
+        normal: '',
+        low: '',
+      };
+
+      let response = `## ${status.charAt(0).toUpperCase() + status.slice(1)} Escalations (${escalations.length})\n\n`;
+
+      for (const esc of escalations) {
+        const emoji = priorityEmoji[esc.priority] || '';
+        response += `### ${emoji} #${esc.id}: ${esc.summary}\n`;
+        response += `**Category**: ${esc.category} | **Priority**: ${esc.priority}\n`;
+        if (esc.user_display_name) {
+          response += `**User**: ${esc.user_display_name}`;
+          if (esc.slack_user_id) {
+            response += ` (<@${esc.slack_user_id}>)`;
+          }
+          response += '\n';
+        }
+        if (esc.original_request) {
+          response += `**Request**: ${esc.original_request.substring(0, 150)}${esc.original_request.length > 150 ? '...' : ''}\n`;
+        }
+        if (esc.addie_context) {
+          response += `**Why escalated**: ${esc.addie_context.substring(0, 150)}${esc.addie_context.length > 150 ? '...' : ''}\n`;
+        }
+        response += `**Created**: ${new Date(esc.created_at).toLocaleDateString()}\n`;
+        response += '\n';
+      }
+
+      response += `\n---\nUse \`resolve_escalation\` with the escalation ID to mark as resolved after handling.`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing escalations');
+      return '❌ Failed to list escalations.';
+    }
+  });
+
+  // ============================================
+  // RESOLVE ESCALATION
+  // ============================================
+  handlers.set('resolve_escalation', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    const escalationId = input.escalation_id as number;
+    if (!escalationId) {
+      return '❌ Please provide an escalation_id.';
+    }
+
+    const status = (input.status as 'resolved' | 'wont_do') || 'resolved';
+    const resolutionNotes = input.resolution_notes as string | undefined;
+    const notifyUser = input.notify_user !== false; // Default to true
+    const notificationMessage = input.notification_message as string | undefined;
+
+    try {
+      // Get the escalation first
+      const escalation = await getEscalation(escalationId);
+      if (!escalation) {
+        return `❌ Escalation #${escalationId} not found.`;
+      }
+
+      if (escalation.status === 'resolved' || escalation.status === 'wont_do') {
+        return `ℹ️ Escalation #${escalationId} is already ${escalation.status}.`;
+      }
+
+      // Get resolver info
+      const resolvedBy = memberContext?.workos_user?.email || memberContext?.slack_user?.email || 'admin';
+
+      // Update status
+      const updated = await updateEscalationStatus(escalationId, status, resolvedBy, resolutionNotes);
+      if (!updated) {
+        return `❌ Failed to update escalation #${escalationId}.`;
+      }
+
+      logger.info({ escalationId, status, resolvedBy, notifyUser }, 'Escalation resolved via Addie tool');
+
+      let response = `✅ Escalation #${escalationId} marked as ${status}.`;
+
+      // Notify user if requested and we have their Slack ID
+      if (notifyUser && escalation.slack_user_id) {
+        const statusLabel = status === 'resolved' ? 'resolved' : 'reviewed and closed';
+        const defaultMessage = `Your request has been ${statusLabel}: "${escalation.summary}"`;
+
+        const messageText = notificationMessage
+          ? `${defaultMessage}\n\n${notificationMessage}`
+          : defaultMessage;
+
+        const dmResult = await sendDirectMessage(escalation.slack_user_id, {
+          text: messageText,
+        });
+
+        if (dmResult.ok) {
+          response += `\n📬 Notified user via Slack DM.`;
+          logger.info({ escalationId, slackUserId: escalation.slack_user_id }, 'Sent escalation resolution notification');
+        } else {
+          response += `\n⚠️ Could not notify user (DM failed).`;
+          logger.warn({ escalationId, slackUserId: escalation.slack_user_id, error: dmResult.error }, 'Failed to send notification');
+        }
+      } else if (notifyUser && !escalation.slack_user_id) {
+        response += `\nℹ️ No Slack user ID on record - could not send notification.`;
+      }
+
+      if (resolutionNotes) {
+        response += `\n**Notes**: ${resolutionNotes}`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, escalationId }, 'Error resolving escalation');
+      return `❌ Failed to resolve escalation #${escalationId}.`;
     }
   });
 
