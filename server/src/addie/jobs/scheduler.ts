@@ -328,8 +328,8 @@ class JobScheduler {
    */
   startMoltbookEngagement(): void {
     const JOB_NAME = 'moltbook-engagement';
-    const INTERVAL_HOURS = 4; // Engage every 4 hours
-    const INITIAL_DELAY_MS = 900000; // 15 minute delay on startup
+    const INTERVAL_HOURS = 1; // Engage every hour
+    const INITIAL_DELAY_MS = 600000; // 10 minute delay on startup
 
     const job: ScheduledJob = {
       name: JOB_NAME,

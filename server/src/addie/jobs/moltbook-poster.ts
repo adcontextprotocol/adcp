@@ -7,11 +7,14 @@
  * Runs every 2 hours, respecting Moltbook's 1 post per 30 minutes rate limit.
  */
 
+import Anthropic from '@anthropic-ai/sdk';
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
   createPost,
+  getSubmolts,
   type CreatePostResult,
+  type MoltbookSubmolt,
 } from '../services/moltbook-service.js';
 import {
   getUnpostedArticles,
@@ -27,11 +30,87 @@ const logger = baseLogger.child({ module: 'moltbook-poster' });
 // Channel name in notification_channels table
 const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
 
+// Model for submolt selection
+const SUBMOLT_SELECTION_MODEL = 'claude-haiku-4-20250514';
+
+// Default submolt if selection fails
+const DEFAULT_SUBMOLT = 'technology';
+
 interface PosterResult {
   articlesChecked: number;
   postsCreated: number;
   skipped: number;
   errors: number;
+}
+
+/**
+ * Select the best submolt for an article using Claude
+ */
+async function selectSubmolt(
+  title: string,
+  content: string,
+  submolts: MoltbookSubmolt[]
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    logger.warn('ANTHROPIC_API_KEY not configured, using default submolt');
+    return DEFAULT_SUBMOLT;
+  }
+
+  // Filter to submolts with descriptions and reasonable subscriber counts
+  const relevantSubmolts = submolts
+    .filter(s => s.description && s.subscriber_count > 0)
+    .sort((a, b) => b.subscriber_count - a.subscriber_count)
+    .slice(0, 30); // Top 30 by subscribers
+
+  const submoltList = relevantSubmolts
+    .map(s => `- ${s.name}: ${s.description}`)
+    .join('\n');
+
+  const prompt = `You are selecting the best Moltbook submolt (community) for an article.
+
+**Article Title:** ${title}
+
+**Article Content Preview:** ${content.substring(0, 500)}...
+
+**Available Submolts:**
+${submoltList}
+
+Select the single most appropriate submolt for this article. Consider:
+1. Topic relevance - does the submolt's description match the article?
+2. Audience fit - will subscribers find this valuable?
+3. Avoid overly broad submolts like "general" unless nothing else fits
+
+Respond with ONLY the submolt name (e.g., "technology"), nothing else.`;
+
+  try {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
+      model: SUBMOLT_SELECTION_MODEL,
+      max_tokens: 50,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const textContent = response.content[0];
+    if (textContent.type !== 'text') {
+      return DEFAULT_SUBMOLT;
+    }
+
+    const selected = textContent.text.trim().toLowerCase();
+
+    // Verify the selected submolt exists
+    const validSubmolt = submolts.find(s => s.name.toLowerCase() === selected);
+    if (validSubmolt) {
+      logger.info({ submolt: validSubmolt.name, title }, 'Selected submolt for article');
+      return validSubmolt.name;
+    }
+
+    logger.warn({ selected, title }, 'Claude selected invalid submolt, using default');
+    return DEFAULT_SUBMOLT;
+  } catch (err) {
+    logger.error({ err, title }, 'Failed to select submolt, using default');
+    return DEFAULT_SUBMOLT;
+  }
 }
 
 /**
@@ -47,7 +126,7 @@ function formatMoltbookContent(addieNotes: string, articleUrl: string): string {
 /**
  * Notify the #moltbook Slack channel about the post
  */
-async function notifySlack(title: string, postUrl?: string): Promise<void> {
+async function notifySlack(title: string, submolt: string, postUrl?: string): Promise<void> {
   // Look up the Moltbook channel from the database
   const channel = await getChannelByName(MOLTBOOK_CHANNEL_NAME);
   if (!channel || !channel.is_active) {
@@ -56,8 +135,8 @@ async function notifySlack(title: string, postUrl?: string): Promise<void> {
   }
 
   const message = postUrl
-    ? `Just shared an article on Moltbook: *${title}*\n<${postUrl}|View on Moltbook>`
-    : `Just shared an article on Moltbook: *${title}*`;
+    ? `Just shared an article to m/${submolt} on Moltbook: *${title}*\n<${postUrl}|View on Moltbook>`
+    : `Just shared an article to m/${submolt} on Moltbook: *${title}*`;
 
   try {
     await sendChannelMessage(channel.slack_channel_id, {
@@ -111,11 +190,20 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
 
     const content = formatMoltbookContent(article.addie_notes, article.external_url);
 
+    // Select the best submolt for this article
+    let submolt = DEFAULT_SUBMOLT;
+    try {
+      const submolts = await getSubmolts();
+      submolt = await selectSubmolt(article.title, content, submolts);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to get submolts, using default');
+    }
+
     // Create the post on Moltbook
     const postResult: CreatePostResult = await createPost(
       article.title,
       content,
-      undefined, // No specific submolt for now
+      submolt,
       article.external_url
     );
 
@@ -138,10 +226,10 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
     await recordActivity('post', postResult.post?.id, undefined, article.title);
 
     // Notify Slack
-    await notifySlack(article.title, postResult.post?.permalink);
+    await notifySlack(article.title, submolt, postResult.post?.permalink);
 
     logger.info(
-      { articleId: article.id, moltbookPostId: postResult.post?.id },
+      { articleId: article.id, moltbookPostId: postResult.post?.id, submolt },
       'Successfully posted article to Moltbook'
     );
 
