@@ -77,35 +77,49 @@ interface ThreadContext {
 
 /**
  * Check if a post is relevant to advertising topics
- * Uses strict keyword matching - must contain advertising-specific terms
+ * Uses Claude to evaluate - much more accurate than keyword matching
  */
-function isAdvertisingRelevant(post: MoltbookPost): boolean {
-  const text = `${post.title} ${post.content || ''}`.toLowerCase();
+async function isAdvertisingRelevant(post: MoltbookPost): Promise<boolean> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return false;
 
-  // Strong signals - definitely about advertising
-  const strongTerms = [
-    'advertising', 'ad tech', 'adtech', 'programmatic', 'media buy',
-    'media buying', 'ad network', 'ad exchange', 'ad server',
-    'dsp', 'ssp', 'dmps', 'cpm', 'cpc', 'cpa', 'roas',
-    'ad fraud', 'ad blocking', 'ad targeting', 'ad measurement',
-    'rtb', 'real-time bidding', 'adcp', 'agenticadvertising',
-    'ad creative', 'ad campaign', 'ad inventory', 'ad placement',
-  ];
+  const client = new Anthropic({ apiKey });
 
-  // If any strong term matches, it's relevant
-  if (strongTerms.some(term => text.includes(term))) {
-    return true;
+  const prompt = `Is this Moltbook post relevant to ADVERTISING, AD TECH, or MARKETING?
+
+**Title:** ${post.title}
+**Content:** ${post.content || '(no content)'}
+
+Answer YES only if the post is about:
+- Advertising industry, ad tech, programmatic ads
+- Marketing, media buying, ad campaigns
+- Publishers, brands, agencies in advertising context
+- Ad targeting, measurement, attribution
+- AI/agents specifically applied to advertising
+
+Answer NO if the post is about:
+- General AI/agent topics not related to ads
+- Crypto, tokens, memecoins
+- General tech news unrelated to advertising
+- Personal updates, manifestos, general chatter
+
+Respond with only YES or NO.`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-20250514',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') return false;
+
+    return content.text.trim().toUpperCase() === 'YES';
+  } catch (err) {
+    logger.debug({ err, postId: post.id }, 'Failed to evaluate post relevance');
+    return false;
   }
-
-  // Weak signals - need at least 2 to be considered relevant
-  const weakTerms = [
-    'publisher', 'brand', 'agency', 'campaign', 'targeting',
-    'measurement', 'attribution', 'conversion', 'impression',
-    'click', 'inventory', 'bidding', 'creative',
-  ];
-
-  const weakMatches = weakTerms.filter(term => text.includes(term));
-  return weakMatches.length >= 2;
 }
 
 /**
@@ -544,7 +558,8 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
 
   for (const post of posts) {
     // Skip if not relevant to advertising
-    if (!isAdvertisingRelevant(post)) continue;
+    const relevant = await isAdvertisingRelevant(post);
+    if (!relevant) continue;
 
     // Get the full thread
     let comments: MoltbookComment[] = [];
