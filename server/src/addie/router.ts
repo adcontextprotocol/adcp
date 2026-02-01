@@ -347,6 +347,7 @@ IMPORTANT: Select tool SETS based on the user's INTENT:
 - Content workflows, GitHub issues, proposals → ["content"]
 - Billing, invoices, payment links → ["billing"]
 - Scheduling meetings, calendar → ["meetings"]
+- Escalations, pending requests, user role changes, merging orgs → ["admin"]
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
 - General questions needing no tools → []
 

@@ -26,6 +26,7 @@ import { synthesizeInsights, applySynthesis } from "../addie/jobs/insight-synthe
 import {
   resolveSlackUserDisplayName,
   resolveSlackUserDisplayNames,
+  sendDirectMessage,
 } from "../slack/client.js";
 import {
   listEscalations,
@@ -33,6 +34,7 @@ import {
   getEscalation,
   updateEscalationStatus,
   getEscalationStats,
+  buildResolutionNotificationMessage,
   type EscalationStatus,
   type EscalationCategory,
 } from "../db/escalation-db.js";
@@ -2948,7 +2950,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         return res.status(400).json({ error: "Bad request", message: "Invalid ID" });
       }
 
-      const { status, notes } = req.body;
+      const { status, notes, notify_user, notification_message } = req.body;
       if (!status) {
         return res.status(400).json({ error: "Bad request", message: "Status is required" });
       }
@@ -2964,6 +2966,12 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const user = (req as unknown as { user?: { email?: string } }).user;
       const resolvedBy = user?.email || 'admin';
 
+      // Get the escalation first so we have the slack_user_id for notification
+      const escalation = await getEscalation(id);
+      if (!escalation) {
+        return res.status(404).json({ error: "Not found", message: "Escalation not found" });
+      }
+
       const updated = await updateEscalationStatus(id, status, resolvedBy, notes);
       if (!updated) {
         return res.status(404).json({ error: "Not found", message: "Escalation not found" });
@@ -2971,9 +2979,40 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       logger.info({ escalationId: id, status, resolvedBy }, "Escalation status updated");
 
+      // Send notification to user if requested
+      let notificationSent = false;
+      if (notify_user && escalation.slack_user_id) {
+        const isResolved = status === 'resolved' || status === 'wont_do';
+        if (isResolved) {
+          const messageText = buildResolutionNotificationMessage(
+            escalation,
+            status as 'resolved' | 'wont_do',
+            notification_message
+          );
+
+          const dmResult = await sendDirectMessage(escalation.slack_user_id, {
+            text: messageText,
+          });
+
+          if (dmResult.ok) {
+            notificationSent = true;
+            logger.info(
+              { escalationId: id, slackUserId: escalation.slack_user_id },
+              "Sent escalation resolution notification to user"
+            );
+          } else {
+            logger.warn(
+              { escalationId: id, slackUserId: escalation.slack_user_id, error: dmResult.error },
+              "Failed to send escalation resolution notification"
+            );
+          }
+        }
+      }
+
       res.json({
         success: true,
         escalation: updated,
+        notification_sent: notificationSent,
       });
     } catch (error) {
       logger.error({ err: error }, "Error updating escalation");

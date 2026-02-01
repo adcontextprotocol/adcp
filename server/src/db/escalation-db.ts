@@ -4,6 +4,9 @@
  */
 
 import { query } from './client.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('escalation-db');
 
 // ============== Types ==============
 
@@ -267,4 +270,21 @@ export async function getEscalationsForThread(threadId: string): Promise<Escalat
     [threadId]
   );
   return result.rows;
+}
+
+/**
+ * Build the notification message for escalation resolution
+ * Shared between API endpoint and Addie tool to ensure consistency
+ */
+export function buildResolutionNotificationMessage(
+  escalation: Escalation,
+  status: 'resolved' | 'wont_do',
+  customMessage?: string
+): string {
+  const statusLabel = status === 'resolved' ? 'resolved' : 'reviewed and closed';
+  const defaultMessage = `Your request has been ${statusLabel}: "${escalation.summary}"`;
+
+  return customMessage
+    ? `${defaultMessage}\n\n${customMessage}`
+    : defaultMessage;
 }
