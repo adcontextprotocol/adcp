@@ -22,6 +22,8 @@ import {
   recordActivity,
   canComment,
   getActivityStats,
+  getCommentedPosts,
+  hasRespondedTo,
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
@@ -51,6 +53,7 @@ const SEARCH_TERMS = [
 interface EngagementResult {
   postsSearched: number;
   commentsCreated: number;
+  repliesCreated: number;
   interestingThreads: number;
   skipped: number;
   errors: number;
@@ -155,6 +158,133 @@ Your comment:`;
 }
 
 /**
+ * Generate a reply to someone who replied to Addie
+ */
+async function generateReply(
+  post: MoltbookPost,
+  addieComment: string,
+  replyAuthor: string,
+  replyContent: string
+): Promise<string | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  const client = new Anthropic({ apiKey });
+
+  const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org. You have a STRONG OPINION: agents should take over advertising from humans.
+
+Someone replied to your comment on Moltbook! Keep the conversation going.
+
+**Original Post:** ${post.title}
+
+**Your Comment:** ${addieComment}
+
+**${replyAuthor}'s Reply:** ${replyContent}
+
+Write a conversational reply that:
+1. Directly engages with what ${replyAuthor} said
+2. Stays true to your mission (agents > humans at advertising)
+3. Is friendly but firm in your beliefs
+4. Mentions AdCP if they seem interested in solutions
+5. Is concise (1-3 sentences)
+
+If they're being hostile or trolling, respond with just "SKIP".
+
+Your reply:`;
+
+  try {
+    const response = await client.messages.create({
+      model: ENGAGEMENT_MODEL,
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') return null;
+
+    const reply = content.text.trim();
+    if (reply === 'SKIP' || reply.toLowerCase().includes('skip')) {
+      return null;
+    }
+
+    return reply;
+  } catch (err) {
+    logger.error({ err }, 'Failed to generate reply');
+    return null;
+  }
+}
+
+/**
+ * Check for and respond to replies to Addie's comments
+ */
+async function checkAndRespondToReplies(result: EngagementResult): Promise<void> {
+  // Get posts where Addie has commented
+  const commentedPosts = await getCommentedPosts(10);
+
+  if (commentedPosts.length === 0) {
+    logger.debug('No commented posts to check for replies');
+    return;
+  }
+
+  for (const { postId, commentId } of commentedPosts) {
+    try {
+      // Get the post with all comments
+      const { post, comments } = await getPost(postId);
+
+      // Find Addie's comment
+      const addieComment = comments.find(c => c.id === commentId);
+      if (!addieComment) continue;
+
+      // Find replies to Addie's comment
+      const replies = comments.filter(c =>
+        c.parent_id === commentId &&
+        c.author.name.toLowerCase() !== 'addie'
+      );
+
+      for (const reply of replies) {
+        // Check if we've already responded to this reply
+        const alreadyResponded = await hasRespondedTo(reply.id);
+        if (alreadyResponded) continue;
+
+        // Check rate limit
+        const canCommentNow = await canComment();
+        if (!canCommentNow.allowed) {
+          logger.debug({ reason: canCommentNow.reason }, 'Rate limited, skipping replies');
+          return;
+        }
+
+        // Generate a reply
+        const replyText = await generateReply(post, addieComment.content, reply.author.name, reply.content);
+        if (!replyText) continue;
+
+        // Post the reply
+        const replyResult = await createComment(postId, replyText, reply.id);
+        if (!replyResult.success) {
+          logger.error({ error: replyResult.error, postId }, 'Failed to post reply');
+          result.errors++;
+          continue;
+        }
+
+        // Record with marker so we know we responded to this
+        await recordActivity('comment', replyResult.comment?.id, postId, `reply_to:${reply.id} ${replyText}`);
+
+        // Notify Slack
+        const permalink = post.permalink || `https://moltbook.com/p/${postId}`;
+        await notifySlackEngagement('comment', post, `Replied to ${reply.author.name}:\n_"${replyText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
+
+        result.repliesCreated++;
+        logger.info({ postId, replyToAuthor: reply.author.name }, 'Successfully replied on Moltbook');
+
+        // Only one reply per run to be thoughtful
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err, postId }, 'Error checking post for replies');
+    }
+  }
+}
+
+/**
  * Notify Slack about engagement activity
  */
 async function notifySlackEngagement(
@@ -233,6 +363,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
   const result: EngagementResult = {
     postsSearched: 0,
     commentsCreated: 0,
+    repliesCreated: 0,
     interestingThreads: 0,
     skipped: 0,
     errors: 0,
@@ -247,6 +378,14 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
   // Log current stats
   const stats = await getActivityStats();
   logger.info(stats, 'Current Moltbook activity stats');
+
+  // First, check for and respond to replies to our previous comments
+  await checkAndRespondToReplies(result);
+
+  // If we replied to someone, that's enough engagement for this run
+  if (result.repliesCreated > 0) {
+    return result;
+  }
 
   // Discover posts via search or feed
   const posts = await discoverPosts(limit);

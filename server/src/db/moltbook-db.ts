@@ -241,6 +241,50 @@ export async function markActivitiesNotified(activityIds: number[]): Promise<voi
   );
 }
 
+// ============== Reply Tracking ==============
+
+/**
+ * Get posts where Addie has commented (for checking replies)
+ */
+export async function getCommentedPosts(limit = 20): Promise<Array<{
+  postId: string;
+  commentId: string;
+  commentedAt: Date;
+}>> {
+  const result = await query<{
+    parent_post_id: string;
+    moltbook_id: string;
+    created_at: Date;
+  }>(
+    `SELECT DISTINCT ON (parent_post_id) parent_post_id, moltbook_id, created_at
+     FROM moltbook_activity
+     WHERE activity_type = 'comment'
+       AND parent_post_id IS NOT NULL
+       AND moltbook_id IS NOT NULL
+     ORDER BY parent_post_id, created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(row => ({
+    postId: row.parent_post_id,
+    commentId: row.moltbook_id,
+    commentedAt: row.created_at,
+  }));
+}
+
+/**
+ * Check if Addie has already responded to a specific comment
+ */
+export async function hasRespondedTo(parentCommentId: string): Promise<boolean> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM moltbook_activity
+     WHERE activity_type = 'comment'
+       AND content LIKE $1`,
+    [`%reply_to:${parentCommentId}%`]
+  );
+  return parseInt(result.rows[0].count) > 0;
+}
+
 // ============== Stats ==============
 
 /**
