@@ -85,13 +85,13 @@ Contains the full brand hierarchy with all brands and properties:
   "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
   "version": "1.0",
   "house": {
-    "canonical_domain": "nikeinc.com",
+    "domain": "nikeinc.com",
     "name": "Nike, Inc.",
     "architecture": "hybrid"
   },
   "brands": [
     {
-      "canonical_domain": "nike.com",
+      "id": "nike",
       "names": [{"en": "Nike"}],
       "keller_type": "master",
       "properties": [
@@ -108,7 +108,7 @@ The house object represents the corporate entity:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `canonical_domain` | string | Yes | House's primary domain |
+| `domain` | string | Yes | House's primary domain |
 | `name` | string | Yes | Display name |
 | `names` | array | No | Localized names |
 | `architecture` | enum | No | `branded_house`, `house_of_brands`, or `hybrid` |
@@ -119,10 +119,10 @@ Each brand in the `brands` array:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `canonical_domain` | string | Yes | Brand's primary domain (unique ID) |
+| `id` | string | Yes | Brand identifier (lowercase alphanumeric with underscores) |
 | `names` | array | Yes | Localized names (see below) |
 | `keller_type` | enum | No | `master`, `sub-brand`, `endorsed`, `independent` |
-| `parent_brand` | string | No | Parent brand's canonical_domain |
+| `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
 | `brand_standards` | string | No | URL to brand-standards.json |
 | `brand_manifest` | object/string | No | Inline manifest or URL |
@@ -179,30 +179,6 @@ Matches AdCP property-type enum:
 - `radio`
 - `streaming_audio`
 
-## Authentication
-
-For enterprise brands requiring authentication:
-
-```json
-{
-  "auth": {
-    "required": true,
-    "method": "oauth2",
-    "token_endpoint": "https://auth.example.com/oauth/token",
-    "scopes": ["brand:read"],
-    "instructions_url": "https://developer.example.com/auth"
-  }
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `required` | boolean | Whether auth is required (default: false) |
-| `method` | enum | `api_key`, `oauth2`, or `bearer_token` |
-| `token_endpoint` | string | OAuth2 token endpoint URL |
-| `scopes` | array | Required OAuth2 scopes |
-| `instructions_url` | string | URL to credential documentation |
-
 ## Resolution Algorithm
 
 To resolve a domain to a canonical brand:
@@ -227,12 +203,12 @@ Maximum redirect depth: 3 hops.
   "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
   "version": "1.0",
   "house": {
-    "canonical_domain": "bobsburgers.com",
+    "domain": "bobsburgers.com",
     "name": "Bob's Burgers LLC"
   },
   "brands": [
     {
-      "canonical_domain": "bobsburgers.com",
+      "id": "bobs_burgers",
       "names": [{"en": "Bob's Burgers"}],
       "keller_type": "master",
       "properties": [
@@ -258,12 +234,6 @@ Maximum redirect depth: 3 hops.
     "url": "https://brand-agent.enterprise.com/mcp",
     "capabilities": ["creative_generation", "sponsored_intelligence", "product_inquiry"]
   },
-  "auth": {
-    "required": true,
-    "method": "oauth2",
-    "token_endpoint": "https://auth.enterprise.com/oauth/token",
-    "scopes": ["brand:read", "creative:generate"]
-  },
   "contact": {
     "name": "Enterprise Brand Team",
     "email": "brand@enterprise.com"
@@ -278,13 +248,13 @@ Maximum redirect depth: 3 hops.
   "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
   "version": "1.0",
   "house": {
-    "canonical_domain": "nikeinc.com",
+    "domain": "nikeinc.com",
     "name": "Nike, Inc.",
     "architecture": "hybrid"
   },
   "brands": [
     {
-      "canonical_domain": "nike.com",
+      "id": "nike",
       "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
       "keller_type": "master",
       "properties": [
@@ -294,10 +264,10 @@ Maximum redirect depth: 3 hops.
       ]
     },
     {
-      "canonical_domain": "jordan.com",
+      "id": "air_jordan",
       "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
       "keller_type": "endorsed",
-      "parent_brand": "nike.com",
+      "parent_brand": "nike",
       "properties": [
         {"type": "website", "identifier": "jordan.com", "primary": true},
         {"type": "website", "identifier": "jumpman23.com"},
@@ -305,7 +275,7 @@ Maximum redirect depth: 3 hops.
       ]
     },
     {
-      "canonical_domain": "converse.com",
+      "id": "converse",
       "names": [{"en": "Converse"}],
       "keller_type": "independent",
       "properties": [

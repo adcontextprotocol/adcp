@@ -177,6 +177,14 @@
         "media-buy-features": {
           "$ref": "/schemas/core/media-buy-features.json",
           "description": "Optional media-buy protocol features for capability declarations and product filters"
+        },
+        "brand-id": {
+          "$ref": "/schemas/core/brand-id.json",
+          "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
+        },
+        "brand-ref": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
         }
       }
     },

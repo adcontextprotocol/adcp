@@ -67,13 +67,13 @@ A house domain with multiple brands:
   "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
   "version": "1.0",
   "house": {
-    "canonical_domain": "nikeinc.com",
+    "domain": "nikeinc.com",
     "name": "Nike, Inc.",
     "architecture": "hybrid"
   },
   "brands": [
     {
-      "canonical_domain": "nike.com",
+      "id": "nike",
       "names": [{"en": "Nike"}, {"zh": "耐克"}],
       "keller_type": "master",
       "properties": [
@@ -82,10 +82,10 @@ A house domain with multiple brands:
       ]
     },
     {
-      "canonical_domain": "jordan.com",
+      "id": "air_jordan",
       "names": [{"en": "Air Jordan"}, {"en": "Jordan"}],
       "keller_type": "endorsed",
-      "parent_brand": "nike.com",
+      "parent_brand": "nike",
       "properties": [
         {"type": "website", "identifier": "jordan.com"},
         {"type": "website", "identifier": "jumpman23.com"}
@@ -131,8 +131,8 @@ jumpman23.com
   -> { "house": "nikeinc.com" }
   -> fetch nikeinc.com/.well-known/brand.json
   -> search brands[] for property matching "jumpman23.com"
-  -> found in Jordan brand's properties
-  -> Result: jordan.com (Air Jordan, endorsed by nike.com)
+  -> found in Air Jordan brand's properties
+  -> Result: { house: "nikeinc.com", brand_id: "air_jordan" }
 ```
 
 ## Use Cases
