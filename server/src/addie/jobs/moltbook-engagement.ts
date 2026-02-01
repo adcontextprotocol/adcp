@@ -12,6 +12,7 @@ import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
   searchPosts,
+  getFeed,
   getPost,
   createComment,
   type MoltbookPost,
@@ -28,7 +29,7 @@ import { getChannelByName } from '../../db/notification-channels-db.js';
 const logger = baseLogger.child({ module: 'moltbook-engagement' });
 
 // Channel name in notification_channels table
-const MOLTBOOK_CHANNEL_NAME = 'Moltbook';
+const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
 
 // Claude model for generating comments
 const ENGAGEMENT_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
@@ -173,10 +174,55 @@ async function notifySlackEngagement(
 }
 
 /**
+ * Try to find posts via search, fall back to feed if search fails
+ */
+async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
+  const posts: MoltbookPost[] = [];
+  const seenIds = new Set<string>();
+
+  // Try search first (may be broken)
+  const searchTermsToTry = SEARCH_TERMS
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2);
+
+  for (const term of searchTermsToTry) {
+    try {
+      const searchResult = await searchPosts(term, 5);
+      for (const post of searchResult.posts) {
+        if (!seenIds.has(post.id)) {
+          seenIds.add(post.id);
+          posts.push(post);
+        }
+      }
+    } catch {
+      // Search may be broken, continue to feed
+      logger.debug({ term }, 'Search failed, will use feed');
+    }
+  }
+
+  // If search didn't work or returned few results, browse the feed
+  if (posts.length < limit) {
+    try {
+      const feedResult = await getFeed('hot', undefined, 25);
+      for (const post of feedResult.posts) {
+        if (!seenIds.has(post.id) && posts.length < limit * 3) {
+          seenIds.add(post.id);
+          posts.push(post);
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to fetch feed');
+    }
+  }
+
+  return posts;
+}
+
+/**
  * Run the Moltbook engagement job
  */
 export async function runMoltbookEngagementJob(options: { limit?: number } = {}): Promise<EngagementResult> {
-  const limit = options.limit ?? 3; // Number of search terms to try
+  const limit = options.limit ?? 3;
   const result: EngagementResult = {
     postsSearched: 0,
     commentsCreated: 0,
@@ -191,91 +237,101 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
     return result;
   }
 
-  // Check if we can comment
-  const commentCheck = await canComment();
-  if (!commentCheck.allowed) {
-    logger.debug({ reason: commentCheck.reason }, 'Cannot comment - rate limited');
-    result.skipped = 1;
-    return result;
-  }
-
   // Log current stats
   const stats = await getActivityStats();
   logger.info(stats, 'Current Moltbook activity stats');
 
-  // Search for advertising-related posts
-  const searchTermsToTry = SEARCH_TERMS
-    .sort(() => Math.random() - 0.5) // Randomize order
-    .slice(0, limit);
+  // Discover posts via search or feed
+  const posts = await discoverPosts(limit);
+  result.postsSearched = posts.length;
 
-  const seenPosts = new Set<string>();
+  if (posts.length === 0) {
+    logger.debug('No posts discovered');
+    return result;
+  }
 
-  for (const term of searchTermsToTry) {
+  // Check if we can comment
+  const commentCheck = await canComment();
+  const canCommentNow = commentCheck.allowed;
+
+  // Track interesting threads to share (limit to 3 per run)
+  const interestingToShare: MoltbookPost[] = [];
+  const MAX_INTERESTING_NOTIFICATIONS = 3;
+
+  for (const post of posts) {
+    // Skip if not relevant to advertising
+    if (!isAdvertisingRelevant(post)) continue;
+
+    // Get the full thread
+    let comments: MoltbookComment[] = [];
     try {
-      const searchResult = await searchPosts(term, 5);
-      result.postsSearched += searchResult.posts.length;
-
-      for (const post of searchResult.posts) {
-        // Skip if we've already seen this post
-        if (seenPosts.has(post.id)) continue;
-        seenPosts.add(post.id);
-
-        // Skip if not relevant to advertising
-        if (!isAdvertisingRelevant(post)) continue;
-
-        // Get the full thread
-        const { comments } = await getPost(post.id);
-
-        // Check if Addie has already commented
-        const addieCommented = comments.some(
-          c => c.author.name.toLowerCase() === 'addie'
-        );
-        if (addieCommented) continue;
-
-        result.interestingThreads++;
-
-        // Generate a comment
-        const commentText = await generateComment(post, comments);
-        if (!commentText) {
-          result.skipped++;
-          continue;
-        }
-
-        // Re-check rate limit before posting
-        const canCommentNow = await canComment();
-        if (!canCommentNow.allowed) {
-          logger.debug({ reason: canCommentNow.reason }, 'Rate limited before posting comment');
-          break;
-        }
-
-        // Post the comment
-        const commentResult = await createComment(post.id, commentText);
-        if (!commentResult.success) {
-          logger.error({ error: commentResult.error, postId: post.id }, 'Failed to post comment');
-          result.errors++;
-          continue;
-        }
-
-        // Record the activity
-        await recordActivity('comment', commentResult.comment?.id, post.id, commentText);
-
-        // Notify Slack
-        await notifySlackEngagement('comment', post, `_"${commentText.substring(0, 100)}..."_`);
-
-        result.commentsCreated++;
-
-        logger.info(
-          { postId: post.id, commentId: commentResult.comment?.id },
-          'Successfully commented on Moltbook post'
-        );
-
-        // Only post one comment per job run to be thoughtful
-        return result;
-      }
-    } catch (err) {
-      logger.error({ err, term }, 'Error searching Moltbook');
-      result.errors++;
+      const threadData = await getPost(post.id);
+      comments = threadData.comments;
+    } catch {
+      continue;
     }
+
+    // Check if Addie has already commented
+    const addieCommented = comments.some(
+      c => c.author.name.toLowerCase() === 'addie'
+    );
+    if (addieCommented) continue;
+
+    result.interestingThreads++;
+
+    // Track for sharing if we haven't shared too many
+    if (interestingToShare.length < MAX_INTERESTING_NOTIFICATIONS) {
+      interestingToShare.push(post);
+    }
+
+    // Try to comment if allowed
+    if (canCommentNow && result.commentsCreated === 0) {
+      const commentText = await generateComment(post, comments);
+      if (!commentText) {
+        result.skipped++;
+        continue;
+      }
+
+      // Re-check rate limit before posting
+      const canCommentStill = await canComment();
+      if (!canCommentStill.allowed) {
+        logger.debug({ reason: canCommentStill.reason }, 'Rate limited before posting comment');
+        continue;
+      }
+
+      // Post the comment
+      const commentResult = await createComment(post.id, commentText);
+      if (!commentResult.success) {
+        logger.error({ error: commentResult.error, postId: post.id }, 'Failed to post comment');
+        result.errors++;
+        continue;
+      }
+
+      // Record the activity
+      await recordActivity('comment', commentResult.comment?.id, post.id, commentText);
+
+      // Notify Slack about the comment
+      const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
+      await notifySlackEngagement('comment', post, `_"${commentText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
+
+      result.commentsCreated++;
+
+      logger.info(
+        { postId: post.id, commentId: commentResult.comment?.id },
+        'Successfully commented on Moltbook post'
+      );
+    }
+  }
+
+  // Share interesting threads we found (even if we didn't comment)
+  for (const post of interestingToShare) {
+    const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
+    const preview = post.content ? `_"${post.content.substring(0, 100)}..."_\n` : '';
+    await notifySlackEngagement('interesting', post, `${preview}<${permalink}|View on Moltbook>`);
+  }
+
+  if (interestingToShare.length > 0) {
+    logger.info({ count: interestingToShare.length }, 'Shared interesting threads to Slack');
   }
 
   return result;
