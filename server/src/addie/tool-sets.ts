@@ -227,7 +227,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, flagged conversations, insights (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, insights (admin only)',
     tools: [
       'list_pending_invoices',
       'get_account',
@@ -256,6 +256,9 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'find_duplicate_orgs',
       'check_domain_health',
       'manage_organization_domains',
+      'update_org_member_role',
+      'list_escalations',
+      'resolve_escalation',
       'my_engaged_prospects',
       'my_followups_needed',
       'unassigned_prospects',
