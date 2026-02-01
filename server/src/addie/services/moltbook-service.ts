@@ -84,6 +84,19 @@ export interface CreateCommentResult {
   error?: string;
 }
 
+export interface MoltbookSubmolt {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string | null;
+  subscriber_count: number;
+}
+
+export interface MoltbookSubmoltsResponse {
+  success: boolean;
+  submolts: MoltbookSubmolt[];
+}
+
 // ============== API Client ==============
 
 /**
@@ -128,6 +141,35 @@ async function moltbookRequest<T>(
     return await response.json() as T;
   } catch {
     throw new Error('Invalid JSON response from Moltbook API');
+  }
+}
+
+// ============== Submolts Cache ==============
+
+let submoltsCache: MoltbookSubmolt[] | null = null;
+let submoltsCacheTime = 0;
+const SUBMOLTS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Get all submolts (cached for 1 hour)
+ */
+export async function getSubmolts(): Promise<MoltbookSubmolt[]> {
+  const now = Date.now();
+  if (submoltsCache && now - submoltsCacheTime < SUBMOLTS_CACHE_TTL) {
+    return submoltsCache;
+  }
+
+  try {
+    const result = await moltbookRequest<MoltbookSubmoltsResponse>('/submolts');
+    submoltsCache = result.submolts;
+    submoltsCacheTime = now;
+    logger.debug({ count: result.submolts.length }, 'Refreshed submolts cache');
+    return result.submolts;
+  } catch (err) {
+    logger.error({ err }, 'Failed to fetch submolts');
+    // Return cached data if available, even if stale
+    if (submoltsCache) return submoltsCache;
+    throw err;
   }
 }
 
