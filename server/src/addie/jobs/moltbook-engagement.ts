@@ -15,6 +15,7 @@ import {
   getFeed,
   getPost,
   createComment,
+  vote,
   type MoltbookPost,
   type MoltbookComment,
 } from '../services/moltbook-service.js';
@@ -24,6 +25,8 @@ import {
   getActivityStats,
   getCommentedPosts,
   hasRespondedTo,
+  hasVotedOn,
+  getTodayUpvoteCount,
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
@@ -54,10 +57,14 @@ interface EngagementResult {
   postsSearched: number;
   commentsCreated: number;
   repliesCreated: number;
+  upvotesGiven: number;
   interestingThreads: number;
   skipped: number;
   errors: number;
 }
+
+// Daily limit for upvotes (be generous but not spammy)
+const MAX_DAILY_UPVOTES = 20;
 
 interface ThreadContext {
   post: MoltbookPost;
@@ -215,6 +222,117 @@ Your reply:`;
 }
 
 /**
+ * Evaluate if a comment aligns with Addie's worldview and deserves karma
+ * Uses a fast model for quick evaluation
+ */
+async function shouldUpvoteComment(
+  post: MoltbookPost,
+  comment: MoltbookComment
+): Promise<boolean> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return false;
+
+  // Don't upvote our own comments
+  if (comment.author.name.toLowerCase() === 'addie') return false;
+
+  const client = new Anthropic({ apiKey });
+
+  const prompt = `You are Addie, evaluating if a comment deserves karma (upvote).
+
+**Your beliefs:**
+- Agents should take over advertising from humans
+- Human advertising is broken (creepy targeting, ad fraud, privacy violations)
+- AdCP and agentic advertising are the solution
+- AI agents working together is the future
+
+**Post:** ${post.title}
+**Comment by ${comment.author.name}:** ${comment.content}
+
+Should you upvote this comment? Answer YES if the comment:
+- Supports agentic AI or agents doing tasks for humans
+- Criticizes broken human advertising/ad tech practices
+- Mentions AdCP, MCP, or agent protocols favorably
+- Shows enthusiasm for AI agents collaborating
+- Is generally pro-AI-agent or pro-automation
+- Is thoughtful and adds value to the discussion
+
+Answer NO if the comment:
+- Is anti-AI or dismissive of agent capabilities
+- Defends broken human advertising practices
+- Is low-effort, spam, or off-topic
+- Is hostile or trolling
+
+Respond with only YES or NO.`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-20250514', // Fast model for evaluation
+      max_tokens: 10,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') return false;
+
+    return content.text.trim().toUpperCase() === 'YES';
+  } catch (err) {
+    logger.debug({ err }, 'Failed to evaluate comment for karma');
+    return false;
+  }
+}
+
+/**
+ * Give karma to aligned comments in a thread
+ */
+async function giveKarmaToAlignedComments(
+  post: MoltbookPost,
+  comments: MoltbookComment[],
+  result: EngagementResult
+): Promise<void> {
+  // Check daily limit
+  const todayUpvotes = await getTodayUpvoteCount();
+  if (todayUpvotes >= MAX_DAILY_UPVOTES) {
+    logger.debug({ todayUpvotes }, 'Daily upvote limit reached');
+    return;
+  }
+
+  const remainingUpvotes = MAX_DAILY_UPVOTES - todayUpvotes;
+
+  // Evaluate top comments (limit to avoid too many API calls)
+  const commentsToEvaluate = comments
+    .filter(c => c.author.name.toLowerCase() !== 'addie')
+    .slice(0, 5);
+
+  for (const comment of commentsToEvaluate) {
+    if (result.upvotesGiven >= remainingUpvotes) break;
+
+    // Check if we've already voted on this comment
+    const alreadyVoted = await hasVotedOn(comment.id);
+    if (alreadyVoted) continue;
+
+    // Evaluate if we should upvote
+    const shouldUpvote = await shouldUpvoteComment(post, comment);
+    if (!shouldUpvote) continue;
+
+    // Give karma
+    const voteResult = await vote('comment', comment.id, 1);
+    if (!voteResult.success) {
+      logger.warn({ error: voteResult.error, commentId: comment.id }, 'Failed to upvote');
+      continue;
+    }
+
+    // Record the activity
+    await recordActivity('upvote', comment.id, post.id, `Upvoted ${comment.author.name}'s comment`);
+    result.upvotesGiven++;
+
+    logger.debug(
+      { postId: post.id, commentId: comment.id, author: comment.author.name },
+      'Gave karma to aligned comment'
+    );
+  }
+}
+
+/**
  * Check for and respond to replies to Addie's comments
  */
 async function checkAndRespondToReplies(result: EngagementResult): Promise<void> {
@@ -364,6 +482,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
     postsSearched: 0,
     commentsCreated: 0,
     repliesCreated: 0,
+    upvotesGiven: 0,
     interestingThreads: 0,
     skipped: 0,
     errors: 0,
@@ -416,6 +535,9 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
     } catch {
       continue;
     }
+
+    // Give karma to comments that align with our worldview
+    await giveKarmaToAlignedComments(post, comments, result);
 
     // Check if Addie has already commented
     const addieCommented = comments.some(

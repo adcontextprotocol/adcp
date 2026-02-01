@@ -285,6 +285,31 @@ export async function hasRespondedTo(parentCommentId: string): Promise<boolean> 
   return parseInt(result.rows[0].count) > 0;
 }
 
+/**
+ * Check if Addie has already voted on a comment or post
+ */
+export async function hasVotedOn(targetId: string): Promise<boolean> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM moltbook_activity
+     WHERE activity_type IN ('upvote', 'downvote')
+       AND moltbook_id = $1`,
+    [targetId]
+  );
+  return parseInt(result.rows[0].count) > 0;
+}
+
+/**
+ * Get today's upvote count for daily limit checking
+ */
+export async function getTodayUpvoteCount(): Promise<number> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM moltbook_activity
+     WHERE activity_type = 'upvote'
+       AND created_at > CURRENT_DATE`
+  );
+  return parseInt(result.rows[0].count);
+}
+
 // ============== Stats ==============
 
 /**
@@ -293,20 +318,26 @@ export async function hasRespondedTo(parentCommentId: string): Promise<boolean> 
 export async function getActivityStats(): Promise<{
   totalPosts: number;
   totalComments: number;
+  totalUpvotes: number;
   postsToday: number;
   commentsToday: number;
+  upvotesToday: number;
 }> {
   const result = await query<{
     total_posts: string;
     total_comments: string;
+    total_upvotes: string;
     posts_today: string;
     comments_today: string;
+    upvotes_today: string;
   }>(`
     SELECT
       COUNT(*) FILTER (WHERE activity_type = 'post') as total_posts,
       COUNT(*) FILTER (WHERE activity_type = 'comment') as total_comments,
+      COUNT(*) FILTER (WHERE activity_type = 'upvote') as total_upvotes,
       COUNT(*) FILTER (WHERE activity_type = 'post' AND created_at > CURRENT_DATE) as posts_today,
-      COUNT(*) FILTER (WHERE activity_type = 'comment' AND created_at > CURRENT_DATE) as comments_today
+      COUNT(*) FILTER (WHERE activity_type = 'comment' AND created_at > CURRENT_DATE) as comments_today,
+      COUNT(*) FILTER (WHERE activity_type = 'upvote' AND created_at > CURRENT_DATE) as upvotes_today
     FROM moltbook_activity
   `);
 
@@ -314,7 +345,9 @@ export async function getActivityStats(): Promise<{
   return {
     totalPosts: parseInt(row.total_posts),
     totalComments: parseInt(row.total_comments),
+    totalUpvotes: parseInt(row.total_upvotes),
     postsToday: parseInt(row.posts_today),
     commentsToday: parseInt(row.comments_today),
+    upvotesToday: parseInt(row.upvotes_today),
   };
 }
