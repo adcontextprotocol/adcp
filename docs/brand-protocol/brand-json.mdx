@@ -65,16 +65,15 @@ Designates an MCP agent that provides brand information:
   "version": "1.0",
   "brand_agent": {
     "url": "https://agent.acme.com/mcp",
-    "capabilities": ["creative_generation", "sponsored_intelligence"]
+    "id": "acme_brand_agent"
   }
 }
 ```
 
 Optional fields:
-- `auth`: Authentication requirements (see below)
 - `contact`: Contact information
 
-When a brand has an agent, the agent is the authoritative source for brand information. Agents should provide brand manifests and other data via MCP tools.
+When a brand has an agent, the agent is the authoritative source for brand information. Agents implement `get_brand_manifest({ house, brand_id })` to return brand manifest data.
 
 ### 4. House Portfolio
 
@@ -124,8 +123,12 @@ Each brand in the `brands` array:
 | `keller_type` | enum | No | `master`, `sub-brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
-| `brand_standards` | string | No | URL to brand-standards.json |
-| `brand_manifest` | object/string | No | Inline manifest or URL |
+| `brand_agent` | object | No | Agent providing brand manifest data `{ url, id }` |
+| `logos` | array | No | Brand logo assets (inline manifest data) |
+| `colors` | object | No | Brand color palette (inline manifest data) |
+| `fonts` | object | No | Brand typography (inline manifest data) |
+| `tone` | string | No | Brand voice and messaging tone |
+| `tagline` | string | No | Brand tagline or slogan |
 
 ### Names Array
 
@@ -232,7 +235,7 @@ Maximum redirect depth: 3 hops.
   "version": "1.0",
   "brand_agent": {
     "url": "https://brand-agent.enterprise.com/mcp",
-    "capabilities": ["creative_generation", "sponsored_intelligence", "product_inquiry"]
+    "id": "enterprise_brand_agent"
   },
   "contact": {
     "name": "Enterprise Brand Team",

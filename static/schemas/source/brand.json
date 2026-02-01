@@ -256,6 +256,10 @@
             "settings": { "type": "object", "additionalProperties": true }
           },
           "additionalProperties": true
+        },
+        "brand_agent": {
+          "$ref": "#/definitions/brand_agent",
+          "description": "Brand agent that provides dynamic brand manifest data. Agent implements get_brand_manifest({ house, brand_id })."
         }
       },
       "required": ["id", "names"],
@@ -290,21 +294,21 @@
     },
     "brand_agent": {
       "type": "object",
-      "description": "Brand agent for automated interactions",
+      "description": "Reference to a brand agent that provides brand manifest data via MCP",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "Brand agent API endpoint URL (MCP or A2A)"
+          "description": "Brand agent MCP endpoint URL"
         },
-        "capabilities": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Agent capabilities (e.g., 'creative_generation', 'product_inquiry')"
+        "id": {
+          "type": "string",
+          "description": "Agent identifier (useful for logging, multi-tenant DAMs)",
+          "pattern": "^[a-z0-9_]+$"
         }
       },
-      "required": ["url"],
+      "required": ["url", "id"],
       "additionalProperties": true
     },
     "contact": {
@@ -421,7 +425,7 @@
       "version": "1.0",
       "brand_agent": {
         "url": "https://agent.acme.com/mcp",
-        "capabilities": ["creative_generation", "sponsored_intelligence"]
+        "id": "acme_brand_agent"
       }
     },
     {
@@ -508,7 +512,11 @@
           "properties": [
             {"type": "website", "identifier": "jordan.com", "primary": true},
             {"type": "website", "identifier": "jumpman23.com"}
-          ]
+          ],
+          "brand_agent": {
+            "url": "https://dam.nike.com/mcp",
+            "id": "nike_dam"
+          }
         },
         {
           "id": "converse",

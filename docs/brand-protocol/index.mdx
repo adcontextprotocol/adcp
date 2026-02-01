@@ -105,10 +105,12 @@ A brand with an MCP agent that provides brand information:
   "version": "1.0",
   "brand_agent": {
     "url": "https://agent.acme.com/mcp",
-    "capabilities": ["creative_generation", "sponsored_intelligence"]
+    "id": "acme_brand_agent"
   }
 }
 ```
+
+The agent implements `get_brand_manifest({ house, brand_id })` to return brand manifest data.
 
 ## Example: House Redirect
 
