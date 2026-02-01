@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-id.json",
+  "title": "Signal ID",
+  "description": "Universal signal identifier referencing a signal from a data provider's catalog. The data provider publishes their signal catalog via adagents.json, and this ID references a specific signal within that catalog.",
+  "type": "object",
+  "properties": {
+    "data_provider_domain": {
+      "type": "string",
+      "description": "Domain of the data provider that owns this signal (e.g., 'polk.com', 'experian.com'). The signal definition is published at this domain's /.well-known/adagents.json",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Signal identifier within the data provider's catalog (e.g., 'likely_tesla_buyers', 'income_100k_plus')"
+    }
+  },
+  "required": [
+    "data_provider_domain",
+    "id"
+  ],
+  "additionalProperties": true
+}

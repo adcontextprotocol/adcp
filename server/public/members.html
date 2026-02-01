@@ -1137,6 +1137,7 @@
           <button class="filter-btn" data-filter="sales_agent" onclick="setFilter(this, 'sales_agent')">Sales Agents</button>
           <button class="filter-btn" data-filter="creative_agent" onclick="setFilter(this, 'creative_agent')">Creative Agents</button>
           <button class="filter-btn" data-filter="signals_agent" onclick="setFilter(this, 'signals_agent')">Signals Agents</button>
+          <button class="filter-btn" data-filter="data_provider" onclick="setFilter(this, 'data_provider')">Data Providers</button>
           <button class="filter-btn" data-filter="consulting" onclick="setFilter(this, 'consulting')">Consulting</button>
         </div>
       </div>
@@ -1259,7 +1260,7 @@
 
         // Apply URL params to filters (validate against known values)
         // Normalize hyphens to underscores for URL compatibility (e.g., sales-agent -> sales_agent)
-        const validFilters = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'consulting'];
+        const validFilters = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'data_provider', 'consulting'];
         const normalizedType = typeParam ? typeParam.replace(/-/g, '_') : null;
         if (normalizedType && validFilters.includes(normalizedType)) {
           currentFilter = normalizedType;
@@ -1487,6 +1488,19 @@
             </div>
           ` : ''}
 
+          ${member.data_providers && member.data_providers.length > 0 ? `
+            <div class="detail-section">
+              <h2>Data Provider Catalogs</h2>
+              <div class="publishers-list" id="data-providers-list">
+                ${member.data_providers.map((dp, i) => `
+                  <div class="data-provider-item-wrapper" id="data-provider-${i}" data-domain="${dp.domain}">
+                    ${renderDataProviderCard(null, dp.domain, { showStatus: true })}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+
           <div class="detail-section">
             <h2>Contact Information</h2>
             <div class="detail-contact-grid">
@@ -1554,6 +1568,11 @@
       if (member.publishers && member.publishers.length > 0) {
         validatePublishers(member.publishers.map(p => p.domain));
       }
+
+      // Validate data providers
+      if (member.data_providers && member.data_providers.length > 0) {
+        validateDataProviders(member.data_providers.map(dp => dp.domain));
+      }
     }
 
     async function loadWorkingGroupsForOrg(orgId) {
@@ -1613,6 +1632,89 @@
 
     function updatePublisherDisplay(publisherEl, data, domain) {
       publisherEl.innerHTML = renderPublisherCard(data, domain, { showStatus: true, compact: false });
+    }
+
+    async function validateDataProviders(dataProviderDomains) {
+      for (let i = 0; i < dataProviderDomains.length; i++) {
+        const domain = dataProviderDomains[i];
+        const dpEl = document.getElementById(`data-provider-${i}`);
+        if (!dpEl) continue;
+
+        try {
+          const response = await fetch(`/api/public/validate-publisher?domain=${encodeURIComponent(domain)}`);
+          const data = await response.json();
+          updateDataProviderDisplay(dpEl, data, domain);
+        } catch (error) {
+          console.error(`Failed to validate data provider ${domain}:`, error);
+          updateDataProviderDisplay(dpEl, { error: 'Validation failed' }, domain);
+        }
+      }
+    }
+
+    function updateDataProviderDisplay(dpEl, data, domain) {
+      dpEl.innerHTML = renderDataProviderCard(data, domain, { showStatus: true });
+    }
+
+    function renderDataProviderCard(data, domain, options = {}) {
+      const showStatus = options.showStatus ?? false;
+      const isLoading = !data;
+      const hasError = data && (data.error || !data.validation?.valid);
+      const hasSignals = data && data.validation?.raw_data?.signals;
+      const signalCount = hasSignals ? data.validation.raw_data.signals.length : 0;
+
+      // Extract categories from signals
+      const categories = hasSignals
+        ? [...new Set(data.validation.raw_data.signals.map(s => s.category).filter(Boolean))]
+        : [];
+
+      let statusHtml = '';
+      if (showStatus) {
+        if (isLoading) {
+          statusHtml = `
+            <span class="agent-status checking">
+              <span class="status-dot"></span>
+              Checking...
+            </span>
+          `;
+        } else if (hasError) {
+          statusHtml = `
+            <span class="agent-status offline">
+              <span class="status-dot"></span>
+              No catalog
+            </span>
+          `;
+        } else {
+          statusHtml = `
+            <span class="agent-status online">
+              <span class="status-dot"></span>
+              ${signalCount} signal${signalCount !== 1 ? 's' : ''}
+            </span>
+          `;
+        }
+      }
+
+      return `
+        <div class="agent-item">
+          <div class="agent-icon" style="background: linear-gradient(135deg, var(--color-success-100), var(--color-success-400)); color: var(--color-success-800);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </div>
+          <div class="agent-info">
+            <div class="agent-name">${escapeHtml(domain)}</div>
+            <div class="agent-url">Signal Catalog</div>
+            ${categories.length > 0 ? `
+              <div class="agent-capabilities">
+                ${categories.slice(0, 4).map(cat => `<span class="capability-tag">${escapeHtml(cat)}</span>`).join('')}
+                ${categories.length > 4 ? `<span class="capability-tag">+${categories.length - 4} more</span>` : ''}
+              </div>
+            ` : ''}
+          </div>
+          ${statusHtml}
+        </div>
+      `;
     }
 
     async function discoverAgents(agentUrls) {

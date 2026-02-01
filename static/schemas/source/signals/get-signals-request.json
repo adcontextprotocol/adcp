@@ -2,12 +2,20 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/signals/get-signals-request.json",
   "title": "Get Signals Request",
-  "description": "Request parameters for discovering signals based on description",
+  "description": "Request parameters for discovering signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both (signal_ids take precedence for exact matches, signal_spec provides additional discovery context).",
   "type": "object",
   "properties": {
     "signal_spec": {
       "type": "string",
-      "description": "Natural language description of the desired signals"
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first."
+    },
+    "signal_ids": {
+      "type": "array",
+      "description": "Specific signals to look up by data provider and ID. Returns exact matches from the data provider's catalog. Takes precedence over signal_spec when both are provided.",
+      "items": {
+        "$ref": "/schemas/core/signal-id.json"
+      },
+      "minItems": 1
     },
     "deliver_to": {
       "type": "object",
@@ -52,8 +60,11 @@
     }
   },
   "required": [
-    "signal_spec",
     "deliver_to"
+  ],
+  "anyOf": [
+    { "required": ["signal_spec"] },
+    { "required": ["signal_ids"] }
   ],
   "additionalProperties": true
 }

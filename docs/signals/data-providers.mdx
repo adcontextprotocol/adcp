@@ -1,0 +1,446 @@
+---
+title: Data Provider Guide
+sidebarTitle: Data Providers
+description: How to publish a signal catalog via adagents.json
+---
+
+# Data Provider Guide
+
+This guide explains how data providers publish signal catalogs via `adagents.json`, enabling AI agents to discover, verify authorization, and activate signals for advertising campaigns.
+
+## The Problem
+
+Data providers (Polk, Experian, Acxiom, etc.) own valuable audience and contextual data, but integrating with the growing ecosystem of AI-powered advertising agents presents challenges:
+
+**Discovery is fragmented.** Each signals agent (LiveRamp, The Trade Desk, etc.) needs custom integrations to know what signals you offer. There's no standard way for an AI agent to ask "what automotive purchase intent signals does Polk have?"
+
+**Authorization is opaque.** When a buyer receives a signal from a signals agent, they can't verify that the agent is actually authorized to resell it. They have to trust the intermediary.
+
+**Signal semantics are inconsistent.** Without standardized definitions, an AI agent can't know whether "auto_intenders" is a binary segment, a propensity score, or a multi-value category—making it impossible to construct proper targeting expressions.
+
+**Scaling requires N×M integrations.** Every data provider needs custom integrations with every signals agent. This doesn't scale.
+
+## The Solution
+
+Signal Catalogs solve these problems by letting data providers publish a machine-readable catalog of their signals at a well-known URL. This enables:
+
+- **Discovery**: AI agents can find signals via natural language ("find automotive purchase intent signals") or structured lookup
+- **Authorization verification**: Buyers can verify authorization by checking the data provider's domain directly
+- **Typed targeting**: Signal definitions include value types (binary, categorical, numeric) so agents can construct correct targeting expressions
+- **Scalable partnerships**: Authorize agents once in your catalog; as you add signals, authorized agents automatically have access
+
+## Overview
+
+Data providers own audience and contextual data (purchase intent, demographics, behavioral segments). The Signal Catalog feature lets you publish your signals in a standardized format that:
+
+- Enables discovery via natural language queries
+- Provides authorization verification for agents
+- Describes signal characteristics (binary, categorical, numeric)
+- Supports tag-based grouping for efficient authorization
+
+This follows the same pattern as publishers declaring properties - instead of "what ad placements exist," you're declaring "what signals exist."
+
+## The Parallel Pattern
+
+| Publishers | Data Providers |
+|------------|----------------|
+| Declare **properties** (websites, apps) | Declare **signals** (audiences, segments) |
+| Authorize agents to **sell inventory** | Authorize agents to **resell signals** |
+| Use `property_ids` / `property_tags` | Use `signal_ids` / `signal_tags` |
+| Buyers verify via `publisher_domain` | Buyers verify via `data_provider_domain` |
+
+Both use `/.well-known/adagents.json` as the publishing mechanism.
+
+## File Location
+
+Data providers host their signal catalog at:
+
+```
+https://your-domain.com/.well-known/adagents.json
+```
+
+Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions.
+
+## Basic Structure
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Acme Data Solutions",
+    "email": "partnerships@acme-data.com",
+    "domain": "acme-data.com"
+  },
+  "signals": [
+    {
+      "id": "likely_ev_buyers",
+      "name": "Likely EV Buyers",
+      "description": "Consumers modeled as likely to purchase an electric vehicle in the next 12 months",
+      "value_type": "binary",
+      "category": "purchase_intent",
+      "tags": ["automotive", "green"]
+    }
+  ],
+  "signal_tags": {
+    "automotive": {
+      "name": "Automotive Signals",
+      "description": "Vehicle-related audience segments"
+    },
+    "green": {
+      "name": "Green/Sustainability",
+      "description": "Environmentally-conscious consumer segments"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://signals-agent.example.com",
+      "authorized_for": "All automotive signals",
+      "authorization_type": "signal_tags",
+      "signal_tags": ["automotive"]
+    }
+  ],
+  "last_updated": "2025-01-15T10:00:00Z"
+}
+```
+
+## Signal Definition
+
+Each signal in the `signals` array describes a targetable segment:
+
+### Required Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier within your catalog. Pattern: `^[a-zA-Z0-9_-]+$` |
+| `name` | string | Human-readable signal name |
+| `value_type` | enum | Data type: `binary`, `categorical`, or `numeric` |
+
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Detailed description of methodology and coverage |
+| `category` | enum | High-level category (e.g., `purchase_intent`, `demographics`, `interests`) |
+| `tags` | array | Tags for grouping (lowercase, alphanumeric: `^[a-z0-9_-]+$`) |
+| `allowed_values` | array | For categorical signals: valid values |
+| `range` | object | For numeric signals: `{ min, max, unit }` |
+| `pricing_guidance` | object | CPM range guidance: `{ cpm_range: { min, max }, currency }` |
+| `coverage_notes` | string | Geographic coverage, match rates, availability |
+| `methodology_url` | string | URL to documentation on signal derivation |
+
+## Signal Value Types
+
+### Binary Signals
+
+User either matches or doesn't. Most common type.
+
+```json
+{
+  "id": "likely_tesla_buyers",
+  "name": "Likely Tesla Buyers",
+  "value_type": "binary",
+  "category": "purchase_intent"
+}
+```
+
+**Targeting**: Include or exclude users matching this signal.
+
+### Categorical Signals
+
+User has one of several possible values.
+
+```json
+{
+  "id": "vehicle_ownership",
+  "name": "Current Vehicle Ownership",
+  "value_type": "categorical",
+  "allowed_values": ["tesla", "bmw", "mercedes", "audi", "lexus", "other_luxury", "non_luxury"]
+}
+```
+
+**Targeting**: Target users with specific values (e.g., "users who own tesla or bmw").
+
+### Numeric Signals
+
+User has a score or measurement within a range.
+
+```json
+{
+  "id": "purchase_propensity",
+  "name": "Auto Purchase Propensity",
+  "value_type": "numeric",
+  "range": {
+    "min": 0,
+    "max": 1,
+    "unit": "score"
+  }
+}
+```
+
+**Targeting**: Target users within a value range (e.g., "propensity score > 0.7").
+
+## Authorization Patterns
+
+### Pattern 1: Signal IDs (Direct References)
+
+Authorize specific signals by ID:
+
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://premium-agent.example.com",
+      "authorized_for": "Premium automotive signals only",
+      "authorization_type": "signal_ids",
+      "signal_ids": ["likely_tesla_buyers", "luxury_auto_intenders"]
+    }
+  ]
+}
+```
+
+**Best for**: Specific, limited signal sets. Fine-grained control.
+
+### Pattern 2: Signal Tags (Efficient Grouping)
+
+Authorize all signals with certain tags:
+
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://full-catalog-agent.example.com",
+      "authorized_for": "All automotive signals",
+      "authorization_type": "signal_tags",
+      "signal_tags": ["automotive"]
+    }
+  ]
+}
+```
+
+**Best for**: Large catalogs. As you add signals with the tag, agents automatically get access.
+
+## Signal Tags
+
+The `signal_tags` object provides metadata for tags used in signals:
+
+```json
+{
+  "signal_tags": {
+    "automotive": {
+      "name": "Automotive Signals",
+      "description": "Vehicle ownership, purchase intent, and service signals"
+    },
+    "premium": {
+      "name": "Premium Signals",
+      "description": "High-value segments with enhanced pricing"
+    }
+  }
+}
+```
+
+**Why define tags?**
+- Human-readable context for buyers exploring your catalog
+- Enables efficient authorization ("all premium signals")
+- Groups related signals for easier discovery
+
+## How Buyers Use Your Catalog
+
+### 1. Discovery
+
+Buyers call `get_signals` on a signals agent. The agent may use your catalog for:
+- Natural language matching ("find automotive purchase intent signals")
+- Structured lookup by `signal_id`
+
+### 2. Authorization Verification
+
+When a buyer receives a signal, they can verify authorization:
+
+```json
+{
+  "signal_id": {
+    "data_provider_domain": "acme-data.com",
+    "id": "likely_tesla_buyers"
+  }
+}
+```
+
+The buyer fetches `https://acme-data.com/.well-known/adagents.json` and checks:
+1. Does the signal exist in the `signals` array?
+2. Is the signals agent in `authorized_agents`?
+3. Does the authorization cover this signal (by ID or tag)?
+
+### 3. Targeting
+
+Based on `value_type`, buyers construct targeting expressions:
+
+```json
+// Binary targeting
+{
+  "signal_id": { "data_provider_domain": "acme-data.com", "id": "likely_tesla_buyers" },
+  "value_type": "binary",
+  "value": true
+}
+
+// Categorical targeting
+{
+  "signal_id": { "data_provider_domain": "acme-data.com", "id": "vehicle_ownership" },
+  "value_type": "categorical",
+  "values": ["tesla", "bmw"]
+}
+
+// Numeric targeting
+{
+  "signal_id": { "data_provider_domain": "acme-data.com", "id": "purchase_propensity" },
+  "value_type": "numeric",
+  "min_value": 0.7
+}
+```
+
+## Complete Example
+
+A full signal catalog for an automotive data provider:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Polk Automotive Data",
+    "email": "partnerships@polk.com",
+    "domain": "polk.com"
+  },
+  "signals": [
+    {
+      "id": "likely_tesla_buyers",
+      "name": "Likely Tesla Buyers",
+      "description": "Consumers modeled as likely to purchase a Tesla in the next 12 months based on vehicle registration, financial, and behavioral data",
+      "value_type": "binary",
+      "category": "purchase_intent",
+      "tags": ["automotive", "premium"],
+      "pricing_guidance": {
+        "cpm_range": { "min": 2.50, "max": 5.00 },
+        "currency": "USD"
+      },
+      "coverage_notes": "US coverage, ~85% match rate on major DSPs",
+      "methodology_url": "https://polk.com/methodology/purchase-intent"
+    },
+    {
+      "id": "vehicle_ownership",
+      "name": "Current Vehicle Ownership",
+      "description": "Current vehicle make owned by the consumer",
+      "value_type": "categorical",
+      "category": "ownership",
+      "allowed_values": ["tesla", "bmw", "mercedes", "audi", "lexus", "other_luxury", "non_luxury"],
+      "tags": ["automotive"]
+    },
+    {
+      "id": "purchase_propensity",
+      "name": "Auto Purchase Propensity",
+      "description": "Likelihood score of purchasing any new vehicle in the next 6 months",
+      "value_type": "numeric",
+      "category": "purchase_intent",
+      "range": { "min": 0, "max": 1, "unit": "score" },
+      "tags": ["automotive"]
+    }
+  ],
+  "signal_tags": {
+    "automotive": {
+      "name": "Automotive Signals",
+      "description": "Vehicle-related audience segments"
+    },
+    "premium": {
+      "name": "Premium Signals",
+      "description": "High-value premium audience segments with enhanced pricing"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://liveramp.com/.well-known/adcp/signals",
+      "authorized_for": "All Polk automotive signals via LiveRamp",
+      "authorization_type": "signal_tags",
+      "signal_tags": ["automotive"]
+    },
+    {
+      "url": "https://the-trade-desk.com/.well-known/adcp/signals",
+      "authorized_for": "Polk premium signals only",
+      "authorization_type": "signal_ids",
+      "signal_ids": ["likely_tesla_buyers"]
+    }
+  ],
+  "last_updated": "2025-01-15T10:00:00Z"
+}
+```
+
+## Validation
+
+Use the [AdAgents.json Builder](https://adcontextprotocol.org/adagents) to validate your signal catalog, or validate programmatically:
+
+```bash
+curl -X POST https://adcontextprotocol.org/api/adagents/validate \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "your-domain.com"}' | jq '.data.validation'
+```
+
+The validator checks:
+- Required fields (`id`, `name`, `value_type` for each signal)
+- ID patterns (alphanumeric with underscores/hyphens)
+- Tag consistency (tags used in signals should be defined in `signal_tags`)
+- Authorization references (signal_ids/signal_tags should reference existing signals/tags)
+
+## Best Practices
+
+### 1. Use Descriptive IDs
+
+```json
+// Good
+{ "id": "likely_tesla_buyers" }
+{ "id": "household_income_150k_plus" }
+
+// Avoid
+{ "id": "seg_12345" }
+{ "id": "a1b2c3" }
+```
+
+### 2. Provide Complete Metadata
+
+Include `description`, `coverage_notes`, and `methodology_url` so buyers understand what they're purchasing.
+
+### 3. Use Tags for Scalability
+
+As your catalog grows, tags enable efficient authorization without listing every signal ID.
+
+### 4. Document Value Types Clearly
+
+For categorical signals, always include `allowed_values`. For numeric signals, include `range` with `unit`.
+
+### 5. Keep Files Updated
+
+Update `last_updated` timestamp when signals change. Buyers cache these files - stale data causes authorization failures.
+
+## Integration with get_adcp_capabilities
+
+Signal agents advertise available data providers via `get_adcp_capabilities`:
+
+```json
+{
+  "signals": {
+    "data_provider_domains": ["polk.com", "experian.com", "acxiom.com"]
+  }
+}
+```
+
+This tells buyers which data providers' catalogs the agent can access.
+
+## Next Steps
+
+1. **Create your adagents.json** with your signal catalog
+2. **Host at** `/.well-known/adagents.json` on your domain
+3. **Validate** using the AdAgents.json Builder
+4. **Partner with signals agents** who will resell your data
+5. **Add agents to authorized_agents** as partnerships are established
+
+## Related Documentation
+
+- [Signals Protocol Overview](/docs/signals/overview) - How signals work in AdCP
+- [get_signals Task](/docs/signals/tasks/get_signals) - Signal discovery API
+- [activate_signal Task](/docs/signals/tasks/activate_signal) - Signal activation API
+- [adagents.json Tech Spec](/docs/governance/property/adagents) - Full adagents.json reference (property-focused)

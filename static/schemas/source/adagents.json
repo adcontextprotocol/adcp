@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/adagents.json",
-  "title": "Authorized Sales Agents",
-  "description": "Declaration of authorized sales agents for advertising inventory. Hosted at /.well-known/adagents.json on publisher domains. Can either contain the full structure inline or reference an authoritative URL.",
+  "title": "AdCP Agents Authorization",
+  "description": "Declaration of authorized agents for advertising inventory and data signals. Hosted at /.well-known/adagents.json on publisher domains (for properties) or data provider domains (for signals). Can either contain the full structure inline or reference an authoritative URL.",
   "oneOf": [
     {
       "type": "object",
@@ -260,6 +260,82 @@
                   "publisher_properties"
                 ],
                 "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "description": "Authorization for signals by specific signal IDs",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The authorized signals agent's API endpoint URL"
+                  },
+                  "authorized_for": {
+                    "type": "string",
+                    "description": "Human-readable description of what signals this agent is authorized to resell",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "authorization_type": {
+                    "type": "string",
+                    "const": "signal_ids",
+                    "description": "Discriminator indicating authorization by specific signal IDs"
+                  },
+                  "signal_ids": {
+                    "type": "array",
+                    "description": "Signal IDs this agent is authorized to resell. Resolved against the top-level signals array in this file",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_-]+$"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "url",
+                  "authorized_for",
+                  "authorization_type",
+                  "signal_ids"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "description": "Authorization for signals by tag membership",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "The authorized signals agent's API endpoint URL"
+                  },
+                  "authorized_for": {
+                    "type": "string",
+                    "description": "Human-readable description of what signals this agent is authorized to resell",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "authorization_type": {
+                    "type": "string",
+                    "const": "signal_tags",
+                    "description": "Discriminator indicating authorization by signal tags"
+                  },
+                  "signal_tags": {
+                    "type": "array",
+                    "description": "Signal tags this agent is authorized for. Agent can resell all signals with these tags",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9_-]+$"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "url",
+                  "authorized_for",
+                  "authorization_type",
+                  "signal_tags"
+                ],
+                "additionalProperties": true
               }
             ]
           },
@@ -299,6 +375,36 @@
               }
             },
             "required": ["url", "name", "features"],
+            "additionalProperties": true
+          }
+        },
+        "signals": {
+          "type": "array",
+          "description": "Signal catalog published by this data provider. Signals agents reference these signals via data_provider_domain + signal_id.",
+          "items": {
+            "$ref": "/schemas/core/signal-definition.json"
+          },
+          "minItems": 1
+        },
+        "signal_tags": {
+          "type": "object",
+          "description": "Metadata for each tag referenced by signals. Provides human-readable context for signal tag values.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Human-readable name for this tag"
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of what this tag represents"
+              }
+            },
+            "required": [
+              "name",
+              "description"
+            ],
             "additionalProperties": true
           }
         }
@@ -587,6 +693,67 @@
         }
       ],
       "last_updated": "2025-01-10T18:00:00Z"
+    },
+    {
+      "$schema": "/schemas/adagents.json",
+      "contact": {
+        "name": "Polk Automotive Data",
+        "email": "partnerships@polk.com",
+        "domain": "polk.com"
+      },
+      "signals": [
+        {
+          "id": "likely_tesla_buyers",
+          "name": "Likely Tesla Buyers",
+          "description": "Consumers modeled as likely to purchase a Tesla in the next 12 months based on vehicle registration, financial, and behavioral data",
+          "value_type": "binary",
+          "category": "purchase_intent",
+          "tags": ["automotive", "premium"]
+        },
+        {
+          "id": "vehicle_ownership",
+          "name": "Current Vehicle Ownership",
+          "description": "Current vehicle make owned by the consumer",
+          "value_type": "categorical",
+          "category": "ownership",
+          "allowed_values": ["tesla", "bmw", "mercedes", "audi", "lexus", "other_luxury", "non_luxury"],
+          "tags": ["automotive"]
+        },
+        {
+          "id": "purchase_propensity",
+          "name": "Auto Purchase Propensity",
+          "description": "Likelihood score of purchasing any new vehicle in the next 6 months",
+          "value_type": "numeric",
+          "category": "purchase_intent",
+          "range": { "min": 0, "max": 1, "unit": "score" },
+          "tags": ["automotive"]
+        }
+      ],
+      "signal_tags": {
+        "automotive": {
+          "name": "Automotive Signals",
+          "description": "Vehicle-related audience segments"
+        },
+        "premium": {
+          "name": "Premium Signals",
+          "description": "High-value premium audience segments"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://liveramp.com/.well-known/adcp/signals",
+          "authorized_for": "All Polk automotive signals via LiveRamp",
+          "authorization_type": "signal_tags",
+          "signal_tags": ["automotive"]
+        },
+        {
+          "url": "https://the-trade-desk.com/.well-known/adcp/signals",
+          "authorized_for": "Polk premium signals only",
+          "authorization_type": "signal_ids",
+          "signal_ids": ["likely_tesla_buyers"]
+        }
+      ],
+      "last_updated": "2025-01-15T10:00:00Z"
     }
   ]
 }

@@ -9,6 +9,9 @@ const offeringLabels = {
   sales_agent: 'Sales Agent',
   creative_agent: 'Creative Agent',
   signals_agent: 'Signals Agent',
+  si_agent: 'SI Agent',
+  governance_agent: 'Governance Agent',
+  data_provider: 'Data Provider',
   consulting: 'Consulting',
   other: 'Other'
 };
@@ -57,6 +60,12 @@ function renderMemberCard(member, options = {}) {
     ? `<span class="publisher-badge">${publisherCount} Publisher${publisherCount > 1 ? 's' : ''}</span>`
     : '';
 
+  // Data provider count badge - show if member has registered data providers
+  const dataProviderCount = (member.data_providers || []).length;
+  const dataProviderBadge = dataProviderCount > 0
+    ? `<span class="data-provider-badge">${dataProviderCount} Data Provider${dataProviderCount > 1 ? 's' : ''}</span>`
+    : '';
+
   // Founding member badge - show if member joined before cutoff
   const foundingBadge = member.is_founding_member
     ? '<span class="founding-member-badge">Founding Member</span>'
@@ -81,6 +90,7 @@ function renderMemberCard(member, options = {}) {
             ${foundingBadge}
             ${agentBadge}
             ${publisherBadge}
+            ${dataProviderBadge}
             ${visibilityBadge}
           </div>
           ${marketsHtml}
@@ -276,6 +286,17 @@ function getMemberCardStyles() {
       padding: 2px 8px;
       background: var(--color-primary-100);
       color: var(--color-primary-700);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .data-provider-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: #d1fae5;
+      color: #065f46;
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;

@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-category.json",
+  "title": "Signal Category",
+  "description": "High-level category for classifying signals",
+  "type": "string",
+  "enum": [
+    "purchase_intent",
+    "behavioral",
+    "ownership",
+    "lifestyle",
+    "financial",
+    "b2b",
+    "contextual",
+    "location",
+    "custom"
+  ],
+  "x-enum-descriptions": {
+    "purchase_intent": "Signals indicating likelihood to purchase specific products or services",
+    "behavioral": "Signals based on observed user behaviors and actions",
+    "ownership": "Signals indicating current ownership of products, subscriptions, etc.",
+    "lifestyle": "Signals related to interests, hobbies, and lifestyle choices",
+    "financial": "Signals related to income, credit, or financial behaviors",
+    "b2b": "Business-to-business signals for firmographic or professional targeting",
+    "contextual": "Signals based on content context rather than user attributes",
+    "location": "Signals based on geographic or location-based attributes",
+    "custom": "Custom or proprietary signal categories"
+  }
+}

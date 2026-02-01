@@ -25,7 +25,32 @@ export interface AdAgentsValidationResult {
 export interface AuthorizedAgent {
   url: string;
   authorized_for: string;
+  authorization_type?: 'property_ids' | 'property_tags' | 'inline_properties' | 'publisher_properties' | 'signal_ids' | 'signal_tags';
   property_ids?: string[];
+  property_tags?: string[];
+  signal_ids?: string[];
+  signal_tags?: string[];
+}
+
+export interface SignalDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  value_type: 'binary' | 'categorical' | 'numeric';
+  category?: string;
+  tags?: string[];
+  allowed_values?: string[];  // For categorical signals
+  range?: {                   // For numeric signals
+    min: number;
+    max: number;
+    unit?: string;
+  };
+  pricing_guidance?: {
+    cpm_range?: { min: number; max: number };
+    currency?: string;
+  };
+  coverage_notes?: string;
+  methodology_url?: string;
 }
 
 export interface AgentCardValidationResult {
@@ -44,6 +69,8 @@ export interface AdAgentsJsonInline {
   authorized_agents: AuthorizedAgent[];
   properties?: any[];
   tags?: Record<string, { name: string; description: string }>;
+  signals?: SignalDefinition[];
+  signal_tags?: Record<string, { name: string; description: string }>;
   contact?: {
     name: string;
     email?: string;
@@ -62,8 +89,37 @@ export interface AdAgentsJsonReference {
 
 export type AdAgentsJson = AdAgentsJsonInline | AdAgentsJsonReference;
 
+/**
+ * Valid signal categories per the protocol specification
+ */
+export const VALID_SIGNAL_CATEGORIES = [
+  'purchase_intent',
+  'behavioral',
+  'ownership',
+  'lifestyle',
+  'financial',
+  'b2b',
+  'contextual',
+  'location',
+  'custom',
+] as const;
+
+export type SignalCategory = typeof VALID_SIGNAL_CATEGORIES[number];
+
+/**
+ * Options for creating adagents.json
+ */
+export interface CreateAdAgentsJsonOptions {
+  agents: AuthorizedAgent[];
+  includeSchema?: boolean;
+  includeTimestamp?: boolean;
+  properties?: any[];
+  signals?: SignalDefinition[];
+  signalTags?: Record<string, { name: string; description: string }>;
+}
+
 export class AdAgentsManager {
-  
+
   /**
    * Validates a domain's adagents.json file
    */
@@ -298,6 +354,50 @@ export class AdAgentsManager {
       this.validateAgent(agent, index, result);
     });
 
+    // Validate signals array if present (for data providers)
+    if (data.signals !== undefined) {
+      if (!Array.isArray(data.signals)) {
+        result.errors.push({
+          field: 'signals',
+          message: 'signals must be an array',
+          severity: 'error'
+        });
+      } else {
+        data.signals.forEach((signal: any, index: number) => {
+          this.validateSignal(signal, index, result);
+        });
+      }
+    }
+
+    // Validate signal_tags if present
+    if (data.signal_tags !== undefined) {
+      if (typeof data.signal_tags !== 'object' || data.signal_tags === null || Array.isArray(data.signal_tags)) {
+        result.errors.push({
+          field: 'signal_tags',
+          message: 'signal_tags must be an object mapping tag IDs to tag definitions',
+          severity: 'error'
+        });
+      } else {
+        Object.entries(data.signal_tags).forEach(([tagId, tagDef]: [string, any]) => {
+          if (typeof tagDef !== 'object' || tagDef === null) {
+            result.errors.push({
+              field: `signal_tags.${tagId}`,
+              message: 'Each signal tag must be an object with name and description',
+              severity: 'error'
+            });
+          } else {
+            if (!tagDef.name || typeof tagDef.name !== 'string') {
+              result.errors.push({
+                field: `signal_tags.${tagId}.name`,
+                message: 'Signal tag name is required and must be a string',
+                severity: 'error'
+              });
+            }
+          }
+        });
+      }
+    }
+
     // Check optional fields
     if (data.$schema && typeof data.$schema !== 'string') {
       result.errors.push({
@@ -432,6 +532,241 @@ export class AdAgentsManager {
         severity: 'error'
       });
     }
+
+    // Optional property_tags must be an array
+    if (agent.property_tags !== undefined && !Array.isArray(agent.property_tags)) {
+      result.errors.push({
+        field: `${prefix}.property_tags`,
+        message: 'property_tags must be an array',
+        severity: 'error'
+      });
+    }
+
+    // Optional signal_ids must be an array
+    if (agent.signal_ids !== undefined && !Array.isArray(agent.signal_ids)) {
+      result.errors.push({
+        field: `${prefix}.signal_ids`,
+        message: 'signal_ids must be an array',
+        severity: 'error'
+      });
+    }
+
+    // Optional signal_tags must be an array
+    if (agent.signal_tags !== undefined && !Array.isArray(agent.signal_tags)) {
+      result.errors.push({
+        field: `${prefix}.signal_tags`,
+        message: 'signal_tags must be an array',
+        severity: 'error'
+      });
+    }
+
+    // Validate authorization_type consistency
+    if (agent.authorization_type) {
+      const validTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'];
+      if (!validTypes.includes(agent.authorization_type)) {
+        result.errors.push({
+          field: `${prefix}.authorization_type`,
+          message: `authorization_type must be one of: ${validTypes.join(', ')}`,
+          severity: 'error'
+        });
+      }
+
+      // Check that the corresponding array exists for the authorization_type
+      if (agent.authorization_type === 'signal_ids' && (!agent.signal_ids || agent.signal_ids.length === 0)) {
+        result.warnings.push({
+          field: `${prefix}.signal_ids`,
+          message: 'authorization_type is "signal_ids" but no signal_ids provided',
+          suggestion: 'Add signal_ids array with the authorized signal IDs'
+        });
+      }
+      if (agent.authorization_type === 'signal_tags' && (!agent.signal_tags || agent.signal_tags.length === 0)) {
+        result.warnings.push({
+          field: `${prefix}.signal_tags`,
+          message: 'authorization_type is "signal_tags" but no signal_tags provided',
+          suggestion: 'Add signal_tags array with the authorized signal tags'
+        });
+      }
+    }
+  }
+
+  /**
+   * Validates an individual signal definition
+   */
+  private validateSignal(signal: any, index: number, result: AdAgentsValidationResult): void {
+    const prefix = `signals[${index}]`;
+
+    if (typeof signal !== 'object' || signal === null) {
+      result.errors.push({
+        field: prefix,
+        message: 'Each signal must be an object',
+        severity: 'error'
+      });
+      return;
+    }
+
+    // Required fields: id, name, value_type
+    if (!signal.id) {
+      result.errors.push({
+        field: `${prefix}.id`,
+        message: 'Signal id is required',
+        severity: 'error'
+      });
+    } else if (typeof signal.id !== 'string') {
+      result.errors.push({
+        field: `${prefix}.id`,
+        message: 'Signal id must be a string',
+        severity: 'error'
+      });
+    } else {
+      // Validate id pattern
+      const idPattern = /^[a-zA-Z0-9_-]+$/;
+      if (!idPattern.test(signal.id)) {
+        result.errors.push({
+          field: `${prefix}.id`,
+          message: 'Signal id must contain only alphanumeric characters, underscores, and hyphens',
+          severity: 'error'
+        });
+      }
+    }
+
+    if (!signal.name) {
+      result.errors.push({
+        field: `${prefix}.name`,
+        message: 'Signal name is required',
+        severity: 'error'
+      });
+    } else if (typeof signal.name !== 'string') {
+      result.errors.push({
+        field: `${prefix}.name`,
+        message: 'Signal name must be a string',
+        severity: 'error'
+      });
+    }
+
+    if (!signal.value_type) {
+      result.errors.push({
+        field: `${prefix}.value_type`,
+        message: 'Signal value_type is required',
+        severity: 'error'
+      });
+    } else {
+      const validValueTypes = ['binary', 'categorical', 'numeric'];
+      if (!validValueTypes.includes(signal.value_type)) {
+        result.errors.push({
+          field: `${prefix}.value_type`,
+          message: `Signal value_type must be one of: ${validValueTypes.join(', ')}`,
+          severity: 'error'
+        });
+      }
+
+      // Validate type-specific fields
+      if (signal.value_type === 'categorical') {
+        if (signal.allowed_values !== undefined) {
+          if (!Array.isArray(signal.allowed_values)) {
+            result.errors.push({
+              field: `${prefix}.allowed_values`,
+              message: 'allowed_values must be an array',
+              severity: 'error'
+            });
+          } else if (signal.allowed_values.length === 0) {
+            result.warnings.push({
+              field: `${prefix}.allowed_values`,
+              message: 'Categorical signal has empty allowed_values array',
+              suggestion: 'Add the valid values for this categorical signal'
+            });
+          }
+        } else {
+          result.warnings.push({
+            field: `${prefix}.allowed_values`,
+            message: 'Categorical signal should define allowed_values',
+            suggestion: 'Add allowed_values array with valid values'
+          });
+        }
+      }
+
+      if (signal.value_type === 'numeric') {
+        if (signal.range !== undefined) {
+          if (typeof signal.range !== 'object' || signal.range === null) {
+            result.errors.push({
+              field: `${prefix}.range`,
+              message: 'range must be an object with min and max',
+              severity: 'error'
+            });
+          } else {
+            if (typeof signal.range.min !== 'number') {
+              result.errors.push({
+                field: `${prefix}.range.min`,
+                message: 'range.min must be a number',
+                severity: 'error'
+              });
+            }
+            if (typeof signal.range.max !== 'number') {
+              result.errors.push({
+                field: `${prefix}.range.max`,
+                message: 'range.max must be a number',
+                severity: 'error'
+              });
+            }
+            if (typeof signal.range.min === 'number' && typeof signal.range.max === 'number') {
+              if (signal.range.min > signal.range.max) {
+                result.errors.push({
+                  field: `${prefix}.range`,
+                  message: 'range.min cannot be greater than range.max',
+                  severity: 'error'
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Optional category validation - warn about non-standard categories
+    if (signal.category !== undefined) {
+      if (typeof signal.category !== 'string') {
+        result.errors.push({
+          field: `${prefix}.category`,
+          message: 'Signal category must be a string',
+          severity: 'error'
+        });
+      } else if (!VALID_SIGNAL_CATEGORIES.includes(signal.category as SignalCategory)) {
+        result.warnings.push({
+          field: `${prefix}.category`,
+          message: `Signal category "${signal.category}" is not a standard category`,
+          suggestion: `Consider using one of: ${VALID_SIGNAL_CATEGORIES.join(', ')}`
+        });
+      }
+    }
+
+    // Optional tags validation
+    if (signal.tags !== undefined) {
+      if (!Array.isArray(signal.tags)) {
+        result.errors.push({
+          field: `${prefix}.tags`,
+          message: 'Signal tags must be an array',
+          severity: 'error'
+        });
+      } else {
+        signal.tags.forEach((tag: any, tagIndex: number) => {
+          if (typeof tag !== 'string') {
+            result.errors.push({
+              field: `${prefix}.tags[${tagIndex}]`,
+              message: 'Each tag must be a string',
+              severity: 'error'
+            });
+          } else {
+            const tagPattern = /^[a-z0-9_-]+$/;
+            if (!tagPattern.test(tag)) {
+              result.errors.push({
+                field: `${prefix}.tags[${tagIndex}]`,
+                message: 'Tags must contain only lowercase alphanumeric characters, underscores, and hyphens',
+                severity: 'error'
+              });
+            }
+          }
+        });
+      }
+    }
   }
 
   /**
@@ -463,6 +798,77 @@ export class AdAgentsManager {
         field: 'authorized_agents',
         message: 'No authorized agents defined',
         suggestion: 'Add at least one authorized agent'
+      });
+    }
+
+    // Validate signals content if present
+    if (data.signals && Array.isArray(data.signals)) {
+      // Check for duplicate signal IDs
+      const seenSignalIds = new Set<string>();
+      data.signals.forEach((signal: any, index: number) => {
+        if (signal.id && typeof signal.id === 'string') {
+          if (seenSignalIds.has(signal.id)) {
+            result.warnings.push({
+              field: `signals[${index}].id`,
+              message: `Duplicate signal ID: ${signal.id}`,
+              suggestion: 'Remove duplicate signal or use unique IDs'
+            });
+          }
+          seenSignalIds.add(signal.id);
+        }
+      });
+
+      // Build set of defined signal tags from signals
+      const definedSignalTags = new Set<string>();
+      data.signals.forEach((signal: any) => {
+        if (signal.tags && Array.isArray(signal.tags)) {
+          signal.tags.forEach((tag: string) => definedSignalTags.add(tag));
+        }
+      });
+
+      // Build set of signal_tags definitions
+      const signalTagDefinitions = new Set<string>(
+        data.signal_tags ? Object.keys(data.signal_tags) : []
+      );
+
+      // Warn about tags used in signals but not defined in signal_tags
+      definedSignalTags.forEach((tag) => {
+        if (!signalTagDefinitions.has(tag)) {
+          result.warnings.push({
+            field: 'signal_tags',
+            message: `Signal tag "${tag}" is used in signals but not defined in signal_tags`,
+            suggestion: `Add "${tag}" to signal_tags with a name and description`
+          });
+        }
+      });
+
+      // Validate authorized_agents signal references
+      data.authorized_agents.forEach((agent: any, index: number) => {
+        // Check signal_ids references
+        if (agent.signal_ids && Array.isArray(agent.signal_ids)) {
+          agent.signal_ids.forEach((signalId: string) => {
+            if (!seenSignalIds.has(signalId)) {
+              result.warnings.push({
+                field: `authorized_agents[${index}].signal_ids`,
+                message: `Signal ID "${signalId}" not found in signals catalog`,
+                suggestion: 'Ensure signal_ids reference signals defined in the signals array'
+              });
+            }
+          });
+        }
+
+        // Check signal_tags references
+        if (agent.signal_tags && Array.isArray(agent.signal_tags)) {
+          agent.signal_tags.forEach((tag: string) => {
+            if (!definedSignalTags.has(tag) && !signalTagDefinitions.has(tag)) {
+              result.warnings.push({
+                field: `authorized_agents[${index}].signal_tags`,
+                message: `Signal tag "${tag}" not found in any signal or signal_tags`,
+                suggestion: 'Ensure signal_tags reference tags used in signals'
+              });
+            }
+          });
+        }
       });
     }
   }
@@ -687,26 +1093,56 @@ export class AdAgentsManager {
 
   /**
    * Creates a properly formatted adagents.json file
+   * @param optionsOrAgents - Options object or array of agents (for backward compatibility)
+   * @param includeSchema - (deprecated) Use options.includeSchema instead
+   * @param includeTimestamp - (deprecated) Use options.includeTimestamp instead
+   * @param properties - (deprecated) Use options.properties instead
+   * @param signals - (deprecated) Use options.signals instead
+   * @param signalTags - (deprecated) Use options.signalTags instead
    */
+  createAdAgentsJson(options: CreateAdAgentsJsonOptions): string;
   createAdAgentsJson(
     agents: AuthorizedAgent[],
+    includeSchema?: boolean,
+    includeTimestamp?: boolean,
+    properties?: any[],
+    signals?: SignalDefinition[],
+    signalTags?: Record<string, { name: string; description: string }>
+  ): string;
+  createAdAgentsJson(
+    optionsOrAgents: CreateAdAgentsJsonOptions | AuthorizedAgent[],
     includeSchema: boolean = true,
     includeTimestamp: boolean = true,
-    properties?: any[]
+    properties?: any[],
+    signals?: SignalDefinition[],
+    signalTags?: Record<string, { name: string; description: string }>
   ): string {
+    // Normalize to options object
+    const opts: CreateAdAgentsJsonOptions = Array.isArray(optionsOrAgents)
+      ? { agents: optionsOrAgents, includeSchema, includeTimestamp, properties, signals, signalTags }
+      : optionsOrAgents;
+
     const adagents: AdAgentsJson = {
-      authorized_agents: agents
+      authorized_agents: opts.agents
     };
 
-    if (properties && properties.length > 0) {
-      adagents.properties = properties;
+    if (opts.properties && opts.properties.length > 0) {
+      adagents.properties = opts.properties;
     }
 
-    if (includeSchema) {
+    if (opts.signals && opts.signals.length > 0) {
+      adagents.signals = opts.signals;
+    }
+
+    if (opts.signalTags && Object.keys(opts.signalTags).length > 0) {
+      adagents.signal_tags = opts.signalTags;
+    }
+
+    if (opts.includeSchema !== false) {
       adagents.$schema = 'https://adcontextprotocol.org/schemas/v2/adagents.json';
     }
 
-    if (includeTimestamp) {
+    if (opts.includeTimestamp !== false) {
       adagents.last_updated = new Date().toISOString();
     }
 

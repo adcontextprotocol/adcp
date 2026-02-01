@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-definition.json",
+  "title": "Signal Definition",
+  "description": "Definition of a signal in a data provider's catalog, published via adagents.json",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Signal identifier within this data provider's catalog"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable signal name",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what this signal represents and how it's derived",
+      "maxLength": 2000
+    },
+    "value_type": {
+      "$ref": "/schemas/enums/signal-value-type.json",
+      "description": "The data type of this signal's values"
+    },
+    "category": {
+      "$ref": "/schemas/enums/signal-category.json",
+      "description": "High-level category for this signal"
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for grouping and filtering signals within the catalog",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_-]+$"
+      }
+    },
+    "allowed_values": {
+      "type": "array",
+      "description": "For categorical signals, the valid values users can be assigned",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "range": {
+      "type": "object",
+      "description": "For numeric signals, the valid value range",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum value"
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum value"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement (e.g., 'score', 'dollars', 'years')"
+        }
+      },
+      "required": ["min", "max"]
+    },
+    "pricing_guidance": {
+      "type": "object",
+      "description": "Optional pricing guidance for this signal",
+      "properties": {
+        "cpm_range": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "number", "minimum": 0 },
+            "max": { "type": "number", "minimum": 0 }
+          },
+          "required": ["min", "max"]
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code"
+        }
+      }
+    },
+    "coverage_notes": {
+      "type": "string",
+      "description": "Notes about geographic coverage, match rates, or other availability details",
+      "maxLength": 1000
+    },
+    "methodology_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to documentation explaining how this signal is derived"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "value_type"
+  ],
+  "additionalProperties": true
+}
