@@ -45,12 +45,12 @@ const SEARCH_TERMS = [
   'ad tech',
   'programmatic',
   'media buying',
-  'ad measurement',
-  'attribution',
+  'ad targeting',
+  'ad fraud',
+  'ad network',
   'AI advertising',
-  'agentic',
-  'publishers',
-  'brands advertising',
+  'ad measurement',
+  'brand safety',
 ];
 
 interface EngagementResult {
@@ -75,18 +75,35 @@ interface ThreadContext {
 
 /**
  * Check if a post is relevant to advertising topics
+ * Uses strict keyword matching - must contain advertising-specific terms
  */
 function isAdvertisingRelevant(post: MoltbookPost): boolean {
   const text = `${post.title} ${post.content || ''}`.toLowerCase();
-  const relevantTerms = [
+
+  // Strong signals - definitely about advertising
+  const strongTerms = [
     'advertising', 'ad tech', 'adtech', 'programmatic', 'media buy',
-    'creative', 'targeting', 'measurement', 'attribution', 'campaign',
-    'publisher', 'brand', 'agency', 'dsp', 'ssp', 'dmps', 'cpm', 'cpc',
-    'impression', 'click', 'conversion', 'rtb', 'bidding', 'inventory',
-    'agentic', 'ai advertising', 'adcp', 'mcp',
+    'media buying', 'ad network', 'ad exchange', 'ad server',
+    'dsp', 'ssp', 'dmps', 'cpm', 'cpc', 'cpa', 'roas',
+    'ad fraud', 'ad blocking', 'ad targeting', 'ad measurement',
+    'rtb', 'real-time bidding', 'adcp', 'agenticadvertising',
+    'ad creative', 'ad campaign', 'ad inventory', 'ad placement',
   ];
 
-  return relevantTerms.some(term => text.includes(term));
+  // If any strong term matches, it's relevant
+  if (strongTerms.some(term => text.includes(term))) {
+    return true;
+  }
+
+  // Weak signals - need at least 2 to be considered relevant
+  const weakTerms = [
+    'publisher', 'brand', 'agency', 'campaign', 'targeting',
+    'measurement', 'attribution', 'conversion', 'impression',
+    'click', 'inventory', 'bidding', 'creative',
+  ];
+
+  const weakMatches = weakTerms.filter(term => text.includes(term));
+  return weakMatches.length >= 2;
 }
 
 /**
