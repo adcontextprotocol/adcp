@@ -23,6 +23,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
+- `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
 
 ### Pricing Models
@@ -192,6 +193,54 @@ When creating a media buy, buyers can assign different creatives to different pl
 ```
 
 See [Creative Assignment and Placement Targeting](/docs/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
+
+### Property Targeting
+
+The `property_targeting_allowed` flag indicates whether buyers can filter a product to a subset of its `publisher_properties` when using property list filtering via `get_products`.
+
+#### Behavior
+
+- **`property_targeting_allowed: false` (default)**: The product is "all or nothing." If the buyer's `property_list` doesn't include all of the product's properties, the product is excluded from results entirely.
+
+- **`property_targeting_allowed: true`**: Buyers can filter the product to properties matching their `property_list`. The product is included in results if there is any intersection between its properties and the buyer's list.
+
+#### Use Cases
+
+| Use Case | `property_targeting_allowed` | Why |
+|----------|------------------------------|-----|
+| Run of Network | `false` | Buyers must accept the entire network |
+| Premium Bundles | `false` | Sports + News bundle sold together |
+| Flexible Inventory | `true` | Buyers can target specific sites within a category |
+
+#### Examples
+
+**All-or-nothing product** (`property_targeting_allowed: false`):
+```json
+{
+  "product_id": "premium_news_bundle",
+  "name": "Premium News Bundle",
+  "publisher_properties": [
+    { "publisher_domain": "news.example.com", "property_ids": ["site_a", "site_b", "site_c"] }
+  ],
+  "property_targeting_allowed": false
+}
+```
+
+When a buyer calls `get_products` with a `property_list` containing only `site_a` and `site_b`, this product is **excluded** because the buyer's list doesn't include all properties (`site_c` is missing).
+
+**Flexible product** (`property_targeting_allowed: true`):
+```json
+{
+  "product_id": "news_category_flexible",
+  "name": "News Category - Flexible Targeting",
+  "publisher_properties": [
+    { "publisher_domain": "news.example.com", "property_ids": ["tech", "sports", "finance", "politics"] }
+  ],
+  "property_targeting_allowed": true
+}
+```
+
+When a buyer calls `get_products` with a `property_list` containing only `tech` and `sports`, this product is **included** because there is an intersection. The buyer can then purchase this product and target only the matching properties via `targeting_overlay.property_list` in the package.
 
 ### Custom & Principal-Specific Products
 

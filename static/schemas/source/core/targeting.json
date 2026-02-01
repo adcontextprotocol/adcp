@@ -77,6 +77,10 @@
     },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"
+    },
+    "property_list": {
+      "$ref": "/schemas/core/property-list-ref.json",
+      "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
     }
   },
   "additionalProperties": true
