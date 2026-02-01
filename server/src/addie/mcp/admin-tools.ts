@@ -73,6 +73,7 @@ import {
   listEscalations,
   getEscalation,
   updateEscalationStatus,
+  buildResolutionNotificationMessage,
   type EscalationStatus,
 } from '../../db/escalation-db.js';
 import { sendDirectMessage } from '../../slack/client.js';
@@ -1058,7 +1059,7 @@ Filter by status to see open escalations, ones in progress, or recently resolved
     input_schema: {
       type: 'object' as const,
       properties: {
-        status: { type: 'string', enum: ['open', 'acknowledged', 'in_progress', 'resolved', 'wont_do'], description: 'Filter by status (default: open)' },
+        status: { type: 'string', enum: ['open', 'acknowledged', 'in_progress', 'resolved', 'wont_do', 'expired'], description: 'Filter by status (default: open)' },
         category: { type: 'string', enum: ['capability_gap', 'needs_human_action', 'complex_request', 'sensitive_topic', 'other'], description: 'Filter by category' },
         limit: { type: 'number', description: 'Max results (default: 10)' },
       },
@@ -6193,9 +6194,9 @@ Use add_committee_leader to assign a leader.`;
     const adminError = requireAdminFromContext();
     if (adminError) return adminError;
 
-    const escalationId = input.escalation_id as number;
-    if (!escalationId) {
-      return '❌ Please provide an escalation_id.';
+    const escalationId = input.escalation_id;
+    if (typeof escalationId !== 'number' || !Number.isInteger(escalationId) || escalationId < 1) {
+      return '❌ Please provide a valid escalation_id (positive integer).';
     }
 
     const status = (input.status as 'resolved' | 'wont_do') || 'resolved';
@@ -6229,12 +6230,7 @@ Use add_committee_leader to assign a leader.`;
 
       // Notify user if requested and we have their Slack ID
       if (notifyUser && escalation.slack_user_id) {
-        const statusLabel = status === 'resolved' ? 'resolved' : 'reviewed and closed';
-        const defaultMessage = `Your request has been ${statusLabel}: "${escalation.summary}"`;
-
-        const messageText = notificationMessage
-          ? `${defaultMessage}\n\n${notificationMessage}`
-          : defaultMessage;
+        const messageText = buildResolutionNotificationMessage(escalation, status, notificationMessage);
 
         const dmResult = await sendDirectMessage(escalation.slack_user_id, {
           text: messageText,

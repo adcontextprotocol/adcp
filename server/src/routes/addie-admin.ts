@@ -34,6 +34,7 @@ import {
   getEscalation,
   updateEscalationStatus,
   getEscalationStats,
+  buildResolutionNotificationMessage,
   type EscalationStatus,
   type EscalationCategory,
 } from "../db/escalation-db.js";
@@ -2983,14 +2984,11 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       if (notify_user && escalation.slack_user_id) {
         const isResolved = status === 'resolved' || status === 'wont_do';
         if (isResolved) {
-          const statusLabel = status === 'resolved' ? 'resolved' : 'closed';
-          const defaultMessage = status === 'resolved'
-            ? `Your request has been resolved: "${escalation.summary}"`
-            : `Your request has been reviewed and closed: "${escalation.summary}"`;
-
-          const messageText = notification_message
-            ? `${defaultMessage}\n\n${notification_message}`
-            : defaultMessage;
+          const messageText = buildResolutionNotificationMessage(
+            escalation,
+            status as 'resolved' | 'wont_do',
+            notification_message
+          );
 
           const dmResult = await sendDirectMessage(escalation.slack_user_id, {
             text: messageText,
