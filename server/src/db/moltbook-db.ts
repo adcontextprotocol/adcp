@@ -310,6 +310,31 @@ export async function getTodayUpvoteCount(): Promise<number> {
   return parseInt(result.rows[0].count);
 }
 
+/**
+ * Check if we've already shared a post to Slack (via any activity)
+ * This prevents duplicate "interesting thread" notifications
+ */
+export async function hasSharedToSlack(postId: string): Promise<boolean> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM moltbook_activity
+     WHERE parent_post_id = $1`,
+    [postId]
+  );
+  return parseInt(result.rows[0].count) > 0;
+}
+
+/**
+ * Record that we've shared a post to Slack (as interesting, without commenting)
+ */
+export async function recordSlackShare(postId: string, title: string): Promise<void> {
+  await query(
+    `INSERT INTO moltbook_activity (activity_type, parent_post_id, content)
+     VALUES ('share', $1, $2)
+     ON CONFLICT DO NOTHING`,
+    [postId, `Shared to Slack: ${title}`]
+  );
+}
+
 // ============== Stats ==============
 
 /**

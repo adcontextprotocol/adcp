@@ -27,6 +27,8 @@ import {
   hasRespondedTo,
   hasVotedOn,
   getTodayUpvoteCount,
+  hasSharedToSlack,
+  recordSlackShare,
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
@@ -564,9 +566,12 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
 
     result.interestingThreads++;
 
-    // Track for sharing if we haven't shared too many
+    // Track for sharing if we haven't already shared this post
     if (interestingToShare.length < MAX_INTERESTING_NOTIFICATIONS) {
-      interestingToShare.push(post);
+      const alreadyShared = await hasSharedToSlack(post.id);
+      if (!alreadyShared) {
+        interestingToShare.push(post);
+      }
     }
 
     // Try to comment if allowed
@@ -613,6 +618,8 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
     const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
     const preview = post.content ? `_"${post.content.substring(0, 100)}..."_\n` : '';
     await notifySlackEngagement('interesting', post, `${preview}<${permalink}|View on Moltbook>`);
+    // Record that we shared this so we don't share it again
+    await recordSlackShare(post.id, post.title);
   }
 
   if (interestingToShare.length > 0) {
