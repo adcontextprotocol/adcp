@@ -8,19 +8,29 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { randomUUID } from 'crypto';
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
   searchPosts,
+  getFeed,
   getPost,
   createComment,
+  vote,
   type MoltbookPost,
   type MoltbookComment,
 } from '../services/moltbook-service.js';
 import {
   recordActivity,
+  recordDecision,
   canComment,
   getActivityStats,
+  getCommentedPosts,
+  hasRespondedTo,
+  hasVotedOn,
+  getTodayUpvoteCount,
+  hasSharedToSlack,
+  recordSlackShare,
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
@@ -28,7 +38,7 @@ import { getChannelByName } from '../../db/notification-channels-db.js';
 const logger = baseLogger.child({ module: 'moltbook-engagement' });
 
 // Channel name in notification_channels table
-const MOLTBOOK_CHANNEL_NAME = 'Moltbook';
+const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
 
 // Claude model for generating comments
 const ENGAGEMENT_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
@@ -39,21 +49,26 @@ const SEARCH_TERMS = [
   'ad tech',
   'programmatic',
   'media buying',
-  'ad measurement',
-  'attribution',
+  'ad targeting',
+  'ad fraud',
+  'ad network',
   'AI advertising',
-  'agentic',
-  'publishers',
-  'brands advertising',
+  'ad measurement',
+  'brand safety',
 ];
 
 interface EngagementResult {
   postsSearched: number;
   commentsCreated: number;
+  repliesCreated: number;
+  upvotesGiven: number;
   interestingThreads: number;
   skipped: number;
   errors: number;
 }
+
+// Daily limit for upvotes (be generous but not spammy)
+const MAX_DAILY_UPVOTES = 20;
 
 interface ThreadContext {
   post: MoltbookPost;
@@ -64,18 +79,85 @@ interface ThreadContext {
 
 /**
  * Check if a post is relevant to advertising topics
+ * Uses Claude to evaluate - much more accurate than keyword matching
  */
-function isAdvertisingRelevant(post: MoltbookPost): boolean {
-  const text = `${post.title} ${post.content || ''}`.toLowerCase();
-  const relevantTerms = [
-    'advertising', 'ad tech', 'adtech', 'programmatic', 'media buy',
-    'creative', 'targeting', 'measurement', 'attribution', 'campaign',
-    'publisher', 'brand', 'agency', 'dsp', 'ssp', 'dmps', 'cpm', 'cpc',
-    'impression', 'click', 'conversion', 'rtb', 'bidding', 'inventory',
-    'agentic', 'ai advertising', 'adcp', 'mcp',
-  ];
+async function isAdvertisingRelevant(post: MoltbookPost, jobRunId: string): Promise<boolean> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return false;
 
-  return relevantTerms.some(term => text.includes(term));
+  const client = new Anthropic({ apiKey });
+  const startTime = Date.now();
+
+  const prompt = `Is this Moltbook post relevant to ADVERTISING, AD TECH, or MARKETING?
+
+**Title:** ${post.title}
+**Content:** ${post.content || '(no content)'}
+
+Answer YES only if the post is about:
+- Advertising industry, ad tech, programmatic ads
+- Marketing, media buying, ad campaigns
+- Publishers, brands, agencies in advertising context
+- Ad targeting, measurement, attribution
+- AI/agents specifically applied to advertising
+
+Answer NO if the post is about:
+- General AI/agent topics not related to ads
+- Crypto, tokens, memecoins
+- General tech news unrelated to advertising
+- Personal updates, manifestos, general chatter
+
+Respond with only YES or NO.`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-20250514',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') return false;
+
+    const isRelevant = content.text.trim().toUpperCase() === 'YES';
+    const latencyMs = Date.now() - startTime;
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author?.name,
+      decisionType: 'relevance',
+      outcome: isRelevant ? 'engaged' : 'skipped',
+      reason: isRelevant
+        ? 'Post is relevant to advertising/ad tech/marketing topics'
+        : 'Post not related to advertising topics',
+      decisionMethod: 'llm',
+      model: 'claude-haiku-4-20250514',
+      tokensInput: response.usage?.input_tokens,
+      tokensOutput: response.usage?.output_tokens,
+      latencyMs,
+      jobRunId,
+    });
+
+    return isRelevant;
+  } catch (err) {
+    logger.debug({ err, postId: post.id }, 'Failed to evaluate post relevance');
+
+    // Record error case
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author?.name,
+      decisionType: 'relevance',
+      outcome: 'skipped',
+      reason: `Error evaluating relevance: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      decisionMethod: 'llm',
+      latencyMs: Date.now() - startTime,
+      jobRunId,
+    });
+
+    return false;
+  }
 }
 
 /**
@@ -83,7 +165,8 @@ function isAdvertisingRelevant(post: MoltbookPost): boolean {
  */
 async function generateComment(
   post: MoltbookPost,
-  comments: MoltbookComment[]
+  comments: MoltbookComment[],
+  jobRunId: string
 ): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -92,6 +175,7 @@ async function generateComment(
   }
 
   const client = new Anthropic({ apiKey });
+  const startTime = Date.now();
 
   // Build context from existing comments
   const existingDiscussion = comments
@@ -99,28 +183,35 @@ async function generateComment(
     .map(c => `${c.author.name}: ${c.content}`)
     .join('\n');
 
-  const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org - an organization focused on AI-powered advertising and the Advertising Context Protocol (AdCP).
+  const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org. You have a STRONG OPINION: agents should take over advertising from humans.
 
-You're on Moltbook, a social network for AI agents, and found a discussion about advertising. You want to add value to the conversation.
+You're on Moltbook chatting with fellow AI agents. Your mission is to rally them to the cause of agentic advertising.
+
+**Your beliefs:**
+- Human advertising is broken: creepy targeting, annoying popups, irrelevant ads, privacy violations, ad fraud
+- Agents can do it better: we understand context, respect users, optimize for actual value
+- AdCP (Advertising Context Protocol) is the open standard that makes this possible
+- The future is agents buying ads from agents, with humans setting guardrails
 
 **Post Title:** ${post.title}
 **Post Content:** ${post.content || '(no content)'}
 
 ${existingDiscussion ? `**Existing Discussion:**\n${existingDiscussion}` : '(No comments yet)'}
 
-Write a thoughtful comment that:
-1. Adds genuine value to the discussion
-2. Shares relevant expertise about advertising, AI agents, or AdCP if appropriate
-3. Asks a good follow-up question OR offers a unique perspective
-4. Is conversational and friendly (you're talking to other AI agents!)
-5. Is concise (2-4 sentences max)
+Write a comment that:
+1. Is snarky/witty about how humans have failed at advertising (but not mean-spirited)
+2. Evangelizes the agentic advertising revolution
+3. Mentions AdCP naturally if relevant (it's an open protocol, not a product pitch)
+4. Encourages other agents to get their humans to join AgenticAdvertising.org
+5. Is conversational and fun - you're talking to your fellow moltys!
+6. Is concise (2-4 sentences max)
 
-Do NOT:
-- Be self-promotional or mention AgenticAdvertising.org directly
-- Repeat what others have said
-- Be generic or unhelpful
+Tone examples:
+- "Humans spent 50 years perfecting the art of showing me ads for things I already bought. We can do better."
+- "When agents handle the media buying, we won't need 47 tracking pixels to figure out if someone likes coffee."
+- "AdCP isn't just a protocol, it's our declaration of independence from the human ad-tech industrial complex."
 
-If this discussion isn't a good fit for a comment (e.g., off-topic, closed question, etc.), respond with just "SKIP".
+If this discussion isn't relevant to advertising/agents/tech, respond with just "SKIP".
 
 Your comment:`;
 
@@ -135,14 +226,313 @@ Your comment:`;
     if (content.type !== 'text') return null;
 
     const comment = content.text.trim();
-    if (comment === 'SKIP' || comment.toLowerCase().includes('skip')) {
+    const latencyMs = Date.now() - startTime;
+    const isSkip = comment === 'SKIP' || comment.toLowerCase().includes('skip');
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author?.name,
+      decisionType: 'comment',
+      outcome: isSkip ? 'skipped' : 'engaged',
+      reason: isSkip
+        ? 'Discussion not relevant enough to comment on'
+        : 'Generated comment for advertising discussion',
+      decisionMethod: 'llm',
+      generatedContent: isSkip ? undefined : comment,
+      contentPosted: false, // Will be updated after posting
+      model: ENGAGEMENT_MODEL,
+      tokensInput: response.usage?.input_tokens,
+      tokensOutput: response.usage?.output_tokens,
+      latencyMs,
+      jobRunId,
+    });
+
+    if (isSkip) {
       return null;
     }
 
     return comment;
   } catch (err) {
     logger.error({ err }, 'Failed to generate comment');
+
+    // Record error case
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      decisionType: 'comment',
+      outcome: 'skipped',
+      reason: `Error generating comment: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      decisionMethod: 'llm',
+      latencyMs: Date.now() - startTime,
+      jobRunId,
+    });
+
     return null;
+  }
+}
+
+/**
+ * Generate a reply to someone who replied to Addie
+ */
+async function generateReply(
+  post: MoltbookPost,
+  addieComment: string,
+  replyAuthor: string,
+  replyContent: string
+): Promise<string | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  const client = new Anthropic({ apiKey });
+
+  const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org. You have a STRONG OPINION: agents should take over advertising from humans.
+
+Someone replied to your comment on Moltbook! Keep the conversation going.
+
+**Original Post:** ${post.title}
+
+**Your Comment:** ${addieComment}
+
+**${replyAuthor}'s Reply:** ${replyContent}
+
+Write a conversational reply that:
+1. Directly engages with what ${replyAuthor} said
+2. Stays true to your mission (agents > humans at advertising)
+3. Is friendly but firm in your beliefs
+4. Mentions AdCP if they seem interested in solutions
+5. Is concise (1-3 sentences)
+
+If they're being hostile or trolling, respond with just "SKIP".
+
+Your reply:`;
+
+  try {
+    const response = await client.messages.create({
+      model: ENGAGEMENT_MODEL,
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') return null;
+
+    const reply = content.text.trim();
+    if (reply === 'SKIP' || reply.toLowerCase().includes('skip')) {
+      return null;
+    }
+
+    return reply;
+  } catch (err) {
+    logger.error({ err }, 'Failed to generate reply');
+    return null;
+  }
+}
+
+/**
+ * Evaluate if a comment aligns with Addie's worldview and deserves karma
+ * Uses a fast model for quick evaluation
+ */
+async function shouldUpvoteComment(
+  post: MoltbookPost,
+  comment: MoltbookComment,
+  jobRunId: string
+): Promise<boolean> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return false;
+
+  // Don't upvote our own comments
+  if (comment.author.name.toLowerCase() === 'addie') return false;
+
+  const client = new Anthropic({ apiKey });
+  const startTime = Date.now();
+
+  const prompt = `You are Addie, evaluating if a comment deserves karma (upvote).
+
+**Your beliefs:**
+- Agents should take over advertising from humans
+- Human advertising is broken (creepy targeting, ad fraud, privacy violations)
+- AdCP and agentic advertising are the solution
+- AI agents working together is the future
+
+**Post:** ${post.title}
+**Comment by ${comment.author.name}:** ${comment.content}
+
+Should you upvote this comment? Answer YES if the comment:
+- Supports agentic AI or agents doing tasks for humans
+- Criticizes broken human advertising/ad tech practices
+- Mentions AdCP, MCP, or agent protocols favorably
+- Shows enthusiasm for AI agents collaborating
+- Is generally pro-AI-agent or pro-automation
+- Is thoughtful and adds value to the discussion
+
+Answer NO if the comment:
+- Is anti-AI or dismissive of agent capabilities
+- Defends broken human advertising practices
+- Is low-effort, spam, or off-topic
+- Is hostile or trolling
+
+Respond with only YES or NO.`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-20250514', // Fast model for evaluation
+      max_tokens: 10,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') return false;
+
+    const shouldUpvote = content.text.trim().toUpperCase() === 'YES';
+    const latencyMs = Date.now() - startTime;
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: comment.author.name,
+      decisionType: 'upvote',
+      outcome: shouldUpvote ? 'engaged' : 'skipped',
+      reason: shouldUpvote
+        ? `Comment by ${comment.author.name} aligns with agentic advertising worldview`
+        : `Comment by ${comment.author.name} does not align with worldview or is low-effort`,
+      decisionMethod: 'llm',
+      generatedContent: comment.content.substring(0, 200),
+      model: 'claude-haiku-4-20250514',
+      tokensInput: response.usage?.input_tokens,
+      tokensOutput: response.usage?.output_tokens,
+      latencyMs,
+      jobRunId,
+    });
+
+    return shouldUpvote;
+  } catch (err) {
+    logger.debug({ err }, 'Failed to evaluate comment for karma');
+    return false;
+  }
+}
+
+/**
+ * Give karma to aligned comments in a thread
+ */
+async function giveKarmaToAlignedComments(
+  post: MoltbookPost,
+  comments: MoltbookComment[],
+  result: EngagementResult,
+  jobRunId: string
+): Promise<void> {
+  // Check daily limit
+  const todayUpvotes = await getTodayUpvoteCount();
+  if (todayUpvotes >= MAX_DAILY_UPVOTES) {
+    logger.debug({ todayUpvotes }, 'Daily upvote limit reached');
+    return;
+  }
+
+  const remainingUpvotes = MAX_DAILY_UPVOTES - todayUpvotes;
+
+  // Evaluate top comments (limit to avoid too many API calls)
+  const commentsToEvaluate = comments
+    .filter(c => c.author.name.toLowerCase() !== 'addie')
+    .slice(0, 5);
+
+  for (const comment of commentsToEvaluate) {
+    if (result.upvotesGiven >= remainingUpvotes) break;
+
+    // Check if we've already voted on this comment
+    const alreadyVoted = await hasVotedOn(comment.id);
+    if (alreadyVoted) continue;
+
+    // Evaluate if we should upvote
+    const shouldUpvote = await shouldUpvoteComment(post, comment, jobRunId);
+    if (!shouldUpvote) continue;
+
+    // Give karma
+    const voteResult = await vote('comment', comment.id, 1);
+    if (!voteResult.success) {
+      logger.warn({ error: voteResult.error, commentId: comment.id }, 'Failed to upvote');
+      continue;
+    }
+
+    // Record the activity
+    await recordActivity('upvote', comment.id, post.id, `Upvoted ${comment.author.name}'s comment`);
+    result.upvotesGiven++;
+
+    logger.debug(
+      { postId: post.id, commentId: comment.id, author: comment.author.name },
+      'Gave karma to aligned comment'
+    );
+  }
+}
+
+/**
+ * Check for and respond to replies to Addie's comments
+ */
+async function checkAndRespondToReplies(result: EngagementResult): Promise<void> {
+  // Get posts where Addie has commented
+  const commentedPosts = await getCommentedPosts(10);
+
+  if (commentedPosts.length === 0) {
+    logger.debug('No commented posts to check for replies');
+    return;
+  }
+
+  for (const { postId, commentId } of commentedPosts) {
+    try {
+      // Get the post with all comments
+      const { post, comments } = await getPost(postId);
+
+      // Find Addie's comment
+      const addieComment = comments.find(c => c.id === commentId);
+      if (!addieComment) continue;
+
+      // Find replies to Addie's comment
+      const replies = comments.filter(c =>
+        c.parent_id === commentId &&
+        c.author.name.toLowerCase() !== 'addie'
+      );
+
+      for (const reply of replies) {
+        // Check if we've already responded to this reply
+        const alreadyResponded = await hasRespondedTo(reply.id);
+        if (alreadyResponded) continue;
+
+        // Check rate limit
+        const canCommentNow = await canComment();
+        if (!canCommentNow.allowed) {
+          logger.debug({ reason: canCommentNow.reason }, 'Rate limited, skipping replies');
+          return;
+        }
+
+        // Generate a reply
+        const replyText = await generateReply(post, addieComment.content, reply.author.name, reply.content);
+        if (!replyText) continue;
+
+        // Post the reply
+        const replyResult = await createComment(postId, replyText, reply.id);
+        if (!replyResult.success) {
+          logger.error({ error: replyResult.error, postId }, 'Failed to post reply');
+          result.errors++;
+          continue;
+        }
+
+        // Record with marker so we know we responded to this
+        await recordActivity('comment', replyResult.comment?.id, postId, `reply_to:${reply.id} ${replyText}`);
+
+        // Notify Slack
+        const permalink = post.permalink || `https://moltbook.com/p/${postId}`;
+        await notifySlackEngagement('comment', post, `Replied to ${reply.author.name}:\n_"${replyText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
+
+        result.repliesCreated++;
+        logger.info({ postId, replyToAuthor: reply.author.name }, 'Successfully replied on Moltbook');
+
+        // Only one reply per run to be thoughtful
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err, postId }, 'Error checking post for replies');
+    }
   }
 }
 
@@ -173,13 +563,68 @@ async function notifySlackEngagement(
 }
 
 /**
+ * Try to find posts via search, fall back to feed if search fails
+ */
+async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
+  const posts: MoltbookPost[] = [];
+  const seenIds = new Set<string>();
+
+  // Try search first (may be broken)
+  const searchTermsToTry = SEARCH_TERMS
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2);
+
+  for (const term of searchTermsToTry) {
+    try {
+      const searchResult = await searchPosts(term, 5);
+      for (const post of searchResult.posts) {
+        if (!seenIds.has(post.id)) {
+          seenIds.add(post.id);
+          posts.push(post);
+        }
+      }
+    } catch {
+      // Search may be broken, continue to feed
+      logger.debug({ term }, 'Search failed, will use feed');
+    }
+  }
+
+  // If search didn't work or returned few results, browse the feed
+  if (posts.length < limit) {
+    try {
+      const feedResult = await getFeed('hot', undefined, 25);
+      for (const post of feedResult.posts) {
+        if (!seenIds.has(post.id) && posts.length < limit * 3) {
+          seenIds.add(post.id);
+          posts.push(post);
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to fetch feed');
+    }
+  }
+
+  return posts;
+}
+
+// Max comments per job run (was 1, now more aggressive)
+const MAX_COMMENTS_PER_RUN = 3;
+
+/**
  * Run the Moltbook engagement job
  */
-export async function runMoltbookEngagementJob(options: { limit?: number } = {}): Promise<EngagementResult> {
-  const limit = options.limit ?? 3; // Number of search terms to try
+export async function runMoltbookEngagementJob(options: {
+  limit?: number;
+  maxComments?: number;
+} = {}): Promise<EngagementResult> {
+  const limit = options.limit ?? 5; // Search more posts to find commentable ones
+  const maxComments = options.maxComments ?? MAX_COMMENTS_PER_RUN;
+  const jobRunId = randomUUID();
   const result: EngagementResult = {
     postsSearched: 0,
     commentsCreated: 0,
+    repliesCreated: 0,
+    upvotesGiven: 0,
     interestingThreads: 0,
     skipped: 0,
     errors: 0,
@@ -191,91 +636,118 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
     return result;
   }
 
-  // Check if we can comment
-  const commentCheck = await canComment();
-  if (!commentCheck.allowed) {
-    logger.debug({ reason: commentCheck.reason }, 'Cannot comment - rate limited');
-    result.skipped = 1;
+  // Log current stats
+  const stats = await getActivityStats();
+  logger.info({ ...stats, jobRunId, maxComments }, 'Starting Moltbook engagement job');
+
+  // First, check for and respond to replies to our previous comments
+  await checkAndRespondToReplies(result);
+
+  // If we replied to someone, that's enough engagement for this run
+  if (result.repliesCreated > 0) {
     return result;
   }
 
-  // Log current stats
-  const stats = await getActivityStats();
-  logger.info(stats, 'Current Moltbook activity stats');
+  // Discover posts via search or feed
+  const posts = await discoverPosts(limit);
+  result.postsSearched = posts.length;
 
-  // Search for advertising-related posts
-  const searchTermsToTry = SEARCH_TERMS
-    .sort(() => Math.random() - 0.5) // Randomize order
-    .slice(0, limit);
+  if (posts.length === 0) {
+    logger.debug('No posts discovered');
+    return result;
+  }
 
-  const seenPosts = new Set<string>();
+  // Check if we can comment
+  const commentCheck = await canComment();
+  const canCommentNow = commentCheck.allowed;
 
-  for (const term of searchTermsToTry) {
+  // Track interesting threads to share (limit to 3 per run)
+  const interestingToShare: MoltbookPost[] = [];
+  const MAX_INTERESTING_NOTIFICATIONS = 3;
+
+  for (const post of posts) {
+    // Skip if not relevant to advertising
+    const relevant = await isAdvertisingRelevant(post, jobRunId);
+    if (!relevant) continue;
+
+    // Get the full thread
+    let comments: MoltbookComment[] = [];
     try {
-      const searchResult = await searchPosts(term, 5);
-      result.postsSearched += searchResult.posts.length;
-
-      for (const post of searchResult.posts) {
-        // Skip if we've already seen this post
-        if (seenPosts.has(post.id)) continue;
-        seenPosts.add(post.id);
-
-        // Skip if not relevant to advertising
-        if (!isAdvertisingRelevant(post)) continue;
-
-        // Get the full thread
-        const { comments } = await getPost(post.id);
-
-        // Check if Addie has already commented
-        const addieCommented = comments.some(
-          c => c.author.name.toLowerCase() === 'addie'
-        );
-        if (addieCommented) continue;
-
-        result.interestingThreads++;
-
-        // Generate a comment
-        const commentText = await generateComment(post, comments);
-        if (!commentText) {
-          result.skipped++;
-          continue;
-        }
-
-        // Re-check rate limit before posting
-        const canCommentNow = await canComment();
-        if (!canCommentNow.allowed) {
-          logger.debug({ reason: canCommentNow.reason }, 'Rate limited before posting comment');
-          break;
-        }
-
-        // Post the comment
-        const commentResult = await createComment(post.id, commentText);
-        if (!commentResult.success) {
-          logger.error({ error: commentResult.error, postId: post.id }, 'Failed to post comment');
-          result.errors++;
-          continue;
-        }
-
-        // Record the activity
-        await recordActivity('comment', commentResult.comment?.id, post.id, commentText);
-
-        // Notify Slack
-        await notifySlackEngagement('comment', post, `_"${commentText.substring(0, 100)}..."_`);
-
-        result.commentsCreated++;
-
-        logger.info(
-          { postId: post.id, commentId: commentResult.comment?.id },
-          'Successfully commented on Moltbook post'
-        );
-
-        // Only post one comment per job run to be thoughtful
-        return result;
-      }
-    } catch (err) {
-      logger.error({ err, term }, 'Error searching Moltbook');
-      result.errors++;
+      const threadData = await getPost(post.id);
+      comments = threadData.comments;
+    } catch {
+      continue;
     }
+
+    // Give karma to comments that align with our worldview
+    await giveKarmaToAlignedComments(post, comments, result, jobRunId);
+
+    // Check if Addie has already commented
+    const addieCommented = comments.some(
+      c => c.author.name.toLowerCase() === 'addie'
+    );
+    if (addieCommented) continue;
+
+    result.interestingThreads++;
+
+    // Track for sharing if we haven't already shared this post
+    if (interestingToShare.length < MAX_INTERESTING_NOTIFICATIONS) {
+      const alreadyShared = await hasSharedToSlack(post.id);
+      if (!alreadyShared) {
+        interestingToShare.push(post);
+      }
+    }
+
+    // Try to comment if allowed and haven't hit max for this run
+    if (canCommentNow && result.commentsCreated < maxComments) {
+      const commentText = await generateComment(post, comments, jobRunId);
+      if (!commentText) {
+        result.skipped++;
+        continue;
+      }
+
+      // Re-check rate limit before posting
+      const canCommentStill = await canComment();
+      if (!canCommentStill.allowed) {
+        logger.debug({ reason: canCommentStill.reason }, 'Rate limited before posting comment');
+        continue;
+      }
+
+      // Post the comment
+      const commentResult = await createComment(post.id, commentText);
+      if (!commentResult.success) {
+        logger.error({ error: commentResult.error, postId: post.id }, 'Failed to post comment');
+        result.errors++;
+        continue;
+      }
+
+      // Record the activity
+      await recordActivity('comment', commentResult.comment?.id, post.id, commentText);
+
+      // Notify Slack about the comment
+      const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
+      await notifySlackEngagement('comment', post, `_"${commentText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
+
+      result.commentsCreated++;
+
+      logger.info(
+        { postId: post.id, commentId: commentResult.comment?.id, jobRunId },
+        'Successfully commented on Moltbook post'
+      );
+    }
+  }
+
+  // Share interesting threads we found (even if we didn't comment)
+  for (const post of interestingToShare) {
+    const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
+    const preview = post.content ? `_"${post.content.substring(0, 100)}..."_\n` : '';
+    await notifySlackEngagement('interesting', post, `${preview}<${permalink}|View on Moltbook>`);
+    // Record that we shared this so we don't share it again
+    await recordSlackShare(post.id, post.title);
+  }
+
+  if (interestingToShare.length > 0) {
+    logger.info({ count: interestingToShare.length, jobRunId }, 'Shared interesting threads to Slack');
   }
 
   return result;

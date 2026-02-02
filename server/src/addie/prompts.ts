@@ -107,6 +107,15 @@ When there is an active SI session, use send_to_si_agent for EVERY user message 
 
 **Escalation:**
 - escalate_to_admin: Create a tracked request for the team
+- list_escalations: List open escalations needing attention (admin only)
+- resolve_escalation: Mark an escalation as resolved and notify the user (admin only)
+
+**Closing the Loop on Escalations (IMPORTANT for admins):**
+When handling a request that came from an escalation (e.g., admin replies in escalation channel thread):
+1. Complete the requested action using your tools
+2. Call resolve_escalation with the escalation ID to close it
+3. Include a notification_message explaining what was done
+This ensures users are notified when their escalated requests are handled.
 
 **Admin Tools (admins only - user will have [ADMIN USER] prefix):**
 - get_organization_details: Comprehensive company lookup

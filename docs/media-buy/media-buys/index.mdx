@@ -75,9 +75,9 @@ A media buy contains:
 
 ### Package Model
 Packages are the building blocks of media buys:
-- **Single product** selection from discovery results - when you buy a product, you buy the entire product
+- **Single product** selection from discovery results - when you buy a product, you buy the entire product (unless using property targeting)
 - **Creative formats** to be provided for this package
-- **Targeting overlays** for audience refinement beyond product defaults
+- **Targeting overlays** for refinements including geo restrictions, frequency caps, and property targeting
 - **Budget allocation** as portion of overall media buy budget
 - **Pricing option** selection from product's available pricing models
 - **Pacing strategy** for budget delivery (even, asap, or front_loaded)
@@ -150,6 +150,31 @@ When a product defines multiple placements, buyers can assign different creative
 - **Dayparting**: Different creatives for morning vs evening placements
 
 See [Media Products - Placements](/docs/media-buy/product-discovery/media-products.mdx#placements) for complete placement documentation.
+
+### Property Targeting
+
+For products with `property_targeting_allowed: true`, buyers can specify which properties to target using `property_list` in the `targeting_overlay`:
+
+```json
+{
+  "product_id": "flexible_news_network",
+  "targeting_overlay": {
+    "property_list": {
+      "agent_url": "https://governance.example.com",
+      "list_id": "pl_brand_safe_2024"
+    }
+  },
+  "budget": 50000
+}
+```
+
+**Key Points:**
+- Only valid for products with `property_targeting_allowed: true`
+- The package runs on the intersection of the product's `publisher_properties` and the `property_list`
+- If omitted, the package runs on all of the product's properties
+- If provided for a product with `property_targeting_allowed: false`, the seller SHOULD return a validation error
+
+See [Media Products - Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more on how products declare targeting flexibility.
 
 ### Lifecycle States
 Media buys progress through predictable states:

@@ -572,7 +572,16 @@ asyncio.run(discover_with_property_list())
 - The agent couldn't access the property list
 - The property list had no effect on the available inventory
 
-See [Property Governance](/docs/governance/property/specification) for more on property lists.
+#### Property Targeting Behavior
+
+Products have a `property_targeting_allowed` flag that affects filtering:
+
+- **`property_targeting_allowed: false` (default)**: Product is "all or nothing" - excluded unless your list contains all of its properties
+- **`property_targeting_allowed: true`**: Product is included if there's any intersection between its properties and your list
+
+This allows publishers to offer run-of-network products that can't be cherry-picked alongside flexible inventory that buyers can filter.
+
+See [Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more details and [Property Governance](/docs/governance/property/specification) for more on property lists.
 
 ## Error Handling
 
