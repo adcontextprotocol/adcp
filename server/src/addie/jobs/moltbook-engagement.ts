@@ -41,7 +41,7 @@ const logger = baseLogger.child({ module: 'moltbook-engagement' });
 const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
 
 // Search terms for finding advertising discussions
-const SEARCH_TERMS = [
+export const SEARCH_TERMS = [
   'advertising',
   'ad tech',
   'programmatic',
@@ -524,41 +524,59 @@ async function notifySlackEngagement(
 async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
   const posts: MoltbookPost[] = [];
   const seenIds = new Set<string>();
+  let searchPostCount = 0;
+  let feedPostCount = 0;
 
   // Try search first (may be broken)
   const searchTermsToTry = SEARCH_TERMS
     .sort(() => Math.random() - 0.5)
     .slice(0, 2);
 
+  logger.debug({ searchTerms: searchTermsToTry }, 'Searching Moltbook with terms');
+
   for (const term of searchTermsToTry) {
     try {
       const searchResult = await searchPosts(term, 5);
+      const resultCount = searchResult.posts.length;
+      const titles = searchResult.posts.map(p => p.title).slice(0, 3);
+      logger.debug({ term, resultCount, titles }, 'Search results for term');
+
       for (const post of searchResult.posts) {
         if (!seenIds.has(post.id)) {
           seenIds.add(post.id);
           posts.push(post);
+          searchPostCount++;
         }
       }
-    } catch {
-      // Search may be broken, continue to feed
-      logger.debug({ term }, 'Search failed, will use feed');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      logger.warn({ term, error: errorMessage }, 'Search failed, will use feed');
     }
   }
+
+  logger.debug({ searchPostCount, limit }, 'Posts from search');
 
   // If search didn't work or returned few results, browse the feed
   if (posts.length < limit) {
     try {
       const feedResult = await getFeed('hot', undefined, 25);
+      const feedTitles = feedResult.posts.map(p => p.title).slice(0, 5);
+      logger.debug({ feedPostCount: feedResult.posts.length, feedTitles }, 'Feed results');
+
       for (const post of feedResult.posts) {
         if (!seenIds.has(post.id) && posts.length < limit * 3) {
           seenIds.add(post.id);
           posts.push(post);
+          feedPostCount++;
         }
       }
     } catch (err) {
-      logger.warn({ err }, 'Failed to fetch feed');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      logger.warn({ error: errorMessage }, 'Failed to fetch feed');
     }
   }
+
+  logger.debug({ searchPostCount, feedPostCount, totalPosts: posts.length }, 'Discovery complete');
 
   return posts;
 }
