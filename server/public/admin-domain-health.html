@@ -1674,7 +1674,20 @@
         }
 
         const result = await response.json();
-        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+        const tablesMerged = result.tables_merged || [];
+        const totalMoved = tablesMerged.reduce((sum, t) => sum + (t.rows_moved || 0), 0);
+        const totalSkipped = tablesMerged.reduce((sum, t) => sum + (t.rows_skipped_duplicate || 0), 0);
+
+        // Build summary message
+        let summaryParts = [];
+        if (totalMoved > 0) {
+          summaryParts.push(`${totalMoved} record${totalMoved !== 1 ? 's' : ''} moved`);
+        }
+        if (totalSkipped > 0) {
+          summaryParts.push(`${totalSkipped} duplicate${totalSkipped !== 1 ? 's' : ''} skipped`);
+        }
+        summaryParts.push('secondary organization deleted');
+        const summaryText = summaryParts.join(', ');
 
         // Check if there are more orgs to merge
         if (remainingOrgIds && remainingOrgIds.length > 0) {
@@ -1683,7 +1696,7 @@
             <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
               <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
                 <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">Merge Complete</h3>
-                <p>Successfully merged. ${totalMoved} records moved.</p>
+                <p>Successfully merged: ${summaryText}.</p>
                 <p style="margin-top: var(--space-3);">There are ${remainingCount} more organization(s) to merge.</p>
                 <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
                   <button class="btn btn-secondary" onclick="closeMergeModal(); loadDomainHealth();">Done for Now</button>
@@ -1706,7 +1719,7 @@
             <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
               <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
                 <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">All Merges Complete</h3>
-                <p>Successfully merged all organizations. ${totalMoved} records moved in this merge.</p>
+                <p>Successfully merged: ${summaryText}.</p>
                 <div style="margin-top: var(--space-4); text-align: right;">
                   <button class="btn btn-primary" onclick="closeMergeModal(); loadDomainHealth();">Done</button>
                 </div>

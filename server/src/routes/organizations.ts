@@ -620,21 +620,27 @@ export function createOrganizationsRouter(): Router {
 
       const domains = domainsResult.rows.map(r => r.domain.toLowerCase());
 
-      // Get current org members' emails
-      const allMemberships = await workos!.userManagement.listOrganizationMemberships({
-        organizationId: orgId,
-      });
+      // Get current org members' emails (paginate to get all)
       const memberEmails = new Set<string>();
-      for (const membership of allMemberships.data) {
-        try {
-          const memberUser = await workos!.userManagement.getUser(membership.userId);
-          if (memberUser.email) {
-            memberEmails.add(memberUser.email.toLowerCase());
+      let after: string | undefined;
+      do {
+        const membershipsPage = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          after,
+          limit: 100,
+        });
+        for (const membership of membershipsPage.data) {
+          try {
+            const memberUser = await workos!.userManagement.getUser(membership.userId);
+            if (memberUser.email) {
+              memberEmails.add(memberUser.email.toLowerCase());
+            }
+          } catch {
+            // Skip if can't fetch user
           }
-        } catch {
-          // Skip if can't fetch user
         }
-      }
+        after = membershipsPage.listMetadata?.after ?? undefined;
+      } while (after)
 
       // Get pending join request emails for this org
       const joinRequestsResult = await pool.query(

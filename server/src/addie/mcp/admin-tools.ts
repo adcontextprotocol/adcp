@@ -3882,6 +3882,7 @@ Use add_committee_leader to assign a leader.`;
           primaryOrgId,
           secondaryOrgId,
           mergedBy,
+          workos,
           stripeCustomerResolution ? { stripeCustomerResolution } : undefined
         );
 

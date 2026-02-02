@@ -13,6 +13,7 @@ import {
 import { isLushaConfigured } from "../../services/lusha.js";
 import { mergeOrganizations, previewMerge, StripeCustomerResolution } from "../../db/org-merge-db.js";
 import { getPool } from "../../db/client.js";
+import { workos } from "../../auth/workos-client.js";
 
 const logger = createLogger("admin-cleanup");
 
@@ -303,6 +304,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
         primary_org_id,
         secondary_org_id,
         userId,
+        workos,
         stripe_customer_resolution ? { stripeCustomerResolution: stripe_customer_resolution } : undefined
       );
 
