@@ -11,8 +11,8 @@
  * 4. Content is indexed for full-text search
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { Readability } from '@mozilla/readability';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 import { parseHTML } from 'linkedom';
 import { logger } from '../../logger.js';
 import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
@@ -27,9 +27,6 @@ import {
 } from '../mcp/google-docs.js';
 
 const addieDb = new AddieDatabase();
-
-// Use same model as main Addie assistant
-const CURATOR_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 
 /**
  * Fetch URL content and extract article text using Mozilla Readability
@@ -147,12 +144,9 @@ async function generateAnalysis(
   quality_score: number | null;
   notification_channels: string[];
 }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
-
-  const client = new Anthropic({ apiKey });
 
   // Build channel routing section if channels are provided
   const channelRoutingSection = channels && channels.length > 0
@@ -168,13 +162,7 @@ ${channels.map(ch => `- "${ch.slack_channel_id}": ${ch.name} - ${ch.description}
 Add "notification_channels": ["channel_id", ...] to your JSON response with the IDs of channels that should receive this article.`
     : '';
 
-  const response = await client.messages.create({
-    model: CURATOR_MODEL,
-    max_tokens: 2000,
-    messages: [
-      {
-        role: 'user',
-        content: `You are Addie, the AI assistant for AgenticAdvertising.org. Analyze this article and provide structured insights for our knowledge base.
+  const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org. Analyze this article and provide structured insights for our knowledge base.
 
 **Article Title:** ${title}
 **URL:** ${url}
@@ -220,14 +208,17 @@ Provide your analysis as JSON with this structure:
 - 1: Not useful for our community
 ${channelRoutingSection}
 
-Return ONLY the JSON, no markdown formatting.`,
-      },
-    ],
+Return ONLY the JSON, no markdown formatting.`;
+
+  const response = await complete({
+    prompt,
+    model: 'primary',
+    maxTokens: 2000,
+    operationName: 'content-curator-analysis',
   });
 
   // Extract JSON from response
-  const responseText =
-    response.content[0].type === 'text' ? response.content[0].text : '';
+  const responseText = response.text;
 
   try {
     // Try to parse as JSON directly

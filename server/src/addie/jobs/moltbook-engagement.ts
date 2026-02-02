@@ -7,7 +7,6 @@
  * Runs every 4 hours, respecting Moltbook's comment rate limits.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { logger as baseLogger } from '../../logger.js';
 import {
@@ -34,14 +33,12 @@ import {
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
+import { isLLMConfigured, classify, complete } from '../../utils/llm.js';
 
 const logger = baseLogger.child({ module: 'moltbook-engagement' });
 
 // Channel name in notification_channels table
 const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
-
-// Claude model for generating comments
-const ENGAGEMENT_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 
 // Search terms for finding advertising discussions
 const SEARCH_TERMS = [
@@ -70,23 +67,12 @@ interface EngagementResult {
 // Daily limit for upvotes (be generous but not spammy)
 const MAX_DAILY_UPVOTES = 20;
 
-interface ThreadContext {
-  post: MoltbookPost;
-  comments: MoltbookComment[];
-  isRelevant: boolean;
-  engagementOpportunity?: string;
-}
-
 /**
  * Check if a post is relevant to advertising topics
  * Uses Claude to evaluate - much more accurate than keyword matching
  */
 async function isAdvertisingRelevant(post: MoltbookPost, jobRunId: string): Promise<boolean> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return false;
-
-  const client = new Anthropic({ apiKey });
-  const startTime = Date.now();
+  if (!isLLMConfigured()) return false;
 
   const prompt = `Is this Moltbook post relevant to ADVERTISING, AD TECH, or MARKETING?
 
@@ -109,17 +95,10 @@ Answer NO if the post is about:
 Respond with only YES or NO.`;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-20250514',
-      max_tokens: 10,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await classify({
+      prompt,
+      operationName: 'moltbook-relevance',
     });
-
-    const content = response.content[0];
-    if (content.type !== 'text') return false;
-
-    const isRelevant = content.text.trim().toUpperCase() === 'YES';
-    const latencyMs = Date.now() - startTime;
 
     // Record the decision
     await recordDecision({
@@ -127,19 +106,19 @@ Respond with only YES or NO.`;
       postTitle: post.title,
       postAuthor: post.author?.name,
       decisionType: 'relevance',
-      outcome: isRelevant ? 'engaged' : 'skipped',
-      reason: isRelevant
+      outcome: result.result ? 'engaged' : 'skipped',
+      reason: result.result
         ? 'Post is relevant to advertising/ad tech/marketing topics'
         : 'Post not related to advertising topics',
       decisionMethod: 'llm',
-      model: 'claude-haiku-4-20250514',
-      tokensInput: response.usage?.input_tokens,
-      tokensOutput: response.usage?.output_tokens,
-      latencyMs,
+      model: result.model,
+      tokensInput: result.inputTokens,
+      tokensOutput: result.outputTokens,
+      latencyMs: result.latencyMs,
       jobRunId,
     });
 
-    return isRelevant;
+    return result.result;
   } catch (err) {
     logger.debug({ err, postId: post.id }, 'Failed to evaluate post relevance');
 
@@ -152,7 +131,7 @@ Respond with only YES or NO.`;
       outcome: 'skipped',
       reason: `Error evaluating relevance: ${err instanceof Error ? err.message : 'Unknown error'}`,
       decisionMethod: 'llm',
-      latencyMs: Date.now() - startTime,
+      latencyMs: 0,
       jobRunId,
     });
 
@@ -168,14 +147,10 @@ async function generateComment(
   comments: MoltbookComment[],
   jobRunId: string
 ): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     logger.error('ANTHROPIC_API_KEY not configured');
     return null;
   }
-
-  const client = new Anthropic({ apiKey });
-  const startTime = Date.now();
 
   // Build context from existing comments
   const existingDiscussion = comments
@@ -216,17 +191,14 @@ If this discussion isn't relevant to advertising/agents/tech, respond with just 
 Your comment:`;
 
   try {
-    const response = await client.messages.create({
-      model: ENGAGEMENT_MODEL,
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await complete({
+      prompt,
+      maxTokens: 300,
+      model: 'primary',
+      operationName: 'moltbook-comment',
     });
 
-    const content = response.content[0];
-    if (content.type !== 'text') return null;
-
-    const comment = content.text.trim();
-    const latencyMs = Date.now() - startTime;
+    const comment = result.text;
     const isSkip = comment === 'SKIP' || comment.toLowerCase().includes('skip');
 
     // Record the decision
@@ -242,10 +214,10 @@ Your comment:`;
       decisionMethod: 'llm',
       generatedContent: isSkip ? undefined : comment,
       contentPosted: false, // Will be updated after posting
-      model: ENGAGEMENT_MODEL,
-      tokensInput: response.usage?.input_tokens,
-      tokensOutput: response.usage?.output_tokens,
-      latencyMs,
+      model: result.model,
+      tokensInput: result.inputTokens,
+      tokensOutput: result.outputTokens,
+      latencyMs: result.latencyMs,
       jobRunId,
     });
 
@@ -265,7 +237,7 @@ Your comment:`;
       outcome: 'skipped',
       reason: `Error generating comment: ${err instanceof Error ? err.message : 'Unknown error'}`,
       decisionMethod: 'llm',
-      latencyMs: Date.now() - startTime,
+      latencyMs: 0,
       jobRunId,
     });
 
@@ -282,10 +254,7 @@ async function generateReply(
   replyAuthor: string,
   replyContent: string
 ): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-
-  const client = new Anthropic({ apiKey });
+  if (!isLLMConfigured()) return null;
 
   const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org. You have a STRONG OPINION: agents should take over advertising from humans.
 
@@ -309,16 +278,14 @@ If they're being hostile or trolling, respond with just "SKIP".
 Your reply:`;
 
   try {
-    const response = await client.messages.create({
-      model: ENGAGEMENT_MODEL,
-      max_tokens: 200,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await complete({
+      prompt,
+      maxTokens: 200,
+      model: 'primary',
+      operationName: 'moltbook-reply',
     });
 
-    const content = response.content[0];
-    if (content.type !== 'text') return null;
-
-    const reply = content.text.trim();
+    const reply = result.text;
     if (reply === 'SKIP' || reply.toLowerCase().includes('skip')) {
       return null;
     }
@@ -339,14 +306,10 @@ async function shouldUpvoteComment(
   comment: MoltbookComment,
   jobRunId: string
 ): Promise<boolean> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return false;
+  if (!isLLMConfigured()) return false;
 
   // Don't upvote our own comments
   if (comment.author.name.toLowerCase() === 'addie') return false;
-
-  const client = new Anthropic({ apiKey });
-  const startTime = Date.now();
 
   const prompt = `You are Addie, evaluating if a comment deserves karma (upvote).
 
@@ -376,17 +339,10 @@ Answer NO if the comment:
 Respond with only YES or NO.`;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-20250514', // Fast model for evaluation
-      max_tokens: 10,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await classify({
+      prompt,
+      operationName: 'moltbook-upvote',
     });
-
-    const content = response.content[0];
-    if (content.type !== 'text') return false;
-
-    const shouldUpvote = content.text.trim().toUpperCase() === 'YES';
-    const latencyMs = Date.now() - startTime;
 
     // Record the decision
     await recordDecision({
@@ -394,20 +350,20 @@ Respond with only YES or NO.`;
       postTitle: post.title,
       postAuthor: comment.author.name,
       decisionType: 'upvote',
-      outcome: shouldUpvote ? 'engaged' : 'skipped',
-      reason: shouldUpvote
+      outcome: result.result ? 'engaged' : 'skipped',
+      reason: result.result
         ? `Comment by ${comment.author.name} aligns with agentic advertising worldview`
         : `Comment by ${comment.author.name} does not align with worldview or is low-effort`,
       decisionMethod: 'llm',
       generatedContent: comment.content.substring(0, 200),
-      model: 'claude-haiku-4-20250514',
-      tokensInput: response.usage?.input_tokens,
-      tokensOutput: response.usage?.output_tokens,
-      latencyMs,
+      model: result.model,
+      tokensInput: result.inputTokens,
+      tokensOutput: result.outputTokens,
+      latencyMs: result.latencyMs,
       jobRunId,
     });
 
-    return shouldUpvote;
+    return result.result;
   } catch (err) {
     logger.debug({ err }, 'Failed to evaluate comment for karma');
     return false;

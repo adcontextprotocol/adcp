@@ -13,7 +13,6 @@
  */
 
 import * as crypto from 'crypto';
-import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../logger.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import {
@@ -22,12 +21,10 @@ import {
   GOOGLE_DOCS_ERROR_PREFIX,
   GOOGLE_DOCS_ACCESS_DENIED_PREFIX,
 } from '../mcp/google-docs.js';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 import type { CommitteeDocument, DocumentIndexStatus } from '../../types.js';
 
 const workingGroupDb = new WorkingGroupDatabase();
-
-// Use same model as main Addie assistant
-const SUMMARIZER_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 
 export interface DocumentIndexResult {
   documentsChecked: number;
@@ -107,8 +104,7 @@ async function generateDocumentSummary(
   content: string,
   committeeContext?: string
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
 
@@ -117,8 +113,6 @@ async function generateDocumentSummary(
   const truncatedContent = content.length > maxContentLength
     ? content.substring(0, maxContentLength) + '\n\n[Content truncated...]'
     : content;
-
-  const client = new Anthropic({ apiKey });
 
   const systemPrompt = `You are summarizing a document for a working group at AgenticAdvertising.org.
 Generate a brief, informative summary (2-4 sentences) that captures the key points.
@@ -132,15 +126,15 @@ ${truncatedContent}
 
 Write a brief summary (2-4 sentences) of this document.`;
 
-  const response = await client.messages.create({
-    model: SUMMARIZER_MODEL,
-    max_tokens: 300,
+  const result = await complete({
     system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
+    prompt: userPrompt,
+    maxTokens: 300,
+    model: 'primary',
+    operationName: 'document-summary',
   });
 
-  const textContent = response.content.find(block => block.type === 'text');
-  return textContent?.text || 'Unable to generate summary.';
+  return result.text || 'Unable to generate summary.';
 }
 
 /**
@@ -151,8 +145,7 @@ async function generateChangeSummary(
   oldContent: string,
   newContent: string
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     return 'Document content was updated.';
   }
 
@@ -165,20 +158,15 @@ async function generateChangeSummary(
     ? newContent.substring(0, maxLength) + '...'
     : newContent;
 
-  const client = new Anthropic({ apiKey });
-
-  const response = await client.messages.create({
-    model: SUMMARIZER_MODEL,
-    max_tokens: 200,
+  const result = await complete({
     system: 'Summarize the key changes between the old and new versions of this document in 1-2 sentences. Focus on substantive changes, not formatting.',
-    messages: [{
-      role: 'user',
-      content: `Document: "${title}"\n\nOLD VERSION:\n${truncatedOld}\n\nNEW VERSION:\n${truncatedNew}\n\nWhat changed?`,
-    }],
+    prompt: `Document: "${title}"\n\nOLD VERSION:\n${truncatedOld}\n\nNEW VERSION:\n${truncatedNew}\n\nWhat changed?`,
+    maxTokens: 200,
+    model: 'primary',
+    operationName: 'document-change-summary',
   });
 
-  const textContent = response.content.find(block => block.type === 'text');
-  return textContent?.text || 'Document was updated.';
+  return result.text || 'Document was updated.';
 }
 
 /**

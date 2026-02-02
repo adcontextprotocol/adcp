@@ -11,10 +11,9 @@
  * - Conservative: only extracts notable/interesting statements
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../logger.js';
 import { InsightsDatabase, type InsightConfidence } from '../../db/insights-db.js';
-import { ModelConfig } from '../../config/models.js';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 import { invalidateInsightsCache } from '../insights-cache.js';
 
 const insightsDb = new InsightsDatabase();
@@ -96,27 +95,23 @@ Return ONLY valid JSON:
  * Extract a note from a message using Claude
  */
 async function extractNote(item: QueueItem): Promise<string | null> {
-  const apiKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     logger.warn('Passive note extractor: No API key configured');
     return null;
   }
 
   try {
-    const client = new Anthropic({ apiKey });
     const prompt = buildNoteExtractionPrompt(item.messageText, item.channelName);
 
-    const response = await client.messages.create({
-      model: ModelConfig.fast,
-      max_tokens: 150,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await complete({
+      prompt,
+      model: 'fast',
+      maxTokens: 150,
+      operationName: 'passive-note-extraction',
     });
 
-    const content = response.content[0];
-    if (content.type !== 'text') return null;
-
     // Parse JSON response
-    const cleaned = content.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const cleaned = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
 
     return parsed.note || null;

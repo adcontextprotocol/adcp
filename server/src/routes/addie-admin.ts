@@ -1767,15 +1767,9 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
     try {
       const { days, focus_on_negative, max_interactions } = req.body;
 
-      const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-      if (!anthropicApiKey) {
-        return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
-      }
-
       // Run analysis (this may take a while)
       const result = await analyzeInteractions({
         db: addieDb,
-        anthropicApiKey,
         analysisType: "manual",
         days: days || 7,
         focusOnNegative: focus_on_negative || false,
@@ -1833,11 +1827,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         return res.status(400).json({ error: "rule_ids array is required" });
       }
 
-      const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-      if (!anthropicApiKey) {
-        return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
-      }
-
       // Get the proposed rules
       const proposedRules = await Promise.all(
         rule_ids.map((id: number) => addieDb.getRuleById(id))
@@ -1851,7 +1840,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       const result = await previewRuleChange({
         db: addieDb,
-        anthropicApiKey,
         proposedRules: validRules,
         sampleSize: sample_size || 5,
       });
@@ -2715,18 +2703,10 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // POST /api/admin/addie/synthesis/run - Trigger a new synthesis
   apiRouter.post("/synthesis/run", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: "Configuration error",
-          message: "ANTHROPIC_API_KEY not configured",
-        });
-      }
-
       const { topic, maxSources, previewSampleSize } = req.body;
       const userEmail = req.user?.email || 'admin';
 
-      const result = await synthesizeInsights(addieDb, apiKey, {
+      const result = await synthesizeInsights(addieDb, {
         topic,
         maxSources: maxSources || 50,
         previewSampleSize: previewSampleSize || 20,

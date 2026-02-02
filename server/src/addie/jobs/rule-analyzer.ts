@@ -5,7 +5,6 @@
  * Can be run on a schedule or triggered manually.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
 import {
   AddieDatabase,
@@ -15,6 +14,7 @@ import {
   type AnalysisType,
 } from '../../db/addie-db.js';
 import { randomUUID } from 'crypto';
+import { complete } from '../../utils/llm.js';
 import { ModelConfig } from '../../config/models.js';
 
 const logger = createLogger('addie-rule-analyzer');
@@ -60,7 +60,6 @@ interface ClaudeAnalysisResponse {
  */
 export async function analyzeInteractions(options: {
   db: AddieDatabase;
-  anthropicApiKey: string;
   analysisType?: AnalysisType;
   days?: number;
   focusOnNegative?: boolean;
@@ -68,7 +67,6 @@ export async function analyzeInteractions(options: {
 }): Promise<AnalysisResult> {
   const {
     db,
-    anthropicApiKey,
     analysisType = 'manual',
     days = 7,
     focusOnNegative = false,
@@ -109,11 +107,8 @@ export async function analyzeInteractions(options: {
     const analysisPrompt = buildAnalysisPrompt(interactions, rules);
 
     // Call Claude for analysis
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey });
-
-    const response = await anthropic.messages.create({
-      model: ModelConfig.primary,
-      max_tokens: 4096,
+    const response = await complete({
+      prompt: analysisPrompt,
       system: `You are an expert at analyzing AI agent interactions and improving agent behavior.
 
 Your task is to analyze interactions between Addie (an AI assistant for the AAO community) and users, then suggest improvements.
@@ -141,17 +136,14 @@ Focus on:
 5. External sources that users found helpful (like bokonads.com, IAB Tech Lab, etc.)
 
 Output your analysis as JSON matching the specified schema.`,
-      messages: [
-        {
-          role: 'user',
-          content: analysisPrompt,
-        },
-      ],
+      maxTokens: 4096,
+      model: 'primary',
+      operationName: 'rule-analyzer-analyze',
     });
 
     // Parse Claude's response
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-    const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+    const responseText = response.text;
+    const tokensUsed = (response.inputTokens || 0) + (response.outputTokens || 0);
 
     let analysis: ClaudeAnalysisResponse;
     try {
@@ -320,7 +312,6 @@ Focus on actionable, evidence-based suggestions. For content gaps, prefer linkin
  */
 export async function previewRuleChange(options: {
   db: AddieDatabase;
-  anthropicApiKey: string;
   proposedRules: AddieRule[];
   sampleSize?: number;
 }): Promise<{
@@ -333,7 +324,7 @@ export async function previewRuleChange(options: {
   }>;
   overall_assessment: string;
 }> {
-  const { db, anthropicApiKey, proposedRules, sampleSize = 10 } = options;
+  const { db, proposedRules, sampleSize = 10 } = options;
 
   // Get sample of recent interactions
   const interactions = await db.getInteractionsForAnalysis({
@@ -351,27 +342,12 @@ export async function previewRuleChange(options: {
   // Build system prompt from proposed rules
   const proposedPrompt = buildSystemPromptFromRules(proposedRules);
 
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
-
   // For each interaction, predict how the new rules would change the response
   const predictions = [];
 
   for (const interaction of interactions.slice(0, 5)) {
-    const response = await anthropic.messages.create({
-      model: ModelConfig.primary,
-      max_tokens: 1024,
-      system: `You are evaluating how a change in operating rules would affect an AI assistant's response.
-
-Given:
-1. The user's original input
-2. The assistant's original response
-3. The proposed new operating rules
-
-Predict how the response would differ under the new rules. Be specific about improvements or potential issues.`,
-      messages: [
-        {
-          role: 'user',
-          content: `## Proposed Rules
+    const response = await complete({
+      prompt: `## Proposed Rules
 
 ${proposedPrompt}
 
@@ -392,11 +368,20 @@ Predict how the response would change under these rules. Output JSON:
   "confidence": 0.8
 }
 \`\`\``,
-        },
-      ],
+      system: `You are evaluating how a change in operating rules would affect an AI assistant's response.
+
+Given:
+1. The user's original input
+2. The assistant's original response
+3. The proposed new operating rules
+
+Predict how the response would differ under the new rules. Be specific about improvements or potential issues.`,
+      maxTokens: 1024,
+      model: 'primary',
+      operationName: 'rule-analyzer-preview-prediction',
     });
 
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    const responseText = response.text;
     try {
       const jsonMatch = responseText.match(/```json\n?([\s\S]*?)\n?```/) ||
                         responseText.match(/\{[\s\S]*\}/);
@@ -416,24 +401,18 @@ Predict how the response would change under these rules. Output JSON:
   }
 
   // Generate overall assessment
-  const assessmentResponse = await anthropic.messages.create({
-    model: ModelConfig.primary,
-    max_tokens: 512,
-    messages: [
-      {
-        role: 'user',
-        content: `Based on these predictions of how rule changes would affect responses, provide a brief overall assessment:
+  const assessmentResponse = await complete({
+    prompt: `Based on these predictions of how rule changes would affect responses, provide a brief overall assessment:
 
 ${JSON.stringify(predictions, null, 2)}
 
 In 2-3 sentences, summarize whether these rule changes seem beneficial and any risks.`,
-      },
-    ],
+    maxTokens: 512,
+    model: 'primary',
+    operationName: 'rule-analyzer-preview-assessment',
   });
 
-  const overallAssessment = assessmentResponse.content[0].type === 'text'
-    ? assessmentResponse.content[0].text
-    : 'Unable to generate assessment.';
+  const overallAssessment = assessmentResponse.text;
 
   return {
     predictions,
