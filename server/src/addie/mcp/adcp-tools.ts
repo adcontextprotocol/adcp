@@ -1270,14 +1270,35 @@ export function createAdcpToolHandlers(
   const handlers = new Map<string, ToolHandler>();
   const agentContextDb = new AgentContextDatabase();
 
-  // Helper to get auth token for an agent
+  // Helper to get auth token for an agent (checks OAuth first, then static token)
   async function getAuthToken(agentUrl: string): Promise<string | undefined> {
     const organizationId = memberContext?.organization?.workos_organization_id;
     if (!organizationId) return undefined;
 
     try {
+      // First check for OAuth tokens
+      const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, agentUrl);
+      if (oauthTokens) {
+        // Check if token is expired
+        if (oauthTokens.expires_at) {
+          const expiresAt = new Date(oauthTokens.expires_at);
+          if (expiresAt.getTime() - Date.now() > 5 * 60 * 1000) {
+            logger.debug({ agentUrl }, 'Using OAuth access token for agent');
+            return oauthTokens.access_token;
+          }
+          // Token expired or expiring soon - could refresh here in future
+          logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon');
+        } else {
+          // No expiration, use the token
+          logger.debug({ agentUrl }, 'Using OAuth access token for agent (no expiration)');
+          return oauthTokens.access_token;
+        }
+      }
+
+      // Fall back to static auth token
       const token = await agentContextDb.getAuthTokenByOrgAndUrl(organizationId, agentUrl);
       if (token) {
+        logger.debug({ agentUrl }, 'Using static auth token for agent');
         return token;
       }
     } catch (error) {
@@ -1372,7 +1393,75 @@ export function createAdcpToolHandlers(
       return output;
     } catch (error) {
       logger.error({ error, agentUrl, task }, `AdCP: ${task} failed`);
-      return `**Task failed:** \`${task}\`\n\n**Error:** ${error instanceof Error ? error.message : 'Unknown error'}`;
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Check if this looks like an OAuth/auth error
+      const isAuthError =
+        errorMessage.toLowerCase().includes('unauthorized') ||
+        errorMessage.toLowerCase().includes('authentication') ||
+        errorMessage.toLowerCase().includes('oauth') ||
+        errorMessage.toLowerCase().includes('401');
+
+      if (isAuthError) {
+        // Try to provide an OAuth authorization link if the agent supports it
+        const organizationId = memberContext?.organization?.workos_organization_id;
+        if (organizationId) {
+          try {
+            // Check if agent supports OAuth by looking for metadata endpoint
+            const baseUrl = new URL(agentUrl);
+            const metadataUrl = new URL('/.well-known/oauth-authorization-server', baseUrl.origin);
+            const metadataResponse = await fetch(metadataUrl.toString(), {
+              headers: { Accept: 'application/json' },
+            });
+
+            if (metadataResponse.ok) {
+              // Agent supports OAuth - get or create context and provide auth link
+              let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
+              if (!agentContext) {
+                // Create agent context for this agent
+                agentContext = await agentContextDb.create({
+                  organization_id: organizationId,
+                  agent_url: agentUrl,
+                  agent_name: baseUrl.hostname,
+                  agent_type: 'sales',
+                  protocol: 'mcp',
+                });
+                logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
+              }
+
+              // Build auth URL with pending request context for auto-retry
+              const authParams = new URLSearchParams({
+                agent_context_id: agentContext.id,
+                pending_task: task,
+                pending_params: encodeURIComponent(JSON.stringify(params)),
+              });
+              const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+
+              return (
+                `**Task failed:** \`${task}\`\n\n` +
+                `**Error:** OAuth authorization required\n\n` +
+                `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
+                `**[Click here to authorize this agent](${authUrl})**\n\n` +
+                `After you authorize, I'll automatically retry your request.`
+              );
+            }
+          } catch (oauthCheckError) {
+            logger.debug({ error: oauthCheckError, agentUrl }, 'Failed to check OAuth support');
+          }
+        }
+
+        // Fallback message if OAuth check fails or agent doesn't support OAuth
+        return (
+          `**Task failed:** \`${task}\`\n\n` +
+          `**Error:** Authentication required\n\n` +
+          `The agent at \`${agentUrl}\` requires authentication. ` +
+          `This agent may require OAuth authentication to be configured. ` +
+          `Please check with the agent provider for authentication requirements.`
+        );
+      }
+
+      return `**Task failed:** \`${task}\`\n\n**Error:** ${errorMessage}`;
     }
   }
 

@@ -63,6 +63,7 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
@@ -797,6 +798,10 @@ export class HTTPServer {
     // Mount SI (Sponsored Intelligence) chat routes
     const { apiRouter: siChatApiRouter } = createSiChatRoutes();
     this.app.use('/api/si', siChatApiRouter);           // API routes: /api/si/sessions/*
+
+    // Mount Agent OAuth routes
+    const agentOAuthRouter = createAgentOAuthRouter();
+    this.app.use('/api/oauth/agent', agentOAuthRouter); // OAuth routes: /api/oauth/agent/start, /api/oauth/agent/callback
 
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency
