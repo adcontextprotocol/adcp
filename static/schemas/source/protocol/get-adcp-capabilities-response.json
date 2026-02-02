@@ -154,6 +154,31 @@
                       "description": "Australian postcode, 4 digits (e.g., '2000')"
                     }
                   }
+                },
+                "age_restriction": {
+                  "type": "object",
+                  "description": "Age restriction capabilities for compliance (alcohol, gambling)",
+                  "properties": {
+                    "supported": {
+                      "type": "boolean",
+                      "description": "Whether platform supports age restrictions"
+                    },
+                    "verification_methods": {
+                      "type": "array",
+                      "description": "Age verification methods this platform supports",
+                      "items": {
+                        "$ref": "/schemas/enums/age-verification-method.json"
+                      }
+                    }
+                  }
+                },
+                "device_platform": {
+                  "type": "boolean",
+                  "description": "Whether platform supports device platform targeting (Sec-CH-UA-Platform values)"
+                },
+                "language": {
+                  "type": "boolean",
+                  "description": "Whether platform supports language targeting (ISO 639-1 codes)"
                 }
               }
             }

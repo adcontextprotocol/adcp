@@ -370,6 +370,14 @@
         "postal-system": {
           "$ref": "/schemas/enums/postal-system.json",
           "description": "Postal code systems for geographic targeting. System names encode country and precision (us_zip, gb_outward, ca_fsa, etc.)"
+        },
+        "age-verification-method": {
+          "$ref": "/schemas/enums/age-verification-method.json",
+          "description": "Methods for verifying user age for compliance (facial_age_estimation, id_document, digital_id, credit_card, world_id)"
+        },
+        "device-platform": {
+          "$ref": "/schemas/enums/device-platform.json",
+          "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"
         }
       }
     },
