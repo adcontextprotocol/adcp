@@ -46,6 +46,7 @@
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },
           { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
           { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
           { href: '/admin/notification-channels', label: 'Alert Channels', icon: '📢' },
