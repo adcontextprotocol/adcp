@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/core/creative-asset.json",
+  "title": "Creative Asset",
+  "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party snippets",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable creative name"
+    },
+    "format_id": {
+      "$ref": "/schemas/3.0.0-beta.2/core/format-id.json",
+      "description": "Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats."
+    },
+    "assets": {
+      "type": "object",
+      "description": "Assets required by the format, keyed by asset_role",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "oneOf": [
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/image-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/video-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/audio-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/text-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/html-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/css-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/javascript-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/vast-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/daast-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/promoted-offerings.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-beta.2/core/assets/url-asset.json"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this preview variant"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to apply for this preview",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "User-defined tags for organization and searchability",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "$ref": "/schemas/3.0.0-beta.2/enums/creative-status.json",
+      "description": "For generative creatives: set to 'approved' to finalize, 'rejected' to request regeneration with updated assets/message. Omit for non-generative creatives (system will set based on processing state)."
+    },
+    "weight": {
+      "type": "number",
+      "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "placement_ids": {
+      "type": "array",
+      "description": "Optional array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. References placement_id values from the product's placements array. If omitted, creative runs on all placements. Only used during upload to media buy - not stored in creative library.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "creative_id",
+    "name",
+    "format_id",
+    "assets"
+  ],
+  "additionalProperties": true
+}

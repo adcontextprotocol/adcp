@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/core/tasks-get-response.json",
+  "title": "Tasks Get Response",
+  "description": "Response containing detailed information about a specific task including status and optional conversation history across all AdCP domains",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for this task"
+    },
+    "task_type": {
+      "title": "Task Type",
+      "description": "Type of AdCP operation",
+      "type": "string",
+      "enum": [
+        "create_media_buy",
+        "update_media_buy",
+        "sync_creatives",
+        "activate_signal",
+        "get_signals",
+        "create_property_list",
+        "update_property_list",
+        "get_property_list",
+        "list_property_lists",
+        "delete_property_list"
+      ],
+      "enumDescriptions": {
+        "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
+        "update_media_buy": "Media-buy domain: Update campaign settings, package configuration, or delivery parameters",
+        "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
+        "activate_signal": "Signals domain: Activate an audience signal on a specific platform or account",
+        "get_signals": "Signals domain: Discover available audience signals based on natural language description",
+        "create_property_list": "Property domain: Create a new property list with filters and brand manifest",
+        "update_property_list": "Property domain: Update an existing property list",
+        "get_property_list": "Property domain: Retrieve a property list with resolved properties",
+        "list_property_lists": "Property domain: List all accessible property lists",
+        "delete_property_list": "Property domain: Delete a property list"
+      },
+      "notes": [
+        "Task types map to specific AdCP task operations",
+        "Each task type belongs to the 'media-buy', 'signals', 'property', or 'creative' domain",
+        "This enum is used in task management APIs (tasks/list, tasks/get) and webhook payloads",
+        "New task types require a minor version bump per semantic versioning"
+      ]
+    },
+    "domain": {
+      "type": "string",
+      "description": "AdCP domain this task belongs to",
+      "enum": [
+        "media-buy",
+        "signals"
+      ]
+    },
+    "status": {
+      "title": "Task Status",
+      "description": "Current task status",
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ],
+      "enumDescriptions": {
+        "submitted": "Task accepted and queued for long-running execution (hours to days). Client should poll with tasks/get or provide webhook_url at protocol level.",
+        "working": "Agent is actively processing the task, expect completion within 120 seconds",
+        "input-required": "Task is paused and waiting for input from the user (e.g., clarification, approval)",
+        "completed": "Task has been successfully completed",
+        "canceled": "Task was canceled by the user",
+        "failed": "Task failed due to an error during execution",
+        "rejected": "Task was rejected by the agent and was not started",
+        "auth-required": "Task requires authentication to proceed",
+        "unknown": "Task is in an unknown or indeterminate state"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was initially created (ISO 8601)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was last updated (ISO 8601)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
+    },
+    "has_webhook": {
+      "type": "boolean",
+      "description": "Whether this task has webhook configuration"
+    },
+    "progress": {
+      "type": "object",
+      "description": "Progress information for long-running tasks",
+      "properties": {
+        "percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Completion percentage (0-100)"
+        },
+        "current_step": {
+          "type": "string",
+          "description": "Current step or phase of the operation"
+        },
+        "total_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of steps in the operation"
+        },
+        "step_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current step number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details for failed tasks",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code for programmatic handling"
+        },
+        "message": {
+          "type": "string",
+          "description": "Detailed error message"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional error context",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "description": "AdCP domain where error occurred",
+              "enum": [
+                "media-buy",
+                "signals"
+              ]
+            },
+            "operation": {
+              "type": "string",
+              "description": "Specific operation that failed"
+            },
+            "specific_context": {
+              "type": "object",
+              "description": "Domain-specific error context",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "history": {
+      "type": "array",
+      "description": "Complete conversation history for this task (only included if include_history was true in request)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this exchange occurred (ISO 8601)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "request",
+              "response"
+            ],
+            "description": "Whether this was a request from client or response from server"
+          },
+          "data": {
+            "type": "object",
+            "description": "The full request or response payload",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "task_id",
+    "task_type",
+    "domain",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.681Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

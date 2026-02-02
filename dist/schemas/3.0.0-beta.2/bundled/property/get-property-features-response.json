@@ -1,0 +1,186 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/property/get-property-features-response.json",
+  "title": "Get Property Features Response",
+  "description": "Response payload for get_property_features task. Returns feature values for requested properties.",
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "description": "Feature values for each requested property",
+      "items": {
+        "title": "Property Feature Result",
+        "description": "Feature values for a single property from a governance agent.",
+        "type": "object",
+        "properties": {
+          "property": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Domain string (e.g., 'example.com')"
+              },
+              {
+                "title": "Property ID",
+                "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$",
+                "examples": [
+                  "cnn_ctv_app",
+                  "homepage",
+                  "mobile_ios",
+                  "instagram"
+                ]
+              }
+            ],
+            "description": "The property these features apply to"
+          },
+          "features": {
+            "type": "object",
+            "description": "Map of feature_id to feature value",
+            "additionalProperties": {
+              "title": "Property Feature Value",
+              "description": "A single feature value for a property. Structure varies by feature type (binary, quantitative, categorical).",
+              "type": "object",
+              "properties": {
+                "value": {
+                  "description": "The feature value. Type depends on feature definition: boolean for binary, number for quantitative, string for categorical.",
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Unit of measurement for quantitative values (e.g., 'gCO2e/1000_impressions', 'percentage')"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Confidence score for this value (0-1)"
+                },
+                "measured_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this specific value was measured"
+                },
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this certification/value expires (for time-limited certifications)"
+                },
+                "methodology_version": {
+                  "type": "string",
+                  "description": "Version of the methodology used to calculate this value"
+                },
+                "details": {
+                  "type": "object",
+                  "description": "Additional vendor-specific details about this measurement",
+                  "additionalProperties": true
+                },
+                "ext": {
+                  "title": "Extension Object",
+                  "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "coverage_status": {
+            "type": "string",
+            "enum": [
+              "covered",
+              "not_covered",
+              "pending"
+            ],
+            "description": "Whether this property is covered by this governance agent: covered (has data), not_covered (not measured), pending (measurement in progress)"
+          },
+          "last_evaluated": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When features were last evaluated for this property"
+          },
+          "ext": {
+            "title": "Extension Object",
+            "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "property",
+          "coverage_status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Errors for properties that could not be processed",
+      "items": {
+        "title": "Error",
+        "description": "Standard error structure for task-specific errors and warnings",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Error code for programmatic handling"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "field": {
+            "type": "string",
+            "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "Suggested fix for the error"
+          },
+          "retry_after": {
+            "type": "number",
+            "description": "Seconds to wait before retrying the operation",
+            "minimum": 0
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "results"
+  ],
+  "additionalProperties": false,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.716Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
