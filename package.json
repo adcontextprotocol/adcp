@@ -38,7 +38,7 @@
     "verify-version-sync": "node scripts/verify-version-sync.cjs"
   },
   "dependencies": {
-    "@adcp/client": "^3.8.1",
+    "@adcp/client": "^3.10.0",
     "@anthropic-ai/sdk": "^0.71.2",
     "@modelcontextprotocol/sdk": "^1.24.3",
     "@mozilla/readability": "^0.6.0",
