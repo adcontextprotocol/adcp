@@ -15,17 +15,11 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { discoverOAuthMetadata } from '@adcp/client/auth';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase, OAuthTokens, OAuthClient } from '../db/agent-context-db.js';
 import { getWebMemberContext } from '../addie/member-context.js';
-
-// Type for OAuth metadata response
-interface OAuthMetadata {
-  authorization_endpoint: string;
-  token_endpoint: string;
-  registration_endpoint?: string;
-}
 
 // Type for token response
 interface TokenResponse {
@@ -97,41 +91,6 @@ function generatePKCE(): { verifier: string; challenge: string } {
  */
 function generateState(): string {
   return crypto.randomBytes(32).toString('base64url');
-}
-
-/**
- * Discover OAuth endpoints from MCP server
- * Returns authorization URL and token URL
- */
-async function discoverOAuthEndpoints(agentUrl: string): Promise<{
-  authorizationUrl: string;
-  tokenUrl: string;
-  registrationUrl?: string;
-} | null> {
-  try {
-    // MCP servers expose OAuth metadata at /.well-known/oauth-authorization-server
-    const baseUrl = new URL(agentUrl);
-    const metadataUrl = new URL('/.well-known/oauth-authorization-server', baseUrl.origin);
-
-    const response = await fetch(metadataUrl.toString(), {
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      logger.debug({ agentUrl, status: response.status }, 'No OAuth metadata found');
-      return null;
-    }
-
-    const metadata = await response.json() as OAuthMetadata;
-    return {
-      authorizationUrl: metadata.authorization_endpoint,
-      tokenUrl: metadata.token_endpoint,
-      registrationUrl: metadata.registration_endpoint,
-    };
-  } catch (error) {
-    logger.debug({ error, agentUrl }, 'Failed to discover OAuth endpoints');
-    return null;
-  }
 }
 
 /**
@@ -288,8 +247,8 @@ export function createAgentOAuthRouter(): Router {
       }
 
       // Discover OAuth endpoints
-      const endpoints = await discoverOAuthEndpoints(agentContext.agent_url);
-      if (!endpoints) {
+      const metadata = await discoverOAuthMetadata(agentContext.agent_url);
+      if (!metadata) {
         return res.status(400).json({
           error: 'Agent does not support OAuth',
           message: 'No OAuth metadata found at the agent URL',
@@ -300,11 +259,11 @@ export function createAgentOAuthRouter(): Router {
 
       // Check if we have a registered client, or need to register
       let client = await agentContextDb.getOAuthClient(agent_context_id);
-      if (!client && endpoints.registrationUrl) {
+      if (!client && metadata.registration_endpoint) {
         // Dynamic client registration
         logger.info({ agentUrl: agentContext.agent_url }, 'Registering OAuth client');
         client = await registerOAuthClient(
-          endpoints.registrationUrl,
+          metadata.registration_endpoint,
           redirectUri,
           'AgenticAdvertising.org'
         );
@@ -335,7 +294,7 @@ export function createAgentOAuthRouter(): Router {
       });
 
       // Build authorization URL
-      const authUrl = new URL(endpoints.authorizationUrl);
+      const authUrl = new URL(metadata.authorization_endpoint);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('client_id', client.client_id);
       authUrl.searchParams.set('redirect_uri', redirectUri);
@@ -386,8 +345,8 @@ export function createAgentOAuthRouter(): Router {
       pendingFlows.delete(state);
 
       // Discover token endpoint
-      const endpoints = await discoverOAuthEndpoints(flow.agentUrl);
-      if (!endpoints) {
+      const metadata = await discoverOAuthMetadata(flow.agentUrl);
+      if (!metadata) {
         return res.redirect('/admin/agents?oauth_error=Failed+to+discover+OAuth+endpoints');
       }
 
@@ -400,7 +359,7 @@ export function createAgentOAuthRouter(): Router {
       // Exchange code for tokens
       logger.info({ agentUrl: flow.agentUrl }, 'Exchanging OAuth code for tokens');
       const tokens = await exchangeCodeForTokens(
-        endpoints.tokenUrl,
+        metadata.token_endpoint,
         code,
         flow.codeVerifier,
         flow.redirectUri,
@@ -520,14 +479,14 @@ export function createAgentOAuthRouter(): Router {
       }
 
       // Check OAuth support
-      const endpoints = await discoverOAuthEndpoints(agentContext.agent_url);
-      const supportsOAuth = !!endpoints;
+      const metadata = await discoverOAuthMetadata(agentContext.agent_url);
+      const agentSupportsOAuth = !!metadata;
 
       // Check token status
       const hasValidTokens = agentContextDb.hasValidOAuthTokens(agentContext);
 
       res.json({
-        supportsOAuth,
+        supportsOAuth: agentSupportsOAuth,
         hasOAuthClient: agentContext.has_oauth_client,
         hasOAuthTokens: agentContext.has_oauth_token,
         hasValidTokens,
