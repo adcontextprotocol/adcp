@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/property/validate-property-delivery-request.json",
+  "title": "Validate Property Delivery Request",
+  "description": "Request payload for validate_property_delivery task. Validates delivery records against a property list to determine compliance.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list to validate against"
+    },
+    "records": {
+      "type": "array",
+      "description": "Delivery records to validate. Each record represents impressions delivered to a property identifier.",
+      "items": {
+        "title": "Delivery Record",
+        "description": "A single delivery record representing impressions served to a property identifier. Used as input to validate_property_delivery.",
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "description": "The property identifier where impressions were delivered",
+            "type": "object",
+            "properties": {
+              "type": {
+                "title": "Property Identifier Types",
+                "description": "Type of identifier",
+                "type": "string",
+                "enum": [
+                  "domain",
+                  "subdomain",
+                  "network_id",
+                  "ios_bundle",
+                  "android_package",
+                  "apple_app_store_id",
+                  "google_play_id",
+                  "roku_store_id",
+                  "fire_tv_asin",
+                  "samsung_app_id",
+                  "apple_tv_bundle",
+                  "bundle_id",
+                  "venue_id",
+                  "screen_id",
+                  "openooh_venue_type",
+                  "rss_url",
+                  "apple_podcast_id",
+                  "spotify_show_id",
+                  "podcast_guid"
+                ],
+                "examples": [
+                  "domain",
+                  "ios_bundle",
+                  "venue_id",
+                  "apple_podcast_id"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+              }
+            },
+            "required": [
+              "type",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "impressions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of impressions delivered to this identifier"
+          },
+          "record_id": {
+            "type": "string",
+            "description": "Optional client-provided ID for correlating results back to source data"
+          },
+          "sales_agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the sales agent that sold this inventory. If provided, authorization is validated against the property's adagents.json."
+          },
+          "ext": {
+            "title": "Extension Object",
+            "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "identifier",
+          "impressions"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "include_compliant": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include compliant records in results (default: only return non_compliant, unmodeled, and unidentified)"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "list_id",
+    "records"
+  ],
+  "additionalProperties": false,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.720Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

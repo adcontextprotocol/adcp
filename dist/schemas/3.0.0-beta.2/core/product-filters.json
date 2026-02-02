@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/core/product-filters.json",
+  "title": "Product Filters",
+  "description": "Structured filters for product discovery",
+  "type": "object",
+  "properties": {
+    "delivery_type": {
+      "$ref": "/schemas/3.0.0-beta.2/enums/delivery-type.json"
+    },
+    "is_fixed_price": {
+      "type": "boolean",
+      "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
+    },
+    "format_types": {
+      "type": "array",
+      "description": "Filter by format types",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.2/enums/format-category.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by specific format IDs",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.2/core/format-id.json"
+      }
+    },
+    "standard_formats_only": {
+      "type": "boolean",
+      "description": "Only return products accepting IAB standard formats"
+    },
+    "min_exposures": {
+      "type": "integer",
+      "description": "Minimum exposures/impressions needed for measurement validity",
+      "minimum": 1
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "budget_range": {
+      "type": "object",
+      "description": "Budget range to filter appropriate products",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum budget amount",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "currency"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "min"
+          ]
+        },
+        {
+          "required": [
+            "max"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Works for all inventory types.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "regions": {
+      "type": "array",
+      "description": "Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-SCT']). Use for locally-bound inventory (regional OOH, local TV) where products have region-specific coverage.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
+      }
+    },
+    "metros": {
+      "type": "array",
+      "description": "Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Use when products have DMA/metro-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-beta.2/enums/metro-system.json",
+            "description": "Metro classification system"
+          },
+          "code": {
+            "type": "string",
+            "description": "Metro code within the system (e.g., '501' for NYC DMA)"
+          }
+        },
+        "required": ["system", "code"],
+        "additionalProperties": false
+      }
+    },
+    "channels": {
+      "type": "array",
+      "description": "Filter by advertising channels (e.g., ['display', 'video', 'dooh'])",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.2/enums/channels.json"
+      }
+    },
+    "required_axe_integrations": {
+      "type": "array",
+      "description": "Filter to products executable through specific agentic ad exchanges. URLs are canonical identifiers.",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "required_features": {
+      "$ref": "/schemas/3.0.0-beta.2/core/media-buy-features.json",
+      "description": "Filter to products from sellers supporting specific protocol features. Only features set to true are used for filtering."
+    },
+    "required_geo_targeting": {
+      "type": "array",
+      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "$ref": "/schemas/3.0.0-beta.2/enums/geo-level.json",
+            "description": "Geographic targeting level (country, region, metro, postal_area)"
+          },
+          "system": {
+            "type": "string",
+            "description": "Classification system within the level. Required for metro (e.g., 'nielsen_dma') and postal_area (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+          }
+        },
+        "required": ["level"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

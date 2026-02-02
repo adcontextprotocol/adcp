@@ -1,5 +1,90 @@
 # Changelog
 
+## 3.0.0-beta.2
+
+### Minor Changes
+
+- 8b8b63c: Add A2UI and MCP Apps support to Sponsored Intelligence for agent-driven UI rendering.
+- 8e37138: Add accounts and agents specification to AdCP protocol.
+
+  AdCP now distinguishes three entities in billable operations:
+
+  - **Brand**: Whose products are advertised (identified by brand manifest)
+  - **Account**: Who gets billed, what rates apply (identified by `account_id`)
+  - **Agent**: Who is placing the buy (identified by authentication token)
+
+  New schemas:
+
+  - `account.json`: Billing relationship with rate cards, payment terms, credit limits
+  - `list-accounts-request.json` / `list-accounts-response.json`: Discover accessible accounts
+
+  Updated schemas:
+
+  - `media-buy.json`: Added account attribution
+  - `create-media-buy-request.json`: Added optional `account_id` field
+  - `create-media-buy-response.json`: Added account in response
+  - `get-products-request.json`: Added optional `account_id` for rate card context
+  - `sync-creatives-request.json`: Added optional `account_id` field for creative ownership
+  - `sync-creatives-response.json`: Added account attribution in response
+  - `list-creatives-response.json`: Added account attribution per creative
+  - `creative-filters.json`: Added `account_ids` filter for querying by account
+
+  Deprecates the "Principal" terminology in favor of the more precise Account/Agent distinction.
+
+- cd0274e: Add "creative" to supported_protocols enum in get_adcp_capabilities. Creative agents indicate protocol support via presence in supported_protocols array.
+- 1d7c687: Add governance and SI agent types to Addie with complete AdCP protocol tool coverage. Adds 21 new tools for update_media_buy, list_creatives, provide_performance_feedback, property lists, content standards, sponsored intelligence, and get_adcp_capabilities.
+- 895bd23: Add property targeting for products and packages
+
+  **Product schema**: Add `property_targeting_allowed` flag to declare whether buyers can filter a product to a subset of its `publisher_properties`:
+
+  - `property_targeting_allowed: false` (default): Product is "all or nothing" - excluded from `get_products` results unless buyer's list contains all properties
+  - `property_targeting_allowed: true`: Product included if any properties intersect with buyer's list
+
+  **Targeting overlay schema**: Add `property_list` field to specify which properties to target when purchasing products with `property_targeting_allowed: true`. The package runs on the intersection of the product's properties and the buyer's list.
+
+  This enables publishers to offer run-of-network products that can't be cherry-picked alongside flexible inventory where buyers can target specific properties.
+
+- 2a82501: Add video and audio technical constraint fields for CTV and streaming platforms
+
+  - Add frame rate constraints: acceptable_frame_rates, frame_rate_type, scan_type
+  - Add color/HDR fields: color_space, hdr_format, chroma_subsampling, video_bit_depth
+  - Add GOP/streaming fields: gop_interval_seconds_min/max, gop_type, moov_atom_position
+  - Add audio constraints: audio_required, audio_codec, audio_sampling_rate_hz, audio_channels, audio_bit_depth, audio_bitrate_kbps_min/max
+  - Add audio loudness fields: audio_loudness_lufs, audio_loudness_tolerance_db, audio_true_peak_dbfs
+  - Extend video-asset.json and audio-asset.json with matching properties
+  - Add CTV format examples to video documentation
+
+### Patch Changes
+
+- cef3dfc: Add committee leadership tools for Addie - allows committee leaders to add/remove co-leaders for their own committees (working groups, councils, chapters, industry gatherings) without requiring admin access
+- b2189d5: Register account domain with list_accounts task in schema index
+- 34c7f8a: Refactor members page to remove pricing table and add URL filter support
+
+  - Replace full pricing grid with compact "Become a Member" banner linking to /membership
+  - Add URL query parameter support for filtering (e.g., /members?type=sales_agent)
+  - URL updates as users interact with filters for shareable/bookmarkable views
+
+- 00cd9b8: Extract shared PriceGuidance schema to fix duplicate type generation
+
+  **Schema Changes:**
+
+  - Create new `/schemas/pricing-options/price-guidance.json` shared schema
+  - Update all 7 pricing option schemas to use `$ref` instead of inline definitions
+
+  **Issue Fixed:**
+
+  - Fixes #884 (Issue 1): Duplicate `PriceGuidance` classes causing mypy arg-type errors
+  - When Python types are generated, there will now be a single `PriceGuidance` class instead of 7 identical copies
+
+  **Note:** Issue 2 (RootModel wrappers) requires Python library changes to export type aliases for union types.
+
+- d66bf3d: Remove deprecated v3 features: list_property_features task, list_authorized_properties task, adcp-extension.json schema, assets_required format field, and preview_image format field. All removed items have replacements via get_adcp_capabilities and the new assets discovery model.
+- 69435f3: Fix onboarding redirect and add org admin audit tool
+
+  - Remove ?signup parameter check in onboarding - users with existing org memberships now always redirect to dashboard
+  - Add admin tool to audit organizations without admins
+  - Auto-fix single-member orgs; flag multi-member orgs for manual review
+
 ## 3.0.0-beta.1
 
 ### Major Changes

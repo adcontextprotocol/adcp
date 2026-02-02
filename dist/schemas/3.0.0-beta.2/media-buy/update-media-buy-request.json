@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/media-buy/update-media-buy-request.json",
+  "title": "Update Media Buy Request",
+  "description": "Request parameters for updating campaign and package settings",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "description": "Publisher's ID of the media buy to update"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference for the media buy to update"
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause/resume the entire media buy (true = paused, false = active)"
+    },
+    "start_time": {
+      "$ref": "/schemas/3.0.0-beta.2/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "New end date/time in ISO 8601 format"
+    },
+    "packages": {
+      "type": "array",
+      "description": "Package-specific updates",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.2/media-buy/package-update.json"
+      }
+    },
+    "reporting_webhook": {
+      "$ref": "/schemas/3.0.0-beta.2/core/reporting-webhook.json",
+      "description": "Optional webhook configuration for automated reporting delivery. Updates the reporting configuration for this media buy."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.0.0-beta.2/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.2/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "media_buy_id"
+      ]
+    },
+    {
+      "required": [
+        "buyer_ref"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

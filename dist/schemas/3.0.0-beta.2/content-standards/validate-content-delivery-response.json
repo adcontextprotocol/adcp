@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/content-standards/validate-content-delivery-response.json",
+  "title": "Validate Content Delivery Response",
+  "description": "Response payload with per-record verdicts and optional feature breakdown",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "description": "Summary counts across all records",
+          "properties": {
+            "total_records": { "type": "integer" },
+            "passed_records": { "type": "integer" },
+            "failed_records": { "type": "integer" }
+          },
+          "required": ["total_records", "passed_records", "failed_records"]
+        },
+        "results": {
+          "type": "array",
+          "description": "Per-record evaluation results",
+          "items": {
+            "type": "object",
+            "properties": {
+              "record_id": {
+                "type": "string",
+                "description": "Which delivery record was evaluated"
+              },
+              "verdict": {
+                "type": "string",
+                "enum": ["pass", "fail"],
+                "description": "Overall pass/fail verdict for this record"
+              },
+              "features": {
+                "type": "array",
+                "description": "Optional feature-level breakdown",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "feature_id": { "type": "string" },
+                    "status": {
+                      "type": "string",
+                      "enum": ["passed", "failed", "warning", "unevaluated"]
+                    },
+                    "value": {},
+                    "message": { "type": "string" },
+                    "rule_id": {
+                      "type": "string",
+                      "description": "Which rule triggered this result (e.g., GARM category, Scope3 standard)"
+                    }
+                  },
+                  "required": ["feature_id", "status"]
+                }
+              }
+            },
+            "required": ["record_id", "verdict"]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-beta.2/core/ext.json"
+        }
+      },
+      "required": ["summary", "results"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-beta.2/core/error.json" }
+        },
+        "summary": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-beta.2/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}
