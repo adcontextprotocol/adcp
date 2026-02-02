@@ -102,9 +102,10 @@ export async function mergeOrganizations(
       throw new Error('Could not load organization details');
     }
 
-    // Block merging personal workspaces
-    if (primaryOrg.is_personal || secondaryOrg.is_personal) {
-      throw new Error('Cannot merge personal workspaces. Personal workspaces represent individual users and should not be merged with company organizations.');
+    // Block merging a company INTO a personal workspace (would lose company identity)
+    // But allow: personal INTO company, personal INTO personal
+    if (primaryOrg.is_personal && !secondaryOrg.is_personal) {
+      throw new Error('Cannot merge a company organization into a personal workspace. The company would lose its identity. Instead, merge the personal workspace into the company.');
     }
 
     logger.info(
