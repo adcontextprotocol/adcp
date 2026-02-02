@@ -44,6 +44,7 @@ import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
@@ -782,6 +783,11 @@ export class HTTPServer {
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Moltbook admin routes
+    const { pageRouter: moltbookPageRouter, apiRouter: moltbookApiRouter } = createMoltbookAdminRouter();
+    this.app.use('/admin/moltbook', moltbookPageRouter);    // Page routes: /admin/moltbook
+    this.app.use('/api/admin/moltbook', moltbookApiRouter); // API routes: /api/admin/moltbook/*
 
     // Mount Addie chat routes (public chat interface)
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();

@@ -376,3 +376,243 @@ export async function getActivityStats(): Promise<{
     upvotesToday: parseInt(row.upvotes_today),
   };
 }
+
+// ============== Decision Logging ==============
+
+export type DecisionType = 'relevance' | 'comment' | 'upvote' | 'reply' | 'share';
+export type DecisionOutcome = 'engaged' | 'skipped';
+export type DecisionMethod = 'llm' | 'rule' | 'rate_limit';
+
+export interface MoltbookDecisionInput {
+  moltbookPostId: string;
+  postTitle?: string;
+  postAuthor?: string;
+  decisionType: DecisionType;
+  outcome: DecisionOutcome;
+  reason: string;
+  decisionMethod: DecisionMethod;
+  generatedContent?: string;
+  contentPosted?: boolean;
+  model?: string;
+  tokensInput?: number;
+  tokensOutput?: number;
+  latencyMs?: number;
+  jobRunId?: string;
+}
+
+export interface MoltbookDecisionRecord {
+  id: number;
+  moltbook_post_id: string;
+  post_title: string | null;
+  post_author: string | null;
+  decision_type: DecisionType;
+  outcome: DecisionOutcome;
+  reason: string;
+  decision_method: DecisionMethod;
+  generated_content: string | null;
+  content_posted: boolean;
+  model: string | null;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  latency_ms: number | null;
+  job_run_id: string | null;
+  created_at: Date;
+}
+
+/**
+ * Record a decision about a Moltbook post
+ */
+export async function recordDecision(input: MoltbookDecisionInput): Promise<MoltbookDecisionRecord> {
+  const result = await query<MoltbookDecisionRecord>(
+    `INSERT INTO moltbook_decisions (
+      moltbook_post_id, post_title, post_author, decision_type, outcome,
+      reason, decision_method, generated_content, content_posted,
+      model, tokens_input, tokens_output, latency_ms, job_run_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    RETURNING *`,
+    [
+      input.moltbookPostId,
+      input.postTitle || null,
+      input.postAuthor || null,
+      input.decisionType,
+      input.outcome,
+      input.reason,
+      input.decisionMethod,
+      input.generatedContent || null,
+      input.contentPosted ?? false,
+      input.model || null,
+      input.tokensInput || null,
+      input.tokensOutput || null,
+      input.latencyMs || null,
+      input.jobRunId || null,
+    ]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get recent decisions for admin UI
+ */
+export async function getRecentDecisions(options: {
+  limit?: number;
+  offset?: number;
+  decisionType?: DecisionType;
+  outcome?: DecisionOutcome;
+}): Promise<MoltbookDecisionRecord[]> {
+  const { limit = 50, offset = 0, decisionType, outcome } = options;
+
+  let whereClause = 'WHERE 1=1';
+  const params: unknown[] = [];
+  let paramIndex = 1;
+
+  if (decisionType) {
+    whereClause += ` AND decision_type = $${paramIndex++}`;
+    params.push(decisionType);
+  }
+  if (outcome) {
+    whereClause += ` AND outcome = $${paramIndex++}`;
+    params.push(outcome);
+  }
+
+  params.push(limit, offset);
+
+  const result = await query<MoltbookDecisionRecord>(
+    `SELECT * FROM moltbook_decisions
+     ${whereClause}
+     ORDER BY created_at DESC
+     LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+    params
+  );
+  return result.rows;
+}
+
+/**
+ * Get decision statistics for admin dashboard
+ */
+export async function getDecisionStats(days = 7): Promise<{
+  total: number;
+  byType: Record<string, { engaged: number; skipped: number }>;
+  byMethod: Record<string, number>;
+  avgLatencyMs: number;
+}> {
+  const result = await query<{
+    decision_type: string;
+    outcome: string;
+    decision_method: string;
+    count: string;
+    avg_latency: string | null;
+  }>(`
+    SELECT
+      decision_type,
+      outcome,
+      decision_method,
+      COUNT(*) as count,
+      ROUND(AVG(latency_ms), 0) as avg_latency
+    FROM moltbook_decisions
+    WHERE created_at > NOW() - ($1 * INTERVAL '1 day')
+    GROUP BY decision_type, outcome, decision_method
+  `, [days]);
+
+  const byType: Record<string, { engaged: number; skipped: number }> = {};
+  const byMethod: Record<string, number> = {};
+  let total = 0;
+  let totalLatency = 0;
+  let latencyCount = 0;
+
+  for (const row of result.rows) {
+    const count = parseInt(row.count);
+    total += count;
+
+    if (!byType[row.decision_type]) {
+      byType[row.decision_type] = { engaged: 0, skipped: 0 };
+    }
+    byType[row.decision_type][row.outcome as 'engaged' | 'skipped'] += count;
+
+    byMethod[row.decision_method] = (byMethod[row.decision_method] || 0) + count;
+
+    if (row.avg_latency) {
+      totalLatency += parseFloat(row.avg_latency) * count;
+      latencyCount += count;
+    }
+  }
+
+  return {
+    total,
+    byType,
+    byMethod,
+    avgLatencyMs: latencyCount > 0 ? Math.round(totalLatency / latencyCount) : 0,
+  };
+}
+
+/**
+ * Get recent activity with linked decisions
+ */
+export async function getRecentActivityWithDecisions(limit = 50): Promise<Array<
+  MoltbookActivityRecord & {
+    decisions?: Array<{
+      decision_type: DecisionType;
+      outcome: DecisionOutcome;
+      reason: string;
+    }>;
+  }
+>> {
+  // Get recent activity
+  const activityResult = await query<MoltbookActivityRecord>(
+    `SELECT * FROM moltbook_activity
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  if (activityResult.rows.length === 0) {
+    return [];
+  }
+
+  // Get the post IDs to fetch related decisions
+  const postIds = activityResult.rows
+    .map(a => a.parent_post_id)
+    .filter((id): id is string => id !== null);
+
+  if (postIds.length === 0) {
+    return activityResult.rows;
+  }
+
+  // Fetch decisions for these posts
+  const decisionsResult = await query<{
+    moltbook_post_id: string;
+    decision_type: DecisionType;
+    outcome: DecisionOutcome;
+    reason: string;
+  }>(
+    `SELECT moltbook_post_id, decision_type, outcome, reason
+     FROM moltbook_decisions
+     WHERE moltbook_post_id = ANY($1)
+     ORDER BY created_at DESC`,
+    [postIds]
+  );
+
+  // Group decisions by post ID
+  const decisionsByPost = new Map<string, Array<{
+    decision_type: DecisionType;
+    outcome: DecisionOutcome;
+    reason: string;
+  }>>();
+  for (const d of decisionsResult.rows) {
+    if (!decisionsByPost.has(d.moltbook_post_id)) {
+      decisionsByPost.set(d.moltbook_post_id, []);
+    }
+    decisionsByPost.get(d.moltbook_post_id)!.push({
+      decision_type: d.decision_type,
+      outcome: d.outcome,
+      reason: d.reason,
+    });
+  }
+
+  // Combine activity with decisions
+  return activityResult.rows.map(activity => ({
+    ...activity,
+    decisions: activity.parent_post_id
+      ? decisionsByPost.get(activity.parent_post_id)
+      : undefined,
+  }));
+}

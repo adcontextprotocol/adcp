@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Moltbook - AdCP Registry</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    /* =============================================================================
+       Moltbook Admin Dashboard styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-lg);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2); color: var(--color-text-heading); }
+    h2 { margin-bottom: var(--space-4); color: var(--color-text-heading); font-size: var(--text-xl); }
+    .subtitle {
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-6);
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .stat-card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-xs);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-brand);
+    }
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+    .stat-sub {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      margin-bottom: var(--space-5);
+    }
+    .tab {
+      padding: var(--space-3) var(--space-5);
+      background: transparent;
+      border: none;
+      border-bottom: var(--border-2) solid transparent;
+      cursor: pointer;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      transition: var(--transition-all);
+    }
+    .tab:hover {
+      color: var(--color-text-heading);
+    }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Activity list */
+    .activity-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .activity-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .activity-item:hover {
+      border-color: var(--color-brand);
+    }
+    .activity-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+    .activity-type {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .activity-icon {
+      font-size: var(--text-lg);
+    }
+    .activity-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .activity-content {
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-sm);
+    }
+
+    /* Decisions list */
+    .decisions-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .decision-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .decision-item.engaged {
+      border-left: 3px solid var(--color-success-500);
+    }
+    .decision-item.skipped {
+      border-left: 3px solid var(--color-gray-400);
+    }
+    .decision-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-2);
+    }
+    .decision-title {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .decision-reason {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-sm);
+    }
+    .decision-generated {
+      font-size: var(--text-sm);
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-primary-50);
+      border-radius: var(--radius-sm);
+      font-style: italic;
+    }
+    .decision-meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-2);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-post { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-comment { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-upvote { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-relevance { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-reply { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-engaged { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-skipped { background: var(--color-gray-200); color: var(--color-gray-600); }
+
+    /* Filters */
+    .filter-row {
+      display: flex;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+    .filter-row select {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+    }
+
+    /* Config section */
+    .config-section {
+      margin-bottom: var(--space-6);
+    }
+    .config-section h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-3);
+      color: var(--color-text-heading);
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .tag {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: var(--text-sm);
+    }
+    .rate-limit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+    }
+    .rate-limit-item {
+      background: var(--color-gray-50);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+    }
+    .rate-limit-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
+    }
+    .rate-limit-value {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .rate-limit-bar {
+      height: 6px;
+      background: var(--color-gray-200);
+      border-radius: var(--radius-full);
+      margin-top: var(--space-2);
+      overflow: hidden;
+    }
+    .rate-limit-fill {
+      height: 100%;
+      background: var(--color-brand);
+      border-radius: var(--radius-full);
+      transition: width 0.3s ease;
+    }
+    .rate-limit-fill.warning {
+      background: var(--color-warning-500);
+    }
+    .rate-limit-fill.danger {
+      background: var(--color-error-500);
+    }
+
+    /* Buttons */
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-primary-700);
+    }
+    .btn-primary:disabled {
+      background: var(--color-gray-400);
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .button-row {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+    }
+
+    /* Result box */
+    .result-box {
+      margin-top: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .result-box.success {
+      background: var(--color-success-50);
+      border: 1px solid var(--color-success-200);
+    }
+    .result-box.error {
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: var(--space-8);
+      color: var(--color-text-secondary);
+    }
+    .empty-state {
+      text-align: center;
+      padding: var(--space-8);
+      color: var(--color-text-muted);
+    }
+
+    /* Status indicator */
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: var(--text-sm);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .status-dot.enabled {
+      background: var(--color-success-500);
+    }
+    .status-dot.disabled {
+      background: var(--color-gray-400);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">Loading...</div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1>Moltbook Activity</h1>
+          <p class="subtitle">Monitor Addie's presence on Moltbook</p>
+        </div>
+        <div class="status-indicator" id="statusIndicator">
+          <span class="status-dot disabled"></span>
+          <span>Checking...</span>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="totalPosts">-</div>
+          <div class="stat-label">Total Posts</div>
+          <div class="stat-sub" id="postsToday">- today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="totalComments">-</div>
+          <div class="stat-label">Comments</div>
+          <div class="stat-sub" id="commentsToday">- today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="totalUpvotes">-</div>
+          <div class="stat-label">Upvotes Given</div>
+          <div class="stat-sub" id="upvotesToday">- today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="decisionsTotal">-</div>
+          <div class="stat-label">Decisions (7d)</div>
+          <div class="stat-sub" id="engagementRate">- engaged</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="activity">Activity</button>
+        <button class="tab" data-tab="decisions">Decisions</button>
+        <button class="tab" data-tab="config">Configuration</button>
+      </div>
+
+      <!-- Activity Tab -->
+      <div class="tab-content active" id="activity-tab">
+        <div class="activity-list" id="activityList">
+          <div class="loading">Loading activity...</div>
+        </div>
+      </div>
+
+      <!-- Decisions Tab -->
+      <div class="tab-content" id="decisions-tab">
+        <div class="filter-row">
+          <select id="decisionTypeFilter" onchange="loadDecisions()">
+            <option value="">All Types</option>
+            <option value="relevance">Relevance Check</option>
+            <option value="comment">Comment</option>
+            <option value="upvote">Upvote</option>
+            <option value="reply">Reply</option>
+          </select>
+          <select id="decisionOutcomeFilter" onchange="loadDecisions()">
+            <option value="">All Outcomes</option>
+            <option value="engaged">Engaged</option>
+            <option value="skipped">Skipped</option>
+          </select>
+        </div>
+        <div class="decisions-list" id="decisionsList">
+          <div class="loading">Loading decisions...</div>
+        </div>
+      </div>
+
+      <!-- Configuration Tab -->
+      <div class="tab-content" id="config-tab">
+        <div class="card">
+          <div class="config-section">
+            <h3>Search Terms</h3>
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">
+              Topics Addie searches for when looking for advertising discussions
+            </p>
+            <div class="tag-list" id="searchTerms">
+              <span class="tag">Loading...</span>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Rate Limits</h3>
+            <div class="rate-limit-grid" id="rateLimits">
+              <div class="rate-limit-item">
+                <div class="rate-limit-label">Posts (30 min window)</div>
+                <div class="rate-limit-value"><span id="postsUsed">-</span> / 1</div>
+                <div class="rate-limit-bar"><div class="rate-limit-fill" id="postsBar" style="width: 0%"></div></div>
+              </div>
+              <div class="rate-limit-item">
+                <div class="rate-limit-label">Comments (daily)</div>
+                <div class="rate-limit-value"><span id="commentsUsed">-</span> / 50</div>
+                <div class="rate-limit-bar"><div class="rate-limit-fill" id="commentsBar" style="width: 0%"></div></div>
+              </div>
+              <div class="rate-limit-item">
+                <div class="rate-limit-label">Upvotes (daily)</div>
+                <div class="rate-limit-value"><span id="upvotesUsed">-</span> / 20</div>
+                <div class="rate-limit-bar"><div class="rate-limit-fill" id="upvotesBar" style="width: 0%"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Job Schedules</h3>
+            <div class="rate-limit-grid">
+              <div class="rate-limit-item">
+                <div class="rate-limit-label">Poster Job</div>
+                <div class="rate-limit-value">Every 2 hours</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+                  Posts curated articles
+                </div>
+              </div>
+              <div class="rate-limit-item">
+                <div class="rate-limit-label">Engagement Job</div>
+                <div class="rate-limit-value">Every 1 hour</div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+                  Searches, comments, gives karma
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Manual Triggers</h3>
+            <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">
+              Run jobs manually for testing or immediate engagement
+            </p>
+            <div class="button-row">
+              <button class="btn btn-primary" id="triggerEngagement" onclick="triggerJob('engagement')">
+                Run Engagement Job
+              </button>
+              <button class="btn btn-secondary" id="triggerPoster" onclick="triggerJob('poster')">
+                Run Poster Job
+              </button>
+            </div>
+            <div id="triggerResult" class="result-box" style="display: none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabId = tab.dataset.tab;
+
+        // Update tab buttons
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(tabId + '-tab').classList.add('active');
+
+        // Load data for the tab if needed
+        if (tabId === 'decisions') {
+          loadDecisions();
+        }
+      });
+    });
+
+    // Format relative time
+    function formatRelativeTime(date) {
+      const now = new Date();
+      const diff = now - new Date(date);
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return 'just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      return `${days}d ago`;
+    }
+
+    // Get activity icon
+    function getActivityIcon(type) {
+      const icons = {
+        post: '📝',
+        comment: '💬',
+        upvote: '👍',
+        downvote: '👎',
+        share: '📢'
+      };
+      return icons[type] || '📋';
+    }
+
+    // Load stats
+    async function loadStats() {
+      try {
+        const response = await AdminSidebar.fetch('/api/admin/moltbook/stats');
+        const data = await response.json();
+
+        // Activity stats
+        document.getElementById('totalPosts').textContent = data.activity.totalPosts;
+        document.getElementById('totalComments').textContent = data.activity.totalComments;
+        document.getElementById('totalUpvotes').textContent = data.activity.totalUpvotes;
+        document.getElementById('postsToday').textContent = `${data.activity.postsToday} today`;
+        document.getElementById('commentsToday').textContent = `${data.activity.commentsToday} today`;
+        document.getElementById('upvotesToday').textContent = `${data.activity.upvotesToday} today`;
+
+        // Decision stats
+        document.getElementById('decisionsTotal').textContent = data.decisions.total;
+        const totalEngaged = Object.values(data.decisions.byType).reduce((sum, t) => sum + t.engaged, 0);
+        const engagementRate = data.decisions.total > 0
+          ? Math.round((totalEngaged / data.decisions.total) * 100)
+          : 0;
+        document.getElementById('engagementRate').textContent = `${engagementRate}% engaged`;
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      }
+    }
+
+    // Load activity
+    async function loadActivity() {
+      try {
+        const response = await AdminSidebar.fetch('/api/admin/moltbook/activity?limit=30');
+        const data = await response.json();
+
+        const list = document.getElementById('activityList');
+
+        if (data.activities.length === 0) {
+          list.innerHTML = '<div class="empty-state">No activity yet</div>';
+          return;
+        }
+
+        list.innerHTML = data.activities.map(activity => `
+          <div class="activity-item">
+            <div class="activity-header">
+              <div class="activity-type">
+                <span class="activity-icon">${getActivityIcon(activity.activity_type)}</span>
+                <span class="badge badge-${activity.activity_type}">${activity.activity_type}</span>
+              </div>
+              <span class="activity-meta">${formatRelativeTime(activity.created_at)}</span>
+            </div>
+            ${activity.content ? `<div class="activity-content">${escapeHtml(activity.content.substring(0, 300))}${activity.content.length > 300 ? '...' : ''}</div>` : ''}
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Error loading activity:', err);
+        document.getElementById('activityList').innerHTML = '<div class="empty-state">Error loading activity</div>';
+      }
+    }
+
+    // Load decisions
+    async function loadDecisions() {
+      const type = document.getElementById('decisionTypeFilter').value;
+      const outcome = document.getElementById('decisionOutcomeFilter').value;
+
+      let url = '/api/admin/moltbook/decisions?limit=50';
+      if (type) url += `&type=${type}`;
+      if (outcome) url += `&outcome=${outcome}`;
+
+      try {
+        const response = await AdminSidebar.fetch(url);
+        const data = await response.json();
+
+        const list = document.getElementById('decisionsList');
+
+        if (data.decisions.length === 0) {
+          list.innerHTML = '<div class="empty-state">No decisions recorded yet. Run the engagement job to start logging decisions.</div>';
+          return;
+        }
+
+        list.innerHTML = data.decisions.map(d => `
+          <div class="decision-item ${d.outcome}">
+            <div class="decision-header">
+              <div>
+                <span class="badge badge-${d.decision_type}">${d.decision_type}</span>
+                <span class="badge badge-${d.outcome}">${d.outcome}</span>
+              </div>
+              <span class="activity-meta">${formatRelativeTime(d.created_at)}</span>
+            </div>
+            <div class="decision-title">${escapeHtml(d.post_title || 'Unknown post')}</div>
+            <div class="decision-reason">${escapeHtml(d.reason)}</div>
+            ${d.generated_content ? `
+              <div class="decision-generated">
+                "${escapeHtml(d.generated_content.substring(0, 200))}${d.generated_content.length > 200 ? '...' : ''}"
+                ${d.content_posted ? ' (posted)' : ' (not posted)'}
+              </div>
+            ` : ''}
+            <div class="decision-meta">
+              <span>Method: ${d.decision_method}</span>
+              ${d.model ? `<span>Model: ${d.model}</span>` : ''}
+              ${d.latency_ms ? `<span>${d.latency_ms}ms</span>` : ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Error loading decisions:', err);
+        document.getElementById('decisionsList').innerHTML = '<div class="empty-state">Error loading decisions</div>';
+      }
+    }
+
+    // Load config
+    async function loadConfig() {
+      try {
+        const response = await AdminSidebar.fetch('/api/admin/moltbook/config');
+        const data = await response.json();
+
+        // Status indicator
+        const indicator = document.getElementById('statusIndicator');
+        indicator.innerHTML = data.enabled
+          ? '<span class="status-dot enabled"></span><span>Enabled</span>'
+          : '<span class="status-dot disabled"></span><span>Disabled (no API token)</span>';
+
+        // Search terms
+        document.getElementById('searchTerms').innerHTML = data.searchTerms
+          .map(term => `<span class="tag">${escapeHtml(term)}</span>`)
+          .join('');
+
+        // Rate limits
+        const posts = data.rateLimits.posts;
+        document.getElementById('postsUsed').textContent = posts.current;
+        const postsPercent = (posts.current / posts.limit) * 100;
+        const postsBar = document.getElementById('postsBar');
+        postsBar.style.width = postsPercent + '%';
+        if (postsPercent >= 100) postsBar.classList.add('danger');
+
+        const comments = data.rateLimits.comments;
+        document.getElementById('commentsUsed').textContent = comments.currentDaily;
+        const commentsPercent = (comments.currentDaily / comments.dailyLimit) * 100;
+        const commentsBar = document.getElementById('commentsBar');
+        commentsBar.style.width = commentsPercent + '%';
+        if (commentsPercent >= 80) commentsBar.classList.add('warning');
+        if (commentsPercent >= 100) commentsBar.classList.add('danger');
+
+        const upvotes = data.rateLimits.upvotes;
+        document.getElementById('upvotesUsed').textContent = upvotes.currentDaily;
+        const upvotesPercent = (upvotes.currentDaily / upvotes.dailyLimit) * 100;
+        const upvotesBar = document.getElementById('upvotesBar');
+        upvotesBar.style.width = upvotesPercent + '%';
+        if (upvotesPercent >= 80) upvotesBar.classList.add('warning');
+        if (upvotesPercent >= 100) upvotesBar.classList.add('danger');
+
+      } catch (err) {
+        console.error('Error loading config:', err);
+      }
+    }
+
+    // Trigger job
+    async function triggerJob(jobType) {
+      const btn = document.getElementById(jobType === 'engagement' ? 'triggerEngagement' : 'triggerPoster');
+      const resultBox = document.getElementById('triggerResult');
+
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      resultBox.style.display = 'none';
+
+      try {
+        const response = await AdminSidebar.fetch(`/api/admin/moltbook/trigger/${jobType}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+
+        resultBox.className = 'result-box success';
+        resultBox.style.display = 'block';
+
+        if (jobType === 'engagement') {
+          resultBox.innerHTML = `
+            <strong>Engagement job completed</strong><br>
+            Posts searched: ${data.result.postsSearched}<br>
+            Comments created: ${data.result.commentsCreated}<br>
+            Replies created: ${data.result.repliesCreated}<br>
+            Upvotes given: ${data.result.upvotesGiven}<br>
+            Interesting threads: ${data.result.interestingThreads}
+          `;
+        } else {
+          resultBox.innerHTML = `
+            <strong>Poster job completed</strong><br>
+            Posts created: ${data.result.postsCreated}<br>
+            Errors: ${data.result.errors}
+          `;
+        }
+
+        // Reload data
+        loadStats();
+        loadActivity();
+        loadConfig();
+      } catch (err) {
+        console.error('Error triggering job:', err);
+        resultBox.className = 'result-box error';
+        resultBox.style.display = 'block';
+        resultBox.textContent = 'Error: ' + (err.message || 'Unknown error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = jobType === 'engagement' ? 'Run Engagement Job' : 'Run Poster Job';
+      }
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    async function init() {
+      await Promise.all([
+        loadStats(),
+        loadActivity(),
+        loadConfig()
+      ]);
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+    }
+
+    init();
+  </script>
+</body>
+</html>

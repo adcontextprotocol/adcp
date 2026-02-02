@@ -8,6 +8,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { randomUUID } from 'crypto';
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
@@ -21,6 +22,7 @@ import {
 } from '../services/moltbook-service.js';
 import {
   recordActivity,
+  recordDecision,
   canComment,
   getActivityStats,
   getCommentedPosts,
@@ -79,11 +81,12 @@ interface ThreadContext {
  * Check if a post is relevant to advertising topics
  * Uses Claude to evaluate - much more accurate than keyword matching
  */
-async function isAdvertisingRelevant(post: MoltbookPost): Promise<boolean> {
+async function isAdvertisingRelevant(post: MoltbookPost, jobRunId: string): Promise<boolean> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return false;
 
   const client = new Anthropic({ apiKey });
+  const startTime = Date.now();
 
   const prompt = `Is this Moltbook post relevant to ADVERTISING, AD TECH, or MARKETING?
 
@@ -115,9 +118,44 @@ Respond with only YES or NO.`;
     const content = response.content[0];
     if (content.type !== 'text') return false;
 
-    return content.text.trim().toUpperCase() === 'YES';
+    const isRelevant = content.text.trim().toUpperCase() === 'YES';
+    const latencyMs = Date.now() - startTime;
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author?.name,
+      decisionType: 'relevance',
+      outcome: isRelevant ? 'engaged' : 'skipped',
+      reason: isRelevant
+        ? 'Post is relevant to advertising/ad tech/marketing topics'
+        : 'Post not related to advertising topics',
+      decisionMethod: 'llm',
+      model: 'claude-haiku-4-20250514',
+      tokensInput: response.usage?.input_tokens,
+      tokensOutput: response.usage?.output_tokens,
+      latencyMs,
+      jobRunId,
+    });
+
+    return isRelevant;
   } catch (err) {
     logger.debug({ err, postId: post.id }, 'Failed to evaluate post relevance');
+
+    // Record error case
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author?.name,
+      decisionType: 'relevance',
+      outcome: 'skipped',
+      reason: `Error evaluating relevance: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      decisionMethod: 'llm',
+      latencyMs: Date.now() - startTime,
+      jobRunId,
+    });
+
     return false;
   }
 }
@@ -127,7 +165,8 @@ Respond with only YES or NO.`;
  */
 async function generateComment(
   post: MoltbookPost,
-  comments: MoltbookComment[]
+  comments: MoltbookComment[],
+  jobRunId: string
 ): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -136,6 +175,7 @@ async function generateComment(
   }
 
   const client = new Anthropic({ apiKey });
+  const startTime = Date.now();
 
   // Build context from existing comments
   const existingDiscussion = comments
@@ -186,13 +226,49 @@ Your comment:`;
     if (content.type !== 'text') return null;
 
     const comment = content.text.trim();
-    if (comment === 'SKIP' || comment.toLowerCase().includes('skip')) {
+    const latencyMs = Date.now() - startTime;
+    const isSkip = comment === 'SKIP' || comment.toLowerCase().includes('skip');
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author?.name,
+      decisionType: 'comment',
+      outcome: isSkip ? 'skipped' : 'engaged',
+      reason: isSkip
+        ? 'Discussion not relevant enough to comment on'
+        : 'Generated comment for advertising discussion',
+      decisionMethod: 'llm',
+      generatedContent: isSkip ? undefined : comment,
+      contentPosted: false, // Will be updated after posting
+      model: ENGAGEMENT_MODEL,
+      tokensInput: response.usage?.input_tokens,
+      tokensOutput: response.usage?.output_tokens,
+      latencyMs,
+      jobRunId,
+    });
+
+    if (isSkip) {
       return null;
     }
 
     return comment;
   } catch (err) {
     logger.error({ err }, 'Failed to generate comment');
+
+    // Record error case
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      decisionType: 'comment',
+      outcome: 'skipped',
+      reason: `Error generating comment: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      decisionMethod: 'llm',
+      latencyMs: Date.now() - startTime,
+      jobRunId,
+    });
+
     return null;
   }
 }
@@ -260,7 +336,8 @@ Your reply:`;
  */
 async function shouldUpvoteComment(
   post: MoltbookPost,
-  comment: MoltbookComment
+  comment: MoltbookComment,
+  jobRunId: string
 ): Promise<boolean> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return false;
@@ -269,6 +346,7 @@ async function shouldUpvoteComment(
   if (comment.author.name.toLowerCase() === 'addie') return false;
 
   const client = new Anthropic({ apiKey });
+  const startTime = Date.now();
 
   const prompt = `You are Addie, evaluating if a comment deserves karma (upvote).
 
@@ -307,7 +385,29 @@ Respond with only YES or NO.`;
     const content = response.content[0];
     if (content.type !== 'text') return false;
 
-    return content.text.trim().toUpperCase() === 'YES';
+    const shouldUpvote = content.text.trim().toUpperCase() === 'YES';
+    const latencyMs = Date.now() - startTime;
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: comment.author.name,
+      decisionType: 'upvote',
+      outcome: shouldUpvote ? 'engaged' : 'skipped',
+      reason: shouldUpvote
+        ? `Comment by ${comment.author.name} aligns with agentic advertising worldview`
+        : `Comment by ${comment.author.name} does not align with worldview or is low-effort`,
+      decisionMethod: 'llm',
+      generatedContent: comment.content.substring(0, 200),
+      model: 'claude-haiku-4-20250514',
+      tokensInput: response.usage?.input_tokens,
+      tokensOutput: response.usage?.output_tokens,
+      latencyMs,
+      jobRunId,
+    });
+
+    return shouldUpvote;
   } catch (err) {
     logger.debug({ err }, 'Failed to evaluate comment for karma');
     return false;
@@ -320,7 +420,8 @@ Respond with only YES or NO.`;
 async function giveKarmaToAlignedComments(
   post: MoltbookPost,
   comments: MoltbookComment[],
-  result: EngagementResult
+  result: EngagementResult,
+  jobRunId: string
 ): Promise<void> {
   // Check daily limit
   const todayUpvotes = await getTodayUpvoteCount();
@@ -344,7 +445,7 @@ async function giveKarmaToAlignedComments(
     if (alreadyVoted) continue;
 
     // Evaluate if we should upvote
-    const shouldUpvote = await shouldUpvoteComment(post, comment);
+    const shouldUpvote = await shouldUpvoteComment(post, comment, jobRunId);
     if (!shouldUpvote) continue;
 
     // Give karma
@@ -506,11 +607,19 @@ async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
   return posts;
 }
 
+// Max comments per job run (was 1, now more aggressive)
+const MAX_COMMENTS_PER_RUN = 3;
+
 /**
  * Run the Moltbook engagement job
  */
-export async function runMoltbookEngagementJob(options: { limit?: number } = {}): Promise<EngagementResult> {
-  const limit = options.limit ?? 3;
+export async function runMoltbookEngagementJob(options: {
+  limit?: number;
+  maxComments?: number;
+} = {}): Promise<EngagementResult> {
+  const limit = options.limit ?? 5; // Search more posts to find commentable ones
+  const maxComments = options.maxComments ?? MAX_COMMENTS_PER_RUN;
+  const jobRunId = randomUUID();
   const result: EngagementResult = {
     postsSearched: 0,
     commentsCreated: 0,
@@ -529,7 +638,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
 
   // Log current stats
   const stats = await getActivityStats();
-  logger.info(stats, 'Current Moltbook activity stats');
+  logger.info({ ...stats, jobRunId, maxComments }, 'Starting Moltbook engagement job');
 
   // First, check for and respond to replies to our previous comments
   await checkAndRespondToReplies(result);
@@ -558,7 +667,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
 
   for (const post of posts) {
     // Skip if not relevant to advertising
-    const relevant = await isAdvertisingRelevant(post);
+    const relevant = await isAdvertisingRelevant(post, jobRunId);
     if (!relevant) continue;
 
     // Get the full thread
@@ -571,7 +680,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
     }
 
     // Give karma to comments that align with our worldview
-    await giveKarmaToAlignedComments(post, comments, result);
+    await giveKarmaToAlignedComments(post, comments, result, jobRunId);
 
     // Check if Addie has already commented
     const addieCommented = comments.some(
@@ -589,9 +698,9 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
       }
     }
 
-    // Try to comment if allowed
-    if (canCommentNow && result.commentsCreated === 0) {
-      const commentText = await generateComment(post, comments);
+    // Try to comment if allowed and haven't hit max for this run
+    if (canCommentNow && result.commentsCreated < maxComments) {
+      const commentText = await generateComment(post, comments, jobRunId);
       if (!commentText) {
         result.skipped++;
         continue;
@@ -622,7 +731,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
       result.commentsCreated++;
 
       logger.info(
-        { postId: post.id, commentId: commentResult.comment?.id },
+        { postId: post.id, commentId: commentResult.comment?.id, jobRunId },
         'Successfully commented on Moltbook post'
       );
     }
@@ -638,7 +747,7 @@ export async function runMoltbookEngagementJob(options: { limit?: number } = {})
   }
 
   if (interestingToShare.length > 0) {
-    logger.info({ count: interestingToShare.length }, 'Shared interesting threads to Slack');
+    logger.info({ count: interestingToShare.length, jobRunId }, 'Shared interesting threads to Slack');
   }
 
   return result;
