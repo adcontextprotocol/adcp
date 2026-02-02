@@ -6048,11 +6048,6 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       const topic = (input.topic as string) || undefined;
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-
-      if (!apiKey) {
-        return '❌ ANTHROPIC_API_KEY not configured. Cannot run synthesis.';
-      }
 
       const { AddieDatabase } = await import('../../db/addie-db.js');
       const { synthesizeInsights } = await import('../jobs/insight-synthesizer.js');
@@ -6072,7 +6067,7 @@ Use add_committee_leader to assign a leader.`;
         createdBy,
       }, 'Starting insight synthesis via Addie tool');
 
-      const result = await synthesizeInsights(addieDb, apiKey, {
+      const result = await synthesizeInsights(addieDb, {
         topic,
         maxSources: 50,
         previewSampleSize: 20,

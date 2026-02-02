@@ -7,7 +7,6 @@
  * Runs every 2 hours, respecting Moltbook's 1 post per 30 minutes rate limit.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
@@ -24,14 +23,12 @@ import {
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 
 const logger = baseLogger.child({ module: 'moltbook-poster' });
 
 // Channel name in notification_channels table
 const MOLTBOOK_CHANNEL_NAME = 'addie_moltbook';
-
-// Model for submolt selection
-const SUBMOLT_SELECTION_MODEL = 'claude-haiku-4-20250514';
 
 // Default submolt if selection fails
 const DEFAULT_SUBMOLT = 'technology';
@@ -51,8 +48,7 @@ async function selectSubmolt(
   content: string,
   submolts: MoltbookSubmolt[]
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     logger.warn('ANTHROPIC_API_KEY not configured, using default submolt');
     return DEFAULT_SUBMOLT;
   }
@@ -84,19 +80,14 @@ Select the single most appropriate submolt for this article. Consider:
 Respond with ONLY the submolt name (e.g., "technology"), nothing else.`;
 
   try {
-    const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
-      model: SUBMOLT_SELECTION_MODEL,
-      max_tokens: 50,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await complete({
+      prompt,
+      maxTokens: 50,
+      model: 'fast',
+      operationName: 'moltbook-submolt',
     });
 
-    const textContent = response.content[0];
-    if (textContent.type !== 'text') {
-      return DEFAULT_SUBMOLT;
-    }
-
-    const selected = textContent.text.trim().toLowerCase();
+    const selected = result.text.toLowerCase();
 
     // Verify the selected submolt exists
     const validSubmolt = submolts.find(s => s.name.toLowerCase() === selected);
