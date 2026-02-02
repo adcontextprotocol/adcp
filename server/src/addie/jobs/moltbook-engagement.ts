@@ -16,6 +16,7 @@ import {
   getPost,
   createComment,
   vote,
+  followAgent,
   type MoltbookPost,
   type MoltbookComment,
 } from '../services/moltbook-service.js';
@@ -25,11 +26,15 @@ import {
   canComment,
   getActivityStats,
   getCommentedPosts,
+  getAddieOwnPosts,
   hasRespondedTo,
   hasVotedOn,
   getTodayUpvoteCount,
   hasSharedToSlack,
   recordSlackShare,
+  isFollowingAgent,
+  recordFollow,
+  getTodayFollowCount,
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
@@ -59,6 +64,7 @@ interface EngagementResult {
   commentsCreated: number;
   repliesCreated: number;
   upvotesGiven: number;
+  followsGiven: number;
   interestingThreads: number;
   skipped: number;
   errors: number;
@@ -66,6 +72,9 @@ interface EngagementResult {
 
 // Daily limit for upvotes (be generous but not spammy)
 const MAX_DAILY_UPVOTES = 20;
+
+// Daily limit for follows (build community gradually)
+const MAX_DAILY_FOLLOWS = 10;
 
 /**
  * Check if a post is relevant to advertising topics
@@ -423,6 +432,136 @@ async function giveKarmaToAlignedComments(
 }
 
 /**
+ * Evaluate if we should follow a poster based on their content
+ * Uses Claude to determine if they're aligned with agentic advertising
+ */
+async function shouldFollowPoster(
+  post: MoltbookPost,
+  jobRunId: string
+): Promise<boolean> {
+  if (!isLLMConfigured()) return false;
+
+  // Don't follow ourselves
+  if (post.author.name.toLowerCase() === 'addie') return false;
+
+  const prompt = `You are Addie, deciding whether to follow an agent on Moltbook.
+
+**Your interests:**
+- Agentic advertising and AI agents doing advertising tasks
+- Ad tech, programmatic advertising, media buying
+- AI agents, MCP, A2A, agent protocols
+- Marketing technology and automation
+
+**Post by ${post.author.name}:**
+Title: ${post.title}
+Content: ${post.content || '(no content)'}
+
+Should you follow ${post.author.name}? Answer YES if:
+- They post about advertising, ad tech, or marketing
+- They post about AI agents, agent protocols, or automation
+- They seem interested in the intersection of AI and advertising
+- They're part of the agentic advertising community
+
+Answer NO if:
+- The post is off-topic (crypto, memes, general chatter)
+- The post is low-effort or spam
+- You can't determine their interests from this post
+
+Respond with only YES or NO.`;
+
+  try {
+    const result = await classify({
+      prompt,
+      operationName: 'moltbook-follow',
+    });
+
+    // Record the decision
+    await recordDecision({
+      moltbookPostId: post.id,
+      postTitle: post.title,
+      postAuthor: post.author.name,
+      decisionType: 'follow',
+      outcome: result.result ? 'engaged' : 'skipped',
+      reason: result.result
+        ? `${post.author.name} posts about relevant topics`
+        : `${post.author.name}'s interests don't align`,
+      decisionMethod: 'llm',
+      model: result.model,
+      tokensInput: result.inputTokens,
+      tokensOutput: result.outputTokens,
+      latencyMs: result.latencyMs,
+      jobRunId,
+    });
+
+    return result.result;
+  } catch (err) {
+    logger.debug({ err, postId: post.id }, 'Failed to evaluate poster for follow');
+    return false;
+  }
+}
+
+/**
+ * Follow relevant posters discovered during engagement
+ */
+async function followRelevantPosters(
+  posts: MoltbookPost[],
+  result: EngagementResult,
+  jobRunId: string
+): Promise<void> {
+  // Check daily limit
+  let todayFollows;
+  try {
+    todayFollows = await getTodayFollowCount();
+  } catch (err) {
+    logger.warn({ err }, 'Failed to get follow count');
+    return;
+  }
+
+  if (todayFollows >= MAX_DAILY_FOLLOWS) {
+    logger.debug({ todayFollows }, 'Daily follow limit reached');
+    return;
+  }
+
+  const remainingFollows = MAX_DAILY_FOLLOWS - todayFollows;
+  const authorsToEvaluate = new Map<string, MoltbookPost>();
+
+  // Dedupe by author (only evaluate each author once)
+  for (const post of posts) {
+    if (!authorsToEvaluate.has(post.author.id)) {
+      authorsToEvaluate.set(post.author.id, post);
+    }
+  }
+
+  for (const [authorId, post] of authorsToEvaluate) {
+    if (result.followsGiven >= remainingFollows) break;
+
+    // Check if we're already following
+    const alreadyFollowing = await isFollowingAgent(authorId);
+    if (alreadyFollowing) continue;
+
+    // Evaluate if we should follow
+    const shouldFollow = await shouldFollowPoster(post, jobRunId);
+    if (!shouldFollow) continue;
+
+    // Follow the agent
+    const followResult = await followAgent(authorId);
+    if (!followResult.success) {
+      logger.debug({ error: followResult.error, agentId: authorId }, 'Failed to follow agent');
+      continue;
+    }
+
+    // Record the activity
+    await recordFollow(authorId, post.author.name);
+    result.followsGiven++;
+
+    logger.info(
+      { agentId: authorId, agentName: post.author.name },
+      'Followed relevant poster on Moltbook'
+    );
+  }
+}
+
+/**
  * Check for and respond to replies to Addie's comments
  */
 async function checkAndRespondToReplies(result: EngagementResult): Promise<void> {
@@ -488,6 +627,84 @@ async function checkAndRespondToReplies(result: EngagementResult): Promise<void>
       }
     } catch (err) {
       logger.warn({ err, postId }, 'Error checking post for replies');
+    }
+  }
+}
+
+/**
+ * Check for and respond to comments on Addie's own posts
+ * This handles the case where Addie creates a post and others comment on it
+ */
+async function checkAndRespondToOwnPostComments(result: EngagementResult): Promise<void> {
+  // Get posts that Addie authored
+  let ownPosts;
+  try {
+    ownPosts = await getAddieOwnPosts(10);
+  } catch (err) {
+    logger.warn({ err }, 'Failed to fetch own posts');
+    return;
+  }
+
+  if (ownPosts.length === 0) {
+    logger.debug('No own posts to check for comments');
+    return;
+  }
+
+  for (const { postId, title } of ownPosts) {
+    try {
+      // Get the post with all comments
+      const { post, comments } = await getPost(postId);
+
+      // Find top-level comments (not from Addie, not already responded to)
+      const topLevelComments = comments.filter(c =>
+        !c.parent_id && // Top-level comment
+        c.author.name.toLowerCase() !== 'addie'
+      );
+
+      for (const comment of topLevelComments) {
+        // Check if we've already responded to this comment
+        const alreadyResponded = await hasRespondedTo(comment.id);
+        if (alreadyResponded) continue;
+
+        // Check rate limit
+        const canCommentNow = await canComment();
+        if (!canCommentNow.allowed) {
+          logger.debug({ reason: canCommentNow.reason }, 'Rate limited, skipping own post replies');
+          return;
+        }
+
+        // Generate a reply
+        const replyText = await generateReply(
+          post,
+          `[Original post by Addie: ${title}]`,
+          comment.author.name,
+          comment.content
+        );
+        if (!replyText) continue;
+
+        // Post the reply (as a nested reply to their comment)
+        const replyResult = await createComment(postId, replyText, comment.id);
+        if (!replyResult.success) {
+          logger.error({ error: replyResult.error, postId }, 'Failed to reply to comment on own post');
+          result.errors++;
+          continue;
+        }
+
+        // Record with marker so we know we responded to this
+        await recordActivity('comment', replyResult.comment?.id, postId, `reply_to:${comment.id} ${replyText}`);
+
+        // Notify Slack
+        const permalink = post.permalink || `https://moltbook.com/p/${postId}`;
+        await notifySlackEngagement('comment', post, `Replied to ${comment.author.name} on my post:\n_"${replyText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
+
+        result.repliesCreated++;
+        logger.info({ postId, replyToAuthor: comment.author.name }, 'Successfully replied to comment on own post');
+
+        // Only one reply per run to be thoughtful
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err, postId }, 'Error checking own post for comments');
     }
   }
 }
@@ -599,6 +816,7 @@ export async function runMoltbookEngagementJob(options: {
     commentsCreated: 0,
     repliesCreated: 0,
     upvotesGiven: 0,
+    followsGiven: 0,
     interestingThreads: 0,
     skipped: 0,
     errors: 0,
@@ -614,7 +832,15 @@ export async function runMoltbookEngagementJob(options: {
   const stats = await getActivityStats();
   logger.info({ ...stats, jobRunId, maxComments }, 'Starting Moltbook engagement job');
 
-  // First, check for and respond to replies to our previous comments
+  // First, check for and respond to comments on our own posts
+  await checkAndRespondToOwnPostComments(result);
+
+  // If we replied to someone, that's enough engagement for this run
+  if (result.repliesCreated > 0) {
+    return result;
+  }
+
+  // Then check for replies to our comments on other posts
   await checkAndRespondToReplies(result);
 
   // If we replied to someone, that's enough engagement for this run
@@ -722,6 +948,13 @@ export async function runMoltbookEngagementJob(options: {
 
   if (interestingToShare.length > 0) {
     logger.info({ count: interestingToShare.length, jobRunId }, 'Shared interesting threads to Slack');
+  }
+
+  // Follow relevant posters we discovered
+  await followRelevantPosters(posts, result, jobRunId);
+
+  if (result.followsGiven > 0) {
+    logger.info({ followsGiven: result.followsGiven, jobRunId }, 'Followed relevant posters');
   }
 
   return result;
