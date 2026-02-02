@@ -406,6 +406,21 @@
         }
       }
     },
+    "account": {
+      "description": "Account management task request/response schemas",
+      "tasks": {
+        "list-accounts": {
+          "request": {
+            "$ref": "/schemas/account/list-accounts-request.json",
+            "description": "Request parameters for listing accounts accessible to the authenticated agent"
+          },
+          "response": {
+            "$ref": "/schemas/account/list-accounts-response.json",
+            "description": "Response payload for list_accounts task"
+          }
+        }
+      }
+    },
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
