@@ -12,6 +12,7 @@
 
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
+import { WorkOS } from '@workos-inc/node';
 
 const logger = createLogger('org-merge-db');
 
@@ -28,6 +29,7 @@ export interface MergeSummary {
   prospect_notes_merged: boolean;
   enrichment_data_preserved: boolean;
   stripe_customer_action: 'kept_primary' | 'moved_from_secondary' | 'none' | 'conflict_unresolved' | null;
+  workos_org_deleted: boolean;
   warnings: string[];
 }
 
@@ -39,6 +41,7 @@ export type StripeCustomerResolution = 'keep_primary' | 'use_secondary' | 'keep_
  * @param primaryOrgId - The organization to keep (merge into)
  * @param secondaryOrgId - The organization to remove (merge from)
  * @param mergedBy - WorkOS user ID of person initiating the merge
+ * @param workos - WorkOS client instance for deleting the secondary org
  * @param options.stripeCustomerResolution - How to handle stripe_customer_id conflict
  * @returns Summary of the merge operation
  */
@@ -46,6 +49,7 @@ export async function mergeOrganizations(
   primaryOrgId: string,
   secondaryOrgId: string,
   mergedBy: string,
+  workos: WorkOS,
   options?: {
     stripeCustomerResolution?: StripeCustomerResolution;
   }
@@ -62,6 +66,7 @@ export async function mergeOrganizations(
     prospect_notes_merged: false,
     enrichment_data_preserved: false,
     stripe_customer_action: null,
+    workos_org_deleted: false,
     warnings: [],
   };
 
@@ -688,7 +693,7 @@ export async function mergeOrganizations(
     );
 
     // =====================================================
-    // 24. Delete the secondary organization
+    // 24. Delete the secondary organization from local DB
     // =====================================================
     await client.query(
       `DELETE FROM organizations WHERE workos_organization_id = $1`,
@@ -698,11 +703,31 @@ export async function mergeOrganizations(
     // Commit transaction
     await client.query('COMMIT');
 
+    // =====================================================
+    // 25. Delete the secondary organization from WorkOS
+    // =====================================================
+    // This is done after commit so local changes persist even if WorkOS fails
+    try {
+      await workos.organizations.deleteOrganization(secondaryOrgId);
+      summary.workos_org_deleted = true;
+      logger.info({ secondaryOrgId }, 'Deleted secondary organization from WorkOS');
+    } catch (workosError) {
+      // Log but don't fail - local merge succeeded
+      logger.error(
+        { error: workosError, secondaryOrgId },
+        'Failed to delete secondary organization from WorkOS - manual cleanup may be required'
+      );
+      summary.warnings.push(
+        'Failed to delete secondary organization from WorkOS. The organization may need to be manually deleted in WorkOS Dashboard.'
+      );
+    }
+
     logger.info(
       {
         primaryOrgId,
         secondaryOrgId,
         totalMoved: summary.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0),
+        workosDeleted: summary.workos_org_deleted,
       },
       'Organization merge completed successfully'
     );
