@@ -128,16 +128,25 @@ For established brands with defined guidelines, host the manifest on a CDN:
   "name": "ACME Corporation",
   "logos": [
     {
-      "url": "https://cdn.acmecorp.com/logo-square-dark.png",
-      "tags": ["dark", "square"],
-      "width": 512,
-      "height": 512
-    },
-    {
-      "url": "https://cdn.acmecorp.com/logo-horizontal-light.png",
-      "tags": ["light", "horizontal"],
+      "url": "https://cdn.acmecorp.com/logo-dark.png",
+      "tags": ["dark-bg", "horizontal", "primary"],
+      "usage": "Primary logo for use on light backgrounds",
       "width": 1200,
       "height": 400
+    },
+    {
+      "url": "https://cdn.acmecorp.com/logo-light.png",
+      "tags": ["light-bg", "horizontal", "primary"],
+      "usage": "Primary logo for use on dark backgrounds",
+      "width": 1200,
+      "height": 400
+    },
+    {
+      "url": "https://cdn.acmecorp.com/icon.png",
+      "tags": ["transparent-bg", "square", "icon"],
+      "usage": "Icon-only variant for small formats",
+      "width": 512,
+      "height": 512
     }
   ],
   "colors": {
@@ -151,7 +160,20 @@ For established brands with defined guidelines, host the manifest on a CDN:
     "primary": "Helvetica Neue",
     "secondary": "Georgia"
   },
-  "tone": "professional and trustworthy",
+  "tone": {
+    "voice": "professional and trustworthy",
+    "attributes": ["confident", "innovative", "approachable"],
+    "dos": [
+      "Use clear, direct language",
+      "Highlight innovation and reliability",
+      "Address decision-makers directly"
+    ],
+    "donts": [
+      "Avoid hyperbole or exaggeration",
+      "Don't use overly casual language",
+      "Don't make unsubstantiated claims"
+    ]
+  },
   "tagline": "Innovation You Can Trust",
   "product_catalog": {
     "feed_url": "https://acmecorp.com/products.rss",
@@ -248,7 +270,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 | `logos` | Logo[] | Brand logo assets with semantic tags |
 | `colors` | Colors | Brand color palette (hex format) |
 | `fonts` | Fonts | Brand typography guidelines |
-| `tone` | string | Brand voice and messaging tone |
+| `tone` | string \| ToneObject | Brand voice and messaging tone (simple string or structured object) |
 | `tagline` | string | Brand tagline or slogan |
 | `assets` | Asset[] | Brand asset library with explicit assets and tags |
 | `product_catalog` | ProductCatalog | Product catalog information for e-commerce advertisers |
@@ -263,13 +285,113 @@ The structure of the brand manifest object itself (whether provided inline or ho
 ```typescript
 {
   url: string;           // URL to logo asset
-  tags?: string[];       // Semantic tags (e.g., "dark", "light", "square", "horizontal")
+  tags?: string[];       // Semantic tags for logo variant selection
+  usage?: string;        // Human-readable description of when to use this variant
   width?: number;        // Logo width in pixels
   height?: number;       // Logo height in pixels
 }
 ```
 
-**Common Tags**: `"dark"`, `"light"`, `"square"`, `"horizontal"`, `"vertical"`, `"icon"`, `"wordmark"`, `"lockup"`
+#### Standardized Logo Tags
+
+Use these standardized tags to help creative agents select appropriate logo variants:
+
+**Background Compatibility:**
+- `dark-bg` - Use on dark backgrounds
+- `light-bg` - Use on light backgrounds
+- `transparent-bg` - Has transparent background
+
+**Orientation:**
+- `square` - Square or circular lockup
+- `horizontal` - Wide horizontal layout
+- `vertical` - Tall vertical layout
+- `stacked` - Vertically stacked elements
+
+**Usage Context:**
+- `primary` - Main brand logo
+- `secondary` - Alternative version
+- `icon` - Icon/symbol only
+- `wordmark` - Text/wordmark only
+- `full-lockup` - Complete logo with all elements
+
+#### Logo Example
+
+```json
+{
+  "logos": [
+    {
+      "url": "https://cdn.brand.com/logo-dark.png",
+      "tags": ["dark-bg", "horizontal", "primary"],
+      "usage": "Primary logo for use on light backgrounds"
+    },
+    {
+      "url": "https://cdn.brand.com/logo-light.png",
+      "tags": ["light-bg", "horizontal", "primary"],
+      "usage": "Primary logo for use on dark backgrounds"
+    },
+    {
+      "url": "https://cdn.brand.com/icon.png",
+      "tags": ["transparent-bg", "square", "icon"],
+      "usage": "Icon-only variant for small formats"
+    }
+  ]
+}
+```
+
+### Tone (String or Object)
+
+The `tone` field can be either a simple string or a structured object for detailed creative guidance.
+
+#### Simple String
+
+For basic use cases, provide a simple descriptor:
+
+```json
+{
+  "tone": "warm and inviting"
+}
+```
+
+#### Structured Tone Object
+
+For detailed creative guidance, provide a structured object:
+
+```typescript
+{
+  voice?: string;        // High-level voice descriptor (the what)
+  attributes?: string[]; // Personality traits (the character)
+  dos?: string[];        // Specific guidance for copy generation (the how)
+  donts?: string[];      // Guardrails to avoid brand violations (the boundaries)
+}
+```
+
+#### Structured Tone Example
+
+```json
+{
+  "tone": {
+    "voice": "warm and inviting",
+    "attributes": ["friendly", "optimistic", "conversational", "authentic"],
+    "dos": [
+      "Use simple, everyday language",
+      "Address the reader directly",
+      "Show empathy and understanding",
+      "Keep sentences short and punchy"
+    ],
+    "donts": [
+      "Avoid corporate jargon",
+      "Don't be overly formal or stiff",
+      "Avoid technical terms unless necessary",
+      "Don't make exaggerated claims"
+    ]
+  }
+}
+```
+
+The structured tone format enables creative agents to:
+- Generate brand-compliant copy by following specific dos/donts
+- Apply consistent voice across different creative formats
+- Automate brand guideline compliance without human review
 
 ### Colors Object
 
@@ -381,14 +503,19 @@ Use brand manifest to inform creative generation:
     "logos": [
       {
         "url": "https://cdn.acmecorp.com/logo-square.png",
-        "tags": ["square", "dark"]
+        "tags": ["transparent-bg", "square", "primary"],
+        "usage": "Primary square logo"
       }
     ],
     "colors": {
       "primary": "#FF6B35",
       "secondary": "#004E89"
     },
-    "tone": "professional and trustworthy"
+    "tone": {
+      "voice": "professional and trustworthy",
+      "dos": ["Highlight innovation", "Use clear language"],
+      "donts": ["Avoid hyperbole"]
+    }
   }
 }
 ```
@@ -413,20 +540,36 @@ Begin with just a URL. Add more fields only when the URL-based inference isn't s
 }
 ```
 
-### 2. Use Semantic Tags for Logos
+### 2. Use Standardized Tags for Logos
 
-Tags help creative agents select appropriate logo variants:
+Use standardized tags to help creative agents select appropriate logo variants:
 
 ```json
 {
   "logos": [
-    {"url": "...", "tags": ["dark", "square"]},      // For light backgrounds
-    {"url": "...", "tags": ["light", "square"]},     // For dark backgrounds
-    {"url": "...", "tags": ["dark", "horizontal"]},  // Wide layouts
-    {"url": "...", "tags": ["icon"]}                 // Small placements
+    {
+      "url": "...",
+      "tags": ["dark-bg", "horizontal", "primary"],
+      "usage": "Primary logo for light backgrounds"
+    },
+    {
+      "url": "...",
+      "tags": ["light-bg", "horizontal", "primary"],
+      "usage": "Primary logo for dark backgrounds"
+    },
+    {
+      "url": "...",
+      "tags": ["transparent-bg", "square", "icon"],
+      "usage": "Icon for small placements"
+    }
   ]
 }
 ```
+
+**Recommended tag categories:**
+- Background: `dark-bg`, `light-bg`, `transparent-bg`
+- Orientation: `square`, `horizontal`, `vertical`, `stacked`
+- Context: `primary`, `secondary`, `icon`, `wordmark`, `full-lockup`
 
 ### 3. Cache and Reuse Brand Manifests
 
