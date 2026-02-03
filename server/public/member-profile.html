@@ -770,6 +770,18 @@
         <div id="success-message" class="alert alert-success" style="display: none;"></div>
         <div id="error-message" class="alert alert-error" style="display: none;"></div>
 
+        <!-- Account type notice -->
+        <div id="account-type-notice" style="display: none; padding: 16px; background: var(--color-primary-50); border: 1px solid var(--color-primary-200); border-radius: 8px; margin-bottom: 24px;">
+          <div style="display: flex; align-items: start; gap: 12px;">
+            <span style="font-size: 20px;">💡</span>
+            <div style="flex: 1;">
+              <p id="account-type-notice-text" style="margin: 0 0 8px 0; color: var(--color-primary-700); font-size: 14px;"></p>
+              <a id="account-type-switch-link" href="/dashboard/settings" style="font-size: 13px; color: var(--color-primary-600); font-weight: 500;">Change account type in Settings →</a>
+            </div>
+            <button type="button" onclick="dismissAccountTypeNotice()" style="background: none; border: none; color: var(--color-primary-400); cursor: pointer; padding: 4px; font-size: 16px;">×</button>
+          </div>
+        </div>
+
         <form id="memberProfileForm" onsubmit="saveProfile(event)">
           <!-- Basic Information -->
           <h2>Basic Information</h2>
@@ -850,7 +862,40 @@
             </div>
           </div>
 
-          <!-- Branding -->
+          <!-- Profile Picture (individuals only) -->
+          <div id="photo-section" style="display: none;">
+          <h2>Profile Picture</h2>
+
+          <div class="form-group">
+            <label for="photo_url">Your Photo</label>
+            <div class="logo-input-group">
+              <input type="text" id="photo_url" name="photo_url" placeholder="https://example.com/photo.jpg" readonly>
+              <span class="upload-filename" id="photo_filename"></span>
+              <label class="btn-upload">
+                Upload
+                <input type="file" id="photo_upload" accept="image/*" onchange="handleLogoUpload(this, 'photo_url', 'photo_filename')">
+              </label>
+              <button type="button" class="btn-clear" id="photo_clear" onclick="clearLogo('photo_url', 'photo_filename')" style="display: none;">Clear</button>
+            </div>
+            <div class="hint">A professional headshot helps people recognize you</div>
+          </div>
+
+          <div class="preview-section">
+            <h3>Photo Preview</h3>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div id="photo-preview" style="width: 80px; height: 80px; border-radius: 50%; background: var(--color-bg-subtle); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 2px solid var(--color-border);">
+                <span style="color: var(--color-text-muted); font-size: 12px;">No photo</span>
+              </div>
+              <div style="font-size: 13px; color: var(--color-text-secondary);">
+                <p style="margin: 0 0 4px 0;">Recommended: Square image, at least 200x200 pixels</p>
+                <p style="margin: 0;">No photo? We'll use your <a href="https://gravatar.com" target="_blank">Gravatar</a> based on your contact email.</p>
+              </div>
+            </div>
+          </div>
+          </div><!-- end photo-section -->
+
+          <!-- Branding (companies only) -->
+          <div id="logos-section">
           <h2>Logos</h2>
 
           <div class="form-row">
@@ -925,6 +970,7 @@
               </div>
             </div>
           </div>
+          </div><!-- end logos-section -->
 
           <!-- Contact Information -->
           <h2>Contact Information</h2>
@@ -957,6 +1003,7 @@
           </div>
 
           <!-- Markets -->
+          <div id="markets-section">
           <h2>Markets</h2>
 
           <div class="form-group">
@@ -985,8 +1032,10 @@
             </div>
             <div class="hint">Select the regions where you provide services</div>
           </div>
+          </div><!-- end markets-section -->
 
           <!-- Agent URLs -->
+          <div id="agents-section">
           <h2>Your Agents</h2>
           <div class="form-group">
             <label>Register your AdCP agents (MCP or A2A endpoints):</label>
@@ -999,8 +1048,10 @@
             </div>
             <div class="hint">Enter your agent's base URL. We'll automatically detect the protocol and fetch agent info.</div>
           </div>
+          </div><!-- end agents-section -->
 
           <!-- Publisher Domains -->
+          <div id="publishers-section">
           <h2>Your Publishers</h2>
           <div class="form-group">
             <label>Register publisher domains where you host adagents.json:</label>
@@ -1013,6 +1064,7 @@
             </div>
             <div class="hint">Enter a domain name. We'll check for a valid /.well-known/adagents.json file.</div>
           </div>
+          </div><!-- end publishers-section -->
 
           <!-- Tags -->
           <h2>Tags</h2>
@@ -1071,6 +1123,7 @@
       setupTagsInput();
       setupSlugCheck();
       setupLogoPreview();
+      setupPhotoPreview();
       setupMemberCardPreview();
       setupPhoneFormatting();
       setupMarketsAutoSelect();
@@ -1228,17 +1281,143 @@
       const slugInput = document.getElementById('slug');
       const descriptionTextarea = document.getElementById('description');
 
+      // Get sections to show/hide
+      const photoSection = document.getElementById('photo-section');
+      const logosSection = document.getElementById('logos-section');
+      const agentsSection = document.getElementById('agents-section');
+      const publishersSection = document.getElementById('publishers-section');
+      const marketsSection = document.getElementById('markets-section');
+
+      // Get offering checkboxes
+      const companyOnlyOfferings = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'publisher'];
+
+      // Get label elements
+      const displayNameLabel = displayNameInput?.previousElementSibling;
+      const descriptionLabel = descriptionTextarea?.previousElementSibling;
+      const offeringsHeading = document.querySelector('#offerings-group')?.closest('.form-group')?.previousElementSibling;
+      const offeringsLabel = document.querySelector('#offerings-group')?.previousElementSibling;
+
+      // Update no-profile message
+      const noProfileMsg = document.querySelector('#no-profile p');
+
+      // Update member card preview placeholder text
+      const previewDescription = document.querySelector('#member-card-preview .member-description');
+      const previewName = document.querySelector('#member-card-preview .member-name');
+
       if (isPersonal) {
         // Update for individual accounts
         displayNameInput.placeholder = 'Your name';
         slugInput.placeholder = 'your-name';
-        descriptionTextarea.placeholder = 'Tell people about yourself and what you offer...';
+        descriptionTextarea.placeholder = 'Tell people about yourself, your expertise, and what services you offer...';
+
+        // Update labels
+        if (displayNameLabel) displayNameLabel.textContent = 'Your Name *';
+        if (descriptionLabel) descriptionLabel.textContent = 'About You';
+        if (offeringsHeading) offeringsHeading.textContent = 'What Do You Do?';
+        if (offeringsLabel) offeringsLabel.textContent = 'Select all that apply:';
+
+        // Update no-profile message
+        if (noProfileMsg) {
+          noProfileMsg.textContent = 'You don\'t have a member profile yet. Create one to appear in the member directory.';
+        }
+
+        // Update preview placeholders
+        if (previewDescription) previewDescription.textContent = 'Add a description to tell people about yourself...';
+        if (previewName) previewName.textContent = 'Your Name';
+
+        // Show individual-specific sections
+        if (photoSection) photoSection.style.display = 'block';
+
+        // Hide company-specific sections
+        if (logosSection) logosSection.style.display = 'none';
+        if (agentsSection) agentsSection.style.display = 'none';
+        if (publishersSection) publishersSection.style.display = 'none';
+        if (marketsSection) marketsSection.style.display = 'none';
+
+        // Hide company-only offerings (buyer_agent, sales_agent, etc.)
+        companyOnlyOfferings.forEach(offering => {
+          const checkbox = document.querySelector(`.checkbox-item[data-value="${offering}"]`);
+          if (checkbox) checkbox.style.display = 'none';
+        });
+
+        // Update LinkedIn placeholder for individuals
+        const linkedinInput = document.getElementById('linkedin_url');
+        if (linkedinInput) linkedinInput.placeholder = 'https://linkedin.com/in/yourname';
       } else {
         // Keep defaults for organizations
         displayNameInput.placeholder = 'Your company name';
         slugInput.placeholder = 'your-company';
         descriptionTextarea.placeholder = 'Tell people about your company and what you offer...';
+
+        // Update labels
+        if (displayNameLabel) displayNameLabel.textContent = 'Display Name *';
+        if (descriptionLabel) descriptionLabel.textContent = 'Description';
+        if (offeringsHeading) offeringsHeading.textContent = 'What Do You Offer?';
+
+        // Update no-profile message
+        if (noProfileMsg) {
+          noProfileMsg.textContent = 'You don\'t have a member profile yet. Create one to appear in the member directory and have your logo shown on the homepage.';
+        }
+
+        // Update preview placeholders
+        if (previewDescription) previewDescription.textContent = 'Add a description to tell people about your company...';
+        if (previewName) previewName.textContent = 'Your Company';
+
+        // Hide individual-specific sections
+        if (photoSection) photoSection.style.display = 'none';
+
+        // Show all company sections
+        if (logosSection) logosSection.style.display = 'block';
+        if (agentsSection) agentsSection.style.display = 'block';
+        if (publishersSection) publishersSection.style.display = 'block';
+        if (marketsSection) marketsSection.style.display = 'block';
+
+        // Show all offerings
+        companyOnlyOfferings.forEach(offering => {
+          const checkbox = document.querySelector(`.checkbox-item[data-value="${offering}"]`);
+          if (checkbox) checkbox.style.display = 'flex';
+        });
+
+        // Update LinkedIn placeholder for companies
+        const linkedinInput = document.getElementById('linkedin_url');
+        if (linkedinInput) linkedinInput.placeholder = 'https://linkedin.com/company/...';
       }
+
+      // Show account type notice (unless dismissed)
+      showAccountTypeNotice(isPersonal);
+    }
+
+    function showAccountTypeNotice(isPersonal) {
+      const notice = document.getElementById('account-type-notice');
+      const noticeText = document.getElementById('account-type-notice-text');
+
+      // Check if user has dismissed this notice
+      const dismissed = sessionStorage.getItem('dismissedAccountTypeNotice');
+      if (dismissed) {
+        notice.style.display = 'none';
+        return;
+      }
+
+      if (isPersonal) {
+        noticeText.innerHTML = `
+          <strong>You're using an individual account.</strong>
+          This profile type is for consultants, academics, and independent professionals.
+          If you're representing a company, you can switch to a company account to add logos, team members, and register agents.
+        `;
+      } else {
+        noticeText.innerHTML = `
+          <strong>You're using a company account.</strong>
+          This profile type is for organizations with team members and company branding.
+          If you're an independent consultant or freelancer, you can switch to an individual account for a simpler profile.
+        `;
+      }
+
+      notice.style.display = 'block';
+    }
+
+    function dismissAccountTypeNotice() {
+      sessionStorage.setItem('dismissedAccountTypeNotice', 'true');
+      document.getElementById('account-type-notice').style.display = 'none';
     }
 
     function showCreateForm() {
@@ -1258,6 +1437,13 @@
       document.getElementById('logo_url').value = profile.logo_url || '';
       document.getElementById('logo_light_url').value = profile.logo_light_url || '';
       document.getElementById('logo_dark_url').value = profile.logo_dark_url || '';
+      // For individuals, photo_url uses the same field as logo_url
+      const photoUrlField = document.getElementById('photo_url');
+      if (photoUrlField) {
+        photoUrlField.value = profile.logo_url || '';
+        updateFilenameDisplay('photo_url', 'photo_filename');
+        updatePhotoPreview();
+      }
       document.getElementById('contact_email').value = profile.contact_email || '';
       // Set phone and trigger formatting
       const phoneInput = document.getElementById('contact_phone');
@@ -1533,6 +1719,53 @@
       document.getElementById('logo_light_url').addEventListener('input', updateLogoPreview);
       document.getElementById('logo_dark_url').addEventListener('input', updateLogoPreview);
       document.getElementById('contact_email').addEventListener('input', updateLogoPreview);
+      // Also update photo preview when contact email changes (for Gravatar fallback)
+      document.getElementById('contact_email').addEventListener('input', updatePhotoPreview);
+    }
+
+    function setupPhotoPreview() {
+      const photoInput = document.getElementById('photo_url');
+      if (photoInput) {
+        photoInput.addEventListener('input', updatePhotoPreview);
+      }
+    }
+
+    function updatePhotoPreview() {
+      const photoUrl = document.getElementById('photo_url')?.value;
+      const contactEmail = document.getElementById('contact_email')?.value;
+      const photoPreview = document.getElementById('photo-preview');
+
+      if (!photoPreview) return;
+
+      // Also set the hidden logo_url field for backwards compatibility with member cards
+      const logoUrlField = document.getElementById('logo_url');
+      if (logoUrlField && photoUrl) {
+        logoUrlField.value = photoUrl;
+      }
+
+      if (photoUrl) {
+        const img = document.createElement('img');
+        img.src = photoUrl;
+        img.alt = 'Profile photo';
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.onerror = function() {
+          photoPreview.innerHTML = '<span style="color: var(--color-error-500); font-size: 11px;">Invalid URL</span>';
+        };
+        photoPreview.innerHTML = '';
+        photoPreview.appendChild(img);
+      } else if (contactEmail) {
+        const gravatarUrl = getGravatarUrl(contactEmail, 160);
+        if (gravatarUrl) {
+          const img = document.createElement('img');
+          img.src = gravatarUrl;
+          img.alt = 'Gravatar';
+          img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+          photoPreview.innerHTML = '';
+          photoPreview.appendChild(img);
+        }
+      } else {
+        photoPreview.innerHTML = '<span style="color: var(--color-text-muted); font-size: 12px;">No photo</span>';
+      }
     }
 
     function getGravatarUrl(email, size = 120) {
@@ -1724,15 +1957,20 @@
       // Gather form data
       const logoLightUrl = document.getElementById('logo_light_url').value || null;
       const logoDarkUrl = document.getElementById('logo_dark_url').value || null;
+      const photoUrl = document.getElementById('photo_url')?.value || null;
       const description = document.getElementById('description').value || null;
+
+      // Check if this is an individual account (photo section visible)
+      const isIndividual = document.getElementById('photo-section')?.style.display !== 'none';
 
       const formData = {
         display_name: document.getElementById('display_name').value,
         tagline: null, // No longer using separate tagline - description is truncated where needed
         description,
-        logo_url: logoLightUrl || logoDarkUrl, // Use first available for backwards compat
-        logo_light_url: logoLightUrl,
-        logo_dark_url: logoDarkUrl,
+        // For individuals, use photo_url; for companies, use logo URLs
+        logo_url: isIndividual ? photoUrl : (logoLightUrl || logoDarkUrl),
+        logo_light_url: isIndividual ? null : logoLightUrl,
+        logo_dark_url: isIndividual ? null : logoDarkUrl,
         contact_email: document.getElementById('contact_email').value || null,
         contact_phone: document.getElementById('contact_phone').value || null,
         contact_website: document.getElementById('contact_website').value || null,

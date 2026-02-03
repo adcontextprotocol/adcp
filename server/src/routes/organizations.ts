@@ -640,7 +640,7 @@ export function createOrganizationsRouter(): Router {
           }
         }
         after = membershipsPage.listMetadata?.after ?? undefined;
-      } while (after)
+      } while (after);
 
       // Get pending join request emails for this org
       const joinRequestsResult = await pool.query(
@@ -1822,6 +1822,95 @@ export function createOrganizationsRouter(): Router {
       });
     } catch (error) {
       logger.error({ err: error }, 'Convert to team error');
+      res.status(500).json({
+        error: 'Failed to convert workspace',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // POST /api/organizations/:orgId/convert-to-individual - Convert team workspace to individual
+  router.post('/:orgId/convert-to-individual', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+
+      // Verify user is owner of this organization
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+
+      if (memberships.data.length === 0) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are not a member of this organization',
+        });
+      }
+
+      const userRole = memberships.data[0].role?.slug || 'member';
+      if (userRole !== 'owner') {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only owners can convert a workspace to individual',
+        });
+      }
+
+      // Check if already individual
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Already individual',
+          message: 'This workspace is already an individual workspace',
+        });
+      }
+
+      // Check team member count - can't convert if there are multiple members
+      // Use pagination to count all members (WorkOS returns max 100 per page)
+      let totalMembers = 0;
+      let memberAfter: string | undefined;
+      do {
+        const membershipsPage = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          after: memberAfter,
+          limit: 100,
+        });
+        totalMembers += membershipsPage.data.length;
+        memberAfter = membershipsPage.listMetadata?.after ?? undefined;
+      } while (memberAfter);
+
+      if (totalMembers > 1) {
+        return res.status(400).json({
+          error: 'Has team members',
+          message: `Cannot convert to individual account: this workspace has ${totalMembers} team members. Remove other team members first.`,
+          member_count: totalMembers,
+        });
+      }
+
+      // Convert to individual by setting is_personal to true
+      await orgDb.updateOrganization(orgId, { is_personal: true });
+
+      // Record audit log
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'convert_to_individual',
+        resource_type: 'organization',
+        resource_id: orgId,
+        details: {
+          previous_state: 'team',
+          new_state: 'personal',
+        },
+      });
+
+      logger.info({ orgId, userId: user.id }, 'Team workspace converted to individual');
+
+      res.json({
+        success: true,
+        message: 'Workspace converted to individual successfully',
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Convert to individual error');
       res.status(500).json({
         error: 'Failed to convert workspace',
         message: error instanceof Error ? error.message : 'Unknown error',
