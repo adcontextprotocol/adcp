@@ -163,6 +163,45 @@ When aggregating brand performance:
 2. Group by house for corporate-level reporting
 3. Optionally include/exclude sub-brands
 
+## Brand Context in Requests
+
+The Brand Protocol is **additive**, not required. Agents should accept brand context in multiple ways:
+
+| Request Field | Behavior |
+|--------------|----------|
+| `brand_manifest: {...}` | Use explicit inline manifest (highest priority) |
+| `brand_domain: "nike.com"` | Resolve via Brand Protocol |
+| `brand_url: "https://..."` | Fetch directly from URL |
+| *(none provided)* | Operate without brand context |
+
+This flexibility allows:
+- Agencies to pass manifests they already have cached
+- Automatic discovery when only domain is known
+- Generic operation when no brand context is needed
+
+## Caching
+
+Brand information changes infrequently (logo updates, guideline refreshes). Recommended caching:
+
+- **HTTP headers**: Use standard `ETag`, `Last-Modified`, and `Cache-Control` headers
+- **Default TTL**: 24 hours for validated brand.json files
+- **Failed lookups**: Cache for 1 hour before retrying
+- **last_updated field**: Informational timestamp in brand.json for staleness checks
+
+Agents should respect HTTP caching headers when fetching brand.json files.
+
+## Future Considerations
+
+### Digital Asset Management (DAM)
+
+For brands requiring fine-grained control over asset usage, the `brand_agent` variant provides a natural integration point for DAM systems. Agents can:
+- Enforce access control per asset
+- Track usage and licensing
+- Provide assets with usage terms
+- Log access for compliance
+
+This is optional—brands publishing static brand.json files grant implied permission for compliant creative use. DAM integration is for enterprises with complex licensing requirements.
+
 ## MCP Tools
 
 The Brand Protocol provides MCP tools for programmatic access:
