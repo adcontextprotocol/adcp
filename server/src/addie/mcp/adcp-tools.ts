@@ -10,6 +10,7 @@ import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
+import { AuthenticationRequiredError } from '@adcp/client';
 
 // Tool handler type (matches claude-client.ts internal type)
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -1396,67 +1397,51 @@ export function createAdcpToolHandlers(
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      // Check if this looks like an OAuth/auth error
-      const isAuthError =
-        errorMessage.toLowerCase().includes('unauthorized') ||
-        errorMessage.toLowerCase().includes('authentication') ||
-        errorMessage.toLowerCase().includes('oauth') ||
-        errorMessage.toLowerCase().includes('401');
-
-      if (isAuthError) {
-        // Try to provide an OAuth authorization link if the agent supports it
+      // Handle AuthenticationRequiredError from @adcp/client (includes OAuth metadata)
+      if (error instanceof AuthenticationRequiredError) {
         const organizationId = memberContext?.organization?.workos_organization_id;
-        if (organizationId) {
+        if (organizationId && error.hasOAuth) {
           try {
-            // Check if agent supports OAuth by looking for metadata endpoint
+            // Get or create agent context for OAuth flow
             const baseUrl = new URL(agentUrl);
-            const metadataUrl = new URL('/.well-known/oauth-authorization-server', baseUrl.origin);
-            const metadataResponse = await fetch(metadataUrl.toString(), {
-              headers: { Accept: 'application/json' },
-            });
-
-            if (metadataResponse.ok) {
-              // Agent supports OAuth - get or create context and provide auth link
-              let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
-              if (!agentContext) {
-                // Create agent context for this agent
-                agentContext = await agentContextDb.create({
-                  organization_id: organizationId,
-                  agent_url: agentUrl,
-                  agent_name: baseUrl.hostname,
-                  agent_type: 'sales',
-                  protocol: 'mcp',
-                });
-                logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
-              }
-
-              // Build auth URL with pending request context for auto-retry
-              const authParams = new URLSearchParams({
-                agent_context_id: agentContext.id,
-                pending_task: task,
-                pending_params: encodeURIComponent(JSON.stringify(params)),
+            let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
+            if (!agentContext) {
+              agentContext = await agentContextDb.create({
+                organization_id: organizationId,
+                agent_url: agentUrl,
+                agent_name: baseUrl.hostname,
+                agent_type: 'sales',
+                protocol: 'mcp',
               });
-              const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
-
-              return (
-                `**Task failed:** \`${task}\`\n\n` +
-                `**Error:** OAuth authorization required\n\n` +
-                `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
-                `**[Click here to authorize this agent](${authUrl})**\n\n` +
-                `After you authorize, I'll automatically retry your request.`
-              );
+              logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
             }
-          } catch (oauthCheckError) {
-            logger.debug({ error: oauthCheckError, agentUrl }, 'Failed to check OAuth support');
+
+            // Build auth URL with pending request context for auto-retry
+            // Note: URLSearchParams handles encoding, so don't double-encode
+            const authParams = new URLSearchParams({
+              agent_context_id: agentContext.id,
+              pending_task: task,
+              pending_params: JSON.stringify(params),
+            });
+            const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+
+            return (
+              `**Task failed:** \`${task}\`\n\n` +
+              `**Error:** OAuth authorization required\n\n` +
+              `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
+              `**[Click here to authorize this agent](${authUrl})**\n\n` +
+              `After you authorize, I'll automatically retry your request.`
+            );
+          } catch (oauthSetupError) {
+            logger.debug({ error: oauthSetupError, agentUrl }, 'Failed to set up OAuth flow');
           }
         }
 
-        // Fallback message if OAuth check fails or agent doesn't support OAuth
+        // OAuth not available or couldn't set up flow
         return (
           `**Task failed:** \`${task}\`\n\n` +
           `**Error:** Authentication required\n\n` +
           `The agent at \`${agentUrl}\` requires authentication. ` +
-          `This agent may require OAuth authentication to be configured. ` +
           `Please check with the agent provider for authentication requirements.`
         );
       }
