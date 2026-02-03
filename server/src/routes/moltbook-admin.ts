@@ -24,7 +24,7 @@ import { searchPosts, getSubmolts, getFeed, isMoltbookEnabled } from "../addie/s
 const logger = createLogger("moltbook-admin-routes");
 
 // Valid enum values for input validation
-const VALID_DECISION_TYPES = ['relevance', 'comment', 'upvote', 'reply', 'share'] as const;
+const VALID_DECISION_TYPES = ['relevance', 'comment', 'upvote', 'reply', 'share', 'follow'] as const;
 const VALID_OUTCOMES = ['engaged', 'skipped'] as const;
 
 // Helper for parsing bounded positive integers

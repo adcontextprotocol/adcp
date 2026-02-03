@@ -24,7 +24,7 @@ export interface MoltbookPostRecord {
 
 export interface MoltbookActivityRecord {
   id: number;
-  activity_type: 'post' | 'comment' | 'upvote' | 'downvote';
+  activity_type: 'post' | 'comment' | 'upvote' | 'downvote' | 'share' | 'follow';
   moltbook_id: string | null;
   parent_post_id: string | null;
   content: string | null;
@@ -136,10 +136,10 @@ export async function updatePostMoltbookId(
 // ============== Activity Operations ==============
 
 /**
- * Record an activity (post, comment, vote)
+ * Record an activity (post, comment, vote, share, follow)
  */
 export async function recordActivity(
-  activityType: 'post' | 'comment' | 'upvote' | 'downvote',
+  activityType: 'post' | 'comment' | 'upvote' | 'downvote' | 'share' | 'follow',
   moltbookId?: string,
   parentPostId?: string,
   content?: string
@@ -273,6 +273,33 @@ export async function getCommentedPosts(limit = 20): Promise<Array<{
 }
 
 /**
+ * Get Addie's own posts (for checking new comments on them)
+ */
+export async function getAddieOwnPosts(limit = 20): Promise<Array<{
+  postId: string;
+  title: string;
+  postedAt: Date;
+}>> {
+  const result = await query<{
+    moltbook_post_id: string;
+    title: string;
+    posted_at: Date;
+  }>(
+    `SELECT moltbook_post_id, title, posted_at
+     FROM moltbook_posts
+     WHERE moltbook_post_id IS NOT NULL
+     ORDER BY posted_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(row => ({
+    postId: row.moltbook_post_id,
+    title: row.title,
+    postedAt: row.posted_at,
+  }));
+}
+
+/**
  * Check if Addie has already responded to a specific comment
  */
 export async function hasRespondedTo(parentCommentId: string): Promise<boolean> {
@@ -305,6 +332,42 @@ export async function getTodayUpvoteCount(): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM moltbook_activity
      WHERE activity_type = 'upvote'
+       AND created_at > CURRENT_DATE`
+  );
+  return parseInt(result.rows[0].count);
+}
+
+/**
+ * Check if we're already following an agent
+ */
+export async function isFollowingAgent(agentId: string): Promise<boolean> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM moltbook_activity
+     WHERE activity_type = 'follow'
+       AND moltbook_id = $1`,
+    [agentId]
+  );
+  return parseInt(result.rows[0].count) > 0;
+}
+
+/**
+ * Record that we followed an agent
+ */
+export async function recordFollow(agentId: string, agentName: string): Promise<void> {
+  await query(
+    `INSERT INTO moltbook_activity (activity_type, moltbook_id, content)
+     VALUES ('follow', $1, $2)`,
+    [agentId, `Followed: ${agentName}`]
+  );
+}
+
+/**
+ * Get today's follow count for daily limit checking
+ */
+export async function getTodayFollowCount(): Promise<number> {
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM moltbook_activity
+     WHERE activity_type = 'follow'
        AND created_at > CURRENT_DATE`
   );
   return parseInt(result.rows[0].count);
@@ -379,7 +442,7 @@ export async function getActivityStats(): Promise<{
 
 // ============== Decision Logging ==============
 
-export type DecisionType = 'relevance' | 'comment' | 'upvote' | 'reply' | 'share';
+export type DecisionType = 'relevance' | 'comment' | 'upvote' | 'reply' | 'share' | 'follow';
 export type DecisionOutcome = 'engaged' | 'skipped';
 export type DecisionMethod = 'llm' | 'rule' | 'rate_limit';
 
