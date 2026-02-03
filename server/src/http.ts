@@ -3737,6 +3737,8 @@ Disallow: /api/admin/
                   standard_operations: capProfile.standard_operations,
                   creative_capabilities: capProfile.creative_capabilities,
                   signals_capabilities: capProfile.signals_capabilities,
+                  discovery_error: capProfile.discovery_error,
+                  oauth_required: capProfile.oauth_required,
                 };
 
                 // Infer agent type from discovered capabilities if not already set

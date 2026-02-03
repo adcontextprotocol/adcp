@@ -44,6 +44,7 @@ export interface AgentCapabilityProfile {
   signals_capabilities?: SignalsCapabilities;
   last_discovered: string;
   discovery_error?: string;
+  oauth_required?: boolean;
 }
 
 export class CapabilityDiscovery {
@@ -89,14 +90,19 @@ export class CapabilityDiscovery {
       this.cache.set(agent.url, profile);
       return profile;
     } catch (error: any) {
+      const isOAuthError = error instanceof AuthenticationRequiredError;
       const errorProfile: AgentCapabilityProfile = {
         agent_url: agent.url,
         protocol: agent.protocol || "mcp",
         discovered_tools: [],
         last_discovered: new Date().toISOString(),
         discovery_error: error.message,
+        oauth_required: isOAuthError,
       };
-      this.cache.set(agent.url, errorProfile);
+      // Don't cache OAuth errors - user may authorize and retry
+      if (!isOAuthError) {
+        this.cache.set(agent.url, errorProfile);
+      }
       return errorProfile;
     }
   }
@@ -131,13 +137,18 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
-      // Check if this is an OAuth/authentication error
-      if (error instanceof AuthenticationRequiredError || is401Error(error)) {
-        logger.info({ url }, 'MCP agent requires OAuth authentication');
-        throw new Error('Agent requires OAuth authentication');
+      // Re-throw AuthenticationRequiredError to preserve OAuth metadata for callers
+      if (error instanceof AuthenticationRequiredError) {
+        logger.info({ url, hasOAuth: error.hasOAuth }, 'MCP agent requires OAuth authentication');
+        throw error;
+      }
+      // For generic 401 errors, wrap in AuthenticationRequiredError
+      if (is401Error(error)) {
+        logger.info({ url }, 'MCP agent returned 401');
+        throw new AuthenticationRequiredError(url, undefined, 'Agent requires authentication');
       }
       logger.warn({ url, error: error.message }, 'MCP discovery failed');
-      throw error; // Re-throw so outer handler can capture the error message
+      throw error;
     }
   }
 
@@ -163,13 +174,18 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
-      // Check if this is an OAuth/authentication error
-      if (error instanceof AuthenticationRequiredError || is401Error(error)) {
-        logger.info({ url }, 'A2A agent requires OAuth authentication');
-        throw new Error('Agent requires OAuth authentication');
+      // Re-throw AuthenticationRequiredError to preserve OAuth metadata for callers
+      if (error instanceof AuthenticationRequiredError) {
+        logger.info({ url, hasOAuth: error.hasOAuth }, 'A2A agent requires OAuth authentication');
+        throw error;
+      }
+      // For generic 401 errors, wrap in AuthenticationRequiredError
+      if (is401Error(error)) {
+        logger.info({ url }, 'A2A agent returned 401');
+        throw new AuthenticationRequiredError(url, undefined, 'Agent requires authentication');
       }
       logger.warn({ url, error: error.message }, 'A2A discovery failed');
-      throw error; // Re-throw so outer handler can capture the error message
+      throw error;
     }
   }
 

@@ -1885,10 +1885,54 @@ export function createMemberToolHandlers(
           tools_count: number;
           tools: Array<{ name: string; description?: string }>;
           standard_operations?: string[];
+          discovery_error?: string;
+          oauth_required?: boolean;
         };
       }>;
     };
     const agent = capData?.agents?.[0];
+
+    // Step 2.5: Check if OAuth is required and generate authorization link
+    if (agent?.capabilities?.oauth_required) {
+      const organizationId = memberContext?.organization?.workos_organization_id;
+      if (organizationId) {
+        try {
+          // Get or create agent context for OAuth flow
+          const baseUrl = new URL(agentUrl);
+          let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
+          if (!agentContext) {
+            agentContext = await agentContextDb.create({
+              organization_id: organizationId,
+              agent_url: agentUrl,
+              agent_name: agent.name || baseUrl.hostname,
+              protocol: (agent.protocol as 'mcp' | 'a2a') || 'mcp',
+            });
+          }
+
+          const authParams = new URLSearchParams({
+            agent_context_id: agentContext.id,
+          });
+          const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+
+          let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+          response += `### Connectivity\n`;
+          response += `**Status:** 🔒 Requires Authentication\n\n`;
+          response += `This agent requires OAuth authorization before you can access it.\n\n`;
+          response += `**[Click here to authorize this agent](${authUrl})**\n\n`;
+          response += `After you authorize, try probing again to see the agent's capabilities.`;
+          return response;
+        } catch (oauthError) {
+          logger.debug({ error: oauthError, agentUrl }, 'Failed to set up OAuth flow for probe');
+        }
+      } else {
+        // User not logged in or no organization
+        let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+        response += `### Connectivity\n`;
+        response += `**Status:** 🔒 Requires Authentication\n\n`;
+        response += `This agent requires OAuth authorization. Please sign in to an organization account to authorize and access this agent.`;
+        return response;
+      }
+    }
 
     // Step 3: Format unified response
     let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
