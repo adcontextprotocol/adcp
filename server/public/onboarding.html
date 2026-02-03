@@ -792,9 +792,10 @@
         const data = await response.json();
         currentUser = data.user;
 
-        // If user already has organizations, redirect to dashboard
-        // Users who already have org memberships should go to their dashboard
-        if (data.organizations && data.organizations.length > 0) {
+        // If user already has non-personal organizations, redirect to dashboard
+        // Users who ONLY have personal workspaces should still see onboarding to join companies
+        const hasCompanyOrgs = data.organizations && data.organizations.some(org => !org.is_personal);
+        if (hasCompanyOrgs) {
           window.location.href = '/dashboard';
           return;
         }

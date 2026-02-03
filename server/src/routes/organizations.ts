@@ -1866,7 +1866,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check team member count - can't convert if there are multiple members
-      // Use pagination to count all members (WorkOS returns max 100 per page)
+      // Use pagination but exit early once we find more than 1 member
       let totalMembers = 0;
       let memberAfter: string | undefined;
       do {
@@ -1876,6 +1876,7 @@ export function createOrganizationsRouter(): Router {
           limit: 100,
         });
         totalMembers += membershipsPage.data.length;
+        if (totalMembers > 1) break; // Early exit - no need to count further
         memberAfter = membershipsPage.listMetadata?.after ?? undefined;
       } while (memberAfter);
 
@@ -2463,8 +2464,23 @@ export function createOrganizationsRouter(): Router {
         // User might already be deleted
       }
 
-      // Delete the membership
+      // Delete the membership from WorkOS
       await workos!.userManagement.deleteOrganizationMembership(membershipId);
+
+      // Clean up local organization_memberships table immediately (don't wait for webhook)
+      // This ensures the user isn't "stuck" with stale membership data
+      const pool = getPool();
+      try {
+        await pool.query(
+          `DELETE FROM organization_memberships
+           WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+          [membership.userId, orgId]
+        );
+        logger.debug({ userId: membership.userId, orgId }, 'Cleaned up local organization_memberships');
+      } catch (cleanupError) {
+        // Log but don't fail - the webhook will eventually clean this up
+        logger.warn({ error: cleanupError, userId: membership.userId, orgId }, 'Failed to clean up local organization_memberships');
+      }
 
       logger.info({ orgId, membershipId, removedBy: user.id }, 'Member removed');
 
