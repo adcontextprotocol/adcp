@@ -1,6 +1,7 @@
 import type { Agent } from "./types.js";
 import { FormatsService } from "./formats.js";
 import { createLogger } from "./logger.js";
+import { is401Error, AuthenticationRequiredError } from "@adcp/client";
 
 const logger = createLogger('capabilities');
 
@@ -130,8 +131,13 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
+      // Check if this is an OAuth/authentication error
+      if (error instanceof AuthenticationRequiredError || is401Error(error)) {
+        logger.info({ url }, 'MCP agent requires OAuth authentication');
+        throw new Error('Agent requires OAuth authentication');
+      }
       logger.warn({ url, error: error.message }, 'MCP discovery failed');
-      return [];
+      throw error; // Re-throw so outer handler can capture the error message
     }
   }
 
@@ -157,8 +163,13 @@ export class CapabilityDiscovery {
         verified_at: new Date().toISOString(),
       }));
     } catch (error: any) {
+      // Check if this is an OAuth/authentication error
+      if (error instanceof AuthenticationRequiredError || is401Error(error)) {
+        logger.info({ url }, 'A2A agent requires OAuth authentication');
+        throw new Error('Agent requires OAuth authentication');
+      }
       logger.warn({ url, error: error.message }, 'A2A discovery failed');
-      return [];
+      throw error; // Re-throw so outer handler can capture the error message
     }
   }
 

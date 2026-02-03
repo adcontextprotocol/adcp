@@ -2012,10 +2012,12 @@ export function createMemberToolHandlers(
 
     // Look up saved token for organization
     let usingSavedToken = false;
+    let usingSavedOAuthToken = false;
     let usingPublicTestAgent = false;
     const organizationId = memberContext?.organization?.workos_organization_id;
 
     if (!authToken && organizationId) {
+      // First, try to get a saved bearer token
       try {
         const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
           organizationId,
@@ -2028,7 +2030,33 @@ export function createMemberToolHandlers(
         }
       } catch (error) {
         // Non-fatal - continue without saved token
-        logger.debug({ error, agentUrl }, 'Could not lookup saved token');
+        logger.debug({ error, agentUrl }, 'Could not lookup saved bearer token');
+      }
+
+      // If no bearer token, try OAuth tokens
+      if (!authToken) {
+        try {
+          const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(
+            organizationId,
+            agentUrl
+          );
+          if (oauthTokens?.access_token) {
+            // Check if token is expired (with 5-minute buffer to match hasValidOAuthTokens)
+            const isExpired = oauthTokens.expires_at &&
+              new Date(oauthTokens.expires_at).getTime() - Date.now() < 5 * 60 * 1000;
+            if (isExpired) {
+              logger.warn({ agentUrl }, 'OAuth token expired for agent test');
+              // TODO: Could attempt refresh here if refresh_token is available
+            } else {
+              authToken = oauthTokens.access_token;
+              usingSavedOAuthToken = true;
+              logger.info({ agentUrl }, 'Using saved OAuth token for agent test');
+            }
+          }
+        } catch (error) {
+          // Non-fatal - continue without OAuth token
+          logger.debug({ error, agentUrl }, 'Could not lookup saved OAuth token');
+        }
       }
     }
 
@@ -2104,6 +2132,8 @@ export function createMemberToolHandlers(
       let output = formatTestResults(result);
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
+      } else if (usingSavedOAuthToken) {
+        output = `_Using saved OAuth credentials for this agent._\n\n` + output;
       } else if (usingPublicTestAgent) {
         output = `_Using public test agent credentials._\n\n` + output;
       }
