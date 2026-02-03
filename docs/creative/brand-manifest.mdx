@@ -129,21 +129,27 @@ For established brands with defined guidelines, host the manifest on a CDN:
   "logos": [
     {
       "url": "https://cdn.acmecorp.com/logo-on-light.png",
-      "tags": ["light-bg", "horizontal", "primary"],
+      "orientation": "horizontal",
+      "background": "light-bg",
+      "variant": "primary",
       "usage": "Primary logo for use on light backgrounds",
       "width": 1200,
       "height": 400
     },
     {
       "url": "https://cdn.acmecorp.com/logo-on-dark.png",
-      "tags": ["dark-bg", "horizontal", "primary"],
+      "orientation": "horizontal",
+      "background": "dark-bg",
+      "variant": "primary",
       "usage": "Primary logo for use on dark backgrounds",
       "width": 1200,
       "height": 400
     },
     {
       "url": "https://cdn.acmecorp.com/icon.png",
-      "tags": ["transparent-bg", "square", "icon"],
+      "orientation": "square",
+      "background": "transparent-bg",
+      "variant": "icon",
       "usage": "Icon-only variant for small formats",
       "width": 512,
       "height": 512
@@ -284,35 +290,44 @@ The structure of the brand manifest object itself (whether provided inline or ho
 
 ```typescript
 {
-  url: string;           // URL to logo asset
-  tags?: string[];       // Semantic tags for logo variant selection
-  usage?: string;        // Human-readable description of when to use this variant
-  width?: number;        // Logo width in pixels
-  height?: number;       // Logo height in pixels
+  url: string;                    // URL to logo asset
+  orientation?: Orientation;      // Aspect ratio: square, horizontal, vertical, stacked
+  background?: Background;        // Compatibility: dark-bg, light-bg, transparent-bg
+  variant?: Variant;              // Type: primary, secondary, icon, wordmark, full-lockup
+  tags?: string[];                // Additional custom tags
+  usage?: string;                 // Human-readable description
+  width?: number;                 // Logo width in pixels
+  height?: number;                // Logo height in pixels
 }
 ```
 
-#### Standardized Logo Tags
+#### Logo Fields
 
-Use these standardized tags to help creative agents select appropriate logo variants:
+**`orientation`** (enum) - Logo aspect ratio:
+| Value | Description |
+|-------|-------------|
+| `square` | Square or circular lockup (~1:1 aspect ratio) |
+| `horizontal` | Wide horizontal layout |
+| `vertical` | Tall vertical layout |
+| `stacked` | Vertically stacked elements |
 
-**Background Compatibility:**
-- `dark-bg` - Use on dark backgrounds
-- `light-bg` - Use on light backgrounds
-- `transparent-bg` - Has transparent background
+**`background`** (enum) - Background compatibility:
+| Value | Description |
+|-------|-------------|
+| `dark-bg` | Use on dark backgrounds (logo is light-colored) |
+| `light-bg` | Use on light backgrounds (logo is dark-colored) |
+| `transparent-bg` | Has transparent background, works on any color |
 
-**Orientation:**
-- `square` - Square or circular lockup
-- `horizontal` - Wide horizontal layout
-- `vertical` - Tall vertical layout
-- `stacked` - Vertically stacked elements
+**`variant`** (enum) - Logo variant type:
+| Value | Description |
+|-------|-------------|
+| `primary` | Main brand logo |
+| `secondary` | Alternative version |
+| `icon` | Icon/symbol only |
+| `wordmark` | Text/wordmark only |
+| `full-lockup` | Complete logo with all elements |
 
-**Usage Context:**
-- `primary` - Main brand logo
-- `secondary` - Alternative version
-- `icon` - Icon/symbol only
-- `wordmark` - Text/wordmark only
-- `full-lockup` - Complete logo with all elements
+**`tags`** (string array) - Additional custom tags for categorization beyond the standard fields.
 
 #### Logo Example
 
@@ -321,18 +336,30 @@ Use these standardized tags to help creative agents select appropriate logo vari
   "logos": [
     {
       "url": "https://cdn.brand.com/logo-on-light.png",
-      "tags": ["light-bg", "horizontal", "primary"],
-      "usage": "Primary logo for use on light backgrounds"
+      "orientation": "horizontal",
+      "background": "light-bg",
+      "variant": "primary",
+      "usage": "Primary logo for use on light backgrounds",
+      "width": 1200,
+      "height": 400
     },
     {
       "url": "https://cdn.brand.com/logo-on-dark.png",
-      "tags": ["dark-bg", "horizontal", "primary"],
-      "usage": "Primary logo for use on dark backgrounds"
+      "orientation": "horizontal",
+      "background": "dark-bg",
+      "variant": "primary",
+      "usage": "Primary logo for use on dark backgrounds",
+      "width": 1200,
+      "height": 400
     },
     {
       "url": "https://cdn.brand.com/icon.png",
-      "tags": ["transparent-bg", "square", "icon"],
-      "usage": "Icon-only variant for small formats"
+      "orientation": "square",
+      "background": "transparent-bg",
+      "variant": "icon",
+      "usage": "Icon-only variant for small formats",
+      "width": 512,
+      "height": 512
     }
   ]
 }
@@ -503,7 +530,9 @@ Use brand manifest to inform creative generation:
     "logos": [
       {
         "url": "https://cdn.acmecorp.com/logo-square.png",
-        "tags": ["transparent-bg", "square", "primary"],
+        "orientation": "square",
+        "background": "transparent-bg",
+        "variant": "primary",
         "usage": "Primary square logo"
       }
     ],
@@ -540,36 +569,44 @@ Begin with just a URL. Add more fields only when the URL-based inference isn't s
 }
 ```
 
-### 2. Use Standardized Tags for Logos
+### 2. Use Structured Fields for Logos
 
-Use standardized tags to help creative agents select appropriate logo variants:
+Use the `orientation`, `background`, and `variant` enum fields for reliable filtering by creative agents:
 
 ```json
 {
   "logos": [
     {
       "url": "...",
-      "tags": ["light-bg", "horizontal", "primary"],
+      "orientation": "horizontal",
+      "background": "light-bg",
+      "variant": "primary",
       "usage": "Primary logo for light backgrounds"
     },
     {
       "url": "...",
-      "tags": ["dark-bg", "horizontal", "primary"],
+      "orientation": "horizontal",
+      "background": "dark-bg",
+      "variant": "primary",
       "usage": "Primary logo for dark backgrounds"
     },
     {
       "url": "...",
-      "tags": ["transparent-bg", "square", "icon"],
+      "orientation": "square",
+      "background": "transparent-bg",
+      "variant": "icon",
       "usage": "Icon for small placements"
     }
   ]
 }
 ```
 
-**Recommended tag categories:**
-- Background: `dark-bg`, `light-bg`, `transparent-bg`
-- Orientation: `square`, `horizontal`, `vertical`, `stacked`
-- Context: `primary`, `secondary`, `icon`, `wordmark`, `full-lockup`
+**Enum fields for filtering:**
+- `orientation`: `square`, `horizontal`, `vertical`, `stacked`
+- `background`: `dark-bg`, `light-bg`, `transparent-bg`
+- `variant`: `primary`, `secondary`, `icon`, `wordmark`, `full-lockup`
+
+Use the `tags` array for additional custom categorization.
 
 ### 3. Cache and Reuse Brand Manifests
 

@@ -21,7 +21,7 @@
     },
     "logos": {
       "type": "array",
-      "description": "Brand logo assets with semantic tags for different use cases. Use standardized tags for background compatibility (dark-bg, light-bg, transparent-bg), orientation (square, horizontal, vertical, stacked), and usage context (primary, secondary, icon, wordmark, full-lockup).",
+      "description": "Brand logo assets with structured fields for orientation, background compatibility, and variant type. Use the orientation, background, and variant enum fields for reliable filtering by creative agents.",
       "items": {
         "type": "object",
         "properties": {
@@ -30,9 +30,24 @@
             "format": "uri",
             "description": "URL to the logo asset"
           },
+          "orientation": {
+            "type": "string",
+            "enum": ["square", "horizontal", "vertical", "stacked"],
+            "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
+          },
+          "background": {
+            "type": "string",
+            "enum": ["dark-bg", "light-bg", "transparent-bg"],
+            "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
+          },
+          "variant": {
+            "type": "string",
+            "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+            "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
+          },
           "tags": {
             "type": "array",
-            "description": "Semantic tags describing the logo variant. Recommended tags: background compatibility (dark-bg, light-bg, transparent-bg), orientation (square, horizontal, vertical, stacked), usage context (primary, secondary, icon, wordmark, full-lockup).",
+            "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields.",
             "items": {
               "type": "string"
             }
@@ -439,33 +454,27 @@
         "logos": [
           {
             "url": "https://cdn.acmecorp.com/logo-on-light.png",
-            "tags": [
-              "light-bg",
-              "horizontal",
-              "primary"
-            ],
+            "orientation": "horizontal",
+            "background": "light-bg",
+            "variant": "primary",
             "usage": "Primary logo for use on light backgrounds",
             "width": 1200,
             "height": 400
           },
           {
             "url": "https://cdn.acmecorp.com/logo-on-dark.png",
-            "tags": [
-              "dark-bg",
-              "horizontal",
-              "primary"
-            ],
+            "orientation": "horizontal",
+            "background": "dark-bg",
+            "variant": "primary",
             "usage": "Primary logo for use on dark backgrounds",
             "width": 1200,
             "height": 400
           },
           {
             "url": "https://cdn.acmecorp.com/icon.png",
-            "tags": [
-              "transparent-bg",
-              "square",
-              "icon"
-            ],
+            "orientation": "square",
+            "background": "transparent-bg",
+            "variant": "icon",
             "usage": "Icon-only variant for small formats",
             "width": 512,
             "height": 512
