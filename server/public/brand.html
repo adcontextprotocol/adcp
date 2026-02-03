@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>brand.json Builder - AdCP Brand Protocol</title>
+    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/design-system.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* CSS Custom Properties for Theming - mapped to design system */
+      :root {
+        --primary-gradient: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-primary-600) 100%);
+        --success-gradient: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-primary-500) 100%);
+        --warning-gradient: linear-gradient(135deg, var(--color-warning-400) 0%, var(--color-error-400) 100%);
+
+        --glass-bg: rgba(255, 255, 255, 0.1);
+        --glass-border: rgba(255, 255, 255, 0.2);
+        --glass-shadow: var(--shadow-lg);
+
+        --surface-primary: var(--color-bg-card);
+        --surface-secondary: var(--color-bg-subtle);
+        --text-primary: var(--color-text-heading);
+        --text-secondary: var(--color-text-secondary);
+        --text-muted: var(--color-text-muted);
+
+        --accent-blue: var(--color-primary-700);
+        --accent-purple: var(--color-primary-600);
+        --accent-green: var(--color-primary-700);
+        --accent-orange: var(--color-warning-500);
+
+        --timing-fast: 0.2s;
+        --timing-normal: 0.4s;
+        --easing: var(--ease-out);
+      }
+
+      body {
+        font-family: var(--font-sans);
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        line-height: var(--leading-normal);
+        color: var(--text-primary);
+        font-weight: var(--font-normal);
+        margin: 0;
+        padding: 60px 0 0 0;
+        min-height: 100vh;
+        background: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-primary-600) 100%);
+        position: relative;
+      }
+
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background:
+          radial-gradient(circle at 20% 50%, rgba(164, 194, 244, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(164, 194, 244, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .main-content {
+        max-width: var(--container-wide);
+        margin: 0 auto;
+        padding: var(--space-10) var(--space-5);
+        position: relative;
+        z-index: 2;
+      }
+
+      .page-header {
+        text-align: center;
+        margin-bottom: var(--space-12);
+      }
+
+      .page-header h1 {
+        color: white;
+        font-size: var(--text-4xl);
+        font-weight: var(--font-bold);
+        margin: 0 0 var(--space-4) 0;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-header p {
+        color: rgba(255, 255, 255, 0.9);
+        font-size: var(--text-lg);
+        margin: 0;
+        max-width: 700px;
+        margin: 0 auto;
+      }
+
+      .section {
+        background: var(--surface-primary);
+        backdrop-filter: blur(10px);
+        border: var(--border-1) solid rgba(255, 255, 255, 0.2);
+        border-radius: var(--radius-xl);
+        padding: var(--space-8);
+        margin-bottom: var(--space-8);
+        box-shadow: var(--shadow-lg);
+        transition: var(--transition-all);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--primary-gradient);
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+      }
+
+      .section h3 {
+        color: var(--text-primary);
+        margin: 0 0 var(--space-5) 0;
+        font-size: var(--text-2xl);
+        font-weight: var(--font-semibold);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+      }
+
+      .section h4 {
+        color: var(--text-secondary);
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-xl);
+        font-weight: var(--font-semibold);
+      }
+
+      .btn {
+        background: var(--primary-gradient);
+        color: white;
+        border: none;
+        padding: var(--space-3) var(--space-6);
+        border-radius: var(--radius-md);
+        font-weight: var(--font-semibold);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        transition: var(--transition-all);
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        box-shadow: var(--shadow-primary-sm);
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-primary-md);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-secondary {
+        background: var(--color-gray-500);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn-secondary:hover {
+        box-shadow: var(--shadow-md);
+      }
+
+      input[type='text'],
+      input[type='url'],
+      select,
+      textarea {
+        width: 100%;
+        padding: var(--space-3) var(--space-4);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        transition: var(--transition-all);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+
+      input[type='text']:focus,
+      input[type='url']:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+        box-shadow: var(--ring-primary);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 120px;
+        font-family: var(--font-mono);
+      }
+
+      .form-group {
+        margin-bottom: var(--space-5);
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: var(--space-2);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+      }
+
+      .form-group .hint {
+        font-size: var(--text-sm);
+        color: var(--text-muted);
+        margin-top: var(--space-1);
+      }
+
+      .variant-selector {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-4);
+        margin-bottom: var(--space-6);
+      }
+
+      @media (max-width: 768px) {
+        .variant-selector {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .variant-card {
+        background: var(--color-bg-subtle);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        cursor: pointer;
+        transition: var(--transition-all);
+      }
+
+      .variant-card:hover {
+        border-color: var(--accent-blue);
+        background: var(--color-primary-50);
+      }
+
+      .variant-card.selected {
+        border-color: var(--accent-blue);
+        background: var(--color-primary-50);
+        box-shadow: var(--ring-primary);
+      }
+
+      .variant-card h4 {
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-lg);
+        color: var(--text-primary);
+      }
+
+      .variant-card p {
+        margin: 0;
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+      }
+
+      .variant-card .icon {
+        font-size: 24px;
+        margin-bottom: var(--space-2);
+      }
+
+      .brand-entry {
+        background: var(--color-bg-subtle);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        margin-bottom: var(--space-4);
+        transition: var(--transition-all);
+      }
+
+      .brand-entry:hover {
+        border-color: var(--accent-purple);
+      }
+
+      .brand-entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--space-4);
+      }
+
+      .property-entry {
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-3);
+        margin-bottom: var(--space-2);
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+      }
+
+      .property-entry select,
+      .property-entry input {
+        margin: 0;
+      }
+
+      .property-entry select {
+        width: auto;
+        min-width: 120px;
+      }
+
+      .property-entry input {
+        flex: 1;
+      }
+
+      .json-preview {
+        background: #1a202c;
+        color: #f7fafc;
+        padding: var(--space-5);
+        border-radius: var(--radius-lg);
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .validation-result {
+        padding: var(--space-4);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-4);
+      }
+
+      .result-success {
+        background: var(--color-primary-50);
+        border: 1px solid var(--color-primary-200);
+        color: var(--color-primary-800);
+      }
+
+      .result-warning {
+        background: var(--color-warning-50);
+        border: 1px solid var(--color-warning-200);
+        color: var(--color-warning-800);
+      }
+
+      .result-error {
+        background: var(--color-error-50);
+        border: 1px solid var(--color-error-200);
+        color: var(--color-error-800);
+      }
+
+      .dashboard-header {
+        background: #e8f4fd;
+        border: 1px solid #bee5eb;
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-bottom: var(--space-5);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+      }
+
+      .dashboard-header h4 {
+        margin: 0 0 var(--space-1) 0;
+        color: #0c5460;
+      }
+
+      .dashboard-header p {
+        margin: 0;
+        font-size: var(--text-sm);
+        color: #0c5460;
+      }
+
+      .dashboard-actions {
+        display: flex;
+        gap: var(--space-2);
+        flex-wrap: wrap;
+      }
+
+      .dashboard-actions .btn {
+        padding: var(--space-2) var(--space-4);
+        font-size: var(--text-sm);
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      @media (max-width: 768px) {
+        .page-header h1 {
+          font-size: var(--text-3xl);
+        }
+
+        .section {
+          padding: var(--space-5);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation (loaded by nav.js) -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <div class="main-content">
+      <!-- Page Header -->
+      <div class="page-header">
+        <h1>brand.json Builder</h1>
+        <p>
+          Create and validate brand.json files for the Brand Protocol. Establish your brand identity
+          and make it discoverable by AI agents across the advertising ecosystem.
+        </p>
+      </div>
+
+      <!-- Domain Input Section -->
+      <div class="section">
+        <h3>Build Your brand.json</h3>
+        <p style="color: var(--text-secondary); margin-bottom: var(--space-5)">
+          Enter your domain to validate an existing brand.json or create a new one.
+        </p>
+
+        <div style="display: flex; gap: var(--space-3); margin-bottom: var(--space-5)">
+          <input
+            type="text"
+            id="domain-input"
+            placeholder="example.com"
+            style="flex: 1"
+            onkeypress="if(event.key === 'Enter') startBuilding()"
+          />
+          <button class="btn" onclick="startBuilding()" id="start-btn">Get Started</button>
+        </div>
+
+        <!-- Validation Results -->
+        <div id="validation-results" class="hidden"></div>
+
+        <!-- Builder Form (hidden initially) -->
+        <div id="builder-form" class="hidden">
+          <!-- Dashboard Header -->
+          <div class="dashboard-header">
+            <div>
+              <h4>brand.json for <span id="domain-display"></span></h4>
+              <p id="file-status">Creating new brand.json</p>
+            </div>
+            <div class="dashboard-actions">
+              <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
+              <button class="btn" onclick="downloadJson()">Download</button>
+            </div>
+          </div>
+
+          <!-- Variant Selector -->
+          <div style="margin-bottom: var(--space-6)">
+            <label style="display: block; margin-bottom: var(--space-3); font-weight: var(--font-semibold)">
+              Choose brand.json Type
+            </label>
+            <div class="variant-selector">
+              <div class="variant-card selected" onclick="selectVariant('portfolio')" id="variant-portfolio">
+                <div class="icon">🏢</div>
+                <h4>House Portfolio</h4>
+                <p>Full brand hierarchy with all brands and properties. Use this if you're the authoritative source.</p>
+              </div>
+              <div class="variant-card" onclick="selectVariant('house-redirect')" id="variant-house-redirect">
+                <div class="icon">↪️</div>
+                <h4>House Redirect</h4>
+                <p>Point to a house domain that contains the full portfolio. Use for regional or sub-brand domains.</p>
+              </div>
+              <div class="variant-card" onclick="selectVariant('agent')" id="variant-agent">
+                <div class="icon">🤖</div>
+                <h4>Brand Agent</h4>
+                <p>Point to an MCP agent that provides brand information dynamically.</p>
+              </div>
+              <div class="variant-card" onclick="selectVariant('authoritative')" id="variant-authoritative">
+                <div class="icon">🔗</div>
+                <h4>Authoritative Location</h4>
+                <p>Redirect to a hosted brand.json at another URL. Use for CDN or managed services.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Authoritative Location Form -->
+          <div id="form-authoritative" class="hidden">
+            <div class="form-group">
+              <label>Authoritative Location URL</label>
+              <input
+                type="url"
+                id="authoritative-url"
+                placeholder="https://cdn.example.com/brands/brand.json"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The HTTPS URL where the authoritative brand.json is hosted</p>
+            </div>
+          </div>
+
+          <!-- House Redirect Form -->
+          <div id="form-house-redirect" class="hidden">
+            <div class="form-group">
+              <label>House Domain</label>
+              <input
+                type="text"
+                id="house-domain"
+                placeholder="parent-company.com"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The domain of the house that contains the brand portfolio</p>
+            </div>
+            <div class="form-group">
+              <label>Region (optional)</label>
+              <input
+                type="text"
+                id="house-region"
+                placeholder="US"
+                oninput="updatePreview()"
+              />
+              <p class="hint">ISO 3166-1 alpha-2 country code (e.g., US, CN, DE)</p>
+            </div>
+            <div class="form-group">
+              <label>Note (optional)</label>
+              <input
+                type="text"
+                id="house-note"
+                placeholder="Regional site - see house for brand portfolio"
+                oninput="updatePreview()"
+              />
+            </div>
+          </div>
+
+          <!-- Brand Agent Form -->
+          <div id="form-agent" class="hidden">
+            <div class="form-group">
+              <label>Agent URL</label>
+              <input
+                type="url"
+                id="agent-url"
+                placeholder="https://agent.example.com/mcp"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The MCP endpoint URL for the brand agent</p>
+            </div>
+            <div class="form-group">
+              <label>Agent ID</label>
+              <input
+                type="text"
+                id="agent-id"
+                placeholder="my_brand_agent"
+                oninput="updatePreview()"
+              />
+              <p class="hint">Unique identifier for the agent</p>
+            </div>
+          </div>
+
+          <!-- House Portfolio Form -->
+          <div id="form-portfolio">
+            <h4 style="margin-bottom: var(--space-4)">House Information</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+              <div class="form-group" style="margin-bottom: 0">
+                <label>House Domain</label>
+                <input
+                  type="text"
+                  id="portfolio-house-domain"
+                  placeholder="parent-company.com"
+                  oninput="updatePreview()"
+                />
+              </div>
+              <div class="form-group" style="margin-bottom: 0">
+                <label>House Name</label>
+                <input
+                  type="text"
+                  id="portfolio-house-name"
+                  placeholder="Parent Company, Inc."
+                  oninput="updatePreview()"
+                />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Brand Architecture</label>
+              <select id="portfolio-architecture" oninput="updatePreview()">
+                <option value="">Select architecture type...</option>
+                <option value="branded_house">Branded House (single master brand)</option>
+                <option value="house_of_brands">House of Brands (independent brands)</option>
+                <option value="hybrid">Hybrid (mix of approaches)</option>
+              </select>
+              <p class="hint">How the house organizes its brand portfolio</p>
+            </div>
+
+            <h4 style="margin: var(--space-6) 0 var(--space-4) 0; display: flex; justify-content: space-between; align-items: center;">
+              Brands
+              <button class="btn" onclick="addBrand()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm)">+ Add Brand</button>
+            </h4>
+            <div id="brands-container">
+              <!-- Brand entries added here -->
+            </div>
+          </div>
+
+          <!-- JSON Preview -->
+          <div style="margin-top: var(--space-6)">
+            <h4 style="margin-bottom: var(--space-3)">Generated brand.json</h4>
+            <pre class="json-preview" id="json-preview">{}</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Help Section -->
+      <div class="section">
+        <h3>Need Help?</h3>
+        <p style="color: var(--text-secondary); margin-bottom: var(--space-4)">
+          Learn more about the Brand Protocol and brand.json format:
+        </p>
+        <div style="display: flex; gap: var(--space-3); flex-wrap: wrap">
+          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol" target="_blank" class="btn" style="text-decoration: none">
+            Brand Protocol Docs
+          </a>
+          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json" target="_blank" class="btn btn-secondary" style="text-decoration: none">
+            brand.json Spec
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer (loaded by nav.js) -->
+    <div id="adcp-footer"></div>
+
+    <script>
+      // ============================================================================
+      // State
+      // ============================================================================
+
+      let currentDomain = '';
+      let currentVariant = 'portfolio';
+      let brands = [];
+      let brandIdCounter = 0;
+
+      // ============================================================================
+      // Main Functions
+      // ============================================================================
+
+      async function startBuilding() {
+        const domain = document.getElementById('domain-input').value.trim().toLowerCase();
+        if (!domain) {
+          alert('Please enter a domain name');
+          return;
+        }
+
+        currentDomain = domain;
+        document.getElementById('domain-display').textContent = domain;
+        document.getElementById('portfolio-house-domain').value = domain;
+
+        // Try to validate existing brand.json
+        const btn = document.getElementById('start-btn');
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        try {
+          const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(domain)}`);
+          const result = await response.json();
+
+          const validationResults = document.getElementById('validation-results');
+
+          if (result.success && result.brand) {
+            // Found existing brand.json
+            validationResults.innerHTML = `
+              <div class="validation-result result-success">
+                <strong>Found existing brand.json</strong><br>
+                Domain resolves to: ${result.brand.house_domain || domain}
+                ${result.brand.brand_id ? ` (Brand: ${result.brand.brand_id})` : ''}
+              </div>
+            `;
+            validationResults.classList.remove('hidden');
+            document.getElementById('file-status').textContent = 'Existing brand.json found';
+          } else {
+            // No existing file
+            validationResults.innerHTML = `
+              <div class="validation-result result-warning">
+                <strong>No brand.json found</strong><br>
+                Create a new brand.json for ${domain}
+              </div>
+            `;
+            validationResults.classList.remove('hidden');
+            document.getElementById('file-status').textContent = 'Creating new brand.json';
+          }
+        } catch (error) {
+          document.getElementById('validation-results').classList.add('hidden');
+          document.getElementById('file-status').textContent = 'Creating new brand.json';
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Get Started';
+
+        // Show builder
+        document.getElementById('builder-form').classList.remove('hidden');
+
+        // Initialize with one brand
+        if (brands.length === 0) {
+          addBrand();
+        }
+
+        updatePreview();
+      }
+
+      function selectVariant(variant) {
+        currentVariant = variant;
+
+        // Update UI
+        document.querySelectorAll('.variant-card').forEach(card => {
+          card.classList.remove('selected');
+        });
+        document.getElementById(`variant-${variant === 'house-redirect' ? 'house-redirect' : variant}`).classList.add('selected');
+
+        // Show/hide forms
+        document.getElementById('form-authoritative').classList.toggle('hidden', variant !== 'authoritative');
+        document.getElementById('form-house-redirect').classList.toggle('hidden', variant !== 'house-redirect');
+        document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
+        document.getElementById('form-portfolio').classList.toggle('hidden', variant !== 'portfolio');
+
+        updatePreview();
+      }
+
+      // ============================================================================
+      // Brand Management
+      // ============================================================================
+
+      function addBrand() {
+        const brandId = ++brandIdCounter;
+        brands.push({
+          id: brandId,
+          brand_id: '',
+          name: '',
+          keller_type: '',
+          parent_brand: '',
+          properties: []
+        });
+        renderBrands();
+        updatePreview();
+      }
+
+      function removeBrand(brandId) {
+        brands = brands.filter(b => b.id !== brandId);
+        renderBrands();
+        updatePreview();
+      }
+
+      function updateBrand(brandId, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand[field] = value;
+          updatePreview();
+        }
+      }
+
+      function addProperty(brandId) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.properties.push({ type: 'website', identifier: '', primary: false });
+          renderBrands();
+          updatePreview();
+        }
+      }
+
+      function removeProperty(brandId, propIndex) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.properties.splice(propIndex, 1);
+          renderBrands();
+          updatePreview();
+        }
+      }
+
+      function updateProperty(brandId, propIndex, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand && brand.properties[propIndex]) {
+          if (field === 'primary') {
+            value = value === 'true' || value === true;
+          }
+          brand.properties[propIndex][field] = value;
+          updatePreview();
+        }
+      }
+
+      function renderBrands() {
+        const container = document.getElementById('brands-container');
+
+        if (brands.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: var(--space-8); color: var(--text-muted); background: var(--color-bg-subtle); border-radius: var(--radius-lg); border: 2px dashed var(--color-border);">
+              <p style="margin: 0 0 var(--space-3) 0">No brands added yet</p>
+              <button class="btn" onclick="addBrand()">+ Add Your First Brand</button>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = brands.map(brand => `
+          <div class="brand-entry">
+            <div class="brand-entry-header">
+              <h4 style="margin: 0; font-size: var(--text-lg);">Brand ${brand.id}</h4>
+              <button class="btn btn-secondary" onclick="removeBrand(${brand.id})" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Remove</button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+              <div>
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand ID</label>
+                <input type="text" value="${brand.brand_id}" placeholder="my_brand" oninput="updateBrand(${brand.id}, 'brand_id', this.value)" />
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand Name</label>
+                <input type="text" value="${brand.name}" placeholder="My Brand" oninput="updateBrand(${brand.id}, 'name', this.value)" />
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+              <div>
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Keller Type</label>
+                <select value="${brand.keller_type}" onchange="updateBrand(${brand.id}, 'keller_type', this.value)">
+                  <option value="" ${!brand.keller_type ? 'selected' : ''}>Select type...</option>
+                  <option value="master" ${brand.keller_type === 'master' ? 'selected' : ''}>Master (primary brand)</option>
+                  <option value="sub-brand" ${brand.keller_type === 'sub-brand' ? 'selected' : ''}>Sub-brand (carries parent name)</option>
+                  <option value="endorsed" ${brand.keller_type === 'endorsed' ? 'selected' : ''}>Endorsed (backed by parent)</option>
+                  <option value="independent" ${brand.keller_type === 'independent' ? 'selected' : ''}>Independent (operates separately)</option>
+                </select>
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Parent Brand (optional)</label>
+                <input type="text" value="${brand.parent_brand}" placeholder="parent_brand_id" oninput="updateBrand(${brand.id}, 'parent_brand', this.value)" />
+              </div>
+            </div>
+
+            <div>
+              <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+                Properties
+                <button class="btn" onclick="addProperty(${brand.id})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+              </label>
+              <div id="properties-${brand.id}">
+                ${brand.properties.length === 0 ? `
+                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+                ` : brand.properties.map((prop, i) => `
+                  <div class="property-entry">
+                    <select onchange="updateProperty(${brand.id}, ${i}, 'type', this.value)">
+                      <option value="website" ${prop.type === 'website' ? 'selected' : ''}>Website</option>
+                      <option value="mobile_app" ${prop.type === 'mobile_app' ? 'selected' : ''}>Mobile App</option>
+                      <option value="ctv_app" ${prop.type === 'ctv_app' ? 'selected' : ''}>CTV App</option>
+                      <option value="desktop_app" ${prop.type === 'desktop_app' ? 'selected' : ''}>Desktop App</option>
+                      <option value="dooh" ${prop.type === 'dooh' ? 'selected' : ''}>DOOH</option>
+                      <option value="podcast" ${prop.type === 'podcast' ? 'selected' : ''}>Podcast</option>
+                    </select>
+                    <input type="text" value="${prop.identifier}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateProperty(${brand.id}, ${i}, 'identifier', this.value)" />
+                    <label style="display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--text-sm);">
+                      <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateProperty(${brand.id}, ${i}, 'primary', this.checked)" />
+                      Primary
+                    </label>
+                    <button class="btn btn-secondary" onclick="removeProperty(${brand.id}, ${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // ============================================================================
+      // JSON Generation
+      // ============================================================================
+
+      function generateJson() {
+        const json = {
+          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json"
+        };
+
+        switch (currentVariant) {
+          case 'authoritative':
+            const authUrl = document.getElementById('authoritative-url').value.trim();
+            if (authUrl) {
+              json.authoritative_location = authUrl;
+            }
+            break;
+
+          case 'house-redirect':
+            const houseDomain = document.getElementById('house-domain').value.trim();
+            if (houseDomain) {
+              json.house = houseDomain;
+            }
+            const region = document.getElementById('house-region').value.trim();
+            if (region) {
+              json.region = region;
+            }
+            const note = document.getElementById('house-note').value.trim();
+            if (note) {
+              json.note = note;
+            }
+            break;
+
+          case 'agent':
+            const agentUrl = document.getElementById('agent-url').value.trim();
+            const agentId = document.getElementById('agent-id').value.trim();
+            if (agentUrl || agentId) {
+              json.version = "1.0";
+              json.brand_agent = {};
+              if (agentUrl) json.brand_agent.url = agentUrl;
+              if (agentId) json.brand_agent.id = agentId;
+            }
+            break;
+
+          case 'portfolio':
+            json.version = "1.0";
+
+            const portfolioDomain = document.getElementById('portfolio-house-domain').value.trim();
+            const portfolioName = document.getElementById('portfolio-house-name').value.trim();
+            const architecture = document.getElementById('portfolio-architecture').value;
+
+            json.house = {};
+            if (portfolioDomain) json.house.domain = portfolioDomain;
+            if (portfolioName) json.house.name = portfolioName;
+            if (architecture) json.house.architecture = architecture;
+
+            json.brands = brands
+              .filter(b => b.brand_id || b.name)
+              .map(brand => {
+                const brandObj = {
+                  id: brand.brand_id || 'unnamed',
+                  names: brand.name ? [{ en: brand.name }] : []
+                };
+                if (brand.keller_type) {
+                  brandObj.keller_type = brand.keller_type;
+                }
+                if (brand.parent_brand) {
+                  brandObj.parent_brand = brand.parent_brand;
+                }
+                if (brand.properties.length > 0) {
+                  brandObj.properties = brand.properties
+                    .filter(p => p.identifier)
+                    .map(p => {
+                      const prop = { type: p.type, identifier: p.identifier };
+                      if (p.primary) prop.primary = true;
+                      return prop;
+                    });
+                }
+                return brandObj;
+              });
+            break;
+        }
+
+        return json;
+      }
+
+      function updatePreview() {
+        const json = generateJson();
+        document.getElementById('json-preview').textContent = JSON.stringify(json, null, 2);
+      }
+
+      // ============================================================================
+      // Export Functions
+      // ============================================================================
+
+      function copyJson() {
+        const json = generateJson();
+        navigator.clipboard.writeText(JSON.stringify(json, null, 2))
+          .then(() => alert('Copied to clipboard!'))
+          .catch(() => alert('Failed to copy'));
+      }
+
+      function downloadJson() {
+        const json = generateJson();
+        const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'brand.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // ============================================================================
+      // Initialize
+      // ============================================================================
+
+      document.addEventListener('DOMContentLoaded', () => {
+        // Check for domain in URL params
+        const params = new URLSearchParams(window.location.search);
+        const domain = params.get('domain');
+        if (domain) {
+          document.getElementById('domain-input').value = domain;
+          startBuilding();
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -26,6 +26,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { BrandDatabase } from "./db/brand-db.js";
 import { BrandManager } from "./brand-manager.js";
 import { PropertyDatabase } from "./db/property-db.js";
+import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
@@ -2229,6 +2230,187 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Failed to serve hosted adagents.json');
         return res.status(500).json({ error: 'Failed to serve property' });
+      }
+    });
+
+    // ========== Manifest References API Routes ==========
+    // Member-contributed references to brand.json and adagents.json files
+
+    // GET /api/manifest-refs/stats - Get statistics
+    this.app.get('/api/manifest-refs/stats', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+        const stats = await manifestRefsDb.getManifestRefStats();
+        return res.json({ success: true, stats });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get manifest ref stats');
+        return res.status(500).json({ error: 'Failed to get stats' });
+      }
+    });
+
+    // GET /api/manifest-refs - List references with filters
+    this.app.get('/api/manifest-refs', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { references, total } = await manifestRefsDb.listReferences({
+          domain: req.query.domain as string,
+          manifest_type: req.query.manifest_type as manifestRefsDb.ManifestType,
+          verification_status: req.query.verification_status as manifestRefsDb.VerificationStatus,
+          limit: parseInt(req.query.limit as string) || 50,
+          offset: parseInt(req.query.offset as string) || 0,
+        });
+
+        return res.json({ references, total });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list manifest refs');
+        return res.status(500).json({ error: 'Failed to list references' });
+      }
+    });
+
+    // GET /api/manifest-refs/lookup - Look up best reference for a domain (public)
+    this.app.get('/api/manifest-refs/lookup', async (req, res) => {
+      try {
+        const domain = req.query.domain as string;
+        const manifestType = (req.query.type || 'brand.json') as manifestRefsDb.ManifestType;
+
+        if (!domain) {
+          return res.status(400).json({ error: 'domain parameter required' });
+        }
+
+        const ref = await manifestRefsDb.getBestReference(domain, manifestType);
+        if (!ref) {
+          return res.json({ success: false, found: false });
+        }
+
+        return res.json({
+          success: true,
+          found: true,
+          reference: {
+            reference_type: ref.reference_type,
+            manifest_url: ref.manifest_url,
+            agent_url: ref.agent_url,
+            agent_id: ref.agent_id,
+            verification_status: ref.verification_status,
+          }
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to lookup manifest ref');
+        return res.status(500).json({ error: 'Failed to lookup reference' });
+      }
+    });
+
+    // POST /api/manifest-refs - Create a reference
+    this.app.post('/api/manifest-refs', requireAuth, async (req, res) => {
+      try {
+        const { domain, manifest_type, reference_type, manifest_url, agent_url, agent_id } = req.body;
+
+        if (!domain || !manifest_type || !reference_type) {
+          return res.status(400).json({ error: 'domain, manifest_type, and reference_type required' });
+        }
+
+        let ref: manifestRefsDb.ManifestReference;
+        if (reference_type === 'url') {
+          if (!manifest_url) {
+            return res.status(400).json({ error: 'manifest_url required for URL references' });
+          }
+          ref = await manifestRefsDb.createUrlReference({
+            domain,
+            manifest_type,
+            manifest_url,
+            contributed_by_user_id: req.user?.id,
+            contributed_by_email: req.user?.email,
+          });
+        } else if (reference_type === 'agent') {
+          if (!agent_url || !agent_id) {
+            return res.status(400).json({ error: 'agent_url and agent_id required for agent references' });
+          }
+          ref = await manifestRefsDb.createAgentReference({
+            domain,
+            manifest_type,
+            agent_url,
+            agent_id,
+            contributed_by_user_id: req.user?.id,
+            contributed_by_email: req.user?.email,
+          });
+        } else {
+          return res.status(400).json({ error: 'Invalid reference_type' });
+        }
+
+        return res.json({ success: true, reference: ref });
+      } catch (error) {
+        logger.error({ error }, 'Failed to create manifest ref');
+        return res.status(500).json({ error: 'Failed to create reference' });
+      }
+    });
+
+    // POST /api/manifest-refs/:id/verify - Verify a reference
+    this.app.post('/api/manifest-refs/:id/verify', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const ref = await manifestRefsDb.getReference(req.params.id);
+        if (!ref) {
+          return res.status(404).json({ error: 'Reference not found' });
+        }
+
+        // Try to fetch the manifest to verify it exists
+        let isValid = false;
+        try {
+          if (ref.reference_type === 'url' && ref.manifest_url) {
+            const response = await fetch(ref.manifest_url, { method: 'HEAD' });
+            isValid = response.ok;
+          } else if (ref.reference_type === 'agent' && ref.agent_url) {
+            // For agents, just check the URL is reachable
+            const response = await fetch(ref.agent_url, { method: 'HEAD' });
+            isValid = response.ok || response.status === 405; // 405 = method not allowed is OK for MCP
+          }
+        } catch {
+          isValid = false;
+        }
+
+        const updated = await manifestRefsDb.updateReference(ref.id, {
+          verification_status: isValid ? 'valid' : 'unreachable',
+          last_verified_at: new Date(),
+        });
+
+        return res.json({ success: true, reference: updated });
+      } catch (error) {
+        logger.error({ error }, 'Failed to verify manifest ref');
+        return res.status(500).json({ error: 'Failed to verify reference' });
+      }
+    });
+
+    // DELETE /api/manifest-refs/:id - Delete a reference
+    this.app.delete('/api/manifest-refs/:id', requireAuth, async (req, res) => {
+      try {
+        const ref = await manifestRefsDb.getReference(req.params.id);
+        if (!ref) {
+          return res.status(404).json({ error: 'Reference not found' });
+        }
+
+        // Check if user can delete (admin or creator)
+        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        const isCreator = ref.contributed_by_email === req.user?.email;
+
+        if (!isAdmin && !isCreator) {
+          return res.status(403).json({ error: 'Not authorized to delete this reference' });
+        }
+
+        await manifestRefsDb.deleteReference(ref.id);
+        return res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Failed to delete manifest ref');
+        return res.status(500).json({ error: 'Failed to delete reference' });
       }
     });
 
