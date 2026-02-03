@@ -15,6 +15,7 @@ import {
 } from '../../db/account-management-db.js';
 import * as outboundDb from '../../db/outbound-db.js';
 import { getOutboundPlanner } from './outbound-planner.js';
+import { getThreadService } from '../thread-service.js';
 import type { PlannerContext, PlannedAction } from '../types.js';
 import type { SlackUserMapping } from '../../slack/types.js';
 
@@ -30,6 +31,7 @@ const OUTREACH_ENABLED = process.env.OUTREACH_ENABLED !== 'false';
 const RATE_LIMIT_DAYS = 7; // Don't contact same user more than once per week
 const BUSINESS_HOURS_START = 9; // 9 AM
 const BUSINESS_HOURS_END = 17; // 5 PM
+const THREAD_CONTINUATION_WINDOW_MINUTES = 7 * 24 * 60; // Continue existing threads within 7 days
 
 /**
  * Outreach candidate with eligibility info
@@ -301,8 +303,9 @@ async function openDmChannel(slackUserId: string): Promise<string | null> {
 
 /**
  * Send a message to a DM channel using Addie's bot token
+ * If threadTs is provided, replies in that thread instead of starting a new message
  */
-async function sendDmMessage(channelId: string, text: string): Promise<string | null> {
+async function sendDmMessage(channelId: string, text: string, threadTs?: string): Promise<string | null> {
   const token = process.env.ADDIE_BOT_TOKEN;
   if (!token) {
     logger.error('ADDIE_BOT_TOKEN not configured');
@@ -310,21 +313,26 @@ async function sendDmMessage(channelId: string, text: string): Promise<string | 
   }
 
   try {
+    const body: { channel: string; text: string; thread_ts?: string } = {
+      channel: channelId,
+      text,
+    };
+    if (threadTs) {
+      body.thread_ts = threadTs;
+    }
+
     const response = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        channel: channelId,
-        text,
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = (await response.json()) as { ok: boolean; ts?: string; error?: string };
     if (!data.ok) {
-      logger.error({ error: data.error, channelId }, 'Failed to send DM message');
+      logger.error({ error: data.error, channelId, threadTs }, 'Failed to send DM message');
       return null;
     }
 
@@ -343,6 +351,66 @@ async function updateLastOutreach(slackUserId: string): Promise<void> {
     `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW() WHERE slack_user_id = $1`,
     [slackUserId]
   );
+}
+
+/**
+ * Result of resolving thread and sending message
+ */
+type ThreadSendResult = {
+  success: true;
+  channelId: string;
+  threadTs?: string;
+  messageTs: string;
+} | {
+  success: false;
+  error: string;
+}
+
+/**
+ * Resolve existing thread (if any) and send a message
+ * Continues existing threads within THREAD_CONTINUATION_WINDOW_MINUTES
+ */
+async function resolveThreadAndSendMessage(
+  slackUserId: string,
+  message: string
+): Promise<ThreadSendResult> {
+  const threadService = getThreadService();
+  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', THREAD_CONTINUATION_WINDOW_MINUTES);
+
+  let channelId: string;
+  let threadTs: string | undefined;
+
+  if (recentThread?.external_id) {
+    // Try to continue existing thread
+    const [existingChannelId, existingThreadTs] = recentThread.external_id.split(':');
+    if (existingChannelId && existingThreadTs) {
+      channelId = existingChannelId;
+      threadTs = existingThreadTs;
+      const messageTs = await sendDmMessage(channelId, message, threadTs);
+      if (messageTs) {
+        logger.debug({ slackUserId, threadTs }, 'Continuing existing thread for outreach');
+        return { success: true, channelId, threadTs, messageTs };
+      }
+      // If message failed in existing thread, fall through to open new channel
+      logger.warn({ slackUserId, external_id: recentThread.external_id }, 'Failed to send to existing thread, opening new channel');
+    } else {
+      logger.warn({ slackUserId, external_id: recentThread.external_id }, 'Invalid external_id format in recent thread');
+    }
+  }
+
+  // No recent thread or failed to send, start new conversation
+  const newChannelId = await openDmChannel(slackUserId);
+  if (!newChannelId) {
+    return { success: false, error: 'Failed to open DM channel' };
+  }
+  channelId = newChannelId;
+
+  const messageTs = await sendDmMessage(channelId, message);
+  if (!messageTs) {
+    return { success: false, error: 'Failed to send DM message' };
+  }
+
+  return { success: true, channelId, messageTs };
 }
 
 /**
@@ -368,17 +436,13 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
   const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
   const message = planner.buildMessage(plannedAction.goal, ctx, linkUrl);
 
-  // Open DM channel
-  const channelId = await openDmChannel(candidate.slack_user_id);
-  if (!channelId) {
-    return { success: false, error: 'Failed to open DM channel' };
+  // Send message, continuing existing thread if one exists
+  const sendResult = await resolveThreadAndSendMessage(candidate.slack_user_id, message);
+  if (!sendResult.success) {
+    return { success: false, error: sendResult.error };
   }
 
-  // Send message
-  const messageTs = await sendDmMessage(channelId, message);
-  if (!messageTs) {
-    return { success: false, error: 'Failed to send DM message' };
-  }
+  const { channelId, messageTs } = sendResult;
 
   // Map goal category to outreach type
   const outreachType: OutreachType = plannedAction.goal.category === 'admin' ? 'account_link'
@@ -635,17 +699,13 @@ export async function manualOutreachWithGoal(
   const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
   const message = planner.buildMessage(goal, ctx, linkUrl);
 
-  // Open DM channel
-  const channelId = await openDmChannel(slackUserId);
-  if (!channelId) {
-    return { success: false, error: 'Failed to open DM channel' };
+  // Send message, continuing existing thread if one exists
+  const sendResult = await resolveThreadAndSendMessage(slackUserId, message);
+  if (!sendResult.success) {
+    return { success: false, error: sendResult.error };
   }
 
-  // Send message
-  const messageTs = await sendDmMessage(channelId, message);
-  if (!messageTs) {
-    return { success: false, error: 'Failed to send DM message' };
-  }
+  const { channelId, messageTs } = sendResult;
 
   // Map goal category to outreach type
   const outreachType: OutreachType = goal.category === 'admin' ? 'account_link'

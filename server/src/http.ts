@@ -6366,9 +6366,6 @@ Disallow: /api/admin/
     // Start account enrichment job
     jobScheduler.startEnrichment();
 
-    // Start setup nudges job (reminds members about missing logos, taglines, pending requests)
-    jobScheduler.startSetupNudges();
-
     // Start Moltbook jobs (if API key is configured)
     if (process.env.MOLTBOOK_API_KEY) {
       jobScheduler.startMoltbookPoster();
