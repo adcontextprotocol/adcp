@@ -438,9 +438,9 @@
         "name": "ACME Corporation",
         "logos": [
           {
-            "url": "https://cdn.acmecorp.com/logo-dark.png",
+            "url": "https://cdn.acmecorp.com/logo-on-light.png",
             "tags": [
-              "dark-bg",
+              "light-bg",
               "horizontal",
               "primary"
             ],
@@ -449,9 +449,9 @@
             "height": 400
           },
           {
-            "url": "https://cdn.acmecorp.com/logo-light.png",
+            "url": "https://cdn.acmecorp.com/logo-on-dark.png",
             "tags": [
-              "light-bg",
+              "dark-bg",
               "horizontal",
               "primary"
             ],
