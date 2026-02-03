@@ -280,6 +280,52 @@
     </div>
   </div>
 
+  <!-- Convert to Team Modal -->
+  <div id="convertToTeamModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Switch to Company Account</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: 16px;">
+        A company account lets you:
+      </p>
+      <ul style="color: var(--color-text-secondary); margin-bottom: 16px; padding-left: 20px;">
+        <li>Invite team members to collaborate</li>
+        <li>Add company logos and branding</li>
+        <li>Register agents and publishers</li>
+        <li>Verify your corporate domain</li>
+      </ul>
+      <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+        Your profile information will be preserved. You can update your company details after switching.
+      </p>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeConvertToTeamModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="convertToTeam()">Switch to Company</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Convert to Individual Modal -->
+  <div id="convertToIndividualModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Switch to Individual Account</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: 16px;">
+        An individual account is for:
+      </p>
+      <ul style="color: var(--color-text-secondary); margin-bottom: 16px; padding-left: 20px;">
+        <li>Consultants and freelancers</li>
+        <li>Academics and researchers</li>
+        <li>People looking for opportunities</li>
+      </ul>
+      <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+        Individual accounts cannot have team members. Your profile will be updated to show personal information instead of company branding.
+      </p>
+      <div id="convertToIndividualError" style="display: none; padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; margin-bottom: 16px; color: var(--color-error-700); font-size: 14px;"></div>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeConvertToIndividualModal()">Cancel</button>
+        <button class="btn btn-primary" id="convertToIndividualConfirmBtn" onclick="convertToIndividual()">Switch to Individual</button>
+      </div>
+    </div>
+  </div>
+
   <div class="page-header">
     <h1>Settings</h1>
     <p>Manage your organization settings and preferences</p>
@@ -307,11 +353,13 @@
           </div>
           <div class="settings-row">
             <div class="settings-label">
-              <h3>Workspace Type</h3>
+              <h3>Account Type</h3>
               <p id="workspaceType">Loading...</p>
+              <p id="workspaceTypeHint" style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px;"></p>
             </div>
             <div class="settings-value">
-              <button class="btn btn-secondary btn-sm" id="convertToTeamBtn" onclick="convertToTeam()" style="display: none;">Upgrade to Team</button>
+              <button class="btn btn-secondary btn-sm" id="convertToTeamBtn" onclick="showConvertToTeamModal()" style="display: none;">Switch to Company</button>
+              <button class="btn btn-secondary btn-sm" id="convertToIndividualBtn" onclick="showConvertToIndividualModal()" style="display: none;">Switch to Individual</button>
             </div>
           </div>
           <div class="settings-row">
@@ -412,10 +460,21 @@
       document.getElementById('orgId').textContent = currentOrg.id;
 
       const isPersonal = currentOrg.is_personal;
-      document.getElementById('workspaceType').textContent = isPersonal ? 'Personal workspace' : 'Team workspace';
+      const workspaceTypeEl = document.getElementById('workspaceType');
+      const workspaceHintEl = document.getElementById('workspaceTypeHint');
+      const convertToTeamBtn = document.getElementById('convertToTeamBtn');
+      const convertToIndividualBtn = document.getElementById('convertToIndividualBtn');
 
       if (isPersonal) {
-        document.getElementById('convertToTeamBtn').style.display = 'block';
+        workspaceTypeEl.textContent = 'Individual account';
+        workspaceHintEl.textContent = 'For consultants, academics, and independent professionals';
+        convertToTeamBtn.style.display = 'block';
+        convertToIndividualBtn.style.display = 'none';
+      } else {
+        workspaceTypeEl.textContent = 'Company account';
+        workspaceHintEl.textContent = 'For organizations with team members';
+        convertToTeamBtn.style.display = 'none';
+        convertToIndividualBtn.style.display = 'block';
       }
 
       // Show danger zone for owners
@@ -495,7 +554,15 @@
       }
     }
 
-    // Convert to team
+    // Convert to team modal
+    function showConvertToTeamModal() {
+      document.getElementById('convertToTeamModal').classList.add('show');
+    }
+
+    function closeConvertToTeamModal() {
+      document.getElementById('convertToTeamModal').classList.remove('show');
+    }
+
     async function convertToTeam() {
       try {
         const response = await fetch(`/api/organizations/${currentOrg.id}/convert-to-team`, {
@@ -505,10 +572,57 @@
 
         if (!response.ok) throw new Error('Failed to convert');
 
-        showToast('Converted to team workspace');
+        closeConvertToTeamModal();
+        showToast('Switched to company account');
         setTimeout(() => window.location.reload(), 1000);
       } catch (error) {
-        showToast('Failed to convert to team', true);
+        showToast('Failed to switch account type', true);
+      }
+    }
+
+    // Convert to individual modal
+    function showConvertToIndividualModal() {
+      document.getElementById('convertToIndividualError').style.display = 'none';
+      document.getElementById('convertToIndividualModal').classList.add('show');
+    }
+
+    function closeConvertToIndividualModal() {
+      document.getElementById('convertToIndividualModal').classList.remove('show');
+    }
+
+    async function convertToIndividual() {
+      const errorEl = document.getElementById('convertToIndividualError');
+      const btn = document.getElementById('convertToIndividualConfirmBtn');
+
+      btn.disabled = true;
+      btn.textContent = 'Switching...';
+      errorEl.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/convert-to-individual`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          // Show error message (e.g., "has team members")
+          errorEl.textContent = data.message || 'Failed to convert';
+          errorEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Switch to Individual';
+          return;
+        }
+
+        closeConvertToIndividualModal();
+        showToast('Switched to individual account');
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (error) {
+        errorEl.textContent = 'Failed to switch account type. Please try again.';
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Switch to Individual';
       }
     }
 
