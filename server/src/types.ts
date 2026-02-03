@@ -80,6 +80,8 @@ export interface AgentCapabilities {
     can_activate: boolean;
     can_get_signals: boolean;
   };
+  discovery_error?: string;
+  oauth_required?: boolean;
 }
 
 /**
