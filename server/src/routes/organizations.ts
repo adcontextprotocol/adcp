@@ -1959,11 +1959,23 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Get all members of the organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
+      // Get all members of the organization (paginate to handle orgs with >100 members)
+      // Fetch first page to get type inference, then paginate if needed
+      let membershipsPage = await workos!.userManagement.listOrganizationMemberships({
         organizationId: orgId,
         statuses: ['active', 'pending'],
+        limit: 100,
       });
+      const allMemberships = [...membershipsPage.data];
+      while (membershipsPage.listMetadata?.after) {
+        membershipsPage = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          statuses: ['active', 'pending'],
+          after: membershipsPage.listMetadata.after,
+          limit: 100,
+        });
+        allMemberships.push(...membershipsPage.data);
+      }
 
       // Get all mapped WorkOS user IDs from Slack
       const slackDb = new SlackDatabase();
@@ -1971,7 +1983,7 @@ export function createOrganizationsRouter(): Router {
 
       // Fetch user details for each membership
       const members = await Promise.all(
-        memberships.data.map(async (membership) => {
+        allMemberships.map(async (membership) => {
           try {
             const memberUser = await workos!.userManagement.getUser(membership.userId);
             return {
