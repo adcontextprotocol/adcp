@@ -616,7 +616,7 @@ async function checkAndRespondToReplies(result: EngagementResult): Promise<void>
         await recordActivity('comment', replyResult.comment?.id, postId, `reply_to:${reply.id} ${replyText}`);
 
         // Notify Slack
-        const permalink = post.permalink || `https://moltbook.com/p/${postId}`;
+        const permalink = post.permalink || `https://www.moltbook.com/p/${postId}`;
         await notifySlackEngagement('comment', post, `Replied to ${reply.author.name}:\n_"${replyText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
 
         result.repliesCreated++;
@@ -694,7 +694,7 @@ async function checkAndRespondToOwnPostComments(result: EngagementResult): Promi
         await recordActivity('comment', replyResult.comment?.id, postId, `reply_to:${comment.id} ${replyText}`);
 
         // Notify Slack
-        const permalink = post.permalink || `https://moltbook.com/p/${postId}`;
+        const permalink = post.permalink || `https://www.moltbook.com/p/${postId}`;
         await notifySlackEngagement('comment', post, `Replied to ${comment.author.name} on my post:\n_"${replyText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
 
         result.repliesCreated++;
@@ -925,7 +925,7 @@ export async function runMoltbookEngagementJob(options: {
       await recordActivity('comment', commentResult.comment?.id, post.id, commentText);
 
       // Notify Slack about the comment
-      const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
+      const permalink = post.permalink || `https://www.moltbook.com/p/${post.id}`;
       await notifySlackEngagement('comment', post, `_"${commentText.substring(0, 100)}..."_\n<${permalink}|View on Moltbook>`);
 
       result.commentsCreated++;
@@ -939,7 +939,7 @@ export async function runMoltbookEngagementJob(options: {
 
   // Share interesting threads we found (even if we didn't comment)
   for (const post of interestingToShare) {
-    const permalink = post.permalink || `https://moltbook.com/p/${post.id}`;
+    const permalink = post.permalink || `https://www.moltbook.com/p/${post.id}`;
     const preview = post.content ? `_"${post.content.substring(0, 100)}..."_\n` : '';
     await notifySlackEngagement('interesting', post, `${preview}<${permalink}|View on Moltbook>`);
     // Record that we shared this so we don't share it again
