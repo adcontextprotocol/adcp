@@ -279,14 +279,16 @@ export function createAgentOAuthRouter(): Router {
       let client = await agentContextDb.getOAuthClient(agent_context_id);
 
       // Check if redirect_uri has changed (e.g., environment change)
-      if (client && client.registered_redirect_uri && client.registered_redirect_uri !== redirectUri) {
+      // Also clear client if we don't know what redirect_uri it was registered with
+      // (happens for clients created before we started tracking redirect_uri)
+      if (client && (!client.registered_redirect_uri || client.registered_redirect_uri !== redirectUri)) {
         logger.info(
           {
             agentUrl: agentContext.agent_url,
-            oldRedirectUri: client.registered_redirect_uri,
+            oldRedirectUri: client.registered_redirect_uri || '(unknown)',
             newRedirectUri: redirectUri
           },
-          'Redirect URI changed, re-registering OAuth client'
+          'Redirect URI changed or unknown, re-registering OAuth client'
         );
         await agentContextDb.clearOAuthClient(agent_context_id);
         client = null;
