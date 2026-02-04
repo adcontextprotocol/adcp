@@ -52,8 +52,8 @@ import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter, createAdminSettingsRouter } from "./routes/admin/index.js";
-import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
-import { processAlerts } from "./addie/services/industry-alerts.js";
+import { jobScheduler } from "./addie/jobs/scheduler.js";
+import { registerAllJobs, JOB_NAMES } from "./addie/jobs/job-definitions.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
@@ -66,15 +66,9 @@ import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./rou
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
-import { queuePerspectiveLink, processPendingResources, processRssPerspectives, processCommunityArticles } from "./addie/services/content-curator.js";
+import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { InsightsDatabase } from "./db/insights-db.js";
-import { sendCommunityReplies } from "./addie/services/community-articles.js";
-import { sendChannelMessage } from "./slack/client.js";
 import { serveHtmlWithMetaTags } from "./utils/html-config.js";
-import { runTaskReminderJob } from "./addie/jobs/task-reminder.js";
-import { runEngagementScoringJob } from "./addie/jobs/engagement-scoring.js";
-import { runGoalFollowUpJob } from "./addie/jobs/goal-follow-up.js";
-import { jobScheduler } from "./addie/jobs/scheduler.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -386,14 +380,6 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
-  private contentCuratorIntervalId: NodeJS.Timeout | null = null;
-  private feedFetcherIntervalId: NodeJS.Timeout | null = null;
-  private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
-  private alertProcessorIntervalId: NodeJS.Timeout | null = null;
-  private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
-  private taskReminderIntervalId: NodeJS.Timeout | null = null;
-  private engagementScoringIntervalId: NodeJS.Timeout | null = null;
-  private goalFollowUpIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -6338,40 +6324,25 @@ Disallow: /api/admin/
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
-    // Start periodic content curator for Addie's knowledge base
-    // Process pending external resources (fetch content, generate summaries)
-    this.startContentCurator();
+    // Register and start all scheduled jobs
+    registerAllJobs();
 
-    // Start industry feed monitoring
-    // Fetches RSS feeds, processes articles, sends Slack alerts
-    this.startIndustryMonitor();
+    // Start most jobs
+    jobScheduler.start(JOB_NAMES.DOCUMENT_INDEXER);
+    jobScheduler.start(JOB_NAMES.SUMMARY_GENERATOR);
+    jobScheduler.start(JOB_NAMES.PROACTIVE_OUTREACH);
+    jobScheduler.start(JOB_NAMES.ACCOUNT_ENRICHMENT);
+    jobScheduler.start(JOB_NAMES.CONTENT_CURATOR);
+    jobScheduler.start(JOB_NAMES.FEED_FETCHER);
+    jobScheduler.start(JOB_NAMES.ALERT_PROCESSOR);
+    jobScheduler.start(JOB_NAMES.TASK_REMINDER);
+    jobScheduler.start(JOB_NAMES.ENGAGEMENT_SCORING);
+    jobScheduler.start(JOB_NAMES.GOAL_FOLLOW_UP);
 
-    // Start daily task reminder job
-    // Sends DMs to admins about overdue/upcoming tasks
-    this.startTaskReminders();
-
-    // Start engagement scoring job
-    // Updates user and org engagement scores periodically
-    this.startEngagementScoring();
-
-    // Start goal follow-up job
-    // Sends follow-up messages and reconciles goal outcomes
-    this.startGoalFollowUp();
-
-    // Start committee document jobs via scheduler
-    jobScheduler.startDocumentIndexer();
-    jobScheduler.startSummaryGenerator();
-
-    // Start proactive outreach job
-    jobScheduler.startOutreach();
-
-    // Start account enrichment job
-    jobScheduler.startEnrichment();
-
-    // Start Moltbook jobs (if API key is configured)
+    // Start Moltbook jobs only if API key is configured
     if (process.env.MOLTBOOK_API_KEY) {
-      jobScheduler.startMoltbookPoster();
-      jobScheduler.startMoltbookEngagement();
+      jobScheduler.start(JOB_NAMES.MOLTBOOK_POSTER);
+      jobScheduler.start(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
     }
 
     this.server = this.app.listen(port, () => {
@@ -6384,258 +6355,6 @@ Disallow: /api/admin/
 
     // Setup graceful shutdown handlers
     this.setupShutdownHandlers();
-  }
-
-  /**
-   * Start periodic content curator for Addie's knowledge base
-   * Processes pending external resources (fetch content, generate AI summaries)
-   */
-  private startContentCurator(): void {
-    const CURATOR_INTERVAL_MINUTES = 5;
-
-    // Process on startup after a short delay
-    setTimeout(async () => {
-      try {
-        // Process manually queued resources
-        const result = await processPendingResources({ limit: 5 });
-        if (result.processed > 0) {
-          logger.debug(result, 'Content curator: processed pending resources');
-        }
-        // Process RSS perspectives
-        const rssResult = await processRssPerspectives({ limit: 5 });
-        if (rssResult.processed > 0) {
-          logger.debug(rssResult, 'Content curator: processed RSS perspectives');
-        }
-        // Process community articles
-        const communityResult = await processCommunityArticles({ limit: 5 });
-        if (communityResult.processed > 0) {
-          logger.debug(communityResult, 'Content curator: processed community articles');
-        }
-        // Send replies to processed community articles
-        const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
-          const result = await sendChannelMessage(channelId, { text, thread_ts: threadTs });
-          return result.ok;
-        });
-        if (replyResult.sent > 0) {
-          logger.debug(replyResult, 'Content curator: sent community article replies');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Content curator: initial processing failed');
-      }
-    }, 30000); // 30 second delay to let other services start
-
-    // Then process periodically
-    this.contentCuratorIntervalId = setInterval(async () => {
-      try {
-        // Process manually queued resources
-        const result = await processPendingResources({ limit: 5 });
-        if (result.processed > 0) {
-          logger.debug(result, 'Content curator: processed pending resources');
-        }
-        // Process RSS perspectives
-        const rssResult = await processRssPerspectives({ limit: 5 });
-        if (rssResult.processed > 0) {
-          logger.debug(rssResult, 'Content curator: processed RSS perspectives');
-        }
-        // Process community articles
-        const communityResult = await processCommunityArticles({ limit: 5 });
-        if (communityResult.processed > 0) {
-          logger.debug(communityResult, 'Content curator: processed community articles');
-        }
-        // Send replies to processed community articles
-        const replyResult = await sendCommunityReplies(async (channelId, threadTs, text) => {
-          const result = await sendChannelMessage(channelId, { text, thread_ts: threadTs });
-          return result.ok;
-        });
-        if (replyResult.sent > 0) {
-          logger.debug(replyResult, 'Content curator: sent community article replies');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Content curator: periodic processing failed');
-      }
-    }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
-
-    logger.debug({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
-  }
-
-  /**
-   * Start industry feed monitoring system
-   * Fetches RSS feeds from ad tech publications, processes articles,
-   * and sends Slack alerts for high-priority content
-   */
-  private startIndustryMonitor(): void {
-    const FEED_FETCH_INTERVAL_MINUTES = 30;
-    const ALERT_CHECK_INTERVAL_MINUTES = 5;
-
-    // Feed fetcher - check feeds every 30 minutes
-    // Creates perspectives from RSS articles, which are then processed by the content curator
-    this.feedFetcherInitialTimeoutId = setTimeout(async () => {
-      this.feedFetcherInitialTimeoutId = null;
-      try {
-        const result = await processFeedsToFetch();
-        if (result.feedsProcessed > 0) {
-          logger.debug(result, 'Industry monitor: fetched RSS feeds');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Industry monitor: initial feed fetch failed');
-      }
-    }, 60000); // 1 minute delay to let other services start
-
-    this.feedFetcherIntervalId = setInterval(async () => {
-      try {
-        const result = await processFeedsToFetch();
-        if (result.feedsProcessed > 0) {
-          logger.debug(result, 'Industry monitor: fetched RSS feeds');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Industry monitor: periodic feed fetch failed');
-      }
-    }, FEED_FETCH_INTERVAL_MINUTES * 60 * 1000);
-
-    // Alert processor - check for alerts every 5 minutes
-    this.alertProcessorInitialTimeoutId = setTimeout(async () => {
-      this.alertProcessorInitialTimeoutId = null;
-      try {
-        const result = await processAlerts();
-        if (result.alerted > 0) {
-          logger.info(result, 'Industry monitor: sent alerts');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Industry monitor: initial alert processing failed');
-      }
-    }, 120000); // 2 minute delay
-
-    this.alertProcessorIntervalId = setInterval(async () => {
-      try {
-        const result = await processAlerts();
-        if (result.alerted > 0) {
-          logger.info(result, 'Industry monitor: sent alerts');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Industry monitor: periodic alert processing failed');
-      }
-    }, ALERT_CHECK_INTERVAL_MINUTES * 60 * 1000);
-
-    logger.debug({
-      feedFetchIntervalMinutes: FEED_FETCH_INTERVAL_MINUTES,
-      alertCheckIntervalMinutes: ALERT_CHECK_INTERVAL_MINUTES,
-    }, 'Industry monitor started');
-  }
-
-  /**
-   * Start daily task reminder job
-   * Sends DMs to admins about overdue/upcoming tasks at 9am ET
-   */
-  private startTaskReminders(): void {
-    const REMINDER_CHECK_INTERVAL_HOURS = 1;
-
-    // Check every hour, but only send once per day per user
-    this.taskReminderIntervalId = setInterval(async () => {
-      try {
-        // Only run during morning hours (8-10am ET) using proper timezone handling
-        const now = new Date();
-        const etHour = parseInt(now.toLocaleString('en-US', {
-          timeZone: 'America/New_York',
-          hour: 'numeric',
-          hour12: false,
-        }), 10);
-        if (etHour < 8 || etHour > 10) {
-          return;
-        }
-
-        // Skip weekends (using ET day of week)
-        const etDayStr = now.toLocaleString('en-US', {
-          timeZone: 'America/New_York',
-          weekday: 'short',
-        });
-        if (etDayStr === 'Sat' || etDayStr === 'Sun') {
-          return;
-        }
-
-        const result = await runTaskReminderJob();
-        if (result.remindersSent > 0) {
-          logger.info(result, 'Task reminders: sent daily reminders');
-        }
-      } catch (err) {
-        logger.error({ err }, 'Task reminders: job failed');
-      }
-    }, REMINDER_CHECK_INTERVAL_HOURS * 60 * 60 * 1000);
-
-    logger.debug({ intervalHours: REMINDER_CHECK_INTERVAL_HOURS }, 'Task reminder job started');
-  }
-
-  /**
-   * Start periodic engagement scoring for users and organizations
-   * Updates stale scores (older than 1 day) every hour
-   */
-  private startEngagementScoring(): void {
-    const SCORING_INTERVAL_HOURS = 1;
-
-    // Run immediately on startup (with delay for DB connection)
-    setTimeout(async () => {
-      try {
-        await runEngagementScoringJob();
-      } catch (err) {
-        logger.error({ err }, 'Engagement scoring: initial batch failed');
-      }
-    }, 10000);
-
-    // Then run periodically
-    this.engagementScoringIntervalId = setInterval(async () => {
-      try {
-        await runEngagementScoringJob();
-      } catch (err) {
-        logger.error({ err }, 'Engagement scoring: job failed');
-      }
-    }, SCORING_INTERVAL_HOURS * 60 * 60 * 1000);
-
-    logger.debug({ intervalHours: SCORING_INTERVAL_HOURS }, 'Engagement scoring job started');
-  }
-
-  /**
-   * Start periodic goal follow-up job
-   * Sends follow-up messages for unanswered outreach and reconciles goal outcomes
-   */
-  private startGoalFollowUp(): void {
-    const FOLLOW_UP_INTERVAL_HOURS = 4; // Check every 4 hours
-
-    // Run after a delay on startup
-    setTimeout(async () => {
-      try {
-        await runGoalFollowUpJob();
-      } catch (err) {
-        logger.error({ err }, 'Goal follow-up: initial run failed');
-      }
-    }, 180000); // 3 minute delay
-
-    // Then run periodically
-    this.goalFollowUpIntervalId = setInterval(async () => {
-      try {
-        // Only run during business hours (9am-6pm ET)
-        const now = new Date();
-        const etHour = parseInt(now.toLocaleString('en-US', {
-          timeZone: 'America/New_York',
-          hour: 'numeric',
-          hour12: false,
-        }), 10);
-        const etDay = now.toLocaleString('en-US', {
-          timeZone: 'America/New_York',
-          weekday: 'short',
-        });
-
-        // Skip weekends and outside business hours
-        if (['Sat', 'Sun'].includes(etDay) || etHour < 9 || etHour >= 18) {
-          logger.debug({ etHour, etDay }, 'Goal follow-up: skipping outside business hours');
-          return;
-        }
-
-        await runGoalFollowUpJob();
-      } catch (err) {
-        logger.error({ err }, 'Goal follow-up: job failed');
-      }
-    }, FOLLOW_UP_INTERVAL_HOURS * 60 * 60 * 1000);
-
-    logger.debug({ intervalHours: FOLLOW_UP_INTERVAL_HOURS }, 'Goal follow-up job started');
   }
 
   /**
@@ -6658,54 +6377,7 @@ Disallow: /api/admin/
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
 
-    // Stop content curator
-    if (this.contentCuratorIntervalId) {
-      clearInterval(this.contentCuratorIntervalId);
-      this.contentCuratorIntervalId = null;
-      logger.info('Content curator stopped');
-    }
-
-    // Stop industry monitor jobs
-    if (this.feedFetcherInitialTimeoutId) {
-      clearTimeout(this.feedFetcherInitialTimeoutId);
-      this.feedFetcherInitialTimeoutId = null;
-    }
-    if (this.feedFetcherIntervalId) {
-      clearInterval(this.feedFetcherIntervalId);
-      this.feedFetcherIntervalId = null;
-    }
-    if (this.alertProcessorInitialTimeoutId) {
-      clearTimeout(this.alertProcessorInitialTimeoutId);
-      this.alertProcessorInitialTimeoutId = null;
-    }
-    if (this.alertProcessorIntervalId) {
-      clearInterval(this.alertProcessorIntervalId);
-      this.alertProcessorIntervalId = null;
-    }
-    logger.info('Industry monitor stopped');
-
-    // Stop task reminder job
-    if (this.taskReminderIntervalId) {
-      clearInterval(this.taskReminderIntervalId);
-      this.taskReminderIntervalId = null;
-      logger.info('Task reminder job stopped');
-    }
-
-    // Stop engagement scoring job
-    if (this.engagementScoringIntervalId) {
-      clearInterval(this.engagementScoringIntervalId);
-      this.engagementScoringIntervalId = null;
-      logger.info('Engagement scoring job stopped');
-    }
-
-    // Stop goal follow-up job
-    if (this.goalFollowUpIntervalId) {
-      clearInterval(this.goalFollowUpIntervalId);
-      this.goalFollowUpIntervalId = null;
-      logger.info('Goal follow-up job stopped');
-    }
-
-    // Stop committee document jobs via scheduler
+    // Stop all scheduled jobs
     jobScheduler.stopAll();
 
     // Close HTTP server
