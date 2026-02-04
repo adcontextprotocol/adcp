@@ -1857,19 +1857,22 @@ export function createMemberToolHandlers(
     }
 
     const healthData = healthResult.data as {
-      agent_cards: Array<{
-        agent_url: string;
-        valid: boolean;
-        errors?: string[];
-        status_code?: number;
-        response_time_ms?: number;
-        card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean };
-        card_endpoint?: string;
-        oauth_required?: boolean;
-      }>;
+      success: boolean;
+      data: {
+        agent_cards: Array<{
+          agent_url: string;
+          valid: boolean;
+          errors?: string[];
+          status_code?: number;
+          response_time_ms?: number;
+          card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean };
+          card_endpoint?: string;
+          oauth_required?: boolean;
+        }>;
+      };
     };
 
-    const card = healthData?.agent_cards?.[0];
+    const card = healthData?.data?.agent_cards?.[0];
     const isHealthy = card?.valid === true;
     const healthCheckRequiresOAuth = card?.oauth_required === true;
 
