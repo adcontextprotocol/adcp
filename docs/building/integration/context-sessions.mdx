@@ -56,52 +56,7 @@ const delivery = await call('get_media_buy_delivery', {
 ## Protocol Differences
 
 - **A2A**: Context is handled automatically by the protocol
-- **MCP**: Requires manual context_id management (buyers) or session ID fallback (agents)
-
-## Agent-Side Context Handling
-
-When implementing an AdCP agent, you may receive requests without an explicit `context_id`. This is common with simple MCP clients like ChatGPT and Claude that don't manage context themselves.
-
-### Using Transport Session ID as Fallback
-
-AdCP agents should use the transport's session ID as a fallback when clients don't pass an explicit `context_id`. This enables automatic session-based persistence for simple clients while preserving explicit control for advanced use cases.
-
-**Why this matters**: When `get_products` generates customized products with targeting baked in, those products need to be stored so `create_media_buy` can look them up later. Without a `context_id`, the agent can't associate related operations.
-
-### Implementation Pattern
-
-The MCP SDK provides `sessionId` via the `extra` parameter in tool handlers:
-
-```typescript
-server.tool('get_products', schema, async (args, extra) => {
-  // Use explicit context_id if provided, fall back to MCP sessionId
-  const contextId = args.context_id ?? extra?.sessionId;
-
-  const products = await generateProducts(args.brief, contextId);
-  await productStore.save(contextId, products);
-
-  return products;
-});
-```
-
-### Fallback Behavior
-
-| Source | Use Case | Behavior |
-|--------|----------|----------|
-| **Explicit `context_id`** | Advanced clients, resuming sessions | Buyer controls context; can span multiple sessions |
-| **MCP `sessionId`** | Simple clients (ChatGPT, Claude) | Automatic; zero configuration; resets on reconnect |
-
-### Benefits
-
-1. **Zero-friction for simple clients**: ChatGPT and Claude get automatic session persistence without any configuration
-2. **Full control for advanced buyers**: Buyers can explicitly manage context across sessions when needed
-3. **Resumable workflows**: Buyers can return later with the same `context_id` to resume a conversation
-
-### Implementation Notes
-
-- MCP SDK provides `sessionId` via `extra` parameter in tool handlers
-- Consider a 30-day TTL cleanup for stored contexts to prevent unbounded growth
-- For a working implementation of this pattern, see the [Snap AdCP Agent](https://github.com/scope3data/snap-adcp)
+- **MCP**: Requires manual context_id management
 
 ### A2A Context (Automatic)
 
@@ -156,6 +111,24 @@ class MCPSession {
   }
 }
 ```
+
+### MCP Agent-Side: Session ID Fallback
+
+Many MCP clients (ChatGPT, Claude) don't pass `context_id`. Agents should use the transport's session ID as a fallback to enable automatic session persistence:
+
+```typescript
+server.tool('get_products', schema, async (args, extra) => {
+  // Use explicit context_id if provided, fall back to MCP sessionId
+  const contextId = args.context_id ?? extra?.sessionId;
+
+  const products = await generateProducts(args.brief, contextId);
+  await productStore.save(contextId, products);
+
+  return products;
+});
+```
+
+This allows simple clients to get automatic session persistence while preserving explicit control for advanced buyers who need resumable sessions. For a working implementation, see the [Snap AdCP Agent](https://github.com/scope3data/snap-adcp).
 
 ## What Context Maintains
 
@@ -297,17 +270,12 @@ Response echoes the context:
 - Use contextId for explicit conversation threading
 - Trust the session management
 
-### For MCP (Buyers)
+### For MCP
 - Always preserve context_id between calls
 - Implement a session wrapper (see pattern above)
 - Handle context expiration (1 hour timeout)
 - Start fresh context for new workflows
-
-### For MCP (Agents)
-- Use transport session ID as fallback when `context_id` is not provided
-- Accept explicit `context_id` to enable advanced use cases like resumable sessions
-- Store context-specific state (products, filters) keyed by context ID
-- Implement TTL cleanup for stored contexts
+- **Agents**: Use transport session ID as fallback when `context_id` is not provided (see [Session ID Fallback](#mcp-agent-side-session-id-fallback))
 
 ### For Extensions
 - Always namespace under vendor keys
