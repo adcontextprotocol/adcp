@@ -1,12 +1,13 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": major
 ---
 
 Add structured tone guidelines and structured logo fields to Brand Manifest schema.
 
-**Tone field changes:**
-- Now supports both simple string (backward compatible) and structured object
+**BREAKING: Tone field changes:**
+- Tone is now an object type only (string format removed)
 - Structured tone includes `voice`, `attributes`, `dos`, and `donts` fields
+- Existing string values should migrate to `{ "voice": "<previous-string>" }`
 - Enables creative agents to generate brand-compliant copy programmatically
 
 **Logo object changes:**

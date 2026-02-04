@@ -232,7 +232,7 @@ Some brands don't have dedicated URLs (white-label products, local businesses, B
     "primary": "#0071CE",
     "secondary": "#FFC220"
   },
-  "tone": "affordable and trustworthy"
+  "tone": { "voice": "affordable and trustworthy" }
 }
 ```
 
@@ -276,7 +276,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 | `logos` | Logo[] | Brand logo assets with semantic tags |
 | `colors` | Colors | Brand color palette (hex format) |
 | `fonts` | Fonts | Brand typography guidelines |
-| `tone` | string \| ToneObject | Brand voice and messaging tone (simple string or structured object) |
+| `tone` | ToneObject | Brand voice and messaging tone guidelines |
 | `tagline` | string | Brand tagline or slogan |
 | `assets` | Asset[] | Brand asset library with explicit assets and tags |
 | `product_catalog` | ProductCatalog | Product catalog information for e-commerce advertisers |
@@ -365,23 +365,9 @@ The structure of the brand manifest object itself (whether provided inline or ho
 }
 ```
 
-### Tone (String or Object)
+### Tone Object
 
-The `tone` field can be either a simple string or a structured object for detailed creative guidance.
-
-#### Simple String
-
-For basic use cases, provide a simple descriptor:
-
-```json
-{
-  "tone": "warm and inviting"
-}
-```
-
-#### Structured Tone Object
-
-For detailed creative guidance, provide a structured object:
+The `tone` field provides structured voice guidelines for creative agents.
 
 ```typescript
 {
@@ -392,8 +378,27 @@ For detailed creative guidance, provide a structured object:
 }
 ```
 
-#### Structured Tone Example
+#### Tone Fields
 
+| Field | Type | Description |
+|-------|------|-------------|
+| `voice` | string | High-level voice descriptor (e.g., "warm and inviting") |
+| `attributes` | string[] | Personality traits that characterize the brand |
+| `dos` | string[] | Specific guidance for copy generation |
+| `donts` | string[] | Guardrails to avoid brand violations |
+
+#### Tone Example
+
+**Minimal tone** (just voice):
+```json
+{
+  "tone": {
+    "voice": "professional and trustworthy"
+  }
+}
+```
+
+**Full tone with guidance**:
 ```json
 {
   "tone": {
@@ -507,7 +512,7 @@ Include brand manifest in media buy creation to provide context for creative gen
   "brand_manifest": {
     "url": "https://acmecorp.com",
     "name": "ACME Corporation",
-    "tone": "professional and innovative"
+    "tone": { "voice": "professional and innovative" }
   },
   "packages": [...],
   "budget": {...}
@@ -812,7 +817,7 @@ For implementations using the legacy `brand_guidelines` field in `build_creative
     "fonts": {
       "primary": "Helvetica Neue"
     },
-    "tone": "professional"
+    "tone": { "voice": "professional" }
   }
 }
 ```
