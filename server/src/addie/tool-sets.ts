@@ -274,6 +274,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'tag_insight',
       'list_pending_insights',
       'run_synthesis',
+      'send_member_dm',
     ],
     adminOnly: true,
   },
