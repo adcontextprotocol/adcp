@@ -46,6 +46,7 @@ export interface OAuthTokens {
 export interface OAuthClient {
   client_id: string;
   client_secret?: string;
+  registered_redirect_uri?: string;
 }
 
 export interface AgentTestHistory {
@@ -639,9 +640,10 @@ export class AgentContextDatabase {
          oauth_client_id = $1,
          oauth_client_secret_encrypted = $2,
          oauth_client_secret_iv = $3,
+         oauth_registered_redirect_uri = $4,
          updated_at = NOW()
-       WHERE id = $4`,
-      [client.client_id, secretEncrypted, secretIv, id]
+       WHERE id = $5`,
+      [client.client_id, secretEncrypted, secretIv, client.registered_redirect_uri || null, id]
     );
   }
 
@@ -654,7 +656,8 @@ export class AgentContextDatabase {
         organization_id,
         oauth_client_id,
         oauth_client_secret_encrypted,
-        oauth_client_secret_iv
+        oauth_client_secret_iv,
+        oauth_registered_redirect_uri
        FROM agent_contexts
        WHERE id = $1`,
       [id]
@@ -667,6 +670,7 @@ export class AgentContextDatabase {
 
     const client: OAuthClient = {
       client_id: row.oauth_client_id,
+      registered_redirect_uri: row.oauth_registered_redirect_uri || undefined,
     };
 
     if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
@@ -695,6 +699,30 @@ export class AgentContextDatabase {
          oauth_client_id = NULL,
          oauth_client_secret_encrypted = NULL,
          oauth_client_secret_iv = NULL,
+         oauth_registered_redirect_uri = NULL,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  }
+
+  /**
+   * Clear OAuth client only (keeps tokens if any exist)
+   * Used when redirect_uri changes and we need to re-register
+   */
+  async clearOAuthClient(id: string): Promise<void> {
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_client_id = NULL,
+         oauth_client_secret_encrypted = NULL,
+         oauth_client_secret_iv = NULL,
+         oauth_registered_redirect_uri = NULL,
+         oauth_access_token_encrypted = NULL,
+         oauth_access_token_iv = NULL,
+         oauth_refresh_token_encrypted = NULL,
+         oauth_refresh_token_iv = NULL,
+         oauth_token_expires_at = NULL,
          updated_at = NOW()
        WHERE id = $1`,
       [id]
