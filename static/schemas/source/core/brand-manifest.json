@@ -21,7 +21,7 @@
     },
     "logos": {
       "type": "array",
-      "description": "Brand logo assets with semantic tags for different use cases",
+      "description": "Brand logo assets with structured fields for orientation, background compatibility, and variant type. Use the orientation, background, and variant enum fields for reliable filtering by creative agents.",
       "items": {
         "type": "object",
         "properties": {
@@ -30,12 +30,31 @@
             "format": "uri",
             "description": "URL to the logo asset"
           },
+          "orientation": {
+            "type": "string",
+            "enum": ["square", "horizontal", "vertical", "stacked"],
+            "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
+          },
+          "background": {
+            "type": "string",
+            "enum": ["dark-bg", "light-bg", "transparent-bg"],
+            "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
+          },
+          "variant": {
+            "type": "string",
+            "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+            "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
+          },
           "tags": {
             "type": "array",
-            "description": "Semantic tags describing the logo variant (e.g., 'dark', 'light', 'square', 'horizontal', 'icon')",
+            "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields.",
             "items": {
               "type": "string"
             }
+          },
+          "usage": {
+            "type": "string",
+            "description": "Human-readable description of when to use this logo variant (e.g., 'Primary logo for use on light backgrounds', 'Icon-only variant for small formats')"
           },
           "width": {
             "type": "integer",
@@ -105,8 +124,38 @@
       }
     },
     "tone": {
-      "type": "string",
-      "description": "Brand voice and messaging tone (e.g., 'professional', 'casual', 'humorous', 'trustworthy', 'innovative')"
+      "type": "object",
+      "description": "Brand voice and messaging tone guidelines for creative agents.",
+      "properties": {
+        "voice": {
+          "type": "string",
+          "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')"
+        },
+        "attributes": {
+          "type": "array",
+          "description": "Personality traits that characterize the brand voice",
+          "items": {
+            "type": "string"
+          },
+          "examples": [["friendly", "optimistic", "conversational", "authentic"]]
+        },
+        "dos": {
+          "type": "array",
+          "description": "Specific guidance for copy generation - what TO do",
+          "items": {
+            "type": "string"
+          },
+          "examples": [["Use simple, everyday language", "Address the reader directly", "Keep sentences short and punchy"]]
+        },
+        "donts": {
+          "type": "array",
+          "description": "Guardrails to avoid brand violations - what NOT to do",
+          "items": {
+            "type": "string"
+          },
+          "examples": [["Avoid corporate jargon", "Don't be overly formal", "Don't make exaggerated claims"]]
+        }
+      }
     },
     "voice": {
       "type": "object",
@@ -384,7 +433,9 @@
           "primary": "#0071CE",
           "secondary": "#FFC220"
         },
-        "tone": "affordable and trustworthy"
+        "tone": {
+          "voice": "affordable and trustworthy"
+        }
       }
     },
     {
@@ -395,22 +446,31 @@
         "name": "ACME Corporation",
         "logos": [
           {
-            "url": "https://cdn.acmecorp.com/logo-square-dark.png",
-            "tags": [
-              "dark",
-              "square"
-            ],
-            "width": 512,
-            "height": 512
-          },
-          {
-            "url": "https://cdn.acmecorp.com/logo-horizontal-light.png",
-            "tags": [
-              "light",
-              "horizontal"
-            ],
+            "url": "https://cdn.acmecorp.com/logo-on-light.png",
+            "orientation": "horizontal",
+            "background": "light-bg",
+            "variant": "primary",
+            "usage": "Primary logo for use on light backgrounds",
             "width": 1200,
             "height": 400
+          },
+          {
+            "url": "https://cdn.acmecorp.com/logo-on-dark.png",
+            "orientation": "horizontal",
+            "background": "dark-bg",
+            "variant": "primary",
+            "usage": "Primary logo for use on dark backgrounds",
+            "width": 1200,
+            "height": 400
+          },
+          {
+            "url": "https://cdn.acmecorp.com/icon.png",
+            "orientation": "square",
+            "background": "transparent-bg",
+            "variant": "icon",
+            "usage": "Icon-only variant for small formats",
+            "width": 512,
+            "height": 512
           }
         ],
         "colors": {
@@ -424,7 +484,22 @@
           "primary": "Helvetica Neue",
           "secondary": "Georgia"
         },
-        "tone": "professional and trustworthy",
+        "tone": {
+          "voice": "professional and trustworthy",
+          "attributes": ["confident", "innovative", "approachable", "expert"],
+          "dos": [
+            "Use clear, direct language",
+            "Highlight innovation and reliability",
+            "Back claims with specifics",
+            "Address decision-makers directly"
+          ],
+          "donts": [
+            "Avoid hyperbole or exaggeration",
+            "Don't use overly casual language",
+            "Avoid technical jargon without explanation",
+            "Don't make unsubstantiated claims"
+          ]
+        },
         "tagline": "Innovation You Can Trust",
         "assets": [
           {
