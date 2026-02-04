@@ -52,7 +52,7 @@ export class PublisherTracker {
         status.issues.push({
           severity: "error",
           message: `File not found (HTTP ${response.status})`,
-          fix: `Deploy a valid adagents.json file to ${url}. See: https://adcontextprotocol.org/docs/authorization`,
+          fix: `Deploy a valid adagents.json file to ${url}. See: https://docs.adcontextprotocol.org/docs/authorization`,
         });
         this.cache.set(domain, status);
         return status;
