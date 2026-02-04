@@ -233,11 +233,7 @@ async function getNextArticleForChannel(
      WHERE p.source_type = 'rss'
        AND k.fetch_status = 'success'
        AND k.quality_score >= $1
-       AND (
-         $2 = ANY(k.notification_channel_ids)
-         OR k.notification_channel_ids IS NULL
-         OR array_length(k.notification_channel_ids, 1) = 0
-       )
+       AND $2 = ANY(k.notification_channel_ids)
        -- Dedupe by URL: check if ANY perspective with the same article URL
        -- has been alerted to this channel (prevents spam from cross-feed duplicates)
        AND NOT EXISTS (

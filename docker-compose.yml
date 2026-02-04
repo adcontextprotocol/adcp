@@ -31,6 +31,7 @@ services:
       - ALLOW_INSECURE_COOKIES=true
       - DEV_USER_EMAIL=dev@example.com
       - DEV_USER_ID=dev-user-123
+      - AGENT_TOKEN_ENCRYPTION_SECRET=local-dev-encryption-key-32chars!
     volumes:
       # Mount public directory for hot reloading static files
       - ./server/public:/app/server/public:ro

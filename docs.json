@@ -46,7 +46,7 @@
     {
       "name": "Working Group",
       "icon": "users",
-      "url": "https://adcontextprotocol.org/docs/community/working-group"
+      "url": "https://docs.adcontextprotocol.org/docs/community/working-group"
     }
   ],
   "navigation": {
@@ -196,6 +196,7 @@
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
+              "docs/media-buy/specification",
               {
                 "group": "Task Reference",
                 "pages": [
@@ -258,6 +259,7 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
+              "docs/creative/specification",
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
@@ -633,6 +635,7 @@
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
+              "docs/media-buy/specification",
               {
                 "group": "Task Reference",
                 "pages": [
@@ -695,6 +698,7 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
+              "docs/creative/specification",
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",

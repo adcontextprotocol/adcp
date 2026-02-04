@@ -36,6 +36,7 @@ export interface AgentCardValidationResult {
   response_time_ms?: number;
   card_data?: any;
   card_endpoint?: string;
+  oauth_required?: boolean;
 }
 
 export interface AdAgentsJsonInline {
@@ -603,8 +604,37 @@ export class AdAgentsManager {
 
     const MCP_TIMEOUT_MS = 5000; // Match timeout used in health.ts
 
+    // First, do a preflight HTTP check to detect 401 errors
+    // The @adcp/client library wraps 401s in generic errors, so we need to detect them directly
     try {
-      const { AdCPClient } = await import('@adcp/client');
+      const preflightResponse = await axios.post(agentUrl,
+        { jsonrpc: '2.0', method: 'initialize', params: {}, id: 1 },
+        {
+          timeout: 3000,
+          headers: { 'Content-Type': 'application/json' },
+          validateStatus: () => true // Accept all status codes
+        }
+      );
+
+      if (preflightResponse.status === 401) {
+        result.response_time_ms = Date.now() - startTime;
+        result.oauth_required = true;
+        result.valid = true; // Agent is reachable, just needs auth
+        result.status_code = 401;
+        result.card_endpoint = agentUrl;
+        result.card_data = {
+          protocol: 'mcp',
+          requires_auth: true,
+        };
+        return result;
+      }
+    } catch (preflightError) {
+      // Preflight failed (network error, DNS issue, etc.) - continue to try full MCP connection
+      // This is expected for agents that don't respond to raw HTTP POST
+    }
+
+    try {
+      const { AdCPClient, is401Error } = await import('@adcp/client');
       const multiClient = new AdCPClient([{
         id: 'health-check',
         name: 'Health Checker',
@@ -632,6 +662,22 @@ export class AdAgentsManager {
       };
     } catch (error) {
       result.response_time_ms = Date.now() - startTime;
+
+      // Check if this is an OAuth/authentication error - agent is reachable but requires auth
+      // Note: We use is401Error() rather than instanceof check because dynamic imports
+      // create separate module instances, making instanceof unreliable
+      const { is401Error } = await import('@adcp/client');
+      if (is401Error(error)) {
+        result.oauth_required = true;
+        result.valid = true; // Agent is reachable, just needs auth
+        result.card_endpoint = agentUrl;
+        result.card_data = {
+          protocol: 'mcp',
+          requires_auth: true,
+        };
+        return result;
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
       result.errors.push(`MCP connection failed: ${message}`);
     }

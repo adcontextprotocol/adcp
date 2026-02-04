@@ -236,7 +236,7 @@ async function runTests() {
       title: 'Sustainability Extension',
       description: 'Carbon footprint and green certification data',
       valid_from: '2.5',
-      docs_url: 'https://adcontextprotocol.org/docs/extensions/sustainability',
+      docs_url: 'https://docs.adcontextprotocol.org/docs/extensions/sustainability',
       type: 'object',
       properties: {
         carbon_kg_per_impression: { type: 'number' },

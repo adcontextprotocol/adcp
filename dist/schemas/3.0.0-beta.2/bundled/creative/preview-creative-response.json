@@ -1,0 +1,701 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/creative/preview-creative-response.json",
+  "title": "Preview Creative Response",
+  "description": "Response containing preview links for one or more creatives. Format matches the request: single preview response for single requests, batch results for batch requests.",
+  "oneOf": [
+    {
+      "title": "PreviewCreativeSingleResponse",
+      "type": "object",
+      "description": "Single preview response - each preview URL returns an HTML page that can be embedded in an iframe",
+      "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "single",
+          "description": "Discriminator indicating this is a single preview response"
+        },
+        "previews": {
+          "type": "array",
+          "description": "Array of preview variants. Each preview corresponds to an input set from the request. If no inputs were provided, returns a single default preview.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "preview_id": {
+                "type": "string",
+                "description": "Unique identifier for this preview variant"
+              },
+              "renders": {
+                "type": "array",
+                "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats (video + banner), multi-placement formats, and adaptive formats render as multiple pieces.",
+                "items": {
+                  "title": "Preview Render",
+                  "description": "A single rendered piece of a creative preview with discriminated output format",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "URL-only preview format",
+                      "properties": {
+                        "render_id": {
+                          "type": "string",
+                          "description": "Unique identifier for this rendered piece within the variant"
+                        },
+                        "output_format": {
+                          "type": "string",
+                          "const": "url",
+                          "description": "Discriminator indicating preview_url is provided"
+                        },
+                        "preview_url": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe."
+                        },
+                        "role": {
+                          "type": "string",
+                          "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                        },
+                        "dimensions": {
+                          "type": "object",
+                          "description": "Dimensions for this rendered piece",
+                          "properties": {
+                            "width": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "height": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "width",
+                            "height"
+                          ]
+                        },
+                        "embedding": {
+                          "type": "object",
+                          "description": "Optional security and embedding metadata for safe iframe integration",
+                          "properties": {
+                            "recommended_sandbox": {
+                              "type": "string",
+                              "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                            },
+                            "requires_https": {
+                              "type": "boolean",
+                              "description": "Whether this output requires HTTPS for secure embedding"
+                            },
+                            "supports_fullscreen": {
+                              "type": "boolean",
+                              "description": "Whether this output supports fullscreen mode"
+                            },
+                            "csp_policy": {
+                              "type": "string",
+                              "description": "Content Security Policy requirements for embedding"
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "render_id",
+                        "output_format",
+                        "preview_url",
+                        "role"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "description": "HTML-only preview format",
+                      "properties": {
+                        "render_id": {
+                          "type": "string",
+                          "description": "Unique identifier for this rendered piece within the variant"
+                        },
+                        "output_format": {
+                          "type": "string",
+                          "const": "html",
+                          "description": "Discriminator indicating preview_html is provided"
+                        },
+                        "preview_html": {
+                          "type": "string",
+                          "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
+                        },
+                        "role": {
+                          "type": "string",
+                          "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                        },
+                        "dimensions": {
+                          "type": "object",
+                          "description": "Dimensions for this rendered piece",
+                          "properties": {
+                            "width": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "height": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "width",
+                            "height"
+                          ]
+                        },
+                        "embedding": {
+                          "type": "object",
+                          "description": "Optional security and embedding metadata",
+                          "properties": {
+                            "recommended_sandbox": {
+                              "type": "string",
+                              "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                            },
+                            "requires_https": {
+                              "type": "boolean",
+                              "description": "Whether this output requires HTTPS for secure embedding"
+                            },
+                            "supports_fullscreen": {
+                              "type": "boolean",
+                              "description": "Whether this output supports fullscreen mode"
+                            },
+                            "csp_policy": {
+                              "type": "string",
+                              "description": "Content Security Policy requirements for embedding"
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "render_id",
+                        "output_format",
+                        "preview_html",
+                        "role"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "description": "Both URL and HTML preview format",
+                      "properties": {
+                        "render_id": {
+                          "type": "string",
+                          "description": "Unique identifier for this rendered piece within the variant"
+                        },
+                        "output_format": {
+                          "type": "string",
+                          "const": "both",
+                          "description": "Discriminator indicating both preview_url and preview_html are provided"
+                        },
+                        "preview_url": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe."
+                        },
+                        "preview_html": {
+                          "type": "string",
+                          "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
+                        },
+                        "role": {
+                          "type": "string",
+                          "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                        },
+                        "dimensions": {
+                          "type": "object",
+                          "description": "Dimensions for this rendered piece",
+                          "properties": {
+                            "width": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "height": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "width",
+                            "height"
+                          ]
+                        },
+                        "embedding": {
+                          "type": "object",
+                          "description": "Optional security and embedding metadata for safe iframe integration",
+                          "properties": {
+                            "recommended_sandbox": {
+                              "type": "string",
+                              "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                            },
+                            "requires_https": {
+                              "type": "boolean",
+                              "description": "Whether this output requires HTTPS for secure embedding"
+                            },
+                            "supports_fullscreen": {
+                              "type": "boolean",
+                              "description": "Whether this output supports fullscreen mode"
+                            },
+                            "csp_policy": {
+                              "type": "string",
+                              "description": "Content Security Policy requirements for embedding"
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "render_id",
+                        "output_format",
+                        "preview_url",
+                        "preview_html",
+                        "role"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "minItems": 1
+              },
+              "input": {
+                "type": "object",
+                "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Human-readable name for this variant"
+                  },
+                  "macros": {
+                    "type": "object",
+                    "description": "Macro values applied to this variant",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "context_description": {
+                    "type": "string",
+                    "description": "Context description applied to this variant"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            },
+            "required": [
+              "preview_id",
+              "renders",
+              "input"
+            ]
+          },
+          "minItems": 1
+        },
+        "interactive_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional URL to an interactive testing page that shows all preview variants with controls to switch between them, modify macro values, and test different scenarios."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when preview links expire"
+        },
+        "context": {
+          "title": "Context Object",
+          "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ext": {
+          "title": "Extension Object",
+          "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "response_type",
+        "previews",
+        "expires_at"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "PreviewCreativeBatchResponse",
+      "type": "object",
+      "description": "Batch preview response - contains results for multiple creative requests",
+      "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "batch",
+          "description": "Discriminator indicating this is a batch preview response"
+        },
+        "results": {
+          "type": "array",
+          "description": "Array of preview results corresponding to each request in the same order. results[0] is the result for requests[0], results[1] for requests[1], etc. Order is guaranteed even when some requests fail. Each result contains either a successful preview response or an error.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "description": "Whether this preview request succeeded"
+              },
+              "response": {
+                "type": "object",
+                "description": "Preview response for successful requests",
+                "properties": {
+                  "previews": {
+                    "type": "array",
+                    "description": "Array of preview variants for this creative",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "preview_id": {
+                          "type": "string"
+                        },
+                        "renders": {
+                          "type": "array",
+                          "items": {
+                            "title": "Preview Render",
+                            "description": "A single rendered piece of a creative preview with discriminated output format",
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "description": "URL-only preview format",
+                                "properties": {
+                                  "render_id": {
+                                    "type": "string",
+                                    "description": "Unique identifier for this rendered piece within the variant"
+                                  },
+                                  "output_format": {
+                                    "type": "string",
+                                    "const": "url",
+                                    "description": "Discriminator indicating preview_url is provided"
+                                  },
+                                  "preview_url": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe."
+                                  },
+                                  "role": {
+                                    "type": "string",
+                                    "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                                  },
+                                  "dimensions": {
+                                    "type": "object",
+                                    "description": "Dimensions for this rendered piece",
+                                    "properties": {
+                                      "width": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "height": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "width",
+                                      "height"
+                                    ]
+                                  },
+                                  "embedding": {
+                                    "type": "object",
+                                    "description": "Optional security and embedding metadata for safe iframe integration",
+                                    "properties": {
+                                      "recommended_sandbox": {
+                                        "type": "string",
+                                        "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                                      },
+                                      "requires_https": {
+                                        "type": "boolean",
+                                        "description": "Whether this output requires HTTPS for secure embedding"
+                                      },
+                                      "supports_fullscreen": {
+                                        "type": "boolean",
+                                        "description": "Whether this output supports fullscreen mode"
+                                      },
+                                      "csp_policy": {
+                                        "type": "string",
+                                        "description": "Content Security Policy requirements for embedding"
+                                      }
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "render_id",
+                                  "output_format",
+                                  "preview_url",
+                                  "role"
+                                ],
+                                "additionalProperties": true
+                              },
+                              {
+                                "type": "object",
+                                "description": "HTML-only preview format",
+                                "properties": {
+                                  "render_id": {
+                                    "type": "string",
+                                    "description": "Unique identifier for this rendered piece within the variant"
+                                  },
+                                  "output_format": {
+                                    "type": "string",
+                                    "const": "html",
+                                    "description": "Discriminator indicating preview_html is provided"
+                                  },
+                                  "preview_html": {
+                                    "type": "string",
+                                    "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
+                                  },
+                                  "role": {
+                                    "type": "string",
+                                    "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                                  },
+                                  "dimensions": {
+                                    "type": "object",
+                                    "description": "Dimensions for this rendered piece",
+                                    "properties": {
+                                      "width": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "height": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "width",
+                                      "height"
+                                    ]
+                                  },
+                                  "embedding": {
+                                    "type": "object",
+                                    "description": "Optional security and embedding metadata",
+                                    "properties": {
+                                      "recommended_sandbox": {
+                                        "type": "string",
+                                        "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                                      },
+                                      "requires_https": {
+                                        "type": "boolean",
+                                        "description": "Whether this output requires HTTPS for secure embedding"
+                                      },
+                                      "supports_fullscreen": {
+                                        "type": "boolean",
+                                        "description": "Whether this output supports fullscreen mode"
+                                      },
+                                      "csp_policy": {
+                                        "type": "string",
+                                        "description": "Content Security Policy requirements for embedding"
+                                      }
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "render_id",
+                                  "output_format",
+                                  "preview_html",
+                                  "role"
+                                ],
+                                "additionalProperties": true
+                              },
+                              {
+                                "type": "object",
+                                "description": "Both URL and HTML preview format",
+                                "properties": {
+                                  "render_id": {
+                                    "type": "string",
+                                    "description": "Unique identifier for this rendered piece within the variant"
+                                  },
+                                  "output_format": {
+                                    "type": "string",
+                                    "const": "both",
+                                    "description": "Discriminator indicating both preview_url and preview_html are provided"
+                                  },
+                                  "preview_url": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe."
+                                  },
+                                  "preview_html": {
+                                    "type": "string",
+                                    "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
+                                  },
+                                  "role": {
+                                    "type": "string",
+                                    "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                                  },
+                                  "dimensions": {
+                                    "type": "object",
+                                    "description": "Dimensions for this rendered piece",
+                                    "properties": {
+                                      "width": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "height": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "width",
+                                      "height"
+                                    ]
+                                  },
+                                  "embedding": {
+                                    "type": "object",
+                                    "description": "Optional security and embedding metadata for safe iframe integration",
+                                    "properties": {
+                                      "recommended_sandbox": {
+                                        "type": "string",
+                                        "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                                      },
+                                      "requires_https": {
+                                        "type": "boolean",
+                                        "description": "Whether this output requires HTTPS for secure embedding"
+                                      },
+                                      "supports_fullscreen": {
+                                        "type": "boolean",
+                                        "description": "Whether this output supports fullscreen mode"
+                                      },
+                                      "csp_policy": {
+                                        "type": "string",
+                                        "description": "Content Security Policy requirements for embedding"
+                                      }
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "render_id",
+                                  "output_format",
+                                  "preview_url",
+                                  "preview_html",
+                                  "role"
+                                ],
+                                "additionalProperties": true
+                              }
+                            ]
+                          },
+                          "minItems": 1
+                        },
+                        "input": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "macros": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string"
+                              }
+                            },
+                            "context_description": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "preview_id",
+                        "renders",
+                        "input"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "interactive_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "previews",
+                  "expires_at"
+                ]
+              },
+              "error": {
+                "type": "object",
+                "description": "Error information for failed requests",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "Error code (e.g., 'invalid_manifest', 'unsupported_format', 'missing_assets')"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Human-readable error message"
+                  },
+                  "details": {
+                    "type": "object",
+                    "description": "Additional error context",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ]
+              }
+            },
+            "required": [
+              "success"
+            ],
+            "oneOf": [
+              {
+                "title": "PreviewBatchResultSuccess",
+                "properties": {
+                  "success": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "response"
+                ]
+              },
+              {
+                "title": "PreviewBatchResultError",
+                "properties": {
+                  "success": {
+                    "type": "boolean",
+                    "const": false
+                  }
+                },
+                "required": [
+                  "error"
+                ]
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "title": "Context Object",
+          "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ext": {
+          "title": "Extension Object",
+          "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "response_type",
+        "results"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.691Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

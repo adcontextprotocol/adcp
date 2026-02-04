@@ -1,0 +1,295 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/sponsored-intelligence/si-initiate-session-request.json",
+  "title": "SI Initiate Session Request",
+  "description": "Host initiates a session with a brand agent",
+  "type": "object",
+  "properties": {
+    "context": {
+      "type": "string",
+      "description": "Conversation handoff from the host describing what the user needs"
+    },
+    "identity": {
+      "title": "SI Identity",
+      "description": "User identity shared with brand agent (with explicit consent)",
+      "type": "object",
+      "properties": {
+        "consent_granted": {
+          "type": "boolean",
+          "description": "Whether user consented to share identity"
+        },
+        "consent_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When consent was granted (ISO 8601)"
+        },
+        "consent_scope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "name",
+              "email",
+              "shipping_address",
+              "phone",
+              "locale"
+            ]
+          },
+          "description": "What data was consented to share"
+        },
+        "privacy_policy_acknowledged": {
+          "type": "object",
+          "description": "Brand privacy policy acknowledgment",
+          "properties": {
+            "brand_policy_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to brand's privacy policy"
+            },
+            "brand_policy_version": {
+              "type": "string",
+              "description": "Version of policy acknowledged"
+            }
+          },
+          "additionalProperties": true
+        },
+        "user": {
+          "type": "object",
+          "description": "User data (only present if consent_granted is true)",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "User's email address"
+            },
+            "name": {
+              "type": "string",
+              "description": "User's display name"
+            },
+            "locale": {
+              "type": "string",
+              "description": "User's locale (e.g., en-US)"
+            },
+            "phone": {
+              "type": "string",
+              "description": "User's phone number"
+            },
+            "shipping_address": {
+              "type": "object",
+              "description": "User's shipping address for accurate pricing",
+              "properties": {
+                "street": {
+                  "type": "string"
+                },
+                "city": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "postal_code": {
+                  "type": "string"
+                },
+                "country": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "anonymous_session_id": {
+          "type": "string",
+          "description": "Session ID for anonymous users (when consent_granted is false)"
+        }
+      },
+      "required": [
+        "consent_granted"
+      ],
+      "additionalProperties": true
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "AdCP media buy ID if session was triggered by advertising"
+    },
+    "placement": {
+      "type": "string",
+      "description": "Where this session was triggered (e.g., 'chatgpt_search', 'claude_chat')"
+    },
+    "offering_id": {
+      "type": "string",
+      "description": "Brand-specific offering identifier to apply"
+    },
+    "supported_capabilities": {
+      "title": "SI Capabilities",
+      "description": "What capabilities the host supports",
+      "type": "object",
+      "properties": {
+        "modalities": {
+          "type": "object",
+          "description": "Interaction modalities supported",
+          "properties": {
+            "conversational": {
+              "type": "boolean",
+              "description": "Pure text exchange - the baseline modality",
+              "default": true
+            },
+            "voice": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "description": "TTS provider (elevenlabs, openai, etc.)"
+                    },
+                    "voice_id": {
+                      "type": "string",
+                      "description": "Brand voice identifier"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Audio-based interaction using brand voice"
+            },
+            "video": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "formats": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Supported video formats (mp4, webm, etc.)"
+                    },
+                    "max_duration_seconds": {
+                      "type": "integer",
+                      "description": "Maximum video duration"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Brand video content playback"
+            },
+            "avatar": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "description": "Avatar provider (d-id, heygen, synthesia, etc.)"
+                    },
+                    "avatar_id": {
+                      "type": "string",
+                      "description": "Brand avatar identifier"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Animated video presence with brand avatar"
+            }
+          },
+          "additionalProperties": true
+        },
+        "components": {
+          "type": "object",
+          "description": "Visual components supported",
+          "properties": {
+            "standard": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "link",
+                  "image",
+                  "product_card",
+                  "carousel",
+                  "action_button"
+                ]
+              },
+              "description": "Standard components that all SI hosts must render"
+            },
+            "extensions": {
+              "type": "object",
+              "description": "Platform-specific extensions (chatgpt_apps_sdk, maps, forms, etc.)",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "commerce": {
+          "type": "object",
+          "description": "Commerce capabilities",
+          "properties": {
+            "acp_checkout": {
+              "type": "boolean",
+              "description": "Supports ACP (Agentic Commerce Protocol) checkout handoff"
+            }
+          },
+          "additionalProperties": true
+        },
+        "a2ui": {
+          "type": "object",
+          "description": "A2UI (Agent-to-UI) capabilities",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "description": "Supports A2UI surface rendering",
+              "default": false
+            },
+            "catalogs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Supported A2UI component catalogs (e.g., 'si-standard', 'standard')"
+            }
+          },
+          "additionalProperties": true
+        },
+        "mcp_apps": {
+          "type": "boolean",
+          "description": "Supports MCP Apps for rendering A2UI surfaces in iframes",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "offering_token": {
+      "type": "string",
+      "description": "Token from si_get_offering response for session continuity. Brand uses this to recall what products were shown to the user, enabling natural references like 'the second one' or 'that blue shoe'."
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "context",
+    "identity"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.723Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

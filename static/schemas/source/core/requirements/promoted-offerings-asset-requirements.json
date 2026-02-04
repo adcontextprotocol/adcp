@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/requirements/promoted-offerings-asset-requirements.json",
+  "title": "Promoted Offerings Asset Requirements",
+  "description": "Requirements for promoted offerings creative assets.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": true
+}

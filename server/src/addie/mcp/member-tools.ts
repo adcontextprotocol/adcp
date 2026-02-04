@@ -65,14 +65,14 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 /**
  * Public test agent credentials.
  * These are intentionally public and documented for testing purposes.
- * See: https://adcontextprotocol.org/docs/media-buy/advanced-topics/testing
+ * See: https://docs.adcontextprotocol.org/docs/media-buy/advanced-topics/testing
  *
  * The token can be overridden via PUBLIC_TEST_AGENT_TOKEN env var if needed,
  * but defaults to the documented public token.
  */
 const PUBLIC_TEST_AGENT = {
   url: 'https://test-agent.adcontextprotocol.org/mcp',
-  // Default token is documented at https://adcontextprotocol.org/docs/quickstart
+  // Default token is documented at https://docs.adcontextprotocol.org/docs/quickstart
   token: process.env.PUBLIC_TEST_AGENT_TOKEN || '1v8tAhASaUYYp' + '4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ',
   name: 'AdCP Public Test Agent',
 };
@@ -1857,19 +1857,24 @@ export function createMemberToolHandlers(
     }
 
     const healthData = healthResult.data as {
-      agent_cards: Array<{
-        agent_url: string;
-        valid: boolean;
-        errors?: string[];
-        status_code?: number;
-        response_time_ms?: number;
-        card_data?: { name?: string; description?: string; protocol?: string };
-        card_endpoint?: string;
-      }>;
+      success: boolean;
+      data: {
+        agent_cards: Array<{
+          agent_url: string;
+          valid: boolean;
+          errors?: string[];
+          status_code?: number;
+          response_time_ms?: number;
+          card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean };
+          card_endpoint?: string;
+          oauth_required?: boolean;
+        }>;
+      };
     };
 
-    const card = healthData?.agent_cards?.[0];
+    const card = healthData?.data?.agent_cards?.[0];
     const isHealthy = card?.valid === true;
+    const healthCheckRequiresOAuth = card?.oauth_required === true;
 
     // Step 2: Try capability discovery (non-blocking - show health status regardless of outcome)
     const encodedUrl = encodeURIComponent(agentUrl);
@@ -1885,10 +1890,55 @@ export function createMemberToolHandlers(
           tools_count: number;
           tools: Array<{ name: string; description?: string }>;
           standard_operations?: string[];
+          discovery_error?: string;
+          oauth_required?: boolean;
         };
       }>;
     };
     const agent = capData?.agents?.[0];
+
+    // Step 2.5: Check if OAuth is required (from either health check or capabilities discovery)
+    const requiresOAuth = healthCheckRequiresOAuth || agent?.capabilities?.oauth_required;
+    if (requiresOAuth) {
+      const organizationId = memberContext?.organization?.workos_organization_id;
+      if (organizationId) {
+        try {
+          // Get or create agent context for OAuth flow
+          const baseUrl = new URL(agentUrl);
+          let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
+          if (!agentContext) {
+            agentContext = await agentContextDb.create({
+              organization_id: organizationId,
+              agent_url: agentUrl,
+              agent_name: agent?.name || baseUrl.hostname,
+              protocol: (agent?.protocol as 'mcp' | 'a2a') || 'mcp',
+            });
+          }
+
+          const authParams = new URLSearchParams({
+            agent_context_id: agentContext.id,
+          });
+          const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+
+          let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+          response += `### Connectivity\n`;
+          response += `**Status:** 🔒 Requires Authentication\n\n`;
+          response += `This agent requires OAuth authorization before you can access it.\n\n`;
+          response += `**[Click here to authorize this agent](${authUrl})**\n\n`;
+          response += `After you authorize, try probing again to see the agent's capabilities.`;
+          return response;
+        } catch (oauthError) {
+          logger.debug({ error: oauthError, agentUrl }, 'Failed to set up OAuth flow for probe');
+        }
+      } else {
+        // User not logged in or no organization
+        let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+        response += `### Connectivity\n`;
+        response += `**Status:** 🔒 Requires Authentication\n\n`;
+        response += `This agent requires OAuth authorization. Please sign in to an organization account to authorize and access this agent.`;
+        return response;
+      }
+    }
 
     // Step 3: Format unified response
     let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
@@ -2012,10 +2062,12 @@ export function createMemberToolHandlers(
 
     // Look up saved token for organization
     let usingSavedToken = false;
+    let usingSavedOAuthToken = false;
     let usingPublicTestAgent = false;
     const organizationId = memberContext?.organization?.workos_organization_id;
 
     if (!authToken && organizationId) {
+      // First, try to get a saved bearer token
       try {
         const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
           organizationId,
@@ -2028,7 +2080,33 @@ export function createMemberToolHandlers(
         }
       } catch (error) {
         // Non-fatal - continue without saved token
-        logger.debug({ error, agentUrl }, 'Could not lookup saved token');
+        logger.debug({ error, agentUrl }, 'Could not lookup saved bearer token');
+      }
+
+      // If no bearer token, try OAuth tokens
+      if (!authToken) {
+        try {
+          const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(
+            organizationId,
+            agentUrl
+          );
+          if (oauthTokens?.access_token) {
+            // Check if token is expired (with 5-minute buffer to match hasValidOAuthTokens)
+            const isExpired = oauthTokens.expires_at &&
+              new Date(oauthTokens.expires_at).getTime() - Date.now() < 5 * 60 * 1000;
+            if (isExpired) {
+              logger.warn({ agentUrl }, 'OAuth token expired for agent test');
+              // TODO: Could attempt refresh here if refresh_token is available
+            } else {
+              authToken = oauthTokens.access_token;
+              usingSavedOAuthToken = true;
+              logger.info({ agentUrl }, 'Using saved OAuth token for agent test');
+            }
+          }
+        } catch (error) {
+          // Non-fatal - continue without OAuth token
+          logger.debug({ error, agentUrl }, 'Could not lookup saved OAuth token');
+        }
       }
     }
 
@@ -2104,6 +2182,8 @@ export function createMemberToolHandlers(
       let output = formatTestResults(result);
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
+      } else if (usingSavedOAuthToken) {
+        output = `_Using saved OAuth credentials for this agent._\n\n` + output;
       } else if (usingPublicTestAgent) {
         output = `_Using public test agent credentials._\n\n` + output;
       }

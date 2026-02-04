@@ -9,16 +9,11 @@
  * and task system in sync with actual communications.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
 import { getPool } from '../../db/client.js';
-import { ModelConfig } from '../../config/models.js';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 
 const logger = createLogger('interaction-analyzer');
-
-// Initialize Anthropic client
-const ANTHROPIC_API_KEY = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 /**
  * Context about the interaction being analyzed
@@ -231,7 +226,7 @@ Important:
 export async function analyzeInteraction(
   context: InteractionContext
 ): Promise<InteractionAnalysis | null> {
-  if (!anthropic) {
+  if (!isLLMConfigured()) {
     logger.warn('Anthropic not configured, skipping interaction analysis');
     return null;
   }
@@ -288,28 +283,17 @@ export async function analyzeInteraction(
     prompt += `\n## Pending Tasks\nNo pending tasks for this contact/organization.\n`;
   }
 
-  const startTime = Date.now();
-
   try {
-    const response = await anthropic.messages.create({
-      model: ModelConfig.fast,
-      max_tokens: 1000,
-      messages: [
-        { role: 'user', content: prompt },
-      ],
+    const result = await complete({
+      prompt,
       system: ANALYSIS_PROMPT,
+      maxTokens: 1000,
+      model: 'fast',
+      operationName: 'interaction-analysis',
     });
 
-    const durationMs = Date.now() - startTime;
-    const textBlock = response.content.find(block => block.type === 'text');
-
-    if (!textBlock || textBlock.type !== 'text') {
-      logger.warn({ durationMs }, 'No text response from Claude for interaction analysis');
-      return null;
-    }
-
     // Parse the JSON response
-    const rawAnalysis = textBlock.text;
+    const rawAnalysis = result.text;
     let parsed: {
       learnings?: InteractionAnalysis['learnings'];
       taskActions?: Array<{
@@ -346,13 +330,13 @@ export async function analyzeInteraction(
       }));
 
     logger.info({
-      durationMs,
+      durationMs: result.latencyMs,
       orgId,
       orgName,
       pendingTaskCount: pendingTasks.length,
       taskActionCount: taskActions.length,
       hasLearnings: !!parsed.learnings,
-      tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+      tokensUsed: (result.inputTokens || 0) + (result.outputTokens || 0),
     }, 'Interaction analysis completed');
 
     return {
@@ -361,8 +345,7 @@ export async function analyzeInteraction(
       rawAnalysis,
     };
   } catch (error) {
-    const durationMs = Date.now() - startTime;
-    logger.error({ error, durationMs }, 'Error analyzing interaction');
+    logger.error({ error }, 'Error analyzing interaction');
     return null;
   }
 }

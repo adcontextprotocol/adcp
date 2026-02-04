@@ -6,8 +6,9 @@
  * focused knowledge rules.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
+import { complete } from '../../utils/llm.js';
+import { ModelConfig } from '../../config/models.js';
 import {
   AddieDatabase,
   type InsightSource,
@@ -18,7 +19,6 @@ import {
   type AddieRule,
   type RuleType,
 } from '../../db/addie-db.js';
-import { ModelConfig } from '../../config/models.js';
 import {
   getOrCreateConfigVersion,
   invalidateConfigCache,
@@ -102,7 +102,6 @@ Prefer fewer, higher-quality rules over many mediocre ones.`;
  */
 export async function synthesizeInsights(
   db: AddieDatabase,
-  anthropicApiKey: string,
   options: SynthesisOptions = {}
 ): Promise<SynthesisResult> {
   const {
@@ -128,14 +127,12 @@ export async function synthesizeInsights(
   const topicsIncluded = Object.keys(byTopic);
 
   // 3. Synthesize each topic group
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
   const allProposedRules: ProposedRule[] = [];
   const allGaps: string[] = [];
   let totalTokens = 0;
 
   for (const [topicName, topicSources] of Object.entries(byTopic)) {
     const { rules, gaps, tokensUsed } = await synthesizeTopic(
-      anthropic,
       topicName,
       topicSources
     );
@@ -165,7 +162,6 @@ export async function synthesizeInsights(
     try {
       preview = await previewSynthesizedRules(
         db,
-        anthropic,
         allProposedRules,
         previewSampleSize
       );
@@ -301,21 +297,21 @@ function groupByTopic(sources: InsightSource[]): Record<string, InsightSource[]>
  * Synthesize a single topic's sources into rules
  */
 async function synthesizeTopic(
-  anthropic: Anthropic,
   topic: string,
   sources: InsightSource[]
 ): Promise<{ rules: ProposedRule[]; gaps: string[]; tokensUsed: number }> {
   const prompt = buildSynthesisPrompt(topic, sources);
 
-  const response = await anthropic.messages.create({
-    model: ModelConfig.primary,
-    max_tokens: 4096,
+  const result = await complete({
+    prompt,
     system: SYNTHESIS_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 4096,
+    model: 'primary',
+    operationName: 'insight-synthesis',
   });
 
-  const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
-  const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+  const tokensUsed = (result.inputTokens || 0) + (result.outputTokens || 0);
+  const responseText = result.text;
 
   // Parse response
   let parsed: ClaudeSynthesisResponse;
@@ -377,7 +373,6 @@ Now synthesize these sources into 1-3 focused knowledge rules. Remember:
  */
 async function previewSynthesizedRules(
   db: AddieDatabase,
-  anthropic: Anthropic,
   proposedRules: ProposedRule[],
   sampleSize: number
 ): Promise<SynthesisPreviewResults> {
@@ -411,12 +406,8 @@ async function previewSynthesizedRules(
 
   for (const interaction of sampled) {
     try {
-      const response = await anthropic.messages.create({
-        model: ModelConfig.fast,
-        max_tokens: 512,
-        messages: [{
-          role: 'user',
-          content: `You are evaluating how new knowledge rules would affect an AI assistant's response.
+      const result = await complete({
+        prompt: `You are evaluating how new knowledge rules would affect an AI assistant's response.
 
 ## New Rules Being Added
 
@@ -437,12 +428,13 @@ Would the new rules improve this response? Output JSON:
   "predicted_change": "Brief description of how response would change (or 'No significant change')",
   "improvement_score": 0.5,  // -1 (worse) to 1 (better), 0 = no change
   "confidence": 0.8
-}`
-        }],
+}`,
+        maxTokens: 512,
+        model: 'fast',
+        operationName: 'synthesis-preview',
       });
 
-      const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         predictions.push({

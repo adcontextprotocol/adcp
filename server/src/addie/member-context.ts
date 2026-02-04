@@ -153,6 +153,7 @@ export interface MemberContext {
     workos_organization_id: string;
     name: string;
     subscription_status: string | null;
+    is_personal: boolean;
   };
 
   /** Member profile info (if organization has a profile) */
@@ -401,12 +402,14 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         workos_organization_id: org.workos_organization_id,
         name: org.name,
         subscription_status: org.subscription_status,
+        is_personal: org.is_personal,
       };
-      context.is_member = org.subscription_status === 'active';
+      // Only consider them a member if they have an active subscription AND it's not a personal workspace
+      context.is_member = org.subscription_status === 'active' && !org.is_personal;
     }
 
-    // Process member profile
-    if (profile) {
+    // Process member profile (only for non-personal workspaces)
+    if (profile && !org?.is_personal) {
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
@@ -636,13 +639,15 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         workos_organization_id: org.workos_organization_id,
         name: org.name,
         subscription_status: org.subscription_status,
+        is_personal: org.is_personal,
       };
-      context.is_member = org.subscription_status === 'active';
+      // Only consider them a member if they have an active subscription AND it's not a personal workspace
+      context.is_member = org.subscription_status === 'active' && !org.is_personal;
     }
 
-    // Step 6: Get member profile if exists
+    // Step 6: Get member profile if exists (only for non-personal workspaces)
     const profile = await memberDb.getProfileByOrgId(organizationId);
-    if (profile) {
+    if (profile && !org?.is_personal) {
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
@@ -826,12 +831,21 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
 
   // Organization
   if (context.organization) {
-    lines.push(`They work at ${context.organization.name}.`);
-
-    if (context.is_member) {
-      lines.push('Their organization is an active AgenticAdvertising.org member.');
+    if (context.organization.is_personal) {
+      lines.push('They have an individual account (not a company account).');
+      if (context.is_member) {
+        lines.push('They are an active AgenticAdvertising.org individual member.');
+      } else {
+        lines.push('They are not currently an AgenticAdvertising.org member.');
+      }
     } else {
-      lines.push('Their organization is not currently an AgenticAdvertising.org member.');
+      lines.push(`They work at ${context.organization.name}.`);
+
+      if (context.is_member) {
+        lines.push('Their organization is an active AgenticAdvertising.org member.');
+      } else {
+        lines.push('Their organization is not currently an AgenticAdvertising.org member.');
+      }
     }
   }
 

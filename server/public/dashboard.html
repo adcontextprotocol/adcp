@@ -1661,9 +1661,10 @@
 
         const profile = await response.json();
         const alerts = [];
+        const isPersonalAccount = org.is_personal || org.billing?.is_personal;
 
-        // Check for missing logo
-        if (!profile.logo_url && !dismissedAlerts.includes('missing-logo')) {
+        // Check for missing logo (only for company accounts - individuals don't need logos)
+        if (!isPersonalAccount && !profile.logo_url && !dismissedAlerts.includes('missing-logo')) {
           alerts.push({
             id: 'missing-logo',
             icon: '🖼️',
@@ -1674,13 +1675,15 @@
           });
         }
 
-        // Check for missing tagline
+        // Check for missing description
         if (!profile.tagline && !dismissedAlerts.includes('missing-tagline')) {
           alerts.push({
             id: 'missing-tagline',
             icon: '✏️',
-            title: 'Add a Company Description',
-            message: 'Help others learn about your organization by adding a tagline.',
+            title: isPersonalAccount ? 'Add a Description' : 'Add a Company Description',
+            message: isPersonalAccount
+              ? 'Help others learn about you by adding a description.'
+              : 'Help others learn about your organization by adding a tagline.',
             actionLabel: 'Add Description',
             actionUrl: '/dashboard-settings#profile'
           });

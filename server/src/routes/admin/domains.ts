@@ -1819,6 +1819,56 @@ export function setupDomainRoutes(
           LIMIT $1
         `, [limit]);
 
+        // 8. Duplicate organizations - same email address appearing in multiple non-personal organizations
+        // This suggests these organizations may represent the same entity
+        const duplicateOrgsResult = await pool.query(`
+          WITH shared_emails AS (
+            SELECT
+              om.email,
+              COUNT(DISTINCT om.workos_organization_id) as org_count,
+              -- Sort org_ids to ensure consistent grouping
+              (SELECT array_agg(x ORDER BY x) FROM unnest(array_agg(DISTINCT om.workos_organization_id)) x) as org_ids
+            FROM organization_memberships om
+            JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+            WHERE om.email IS NOT NULL
+              AND o.is_personal = false
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailPlaceholders})
+            GROUP BY om.email
+            HAVING COUNT(DISTINCT om.workos_organization_id) > 1
+          ),
+          grouped_orgs AS (
+            -- Group by the sorted set of organizations to avoid duplicate entries
+            SELECT
+              array_agg(DISTINCT se.email ORDER BY se.email) as shared_emails,
+              se.org_ids,
+              array_length(se.org_ids, 1) as org_count
+            FROM shared_emails se
+            GROUP BY se.org_ids
+          ),
+          org_member_counts AS (
+            SELECT workos_organization_id, COUNT(*) as member_count
+            FROM organization_memberships
+            GROUP BY workos_organization_id
+          )
+          SELECT
+            go.shared_emails,
+            go.org_count,
+            (
+              SELECT json_agg(jsonb_build_object(
+                'org_id', o.workos_organization_id,
+                'name', o.name,
+                'subscription_status', o.subscription_status,
+                'member_count', COALESCE(omc.member_count, 0)
+              ) ORDER BY o.name)
+              FROM organizations o
+              LEFT JOIN org_member_counts omc ON omc.workos_organization_id = o.workos_organization_id
+              WHERE o.workos_organization_id = ANY(go.org_ids)
+            ) as organizations
+          FROM grouped_orgs go
+          ORDER BY go.org_count DESC, array_length(go.shared_emails, 1) DESC
+          LIMIT $${allExcludedDomains.length + 1}
+        `, [...allExcludedDomains, limit]);
+
         res.json({
           summary: {
             total_organizations: parseInt(statsResult.rows[0].total_orgs, 10),
@@ -1834,6 +1884,7 @@ export function setupDomainRoutes(
               domain_sync_issues: domainSyncResult.rows.length,
               related_domains: relatedDomainsResult.rows.length,
               similar_names: similarNamesResult.rows.length,
+              duplicate_organizations: duplicateOrgsResult.rows.length,
             },
           },
           orphan_domains: orphanResult.rows.map(row => ({
@@ -1887,6 +1938,11 @@ export function setupDomainRoutes(
             base_name: row.base_name,
             org_count: parseInt(row.org_count, 10),
             organizations: row.organizations,
+          })),
+          duplicate_organizations: duplicateOrgsResult.rows.map(row => ({
+            shared_emails: row.shared_emails || [],
+            org_count: parseInt(row.org_count, 10),
+            organizations: row.organizations || [],
           })),
         });
       } catch (error) {

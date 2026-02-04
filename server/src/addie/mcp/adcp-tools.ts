@@ -10,6 +10,7 @@ import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
+import { AuthenticationRequiredError } from '@adcp/client';
 
 // Tool handler type (matches claude-client.ts internal type)
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -1270,14 +1271,35 @@ export function createAdcpToolHandlers(
   const handlers = new Map<string, ToolHandler>();
   const agentContextDb = new AgentContextDatabase();
 
-  // Helper to get auth token for an agent
+  // Helper to get auth token for an agent (checks OAuth first, then static token)
   async function getAuthToken(agentUrl: string): Promise<string | undefined> {
     const organizationId = memberContext?.organization?.workos_organization_id;
     if (!organizationId) return undefined;
 
     try {
+      // First check for OAuth tokens
+      const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, agentUrl);
+      if (oauthTokens) {
+        // Check if token is expired
+        if (oauthTokens.expires_at) {
+          const expiresAt = new Date(oauthTokens.expires_at);
+          if (expiresAt.getTime() - Date.now() > 5 * 60 * 1000) {
+            logger.debug({ agentUrl }, 'Using OAuth access token for agent');
+            return oauthTokens.access_token;
+          }
+          // Token expired or expiring soon - could refresh here in future
+          logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon');
+        } else {
+          // No expiration, use the token
+          logger.debug({ agentUrl }, 'Using OAuth access token for agent (no expiration)');
+          return oauthTokens.access_token;
+        }
+      }
+
+      // Fall back to static auth token
       const token = await agentContextDb.getAuthTokenByOrgAndUrl(organizationId, agentUrl);
       if (token) {
+        logger.debug({ agentUrl }, 'Using static auth token for agent');
         return token;
       }
     } catch (error) {
@@ -1372,7 +1394,59 @@ export function createAdcpToolHandlers(
       return output;
     } catch (error) {
       logger.error({ error, agentUrl, task }, `AdCP: ${task} failed`);
-      return `**Task failed:** \`${task}\`\n\n**Error:** ${error instanceof Error ? error.message : 'Unknown error'}`;
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Handle AuthenticationRequiredError from @adcp/client (includes OAuth metadata)
+      if (error instanceof AuthenticationRequiredError) {
+        const organizationId = memberContext?.organization?.workos_organization_id;
+        if (organizationId && error.hasOAuth) {
+          try {
+            // Get or create agent context for OAuth flow
+            const baseUrl = new URL(agentUrl);
+            let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
+            if (!agentContext) {
+              agentContext = await agentContextDb.create({
+                organization_id: organizationId,
+                agent_url: agentUrl,
+                agent_name: baseUrl.hostname,
+                agent_type: 'sales',
+                protocol: 'mcp',
+              });
+              logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
+            }
+
+            // Build auth URL with pending request context for auto-retry
+            // Note: URLSearchParams handles encoding, so don't double-encode
+            const authParams = new URLSearchParams({
+              agent_context_id: agentContext.id,
+              pending_task: task,
+              pending_params: JSON.stringify(params),
+            });
+            const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+
+            return (
+              `**Task failed:** \`${task}\`\n\n` +
+              `**Error:** OAuth authorization required\n\n` +
+              `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
+              `**[Click here to authorize this agent](${authUrl})**\n\n` +
+              `After you authorize, I'll automatically retry your request.`
+            );
+          } catch (oauthSetupError) {
+            logger.debug({ error: oauthSetupError, agentUrl }, 'Failed to set up OAuth flow');
+          }
+        }
+
+        // OAuth not available or couldn't set up flow
+        return (
+          `**Task failed:** \`${task}\`\n\n` +
+          `**Error:** Authentication required\n\n` +
+          `The agent at \`${agentUrl}\` requires authentication. ` +
+          `Please check with the agent provider for authentication requirements.`
+        );
+      }
+
+      return `**Task failed:** \`${task}\`\n\n**Error:** ${errorMessage}`;
     }
   }
 

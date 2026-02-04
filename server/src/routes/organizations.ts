@@ -620,21 +620,27 @@ export function createOrganizationsRouter(): Router {
 
       const domains = domainsResult.rows.map(r => r.domain.toLowerCase());
 
-      // Get current org members' emails
-      const allMemberships = await workos!.userManagement.listOrganizationMemberships({
-        organizationId: orgId,
-      });
+      // Get current org members' emails (paginate to get all)
       const memberEmails = new Set<string>();
-      for (const membership of allMemberships.data) {
-        try {
-          const memberUser = await workos!.userManagement.getUser(membership.userId);
-          if (memberUser.email) {
-            memberEmails.add(memberUser.email.toLowerCase());
+      let after: string | undefined;
+      do {
+        const membershipsPage = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          after,
+          limit: 100,
+        });
+        for (const membership of membershipsPage.data) {
+          try {
+            const memberUser = await workos!.userManagement.getUser(membership.userId);
+            if (memberUser.email) {
+              memberEmails.add(memberUser.email.toLowerCase());
+            }
+          } catch {
+            // Skip if can't fetch user
           }
-        } catch {
-          // Skip if can't fetch user
         }
-      }
+        after = membershipsPage.listMetadata?.after ?? undefined;
+      } while (after);
 
       // Get pending join request emails for this org
       const joinRequestsResult = await pool.query(
@@ -1823,6 +1829,96 @@ export function createOrganizationsRouter(): Router {
     }
   });
 
+  // POST /api/organizations/:orgId/convert-to-individual - Convert team workspace to individual
+  router.post('/:orgId/convert-to-individual', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+
+      // Verify user is owner of this organization
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+
+      if (memberships.data.length === 0) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are not a member of this organization',
+        });
+      }
+
+      const userRole = memberships.data[0].role?.slug || 'member';
+      if (userRole !== 'owner') {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only owners can convert a workspace to individual',
+        });
+      }
+
+      // Check if already individual
+      const localOrg = await orgDb.getOrganization(orgId);
+      if (localOrg?.is_personal) {
+        return res.status(400).json({
+          error: 'Already individual',
+          message: 'This workspace is already an individual workspace',
+        });
+      }
+
+      // Check team member count - can't convert if there are multiple members
+      // Use pagination but exit early once we find more than 1 member
+      let totalMembers = 0;
+      let memberAfter: string | undefined;
+      do {
+        const membershipsPage = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          after: memberAfter,
+          limit: 100,
+        });
+        totalMembers += membershipsPage.data.length;
+        if (totalMembers > 1) break; // Early exit - no need to count further
+        memberAfter = membershipsPage.listMetadata?.after ?? undefined;
+      } while (memberAfter);
+
+      if (totalMembers > 1) {
+        return res.status(400).json({
+          error: 'Has team members',
+          message: `Cannot convert to individual account: this workspace has ${totalMembers} team members. Remove other team members first.`,
+          member_count: totalMembers,
+        });
+      }
+
+      // Convert to individual by setting is_personal to true
+      await orgDb.updateOrganization(orgId, { is_personal: true });
+
+      // Record audit log
+      await orgDb.recordAuditLog({
+        workos_organization_id: orgId,
+        workos_user_id: user.id,
+        action: 'convert_to_individual',
+        resource_type: 'organization',
+        resource_id: orgId,
+        details: {
+          previous_state: 'team',
+          new_state: 'personal',
+        },
+      });
+
+      logger.info({ orgId, userId: user.id }, 'Team workspace converted to individual');
+
+      res.json({
+        success: true,
+        message: 'Workspace converted to individual successfully',
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Convert to individual error');
+      res.status(500).json({
+        error: 'Failed to convert workspace',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // =========================================================================
   // TEAM MANAGEMENT
   // =========================================================================
@@ -1863,11 +1959,23 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Get all members of the organization
-      const memberships = await workos!.userManagement.listOrganizationMemberships({
+      // Get all members of the organization (paginate to handle orgs with >100 members)
+      // Fetch first page to get type inference, then paginate if needed
+      let membershipsPage = await workos!.userManagement.listOrganizationMemberships({
         organizationId: orgId,
         statuses: ['active', 'pending'],
+        limit: 100,
       });
+      const allMemberships = [...membershipsPage.data];
+      while (membershipsPage.listMetadata?.after) {
+        membershipsPage = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          statuses: ['active', 'pending'],
+          after: membershipsPage.listMetadata.after,
+          limit: 100,
+        });
+        allMemberships.push(...membershipsPage.data);
+      }
 
       // Get all mapped WorkOS user IDs from Slack
       const slackDb = new SlackDatabase();
@@ -1875,7 +1983,7 @@ export function createOrganizationsRouter(): Router {
 
       // Fetch user details for each membership
       const members = await Promise.all(
-        memberships.data.map(async (membership) => {
+        allMemberships.map(async (membership) => {
           try {
             const memberUser = await workos!.userManagement.getUser(membership.userId);
             return {
@@ -2368,8 +2476,23 @@ export function createOrganizationsRouter(): Router {
         // User might already be deleted
       }
 
-      // Delete the membership
+      // Delete the membership from WorkOS
       await workos!.userManagement.deleteOrganizationMembership(membershipId);
+
+      // Clean up local organization_memberships table immediately (don't wait for webhook)
+      // This ensures the user isn't "stuck" with stale membership data
+      const pool = getPool();
+      try {
+        await pool.query(
+          `DELETE FROM organization_memberships
+           WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+          [membership.userId, orgId]
+        );
+        logger.debug({ userId: membership.userId, orgId }, 'Cleaned up local organization_memberships');
+      } catch (cleanupError) {
+        // Log but don't fail - the webhook will eventually clean this up
+        logger.warn({ error: cleanupError, userId: membership.userId, orgId }, 'Failed to clean up local organization_memberships');
+      }
 
       logger.info({ orgId, membershipId, removedBy: user.id }, 'Member removed');
 

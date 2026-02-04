@@ -1,0 +1,1053 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/content-standards/update-content-standards-request.json",
+  "title": "Update Content Standards Request",
+  "description": "Request parameters for updating an existing content standards configuration. Creates a new version.",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "ID of the standards configuration to update"
+    },
+    "scope": {
+      "type": "object",
+      "description": "Updated scope for where this standards configuration applies",
+      "properties": {
+        "countries_all": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
+        },
+        "channels_any": {
+          "type": "array",
+          "items": {
+            "title": "Media Channel",
+            "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+            "type": "string",
+            "enum": [
+              "display",
+              "olv",
+              "social",
+              "search",
+              "ctv",
+              "linear_tv",
+              "radio",
+              "streaming_audio",
+              "podcast",
+              "dooh",
+              "ooh",
+              "print",
+              "cinema",
+              "email",
+              "gaming",
+              "retail_media",
+              "influencer",
+              "affiliate",
+              "product_placement"
+            ],
+            "enumDescriptions": {
+              "display": "Digital display advertising (banners, native, rich media) across web and app",
+              "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+              "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+              "search": "Search engine advertising and search networks",
+              "ctv": "Connected TV and streaming on television screens",
+              "linear_tv": "Traditional broadcast and cable television",
+              "radio": "Traditional AM/FM radio broadcast",
+              "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+              "podcast": "Podcast advertising (host-read or dynamically inserted)",
+              "dooh": "Digital out-of-home screens in public spaces",
+              "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+              "print": "Newspapers, magazines, and other print publications",
+              "cinema": "Movie theater advertising",
+              "email": "Email advertising and sponsored newsletter content",
+              "gaming": "In-game advertising across platforms",
+              "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+              "influencer": "Creator and influencer marketing partnerships",
+              "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+              "product_placement": "Product placement, branded content, and sponsorship integrations"
+            }
+          },
+          "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
+        },
+        "languages_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this scope"
+        }
+      }
+    },
+    "policy": {
+      "type": "string",
+      "description": "Updated natural language policy describing acceptable and unacceptable content contexts."
+    },
+    "calibration_exemplars": {
+      "type": "object",
+      "description": "Updated training/test set to calibrate policy interpretation. Use URL references for pages to be fetched and analyzed, or full artifacts for pre-extracted content.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "URL reference - specific page to fetch and evaluate",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "url",
+                    "description": "Indicates this is a URL reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full URL to a specific page (e.g., 'https://espn.com/nba/story/_/id/12345/lakers-win')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content at this URL"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ]
+              },
+              {
+                "title": "Artifact",
+                "description": "Full artifact with pre-extracted content (text, images, video, audio)",
+                "type": "object",
+                "properties": {
+                  "property_id": {
+                    "title": "Identifier",
+                    "description": "Identifier for the property where this artifact appears",
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "title": "Property Identifier Types",
+                        "description": "Type of identifier",
+                        "type": "string",
+                        "enum": [
+                          "domain",
+                          "subdomain",
+                          "network_id",
+                          "ios_bundle",
+                          "android_package",
+                          "apple_app_store_id",
+                          "google_play_id",
+                          "roku_store_id",
+                          "fire_tv_asin",
+                          "samsung_app_id",
+                          "apple_tv_bundle",
+                          "bundle_id",
+                          "venue_id",
+                          "screen_id",
+                          "openooh_venue_type",
+                          "rss_url",
+                          "apple_podcast_id",
+                          "spotify_show_id",
+                          "podcast_guid"
+                        ],
+                        "examples": [
+                          "domain",
+                          "ios_bundle",
+                          "venue_id",
+                          "apple_podcast_id"
+                        ]
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "artifact_id": {
+                    "type": "string",
+                    "description": "Identifier for this artifact within the property. The property owner defines the scheme (e.g., 'article_12345', 'episode_42_segment_3', 'post_abc123')."
+                  },
+                  "variant_id": {
+                    "type": "string",
+                    "description": "Identifies a specific variant of this artifact. Use for A/B tests, translations, or temporal versions. Examples: 'en', 'es-MX', 'v2', 'headline_test_b'. The combination of artifact_id + variant_id must be unique."
+                  },
+                  "format_id": {
+                    "title": "Format ID",
+                    "description": "Optional reference to a format definition. Uses the same format registry as creative formats.",
+                    "type": "object",
+                    "properties": {
+                      "agent_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$",
+                        "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+                      },
+                      "duration_ms": {
+                        "type": "number",
+                        "minimum": 1,
+                        "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+                      }
+                    },
+                    "required": [
+                      "agent_url",
+                      "id"
+                    ],
+                    "additionalProperties": true,
+                    "dependencies": {
+                      "width": [
+                        "height"
+                      ],
+                      "height": [
+                        "width"
+                      ]
+                    }
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Optional URL for this artifact (web page, podcast feed, video page). Not all artifacts have URLs (e.g., Instagram content, podcast segments, TV scenes)."
+                  },
+                  "published_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the artifact was published (ISO 8601 format)"
+                  },
+                  "last_update_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the artifact was last modified (ISO 8601 format)"
+                  },
+                  "assets": {
+                    "type": "array",
+                    "description": "Artifact assets in document flow order - text blocks, images, video, audio",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "description": "Text block (paragraph, heading, etc.)",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "text"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "title",
+                                "paragraph",
+                                "heading",
+                                "caption",
+                                "quote",
+                                "list_item",
+                                "description"
+                              ],
+                              "description": "Role of this text in the document. Use 'title' for the main artifact title, 'description' for summaries."
+                            },
+                            "content": {
+                              "type": "string",
+                              "description": "Text content"
+                            },
+                            "language": {
+                              "type": "string",
+                              "description": "BCP 47 language tag for this text (e.g., 'en', 'es-MX'). Useful when artifact contains mixed-language content."
+                            },
+                            "heading_level": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 6,
+                              "description": "Heading level (1-6), only for role=heading"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "content"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "description": "Image asset",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "image"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Image URL"
+                            },
+                            "access": {
+                              "$ref": "#/$defs/asset_access",
+                              "description": "Authentication for secured URLs"
+                            },
+                            "alt_text": {
+                              "type": "string",
+                              "description": "Alt text or image description"
+                            },
+                            "caption": {
+                              "type": "string",
+                              "description": "Image caption"
+                            },
+                            "width": {
+                              "type": "integer",
+                              "description": "Image width in pixels"
+                            },
+                            "height": {
+                              "type": "integer",
+                              "description": "Image height in pixels"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "url"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "description": "Video asset",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "video"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Video URL"
+                            },
+                            "access": {
+                              "$ref": "#/$defs/asset_access",
+                              "description": "Authentication for secured URLs"
+                            },
+                            "duration_ms": {
+                              "type": "integer",
+                              "description": "Video duration in milliseconds"
+                            },
+                            "transcript": {
+                              "type": "string",
+                              "description": "Video transcript"
+                            },
+                            "transcript_source": {
+                              "type": "string",
+                              "enum": [
+                                "original_script",
+                                "subtitles",
+                                "closed_captions",
+                                "dub",
+                                "generated"
+                              ],
+                              "description": "How the transcript was generated"
+                            },
+                            "thumbnail_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Video thumbnail URL"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "url"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "description": "Audio asset",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "audio"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Audio URL"
+                            },
+                            "access": {
+                              "$ref": "#/$defs/asset_access",
+                              "description": "Authentication for secured URLs"
+                            },
+                            "duration_ms": {
+                              "type": "integer",
+                              "description": "Audio duration in milliseconds"
+                            },
+                            "transcript": {
+                              "type": "string",
+                              "description": "Audio transcript"
+                            },
+                            "transcript_source": {
+                              "type": "string",
+                              "enum": [
+                                "original_script",
+                                "closed_captions",
+                                "generated"
+                              ],
+                              "description": "How the transcript was generated"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "url"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Rich metadata extracted from the artifact",
+                    "properties": {
+                      "canonical": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "Canonical URL"
+                      },
+                      "author": {
+                        "type": "string",
+                        "description": "Artifact author name"
+                      },
+                      "keywords": {
+                        "type": "string",
+                        "description": "Artifact keywords"
+                      },
+                      "open_graph": {
+                        "type": "object",
+                        "description": "Open Graph protocol metadata",
+                        "additionalProperties": true
+                      },
+                      "twitter_card": {
+                        "type": "object",
+                        "description": "Twitter Card metadata",
+                        "additionalProperties": true
+                      },
+                      "json_ld": {
+                        "type": "array",
+                        "description": "JSON-LD structured data (schema.org)",
+                        "items": {
+                          "type": "object"
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  },
+                  "identifiers": {
+                    "type": "object",
+                    "description": "Platform-specific identifiers for this artifact",
+                    "properties": {
+                      "apple_podcast_id": {
+                        "type": "string",
+                        "description": "Apple Podcasts ID"
+                      },
+                      "spotify_show_id": {
+                        "type": "string",
+                        "description": "Spotify show ID"
+                      },
+                      "podcast_guid": {
+                        "type": "string",
+                        "description": "Podcast GUID (from RSS feed)"
+                      },
+                      "youtube_video_id": {
+                        "type": "string",
+                        "description": "YouTube video ID"
+                      },
+                      "rss_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "RSS feed URL"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "property_id",
+                  "artifact_id",
+                  "assets"
+                ],
+                "additionalProperties": true,
+                "$defs": {
+                  "asset_access": {
+                    "type": "object",
+                    "description": "Authentication for accessing secured asset URLs",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Bearer token authentication",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "const": "bearer_token"
+                          },
+                          "token": {
+                            "type": "string",
+                            "description": "OAuth2 bearer token for Authorization header"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "token"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "description": "Service account authentication (GCP, AWS)",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "const": "service_account"
+                          },
+                          "provider": {
+                            "type": "string",
+                            "enum": [
+                              "gcp",
+                              "aws"
+                            ],
+                            "description": "Cloud provider"
+                          },
+                          "credentials": {
+                            "type": "object",
+                            "description": "Service account credentials",
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "provider"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "description": "Pre-signed URL (credentials embedded in URL)",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "const": "signed_url"
+                          }
+                        },
+                        "required": [
+                          "method"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Content that passes the standards"
+        },
+        "fail": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "URL reference - specific page to fetch and evaluate",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "url",
+                    "description": "Indicates this is a URL reference"
+                  },
+                  "value": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full URL to a specific page (e.g., 'https://news.example.com/controversial-article')"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "BCP 47 language tag for content at this URL"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ]
+              },
+              {
+                "title": "Artifact",
+                "description": "Full artifact with pre-extracted content (text, images, video, audio)",
+                "type": "object",
+                "properties": {
+                  "property_id": {
+                    "title": "Identifier",
+                    "description": "Identifier for the property where this artifact appears",
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "title": "Property Identifier Types",
+                        "description": "Type of identifier",
+                        "type": "string",
+                        "enum": [
+                          "domain",
+                          "subdomain",
+                          "network_id",
+                          "ios_bundle",
+                          "android_package",
+                          "apple_app_store_id",
+                          "google_play_id",
+                          "roku_store_id",
+                          "fire_tv_asin",
+                          "samsung_app_id",
+                          "apple_tv_bundle",
+                          "bundle_id",
+                          "venue_id",
+                          "screen_id",
+                          "openooh_venue_type",
+                          "rss_url",
+                          "apple_podcast_id",
+                          "spotify_show_id",
+                          "podcast_guid"
+                        ],
+                        "examples": [
+                          "domain",
+                          "ios_bundle",
+                          "venue_id",
+                          "apple_podcast_id"
+                        ]
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "artifact_id": {
+                    "type": "string",
+                    "description": "Identifier for this artifact within the property. The property owner defines the scheme (e.g., 'article_12345', 'episode_42_segment_3', 'post_abc123')."
+                  },
+                  "variant_id": {
+                    "type": "string",
+                    "description": "Identifies a specific variant of this artifact. Use for A/B tests, translations, or temporal versions. Examples: 'en', 'es-MX', 'v2', 'headline_test_b'. The combination of artifact_id + variant_id must be unique."
+                  },
+                  "format_id": {
+                    "title": "Format ID",
+                    "description": "Optional reference to a format definition. Uses the same format registry as creative formats.",
+                    "type": "object",
+                    "properties": {
+                      "agent_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$",
+                        "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+                      },
+                      "duration_ms": {
+                        "type": "number",
+                        "minimum": 1,
+                        "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+                      }
+                    },
+                    "required": [
+                      "agent_url",
+                      "id"
+                    ],
+                    "additionalProperties": true,
+                    "dependencies": {
+                      "width": [
+                        "height"
+                      ],
+                      "height": [
+                        "width"
+                      ]
+                    }
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Optional URL for this artifact (web page, podcast feed, video page). Not all artifacts have URLs (e.g., Instagram content, podcast segments, TV scenes)."
+                  },
+                  "published_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the artifact was published (ISO 8601 format)"
+                  },
+                  "last_update_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the artifact was last modified (ISO 8601 format)"
+                  },
+                  "assets": {
+                    "type": "array",
+                    "description": "Artifact assets in document flow order - text blocks, images, video, audio",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "description": "Text block (paragraph, heading, etc.)",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "text"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "title",
+                                "paragraph",
+                                "heading",
+                                "caption",
+                                "quote",
+                                "list_item",
+                                "description"
+                              ],
+                              "description": "Role of this text in the document. Use 'title' for the main artifact title, 'description' for summaries."
+                            },
+                            "content": {
+                              "type": "string",
+                              "description": "Text content"
+                            },
+                            "language": {
+                              "type": "string",
+                              "description": "BCP 47 language tag for this text (e.g., 'en', 'es-MX'). Useful when artifact contains mixed-language content."
+                            },
+                            "heading_level": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 6,
+                              "description": "Heading level (1-6), only for role=heading"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "content"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "description": "Image asset",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "image"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Image URL"
+                            },
+                            "access": {
+                              "$ref": "#/$defs/asset_access",
+                              "description": "Authentication for secured URLs"
+                            },
+                            "alt_text": {
+                              "type": "string",
+                              "description": "Alt text or image description"
+                            },
+                            "caption": {
+                              "type": "string",
+                              "description": "Image caption"
+                            },
+                            "width": {
+                              "type": "integer",
+                              "description": "Image width in pixels"
+                            },
+                            "height": {
+                              "type": "integer",
+                              "description": "Image height in pixels"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "url"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "description": "Video asset",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "video"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Video URL"
+                            },
+                            "access": {
+                              "$ref": "#/$defs/asset_access",
+                              "description": "Authentication for secured URLs"
+                            },
+                            "duration_ms": {
+                              "type": "integer",
+                              "description": "Video duration in milliseconds"
+                            },
+                            "transcript": {
+                              "type": "string",
+                              "description": "Video transcript"
+                            },
+                            "transcript_source": {
+                              "type": "string",
+                              "enum": [
+                                "original_script",
+                                "subtitles",
+                                "closed_captions",
+                                "dub",
+                                "generated"
+                              ],
+                              "description": "How the transcript was generated"
+                            },
+                            "thumbnail_url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Video thumbnail URL"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "url"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "description": "Audio asset",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "audio"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "Audio URL"
+                            },
+                            "access": {
+                              "$ref": "#/$defs/asset_access",
+                              "description": "Authentication for secured URLs"
+                            },
+                            "duration_ms": {
+                              "type": "integer",
+                              "description": "Audio duration in milliseconds"
+                            },
+                            "transcript": {
+                              "type": "string",
+                              "description": "Audio transcript"
+                            },
+                            "transcript_source": {
+                              "type": "string",
+                              "enum": [
+                                "original_script",
+                                "closed_captions",
+                                "generated"
+                              ],
+                              "description": "How the transcript was generated"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "url"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Rich metadata extracted from the artifact",
+                    "properties": {
+                      "canonical": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "Canonical URL"
+                      },
+                      "author": {
+                        "type": "string",
+                        "description": "Artifact author name"
+                      },
+                      "keywords": {
+                        "type": "string",
+                        "description": "Artifact keywords"
+                      },
+                      "open_graph": {
+                        "type": "object",
+                        "description": "Open Graph protocol metadata",
+                        "additionalProperties": true
+                      },
+                      "twitter_card": {
+                        "type": "object",
+                        "description": "Twitter Card metadata",
+                        "additionalProperties": true
+                      },
+                      "json_ld": {
+                        "type": "array",
+                        "description": "JSON-LD structured data (schema.org)",
+                        "items": {
+                          "type": "object"
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  },
+                  "identifiers": {
+                    "type": "object",
+                    "description": "Platform-specific identifiers for this artifact",
+                    "properties": {
+                      "apple_podcast_id": {
+                        "type": "string",
+                        "description": "Apple Podcasts ID"
+                      },
+                      "spotify_show_id": {
+                        "type": "string",
+                        "description": "Spotify show ID"
+                      },
+                      "podcast_guid": {
+                        "type": "string",
+                        "description": "Podcast GUID (from RSS feed)"
+                      },
+                      "youtube_video_id": {
+                        "type": "string",
+                        "description": "YouTube video ID"
+                      },
+                      "rss_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "RSS feed URL"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "property_id",
+                  "artifact_id",
+                  "assets"
+                ],
+                "additionalProperties": true,
+                "$defs": {
+                  "asset_access": {
+                    "type": "object",
+                    "description": "Authentication for accessing secured asset URLs",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Bearer token authentication",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "const": "bearer_token"
+                          },
+                          "token": {
+                            "type": "string",
+                            "description": "OAuth2 bearer token for Authorization header"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "token"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "description": "Service account authentication (GCP, AWS)",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "const": "service_account"
+                          },
+                          "provider": {
+                            "type": "string",
+                            "enum": [
+                              "gcp",
+                              "aws"
+                            ],
+                            "description": "Cloud provider"
+                          },
+                          "credentials": {
+                            "type": "object",
+                            "description": "Service account credentials",
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "provider"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "description": "Pre-signed URL (credentials embedded in URL)",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "const": "signed_url"
+                          }
+                        },
+                        "required": [
+                          "method"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Content that fails the standards"
+        }
+      }
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "standards_id"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.677Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

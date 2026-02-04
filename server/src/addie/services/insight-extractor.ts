@@ -11,7 +11,6 @@
  * 4. Stores extracted insights with source tracking
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../logger.js';
 import {
   InsightsDatabase,
@@ -19,14 +18,11 @@ import {
   type InsightGoal,
   type InsightConfidence,
 } from '../../db/insights-db.js';
-import { ModelConfig } from '../../config/models.js';
 import { invalidateInsightsCache } from '../insights-cache.js';
 import { trackApiCall, ApiPurpose } from './api-tracker.js';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 
 const insightsDb = new InsightsDatabase();
-
-// Use fast model for insight extraction (it's a classification task)
-const EXTRACTOR_MODEL = ModelConfig.fast;
 
 /**
  * Extracted insight from Claude analysis
@@ -185,8 +181,7 @@ export async function extractInsights(
     };
   }
 
-  const apiKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     logger.warn('Insight extractor: No API key configured');
     return {
       insights: [],
@@ -216,32 +211,25 @@ export async function extractInsights(
     // Build prompt and call Claude
     const prompt = buildExtractionPrompt(message, insightTypes, activeGoals);
 
-    const client = new Anthropic({ apiKey });
-    const startTime = Date.now();
-    const response = await client.messages.create({
-      model: EXTRACTOR_MODEL,
-      max_tokens: 1000,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+    const result = await complete({
+      prompt,
+      maxTokens: 1000,
+      model: 'fast',
+      operationName: 'insight-extraction',
     });
-    const latencyMs = Date.now() - startTime;
 
     // Track for performance metrics (fire-and-forget, errors handled internally)
     void trackApiCall({
-      model: EXTRACTOR_MODEL,
+      model: result.model,
       purpose: ApiPurpose.INSIGHT_EXTRACTION,
-      tokens_input: response.usage?.input_tokens,
-      tokens_output: response.usage?.output_tokens,
-      latency_ms: latencyMs,
+      tokens_input: result.inputTokens,
+      tokens_output: result.outputTokens,
+      latency_ms: result.latencyMs,
       thread_id: context.threadId,
     });
 
     // Parse response
-    const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+    const responseText = result.text;
 
     let parsed: { insights: ExtractedInsight[]; goal_responses: GoalResponse[] };
     try {

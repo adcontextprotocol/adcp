@@ -10,16 +10,13 @@
  * - 'changes': Summary of what changed since last update
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../logger.js';
 import { getPool } from '../../db/client.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
+import { isLLMConfigured, complete } from '../../utils/llm.js';
 import type { CommitteeSummaryType } from '../../types.js';
 
 const workingGroupDb = new WorkingGroupDatabase();
-
-// Use same model as main Addie assistant
-const SUMMARIZER_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 
 export interface SummaryGeneratorResult {
   committeesProcessed: number;
@@ -64,12 +61,9 @@ async function generateActivitySummary(
   posts: Array<{ title: string; excerpt?: string; published_at?: Date }>,
   activity: Array<{ activity_type: string; change_summary?: string; detected_at: Date; document_title?: string }>
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isLLMConfigured()) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
-
-  const client = new Anthropic({ apiKey });
 
   // Build context about the committee
   const documentsSection = documents.length > 0
@@ -105,15 +99,15 @@ ${documentsSection}${postsSection}${changesSection}
 
 Generate a brief activity summary for this committee.`;
 
-  const response = await client.messages.create({
-    model: SUMMARIZER_MODEL,
-    max_tokens: 400,
+  const result = await complete({
+    prompt: userPrompt,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
+    maxTokens: 400,
+    model: 'primary',
+    operationName: 'committee-summary',
   });
 
-  const textContent = response.content.find(block => block.type === 'text');
-  return textContent?.text || 'No activity summary available.';
+  return result.text || 'No activity summary available.';
 }
 
 /**

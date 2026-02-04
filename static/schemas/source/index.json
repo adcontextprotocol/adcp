@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.0.0-beta.1",
+  "adcp_version": "3.0.0-beta.2",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -185,6 +185,67 @@
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
+        }
+      },
+      "requirements": {
+        "description": "Typed requirement schemas for creative assets in format definitions",
+        "schemas": {
+          "asset-requirements": {
+            "$ref": "/schemas/core/requirements/asset-requirements.json",
+            "description": "Combined schema that allows any typed asset requirements"
+          },
+          "html-asset-requirements": {
+            "$ref": "/schemas/core/requirements/html-asset-requirements.json",
+            "description": "Requirements for HTML creative assets - sandbox compatibility, external resources, allowed domains"
+          },
+          "image-asset-requirements": {
+            "$ref": "/schemas/core/requirements/image-asset-requirements.json",
+            "description": "Requirements for image creative assets - dimensions, formats, file size, animation"
+          },
+          "video-asset-requirements": {
+            "$ref": "/schemas/core/requirements/video-asset-requirements.json",
+            "description": "Requirements for video creative assets - dimensions, duration, codecs, bitrate"
+          },
+          "audio-asset-requirements": {
+            "$ref": "/schemas/core/requirements/audio-asset-requirements.json",
+            "description": "Requirements for audio creative assets - duration, formats, sample rate, channels"
+          },
+          "javascript-asset-requirements": {
+            "$ref": "/schemas/core/requirements/javascript-asset-requirements.json",
+            "description": "Requirements for JavaScript creative assets - module type, external resources"
+          },
+          "text-asset-requirements": {
+            "$ref": "/schemas/core/requirements/text-asset-requirements.json",
+            "description": "Requirements for text creative assets - character limits, line counts"
+          },
+          "url-asset-requirements": {
+            "$ref": "/schemas/core/requirements/url-asset-requirements.json",
+            "description": "Requirements for URL assets - protocols, allowed domains, macro support"
+          },
+          "markdown-asset-requirements": {
+            "$ref": "/schemas/core/requirements/markdown-asset-requirements.json",
+            "description": "Requirements for markdown creative assets"
+          },
+          "css-asset-requirements": {
+            "$ref": "/schemas/core/requirements/css-asset-requirements.json",
+            "description": "Requirements for CSS creative assets"
+          },
+          "vast-asset-requirements": {
+            "$ref": "/schemas/core/requirements/vast-asset-requirements.json",
+            "description": "Requirements for VAST creative assets - version requirements"
+          },
+          "daast-asset-requirements": {
+            "$ref": "/schemas/core/requirements/daast-asset-requirements.json",
+            "description": "Requirements for DAAST creative assets"
+          },
+          "promoted-offerings-asset-requirements": {
+            "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json",
+            "description": "Requirements for promoted offerings creative assets"
+          },
+          "webhook-asset-requirements": {
+            "$ref": "/schemas/core/requirements/webhook-asset-requirements.json",
+            "description": "Requirements for webhook creative assets"
+          }
         }
       }
     },
@@ -378,6 +439,14 @@
         "postal-system": {
           "$ref": "/schemas/enums/postal-system.json",
           "description": "Postal code systems for geographic targeting. System names encode country and precision (us_zip, gb_outward, ca_fsa, etc.)"
+        },
+        "age-verification-method": {
+          "$ref": "/schemas/enums/age-verification-method.json",
+          "description": "Methods for verifying user age for compliance (facial_age_estimation, id_document, digital_id, credit_card, world_id)"
+        },
+        "device-platform": {
+          "$ref": "/schemas/enums/device-platform.json",
+          "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"
         }
       }
     },
@@ -411,6 +480,21 @@
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",
           "description": "Flat rate pricing for DOOH and sponsorships - supports fixed rate and auction modes"
+        }
+      }
+    },
+    "account": {
+      "description": "Account management task request/response schemas",
+      "tasks": {
+        "list-accounts": {
+          "request": {
+            "$ref": "/schemas/account/list-accounts-request.json",
+            "description": "Request parameters for listing accounts accessible to the authenticated agent"
+          },
+          "response": {
+            "$ref": "/schemas/account/list-accounts-response.json",
+            "description": "Response payload for list_accounts task"
+          }
         }
       }
     },

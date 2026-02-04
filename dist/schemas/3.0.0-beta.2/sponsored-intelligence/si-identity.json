@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/sponsored-intelligence/si-identity.json",
+  "title": "SI Identity",
+  "description": "User identity shared with brand agent (with explicit consent)",
+  "type": "object",
+  "properties": {
+    "consent_granted": {
+      "type": "boolean",
+      "description": "Whether user consented to share identity"
+    },
+    "consent_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When consent was granted (ISO 8601)"
+    },
+    "consent_scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["name", "email", "shipping_address", "phone", "locale"]
+      },
+      "description": "What data was consented to share"
+    },
+    "privacy_policy_acknowledged": {
+      "type": "object",
+      "description": "Brand privacy policy acknowledgment",
+      "properties": {
+        "brand_policy_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to brand's privacy policy"
+        },
+        "brand_policy_version": {
+          "type": "string",
+          "description": "Version of policy acknowledged"
+        }
+      },
+      "additionalProperties": true
+    },
+    "user": {
+      "type": "object",
+      "description": "User data (only present if consent_granted is true)",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User's email address"
+        },
+        "name": {
+          "type": "string",
+          "description": "User's display name"
+        },
+        "locale": {
+          "type": "string",
+          "description": "User's locale (e.g., en-US)"
+        },
+        "phone": {
+          "type": "string",
+          "description": "User's phone number"
+        },
+        "shipping_address": {
+          "type": "object",
+          "description": "User's shipping address for accurate pricing",
+          "properties": {
+            "street": { "type": "string" },
+            "city": { "type": "string" },
+            "state": { "type": "string" },
+            "postal_code": { "type": "string" },
+            "country": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "anonymous_session_id": {
+      "type": "string",
+      "description": "Session ID for anonymous users (when consent_granted is false)"
+    }
+  },
+  "required": ["consent_granted"],
+  "additionalProperties": true
+}

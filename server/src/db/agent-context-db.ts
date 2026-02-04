@@ -18,6 +18,10 @@ export interface AgentContext {
   // Token info (never expose actual token!)
   has_auth_token: boolean;
   auth_token_hint: string | null;
+  // OAuth info (never expose actual tokens!)
+  has_oauth_token: boolean;
+  oauth_token_expires_at: Date | null;
+  has_oauth_client: boolean;
   // Discovery cache
   tools_discovered: string[] | null;
   last_discovered_at: Date | null;
@@ -31,6 +35,18 @@ export interface AgentContext {
   created_at: Date;
   updated_at: Date;
   created_by: string | null;
+}
+
+export interface OAuthTokens {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: Date;
+}
+
+export interface OAuthClient {
+  client_id: string;
+  client_secret?: string;
+  registered_redirect_uri?: string;
 }
 
 export interface AgentTestHistory {
@@ -93,10 +109,14 @@ export interface RecordTestInput {
 
 // Encryption key derivation (in production, use a proper KMS)
 // For now, derive key from a secret + org ID
-const ENCRYPTION_SECRET = process.env.AGENT_TOKEN_ENCRYPTION_SECRET || 'dev-secret-change-in-production';
+const ENCRYPTION_SECRET = process.env.AGENT_TOKEN_ENCRYPTION_SECRET;
+if (!ENCRYPTION_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('AGENT_TOKEN_ENCRYPTION_SECRET must be set in production');
+}
+const effectiveEncryptionSecret = ENCRYPTION_SECRET || 'dev-secret-change-in-production';
 
 function deriveKey(organizationId: string): Buffer {
-  return crypto.pbkdf2Sync(ENCRYPTION_SECRET, organizationId, 100000, 32, 'sha256');
+  return crypto.pbkdf2Sync(effectiveEncryptionSecret, organizationId, 100000, 32, 'sha256');
 }
 
 function encryptToken(token: string, organizationId: string): { encrypted: string; iv: string } {
@@ -158,6 +178,9 @@ export class AgentContextDatabase {
         protocol,
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
+        oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_token_expires_at,
+        oauth_client_id IS NOT NULL as has_oauth_client,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -190,6 +213,9 @@ export class AgentContextDatabase {
         protocol,
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
+        oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_token_expires_at,
+        oauth_client_id IS NOT NULL as has_oauth_client,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -221,6 +247,9 @@ export class AgentContextDatabase {
         protocol,
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
+        oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+        oauth_token_expires_at,
+        oauth_client_id IS NOT NULL as has_oauth_client,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -260,6 +289,9 @@ export class AgentContextDatabase {
         protocol,
         FALSE as has_auth_token,
         auth_token_hint,
+        FALSE as has_oauth_token,
+        oauth_token_expires_at,
+        FALSE as has_oauth_client,
         tools_discovered,
         last_discovered_at,
         last_test_scenario,
@@ -340,6 +372,9 @@ export class AgentContextDatabase {
          protocol,
          auth_token_encrypted IS NOT NULL as has_auth_token,
          auth_token_hint,
+         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
+         oauth_token_expires_at,
+         oauth_client_id IS NOT NULL as has_oauth_client,
          tools_discovered,
          last_discovered_at,
          last_test_scenario,
@@ -430,6 +465,264 @@ export class AgentContextDatabase {
          auth_token_encrypted = NULL,
          auth_token_iv = NULL,
          auth_token_hint = NULL,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  }
+
+  // =====================================================
+  // OAUTH TOKEN METHODS
+  // =====================================================
+
+  /**
+   * Save OAuth tokens (encrypted)
+   */
+  async saveOAuthTokens(id: string, tokens: OAuthTokens): Promise<void> {
+    const context = await this.getById(id);
+    if (!context) {
+      throw new Error(`Agent context ${id} not found`);
+    }
+
+    const accessEncrypted = encryptToken(tokens.access_token, context.organization_id);
+
+    let refreshEncrypted = null;
+    let refreshIv = null;
+    if (tokens.refresh_token) {
+      const result = encryptToken(tokens.refresh_token, context.organization_id);
+      refreshEncrypted = result.encrypted;
+      refreshIv = result.iv;
+    }
+
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_access_token_encrypted = $1,
+         oauth_access_token_iv = $2,
+         oauth_refresh_token_encrypted = $3,
+         oauth_refresh_token_iv = $4,
+         oauth_token_expires_at = $5,
+         updated_at = NOW()
+       WHERE id = $6`,
+      [
+        accessEncrypted.encrypted,
+        accessEncrypted.iv,
+        refreshEncrypted,
+        refreshIv,
+        tokens.expires_at || null,
+        id,
+      ]
+    );
+  }
+
+  /**
+   * Get OAuth tokens (decrypted) - for internal use only
+   */
+  async getOAuthTokens(id: string): Promise<OAuthTokens | null> {
+    const result = await query(
+      `SELECT
+        organization_id,
+        oauth_access_token_encrypted,
+        oauth_access_token_iv,
+        oauth_refresh_token_encrypted,
+        oauth_refresh_token_iv,
+        oauth_token_expires_at
+       FROM agent_contexts
+       WHERE id = $1`,
+      [id]
+    );
+
+    const row = result.rows[0];
+    if (!row || !row.oauth_access_token_encrypted || !row.oauth_access_token_iv) {
+      return null;
+    }
+
+    const tokens: OAuthTokens = {
+      access_token: decryptToken(
+        row.oauth_access_token_encrypted,
+        row.oauth_access_token_iv,
+        row.organization_id
+      ),
+    };
+
+    if (row.oauth_refresh_token_encrypted && row.oauth_refresh_token_iv) {
+      tokens.refresh_token = decryptToken(
+        row.oauth_refresh_token_encrypted,
+        row.oauth_refresh_token_iv,
+        row.organization_id
+      );
+    }
+
+    if (row.oauth_token_expires_at) {
+      tokens.expires_at = new Date(row.oauth_token_expires_at);
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Get OAuth tokens by org and URL
+   */
+  async getOAuthTokensByOrgAndUrl(organizationId: string, agentUrl: string): Promise<OAuthTokens | null> {
+    const result = await query(
+      `SELECT
+        id,
+        oauth_access_token_encrypted,
+        oauth_access_token_iv,
+        oauth_refresh_token_encrypted,
+        oauth_refresh_token_iv,
+        oauth_token_expires_at
+       FROM agent_contexts
+       WHERE organization_id = $1 AND agent_url = $2`,
+      [organizationId, agentUrl]
+    );
+
+    const row = result.rows[0];
+    if (!row || !row.oauth_access_token_encrypted || !row.oauth_access_token_iv) {
+      return null;
+    }
+
+    const tokens: OAuthTokens = {
+      access_token: decryptToken(
+        row.oauth_access_token_encrypted,
+        row.oauth_access_token_iv,
+        organizationId
+      ),
+    };
+
+    if (row.oauth_refresh_token_encrypted && row.oauth_refresh_token_iv) {
+      tokens.refresh_token = decryptToken(
+        row.oauth_refresh_token_encrypted,
+        row.oauth_refresh_token_iv,
+        organizationId
+      );
+    }
+
+    if (row.oauth_token_expires_at) {
+      tokens.expires_at = new Date(row.oauth_token_expires_at);
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Check if OAuth tokens are valid (exist and not expired)
+   */
+  hasValidOAuthTokens(context: AgentContext): boolean {
+    if (!context.has_oauth_token) return false;
+    if (!context.oauth_token_expires_at) return true;
+
+    // Expired if within 5 minutes of expiration
+    const expiresAt = new Date(context.oauth_token_expires_at);
+    return expiresAt.getTime() - Date.now() > 5 * 60 * 1000;
+  }
+
+  /**
+   * Save OAuth client info (from dynamic registration)
+   */
+  async saveOAuthClient(id: string, client: OAuthClient): Promise<void> {
+    const context = await this.getById(id);
+    if (!context) {
+      throw new Error(`Agent context ${id} not found`);
+    }
+
+    let secretEncrypted = null;
+    let secretIv = null;
+    if (client.client_secret) {
+      const result = encryptToken(client.client_secret, context.organization_id);
+      secretEncrypted = result.encrypted;
+      secretIv = result.iv;
+    }
+
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_client_id = $1,
+         oauth_client_secret_encrypted = $2,
+         oauth_client_secret_iv = $3,
+         oauth_registered_redirect_uri = $4,
+         updated_at = NOW()
+       WHERE id = $5`,
+      [client.client_id, secretEncrypted, secretIv, client.registered_redirect_uri || null, id]
+    );
+  }
+
+  /**
+   * Get OAuth client info
+   */
+  async getOAuthClient(id: string): Promise<OAuthClient | null> {
+    const result = await query(
+      `SELECT
+        organization_id,
+        oauth_client_id,
+        oauth_client_secret_encrypted,
+        oauth_client_secret_iv,
+        oauth_registered_redirect_uri
+       FROM agent_contexts
+       WHERE id = $1`,
+      [id]
+    );
+
+    const row = result.rows[0];
+    if (!row || !row.oauth_client_id) {
+      return null;
+    }
+
+    const client: OAuthClient = {
+      client_id: row.oauth_client_id,
+      registered_redirect_uri: row.oauth_registered_redirect_uri || undefined,
+    };
+
+    if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
+      client.client_secret = decryptToken(
+        row.oauth_client_secret_encrypted,
+        row.oauth_client_secret_iv,
+        row.organization_id
+      );
+    }
+
+    return client;
+  }
+
+  /**
+   * Remove OAuth tokens and client info
+   */
+  async removeOAuthTokens(id: string): Promise<void> {
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_access_token_encrypted = NULL,
+         oauth_access_token_iv = NULL,
+         oauth_refresh_token_encrypted = NULL,
+         oauth_refresh_token_iv = NULL,
+         oauth_token_expires_at = NULL,
+         oauth_client_id = NULL,
+         oauth_client_secret_encrypted = NULL,
+         oauth_client_secret_iv = NULL,
+         oauth_registered_redirect_uri = NULL,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  }
+
+  /**
+   * Clear OAuth client only (keeps tokens if any exist)
+   * Used when redirect_uri changes and we need to re-register
+   */
+  async clearOAuthClient(id: string): Promise<void> {
+    await query(
+      `UPDATE agent_contexts
+       SET
+         oauth_client_id = NULL,
+         oauth_client_secret_encrypted = NULL,
+         oauth_client_secret_iv = NULL,
+         oauth_registered_redirect_uri = NULL,
+         oauth_access_token_encrypted = NULL,
+         oauth_access_token_iv = NULL,
+         oauth_refresh_token_encrypted = NULL,
+         oauth_refresh_token_iv = NULL,
+         oauth_token_expires_at = NULL,
          updated_at = NOW()
        WHERE id = $1`,
       [id]

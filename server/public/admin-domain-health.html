@@ -392,6 +392,20 @@
         </div>
         <div id="similarNamesContent"></div>
       </div>
+
+      <!-- Duplicate Organizations Section -->
+      <div class="card" id="duplicateOrgsSection">
+        <div class="section-header">
+          <div>
+            <div class="section-title">
+              Shared Members
+              <span class="section-badge" id="duplicateOrgsBadge">0</span>
+            </div>
+            <p class="section-description">Organizations that share the same member email address. This may indicate duplicate organizations that should be merged.</p>
+          </div>
+        </div>
+        <div id="duplicateOrgsContent"></div>
+      </div>
     </div>
   </div>
 
@@ -451,6 +465,7 @@
       renderDomainConflicts();
       renderRelatedDomains();
       renderSimilarNames();
+      renderDuplicateOrgs();
 
       // Set up event delegation for merge buttons (avoiding inline onclick for XSS safety)
       document.querySelectorAll('.merge-orgs-btn').forEach(btn => {
@@ -869,7 +884,8 @@
                           (summary.issues.unverified_orgs || 0) +
                           (summary.issues.domain_conflicts || 0) +
                           (summary.issues.related_domains || 0) +
-                          (summary.issues.similar_names || 0);
+                          (summary.issues.similar_names || 0) +
+                          (summary.issues.duplicate_organizations || 0);
 
       const grid = document.getElementById('summaryGrid');
       grid.innerHTML = `
@@ -1348,6 +1364,69 @@
       `;
     }
 
+    function renderDuplicateOrgs() {
+      const duplicateOrgs = healthData.duplicate_organizations || [];
+      const badge = document.getElementById('duplicateOrgsBadge');
+      const content = document.getElementById('duplicateOrgsContent');
+
+      badge.textContent = duplicateOrgs.length;
+      badge.className = duplicateOrgs.length === 0 ? 'section-badge success' : 'section-badge';
+
+      if (duplicateOrgs.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p>No organizations found with shared members.</p>
+          </div>
+        `;
+        return;
+      }
+
+      content.innerHTML = `
+        <table class="issue-table">
+          <thead>
+            <tr>
+              <th>Shared Emails</th>
+              <th>Organizations</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${duplicateOrgs.map(d => `
+              <tr>
+                <td>
+                  <ul class="user-list">
+                    ${d.shared_emails.slice(0, 5).map(email => `
+                      <li><span class="domain-name">${escapeHtml(email)}</span></li>
+                    `).join('')}
+                    ${d.shared_emails.length > 5 ? `<li style="color: var(--color-text-muted);">+${d.shared_emails.length - 5} more</li>` : ''}
+                  </ul>
+                </td>
+                <td>
+                  <ul class="org-list">
+                    ${d.organizations.map(o => `
+                      <li>
+                        <a href="/admin/accounts/${encodeURIComponent(o.org_id)}" class="org-link">${escapeHtml(o.name)}</a>
+                        <span class="user-count">${o.member_count || 0} members</span>
+                        <span class="status-badge ${o.subscription_status === 'active' ? 'status-active' : 'status-prospect'}">
+                          ${escapeHtml(o.subscription_status || 'prospect')}
+                        </span>
+                      </li>
+                    `).join('')}
+                  </ul>
+                </td>
+                <td>
+                  <button class="btn btn-primary btn-sm merge-orgs-btn" data-org-ids="${d.organizations.map(o => encodeURIComponent(o.org_id)).join(',')}" data-base-name="${encodeURIComponent((d.shared_emails && d.shared_emails[0]) || 'shared-member')}">
+                    Review &amp; Merge
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
     // Merge modal functionality
     let mergeModalElement = null;
 
@@ -1674,7 +1753,20 @@
         }
 
         const result = await response.json();
-        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+        const tablesMerged = result.tables_merged || [];
+        const totalMoved = tablesMerged.reduce((sum, t) => sum + (t.rows_moved || 0), 0);
+        const totalSkipped = tablesMerged.reduce((sum, t) => sum + (t.rows_skipped_duplicate || 0), 0);
+
+        // Build summary message
+        let summaryParts = [];
+        if (totalMoved > 0) {
+          summaryParts.push(`${totalMoved} record${totalMoved !== 1 ? 's' : ''} moved`);
+        }
+        if (totalSkipped > 0) {
+          summaryParts.push(`${totalSkipped} duplicate${totalSkipped !== 1 ? 's' : ''} skipped`);
+        }
+        summaryParts.push('secondary organization deleted');
+        const summaryText = summaryParts.join(', ');
 
         // Check if there are more orgs to merge
         if (remainingOrgIds && remainingOrgIds.length > 0) {
@@ -1683,7 +1775,7 @@
             <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
               <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
                 <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">Merge Complete</h3>
-                <p>Successfully merged. ${totalMoved} records moved.</p>
+                <p>Successfully merged: ${summaryText}.</p>
                 <p style="margin-top: var(--space-3);">There are ${remainingCount} more organization(s) to merge.</p>
                 <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
                   <button class="btn btn-secondary" onclick="closeMergeModal(); loadDomainHealth();">Done for Now</button>
@@ -1706,7 +1798,7 @@
             <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
               <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
                 <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">All Merges Complete</h3>
-                <p>Successfully merged all organizations. ${totalMoved} records moved in this merge.</p>
+                <p>Successfully merged: ${summaryText}.</p>
                 <div style="margin-top: var(--space-4); text-align: right;">
                   <button class="btn btn-primary" onclick="closeMergeModal(); loadDomainHealth();">Done</button>
                 </div>

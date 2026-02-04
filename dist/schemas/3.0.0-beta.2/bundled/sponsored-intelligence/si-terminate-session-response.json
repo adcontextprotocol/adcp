@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/sponsored-intelligence/si-terminate-session-response.json",
+  "title": "SI Terminate Session Response",
+  "description": "Confirmation of session termination",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Terminated session identifier"
+    },
+    "terminated": {
+      "type": "boolean",
+      "description": "Whether session was successfully terminated"
+    },
+    "acp_handoff": {
+      "type": "object",
+      "description": "ACP checkout handoff data (for handoff_transaction)",
+      "properties": {
+        "checkout_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "ACP checkout initiation URL"
+        },
+        "checkout_token": {
+          "type": "string",
+          "description": "Token for ACP checkout flow"
+        },
+        "product": {
+          "type": "object",
+          "description": "Product details for checkout"
+        }
+      },
+      "additionalProperties": true
+    },
+    "follow_up": {
+      "type": "object",
+      "description": "Suggested follow-up actions",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "save_for_later",
+            "set_reminder",
+            "subscribe_updates",
+            "none"
+          ]
+        },
+        "data": {
+          "type": "object",
+          "description": "Data for follow-up action"
+        }
+      },
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "title": "Error",
+        "description": "Standard error structure for task-specific errors and warnings",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Error code for programmatic handling"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "field": {
+            "type": "string",
+            "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "Suggested fix for the error"
+          },
+          "retry_after": {
+            "type": "number",
+            "description": "Seconds to wait before retrying the operation",
+            "minimum": 0
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "session_id",
+    "terminated"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.724Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

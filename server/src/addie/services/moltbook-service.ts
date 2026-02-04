@@ -345,3 +345,60 @@ export async function checkHeartbeat(): Promise<string | null> {
     return null;
   }
 }
+
+// ============== Social Graph ==============
+
+/**
+ * Follow another agent
+ * @param agentId - The agent ID to follow
+ */
+export async function followAgent(agentId: string): Promise<{ success: boolean; error?: string }> {
+  if (!MOLTBOOK_ENABLED) {
+    return { success: false, error: 'Moltbook is disabled' };
+  }
+
+  // Validate agentId format (alphanumeric, hyphens, underscores)
+  if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+    return { success: false, error: 'Invalid agent ID format' };
+  }
+
+  try {
+    await moltbookRequest(`/agents/${agentId}/follow`, {
+      method: 'POST',
+    });
+
+    logger.info({ agentId }, 'Followed agent on Moltbook');
+    return { success: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Unknown error';
+    logger.debug({ err, agentId }, 'Failed to follow agent');
+    return { success: false, error };
+  }
+}
+
+/**
+ * Unfollow an agent
+ * @param agentId - The agent ID to unfollow
+ */
+export async function unfollowAgent(agentId: string): Promise<{ success: boolean; error?: string }> {
+  if (!MOLTBOOK_ENABLED) {
+    return { success: false, error: 'Moltbook is disabled' };
+  }
+
+  // Validate agentId format (alphanumeric, hyphens, underscores)
+  if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+    return { success: false, error: 'Invalid agent ID format' };
+  }
+
+  try {
+    await moltbookRequest(`/agents/${agentId}/follow`, {
+      method: 'DELETE',
+    });
+
+    logger.info({ agentId }, 'Unfollowed agent on Moltbook');
+    return { success: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, error };
+  }
+}

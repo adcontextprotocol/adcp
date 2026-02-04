@@ -16,14 +16,15 @@ import {
   type DecisionType,
   type DecisionOutcome,
 } from "../db/moltbook-db.js";
-import { runMoltbookEngagementJob } from "../addie/jobs/moltbook-engagement.js";
+import { runMoltbookEngagementJob, SEARCH_TERMS } from "../addie/jobs/moltbook-engagement.js";
 import { runMoltbookPosterJob } from "../addie/jobs/moltbook-poster.js";
 import { query } from "../db/client.js";
+import { searchPosts, getSubmolts, getFeed, isMoltbookEnabled } from "../addie/services/moltbook-service.js";
 
 const logger = createLogger("moltbook-admin-routes");
 
 // Valid enum values for input validation
-const VALID_DECISION_TYPES = ['relevance', 'comment', 'upvote', 'reply', 'share'] as const;
+const VALID_DECISION_TYPES = ['relevance', 'comment', 'upvote', 'reply', 'share', 'follow'] as const;
 const VALID_OUTCOMES = ['engaged', 'skipped'] as const;
 
 // Helper for parsing bounded positive integers
@@ -33,20 +34,6 @@ function parsePositiveInt(value: unknown, defaultValue: number, maxValue: number
   if (isNaN(parsed) || parsed < 0) return defaultValue;
   return Math.min(parsed, maxValue);
 }
-
-// Search terms (hardcoded in moltbook-engagement.ts)
-const SEARCH_TERMS = [
-  'advertising',
-  'ad tech',
-  'programmatic',
-  'media buying',
-  'ad targeting',
-  'ad fraud',
-  'ad network',
-  'AI advertising',
-  'ad measurement',
-  'brand safety',
-];
 
 /**
  * Create Moltbook admin routes
@@ -182,7 +169,7 @@ export function createMoltbookAdminRouter(): { pageRouter: Router; apiRouter: Ro
           poster: { intervalHours: 2, description: 'Posts curated articles' },
           engagement: { intervalHours: 1, description: 'Searches for threads, comments, gives karma' },
         },
-        enabled: !!process.env.MOLTBOOK_API_TOKEN,
+        enabled: isMoltbookEnabled(),
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching Moltbook config");
@@ -218,6 +205,84 @@ export function createMoltbookAdminRouter(): { pageRouter: Router; apiRouter: Ro
       res.json({ success: true, result });
     } catch (error) {
       logger.error({ err: error }, "Error running Moltbook poster job");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // =========================================================================
+  // DEBUG/TEST ENDPOINTS
+  // =========================================================================
+
+  // GET /api/admin/moltbook/test/submolts - List all available submolts
+  apiRouter.get("/test/submolts", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const submolts = await getSubmolts();
+      res.json({ submolts });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching submolts");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/moltbook/test/search?q=<term> - Test search with a specific term
+  // Note: These test endpoints count against the 100 req/min rate limit
+  apiRouter.get("/test/search", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const rawQ = typeof req.query.q === 'string' ? req.query.q : 'advertising';
+      const q = rawQ.substring(0, 200);
+      const limit = parsePositiveInt(req.query.limit, 10, 50);
+
+      logger.debug({ q, limit }, "Testing Moltbook search");
+      const result = await searchPosts(q, limit);
+
+      res.json({
+        query: q,
+        resultCount: result.posts.length,
+        posts: result.posts.map(p => ({
+          id: p.id,
+          title: p.title,
+          submolt: p.submolt,
+          author: p.author.name,
+          score: p.score,
+          commentCount: p.comment_count,
+          createdAt: p.created_at,
+        })),
+        similarityScores: result.similarity_scores,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error testing Moltbook search");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/moltbook/test/feed?submolt=<name>&sort=<hot|new|top> - Get feed from a submolt
+  apiRouter.get("/test/feed", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const submolt = typeof req.query.submolt === 'string' ? req.query.submolt : undefined;
+      const sort = req.query.sort === 'new' || req.query.sort === 'top' || req.query.sort === 'rising'
+        ? req.query.sort
+        : 'hot';
+      const limit = parsePositiveInt(req.query.limit, 25, 50);
+
+      logger.info({ submolt, sort, limit }, "Testing Moltbook feed");
+      const result = await getFeed(sort, submolt, limit);
+
+      res.json({
+        submolt: submolt || '(all)',
+        sort,
+        resultCount: result.posts.length,
+        posts: result.posts.map(p => ({
+          id: p.id,
+          title: p.title,
+          submolt: p.submolt,
+          author: p.author.name,
+          score: p.score,
+          commentCount: p.comment_count,
+          createdAt: p.created_at,
+        })),
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error testing Moltbook feed");
       res.status(500).json({ error: "Internal server error" });
     }
   });

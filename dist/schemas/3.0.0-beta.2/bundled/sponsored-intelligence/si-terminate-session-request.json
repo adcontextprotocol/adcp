@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.2/bundled/sponsored-intelligence/si-terminate-session-request.json",
+  "title": "SI Terminate Session Request",
+  "description": "Request to terminate an SI session",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier to terminate"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "handoff_transaction",
+        "handoff_complete",
+        "user_exit",
+        "session_timeout",
+        "host_terminated"
+      ],
+      "description": "Reason for termination"
+    },
+    "termination_context": {
+      "type": "object",
+      "description": "Context for the termination",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "Summary of the conversation"
+        },
+        "transaction_intent": {
+          "type": "object",
+          "description": "For handoff_transaction - what user wants to buy",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "purchase",
+                "subscribe"
+              ]
+            },
+            "product": {
+              "type": "object",
+              "description": "Product/service details"
+            }
+          },
+          "additionalProperties": true
+        },
+        "cause": {
+          "type": "string",
+          "description": "For host_terminated - why host ended session"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "session_id",
+    "reason"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-02T16:29:09.724Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
