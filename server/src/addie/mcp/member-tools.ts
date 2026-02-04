@@ -1863,13 +1863,15 @@ export function createMemberToolHandlers(
         errors?: string[];
         status_code?: number;
         response_time_ms?: number;
-        card_data?: { name?: string; description?: string; protocol?: string };
+        card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean };
         card_endpoint?: string;
+        oauth_required?: boolean;
       }>;
     };
 
     const card = healthData?.agent_cards?.[0];
     const isHealthy = card?.valid === true;
+    const healthCheckRequiresOAuth = card?.oauth_required === true;
 
     // Step 2: Try capability discovery (non-blocking - show health status regardless of outcome)
     const encodedUrl = encodeURIComponent(agentUrl);
@@ -1892,8 +1894,9 @@ export function createMemberToolHandlers(
     };
     const agent = capData?.agents?.[0];
 
-    // Step 2.5: Check if OAuth is required and generate authorization link
-    if (agent?.capabilities?.oauth_required) {
+    // Step 2.5: Check if OAuth is required (from either health check or capabilities discovery)
+    const requiresOAuth = healthCheckRequiresOAuth || agent?.capabilities?.oauth_required;
+    if (requiresOAuth) {
       const organizationId = memberContext?.organization?.workos_organization_id;
       if (organizationId) {
         try {
@@ -1904,8 +1907,8 @@ export function createMemberToolHandlers(
             agentContext = await agentContextDb.create({
               organization_id: organizationId,
               agent_url: agentUrl,
-              agent_name: agent.name || baseUrl.hostname,
-              protocol: (agent.protocol as 'mcp' | 'a2a') || 'mcp',
+              agent_name: agent?.name || baseUrl.hostname,
+              protocol: (agent?.protocol as 'mcp' | 'a2a') || 'mcp',
             });
           }
 
