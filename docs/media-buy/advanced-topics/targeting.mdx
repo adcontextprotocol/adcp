@@ -154,6 +154,66 @@ Use geo fields **only** for:
 
 **Note**: Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
+### Age Restrictions (Compliance)
+Use for **legal compliance** requirements:
+- **Alcohol advertising**: Require verified 21+ in the US
+- **Gambling/Gaming**: Require verified 18+ or 21+ depending on jurisdiction
+- **Cannabis**: Require verified age per local regulations
+
+```json
+{
+  "targeting_overlay": {
+    "age_restriction": {
+      "min": 21,
+      "verification_required": true,
+      "accepted_methods": ["facial_age_estimation", "id_document", "world_id"]
+    }
+  }
+}
+```
+
+**Verification methods** (defined in [`age-verification-method.json`](https://adcontextprotocol.org/schemas/v2/enums/age-verification-method.json), based on ISO/IEC 27566-1 age assurance standards):
+- `facial_age_estimation` - AI-based age estimation (Yoti, etc.)
+- `id_document` - Government ID scan
+- `digital_id` - Verified digital identity credentials
+- `credit_card` - Payment card age gate
+- `world_id` - World ID orb verification
+
+**Note**: "Inferred" age (guessing from behavior/profile) is **not** accepted for regulatory compliance. Platforms declare their supported verification methods in `get_adcp_capabilities`.
+
+### Device Platform (Technical Compatibility)
+Use for **technical requirements**:
+- **App install campaigns**: iOS-only app requires `device_platform: ["ios"]`
+- **CTV campaigns**: Target specific TV operating systems
+
+```json
+{
+  "targeting_overlay": {
+    "device_platform": ["ios", "android"]
+  }
+}
+```
+
+**Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/v2/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
+- Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
+- CTV: `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+- Other: `unknown`
+
+### Language (Localization)
+Use for **localization requirements**:
+- Creative is in a specific language
+- Campaign targets specific language speakers
+
+```json
+{
+  "targeting_overlay": {
+    "language": ["es", "en"]
+  }
+}
+```
+
+**Format**: ISO 639-1 two-letter language codes (e.g., `en`, `es`, `fr`, `de`, `zh`).
+
 ### Frequency Capping
 Basic impression suppression controls:
 ```json
@@ -191,16 +251,23 @@ Basic impression suppression controls:
 ## What NOT to Use Targeting Overlays For
 
 **Express these in briefs instead:**
-- **Demographics** (age, gender) - "Target adults 25-54" in brief text
-- **Device types** - "Mobile users" or "CTV viewers" in brief text
-- **Browser/OS** - Rarely relevant; mention in brief if truly needed
+- **Demographic preferences** (age, gender, income) - "Target millennials" or "high-income households" in brief text
+- **Device preferences** - "Mobile users" or "CTV viewers" in brief text (use `device_platform` overlay only for technical compatibility)
 - **Content categories** - "Sports content" or "News sites" in brief text
 - **Audience segments** - "Auto intenders" or "Luxury shoppers" in brief text
-- **Operating systems and browsers** - Mention in brief if needed
-- **Language preferences** - "Spanish language content" in brief text
 - **Daypart preferences** - "Morning commute hours" or "prime time evening" in brief text
 
-**Why briefs work better:**
+**Overlays vs Briefs:**
+| Use Case | Overlay | Brief |
+|----------|---------|-------|
+| Age for compliance (alcohol, gambling) | ✅ `age_restriction` | |
+| Age for audience targeting | | ✅ "Target millennials" |
+| Device for app compatibility | ✅ `device_platform` | |
+| Device for audience preference | | ✅ "Mobile users" |
+| Language for creative localization | ✅ `language` | |
+| Language for audience preference | | ✅ "Spanish-speaking audiences" |
+
+**Why briefs work better for preferences:**
 - Natural language captures intent more clearly
 - Publishers know their inventory and can target effectively
 - Avoids channel-specific complexity (DOOH has no browsers)
@@ -256,6 +323,26 @@ All targeting parameters use the `any_of` operator pattern for inclusive targeti
 - **Format**: Frequency cap object with impressions, duration, and scope
 - **Use cases**: Brand safety, user experience management
 - **Example**: `{"impressions": 5, "duration_seconds": 86400, "scope": "creative"}`
+
+### age_restriction
+- **Description**: Require minimum age for compliance
+- **Format**: Object with `min` (required), `verification_required`, and `accepted_methods`
+- **Examples**: `{"min": 21, "verification_required": true}`, `{"min": 18, "accepted_methods": ["world_id"]}`
+- **Use cases**: Alcohol (21+), gambling (18+), cannabis regulations
+- **Note**: Platforms declare supported verification methods in `get_adcp_capabilities`
+
+### device_platform
+- **Description**: Restrict to specific operating system platforms
+- **Format**: Array of platform identifiers from Sec-CH-UA-Platform standard
+- **Examples**: `["ios"]`, `["ios", "android"]`, `["tvos", "fire_os"]`
+- **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
+- **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+
+### language
+- **Description**: Restrict to users with specific language preferences
+- **Format**: Array of ISO 639-1 two-letter language codes
+- **Examples**: `["en"]`, `["es", "en"]`, `["zh", "ja", "ko"]`
+- **Use cases**: Localized creative, language-specific campaigns
 
 ## Benefits for Different Stakeholders
 
