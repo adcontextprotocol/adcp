@@ -4,6 +4,50 @@
   "title": "Format",
   "description": "Represents a creative format with its requirements",
   "type": "object",
+  "$defs": {
+    "baseIndividualAsset": {
+      "type": "object",
+      "properties": {
+        "item_type": {
+          "type": "string",
+          "const": "individual",
+          "description": "Discriminator indicating this is an individual asset"
+        },
+        "asset_id": {
+          "type": "string",
+          "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
+        },
+        "asset_role": {
+          "type": "string",
+          "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo', 'third_party_tracking'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory."
+        }
+      },
+      "required": ["item_type", "asset_id", "asset_type", "required"]
+    },
+    "baseGroupAsset": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "description": "Identifier for this asset within the group"
+        },
+        "asset_role": {
+          "type": "string",
+          "description": "Optional descriptive label for this asset's purpose. Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this asset is required within each repetition of the group",
+          "default": false
+        }
+      },
+      "required": ["asset_id", "asset_type", "required"]
+    }
+  },
   "properties": {
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
@@ -145,37 +189,121 @@
       "items": {
         "oneOf": [
           {
-            "description": "Individual asset specification",
-            "type": "object",
+            "description": "Image asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
-              "item_type": {
-                "type": "string",
-                "const": "individual",
-                "description": "Discriminator indicating this is an individual asset"
-              },
-              "asset_id": {
-                "type": "string",
-                "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
-              },
-              "asset_type": {
-                "$ref": "/schemas/enums/asset-content-type.json",
-                "description": "Type of asset"
-              },
-              "asset_role": {
-                "type": "string",
-                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo', 'third_party_tracking'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
-              },
-              "required": {
-                "type": "boolean",
-                "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory."
-              },
-              "requirements": {
-                "type": "object",
-                "description": "Technical requirements for this asset (dimensions, file size, duration, etc.). For template formats, use parameters_from_format_id: true to indicate asset parameters must match the format_id parameters (width/height/unit and/or duration_ms).",
-                "additionalProperties": true
-              }
-            },
-            "required": ["item_type", "asset_id", "asset_type", "required"]
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "image" },
+              "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Video asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "video" },
+              "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Audio asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "audio" },
+              "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Text asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "text" },
+              "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Markdown asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "markdown" },
+              "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "HTML asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "html" },
+              "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "CSS asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "css" },
+              "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "JavaScript asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "javascript" },
+              "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "VAST asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "vast" },
+              "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "DAAST asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "daast" },
+              "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Promoted offerings asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "promoted_offerings" },
+              "requirements": { "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "URL asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "url" },
+              "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Webhook asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "webhook" },
+              "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
+            }
           },
           {
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
@@ -208,32 +336,112 @@
                 "type": "array",
                 "description": "Assets within each repetition of this group",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "asset_id": {
-                      "type": "string",
-                      "description": "Identifier for this asset within the group"
+                  "oneOf": [
+                    {
+                      "description": "Image asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "image" },
+                        "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
+                      }
                     },
-                    "asset_type": {
-                      "$ref": "/schemas/enums/asset-content-type.json",
-                      "description": "Type of asset"
+                    {
+                      "description": "Video asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "video" },
+                        "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
+                      }
                     },
-                    "asset_role": {
-                      "type": "string",
-                      "description": "Optional descriptive label for this asset's purpose. Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+                    {
+                      "description": "Audio asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "audio" },
+                        "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
+                      }
                     },
-                    "required": {
-                      "type": "boolean",
-                      "description": "Whether this asset is required within each repetition of the group",
-                      "default": false
+                    {
+                      "description": "Text asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "text" },
+                        "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
+                      }
                     },
-                    "requirements": {
-                      "type": "object",
-                      "description": "Technical requirements for this asset. For template formats, use parameters_from_format_id: true to indicate asset parameters must match the format_id parameters (width/height/unit and/or duration_ms).",
-                      "additionalProperties": true
+                    {
+                      "description": "Markdown asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "markdown" },
+                        "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "HTML asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "html" },
+                        "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "CSS asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "css" },
+                        "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "JavaScript asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "javascript" },
+                        "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "VAST asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "vast" },
+                        "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "DAAST asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "daast" },
+                        "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Promoted offerings asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "promoted_offerings" },
+                        "requirements": { "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "URL asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "url" },
+                        "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Webhook asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "webhook" },
+                        "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
+                      }
                     }
-                  },
-                  "required": ["asset_id", "asset_type", "required"]
+                  ]
                 }
               }
             },

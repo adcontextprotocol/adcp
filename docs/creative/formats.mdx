@@ -306,6 +306,78 @@ The `assets` array enables comprehensive asset discovery. Each asset has a `requ
 
 This unified approach helps creative tools and AI agents understand the full capabilities of a format, enabling richer creative experiences when optional assets are available while clearly indicating minimum requirements.
 
+### Typed Asset Requirements
+
+Each asset type has its own requirements schema that defines what constraints apply to that asset. The `requirements` object is typed based on the `asset_type`:
+
+**Image assets** (`asset_type: "image"`):
+- `min_width`, `max_width`, `min_height`, `max_height` - Dimension constraints (set min=max for exact)
+- `aspect_ratio` - Required aspect ratio (e.g., '1:1')
+- `formats` - Accepted file formats (jpg, jpeg, png, webp, gif, svg, avif)
+- `max_file_size_kb` - Maximum file size
+- `animation_allowed` - Whether animated images are accepted
+- `max_animation_duration_ms` - Maximum animation duration
+
+**Video assets** (`asset_type: "video"`):
+- `min_width`, `max_width`, `min_height`, `max_height` - Dimension constraints
+- `aspect_ratio` - Required aspect ratio (e.g., '16:9')
+- `min_duration_ms`, `max_duration_ms` - Duration constraints
+- `containers` - Accepted container formats (mp4, webm, mov)
+- `codecs` - Accepted codecs (h264, h265, vp9, av1)
+- `frame_rates` - Accepted frame rates (e.g., [24, 30, 60])
+- `max_file_size_kb`, `max_bitrate_kbps` - Size constraints
+
+**HTML assets** (`asset_type: "html"`):
+- `max_file_size_kb` - Maximum file size
+- `sandbox` - Execution environment (`none`, `iframe`, `safeframe`, `fencedframe`)
+- `external_resources_allowed` - Whether external scripts/images can be loaded
+- `allowed_external_domains` - Permitted domains for external resources
+
+**JavaScript assets** (`asset_type: "javascript"`):
+- `max_file_size_kb` - Maximum file size
+- `module_type` - Module format (`script`, `module`, `iife`)
+- `external_resources_allowed` - Whether dynamic resource loading is allowed
+- `allowed_external_domains` - Permitted domains for dynamic loading
+
+**Audio assets** (`asset_type: "audio"`):
+- `min_duration_ms`, `max_duration_ms` - Duration constraints
+- `formats` - Accepted audio formats (mp3, aac, wav, ogg, flac)
+- `sample_rates` - Accepted sample rates in Hz (e.g., [44100, 48000])
+- `channels` - Accepted channel configurations (mono, stereo)
+- `min_bitrate_kbps`, `max_bitrate_kbps` - Bitrate constraints
+- `max_file_size_kb` - Maximum file size
+
+**Text assets** (`asset_type: "text"`):
+- `min_length`, `max_length` - Character limits
+- `min_lines`, `max_lines` - Line count limits
+- `character_pattern` - Regex for allowed characters
+- `prohibited_terms` - Words/phrases not allowed
+
+**URL assets** (`asset_type: "url"`):
+- `role` - Standard purpose (clickthrough, impression_tracker, click_tracker, etc.)
+- `protocols` - Allowed protocols (https, http)
+- `allowed_domains` - Permitted destination domains
+- `macro_support` - Whether macro substitution is supported
+
+**Example with HTML execution context:**
+
+```json
+{
+  "asset_id": "banner_html",
+  "asset_type": "html",
+  "required": true,
+  "requirements": {
+    "max_file_size_kb": 150,
+    "sandbox": "safeframe",
+    "external_resources_allowed": false
+  }
+}
+```
+
+This tells creative agents: "Build HTML that works in a SafeFrame container with no external resource loading."
+
+See [Display Ads - HTML Display Formats](/docs/creative/channels/display#html-display-formats-with-execution-context) for complete examples.
+
 ### Rendered Outputs and Dimensions
 
 Formats describe one or more rendered outputs, each with defined dimensions and semantic roles.

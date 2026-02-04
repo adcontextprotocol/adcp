@@ -178,6 +178,67 @@
           "$ref": "/schemas/core/media-buy-features.json",
           "description": "Optional media-buy protocol features for capability declarations and product filters"
         }
+      },
+      "requirements": {
+        "description": "Typed requirement schemas for creative assets in format definitions",
+        "schemas": {
+          "asset-requirements": {
+            "$ref": "/schemas/core/requirements/asset-requirements.json",
+            "description": "Combined schema that allows any typed asset requirements"
+          },
+          "html-asset-requirements": {
+            "$ref": "/schemas/core/requirements/html-asset-requirements.json",
+            "description": "Requirements for HTML creative assets - sandbox compatibility, external resources, allowed domains"
+          },
+          "image-asset-requirements": {
+            "$ref": "/schemas/core/requirements/image-asset-requirements.json",
+            "description": "Requirements for image creative assets - dimensions, formats, file size, animation"
+          },
+          "video-asset-requirements": {
+            "$ref": "/schemas/core/requirements/video-asset-requirements.json",
+            "description": "Requirements for video creative assets - dimensions, duration, codecs, bitrate"
+          },
+          "audio-asset-requirements": {
+            "$ref": "/schemas/core/requirements/audio-asset-requirements.json",
+            "description": "Requirements for audio creative assets - duration, formats, sample rate, channels"
+          },
+          "javascript-asset-requirements": {
+            "$ref": "/schemas/core/requirements/javascript-asset-requirements.json",
+            "description": "Requirements for JavaScript creative assets - module type, external resources"
+          },
+          "text-asset-requirements": {
+            "$ref": "/schemas/core/requirements/text-asset-requirements.json",
+            "description": "Requirements for text creative assets - character limits, line counts"
+          },
+          "url-asset-requirements": {
+            "$ref": "/schemas/core/requirements/url-asset-requirements.json",
+            "description": "Requirements for URL assets - protocols, allowed domains, macro support"
+          },
+          "markdown-asset-requirements": {
+            "$ref": "/schemas/core/requirements/markdown-asset-requirements.json",
+            "description": "Requirements for markdown creative assets"
+          },
+          "css-asset-requirements": {
+            "$ref": "/schemas/core/requirements/css-asset-requirements.json",
+            "description": "Requirements for CSS creative assets"
+          },
+          "vast-asset-requirements": {
+            "$ref": "/schemas/core/requirements/vast-asset-requirements.json",
+            "description": "Requirements for VAST creative assets - version requirements"
+          },
+          "daast-asset-requirements": {
+            "$ref": "/schemas/core/requirements/daast-asset-requirements.json",
+            "description": "Requirements for DAAST creative assets"
+          },
+          "promoted-offerings-asset-requirements": {
+            "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json",
+            "description": "Requirements for promoted offerings creative assets"
+          },
+          "webhook-asset-requirements": {
+            "$ref": "/schemas/core/requirements/webhook-asset-requirements.json",
+            "description": "Requirements for webhook creative assets"
+          }
+        }
       }
     },
     "enums": {
