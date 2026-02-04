@@ -15,11 +15,28 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { validate as uuidValidate } from 'uuid';
 import { discoverOAuthMetadata } from '@adcp/client/auth';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase, OAuthTokens, OAuthClient } from '../db/agent-context-db.js';
 import { getWebMemberContext } from '../addie/member-context.js';
+
+/**
+ * Validate UUID format for route parameters
+ */
+function isValidUUID(id: string): boolean {
+  return uuidValidate(id);
+}
+
+/**
+ * Sanitize error messages for safe inclusion in URLs
+ */
+function sanitizeErrorMessage(error: unknown): string {
+  return String(error)
+    .slice(0, 200)
+    .replace(/[<>]/g, '');
+}
 
 // Type for token response
 interface TokenResponse {
@@ -179,6 +196,7 @@ async function registerOAuthClient(
   return {
     client_id: data.client_id,
     client_secret: data.client_secret,
+    registered_redirect_uri: redirectUri,
   };
 }
 
@@ -259,9 +277,24 @@ export function createAgentOAuthRouter(): Router {
 
       // Check if we have a registered client, or need to register
       let client = await agentContextDb.getOAuthClient(agent_context_id);
+
+      // Check if redirect_uri has changed (e.g., environment change)
+      if (client && client.registered_redirect_uri && client.registered_redirect_uri !== redirectUri) {
+        logger.info(
+          {
+            agentUrl: agentContext.agent_url,
+            oldRedirectUri: client.registered_redirect_uri,
+            newRedirectUri: redirectUri
+          },
+          'Redirect URI changed, re-registering OAuth client'
+        );
+        await agentContextDb.clearOAuthClient(agent_context_id);
+        client = null;
+      }
+
       if (!client && metadata.registration_endpoint) {
         // Dynamic client registration
-        logger.info({ agentUrl: agentContext.agent_url }, 'Registering OAuth client');
+        logger.info({ agentUrl: agentContext.agent_url, redirectUri }, 'Registering OAuth client');
         client = await registerOAuthClient(
           metadata.registration_endpoint,
           redirectUri,
@@ -323,7 +356,8 @@ export function createAgentOAuthRouter(): Router {
       // Handle OAuth errors
       if (error) {
         logger.warn({ error, error_description }, 'OAuth error from provider');
-        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(String(error_description || error))}`);
+        const safeError = sanitizeErrorMessage(error_description || error);
+        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(safeError)}`);
       }
 
       if (!code || typeof code !== 'string') {
@@ -377,7 +411,7 @@ export function createAgentOAuthRouter(): Router {
       res.redirect(`/oauth-complete.html?success=true&agent=${encodeURIComponent(agentHost)}`);
     } catch (error) {
       logger.error({ error }, 'OAuth callback failed');
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'Unknown error');
       res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(message)}`);
     }
   });
@@ -389,6 +423,10 @@ export function createAgentOAuthRouter(): Router {
   router.delete('/:agent_context_id', requireAuth, async (req: Request, res: Response) => {
     try {
       const { agent_context_id } = req.params;
+
+      if (!isValidUUID(agent_context_id)) {
+        return res.status(400).json({ error: 'Invalid agent_context_id format' });
+      }
 
       // Get user ID from authenticated request
       const userId = req.user?.id;
@@ -434,6 +472,10 @@ export function createAgentOAuthRouter(): Router {
   router.get('/:agent_context_id/status', requireAuth, async (req: Request, res: Response) => {
     try {
       const { agent_context_id } = req.params;
+
+      if (!isValidUUID(agent_context_id)) {
+        return res.status(400).json({ error: 'Invalid agent_context_id format' });
+      }
 
       // Get user ID from authenticated request
       const userId = req.user?.id;
