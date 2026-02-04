@@ -112,6 +112,24 @@ class MCPSession {
 }
 ```
 
+### MCP Agent-Side: Session ID Fallback
+
+Many MCP clients (ChatGPT, Claude) don't pass `context_id`. Agents should use the transport's session ID as a fallback to enable automatic session persistence:
+
+```typescript
+server.tool('get_products', schema, async (args, extra) => {
+  // Use explicit context_id if provided, fall back to MCP sessionId
+  const contextId = args.context_id ?? extra?.sessionId;
+
+  const products = await generateProducts(args.brief, contextId);
+  await productStore.save(contextId, products);
+
+  return products;
+});
+```
+
+This allows simple clients to get automatic session persistence while preserving explicit control for advanced buyers who need resumable sessions. For a working implementation, see the [Snap AdCP Agent](https://github.com/scope3data/snap-adcp).
+
 ## What Context Maintains
 
 The `context_id` maintains conversation state, regardless of protocol:
@@ -257,6 +275,7 @@ Response echoes the context:
 - Implement a session wrapper (see pattern above)
 - Handle context expiration (1 hour timeout)
 - Start fresh context for new workflows
+- **Agents**: Use transport session ID as fallback when `context_id` is not provided (see [Session ID Fallback](#mcp-agent-side-session-id-fallback))
 
 ### For Extensions
 - Always namespace under vendor keys
