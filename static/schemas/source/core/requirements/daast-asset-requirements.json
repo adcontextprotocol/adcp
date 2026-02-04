@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/requirements/daast-asset-requirements.json",
+  "title": "DAAST Asset Requirements",
+  "description": "Requirements for DAAST (Digital Audio Ad Serving Template) creative assets.",
+  "type": "object",
+  "properties": {
+    "daast_version": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Required DAAST version. DAAST 1.0 is the current IAB standard."
+    }
+  },
+  "additionalProperties": true
+}

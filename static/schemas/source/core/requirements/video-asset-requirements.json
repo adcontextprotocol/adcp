@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/requirements/video-asset-requirements.json",
+  "title": "Video Asset Requirements",
+  "description": "Requirements for video creative assets. These define the technical constraints for video files.",
+  "type": "object",
+  "properties": {
+    "min_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum width in pixels"
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum width in pixels"
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum height in pixels"
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum height in pixels"
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^\\d+:\\d+$",
+      "description": "Required aspect ratio (e.g., '16:9', '9:16')"
+    },
+    "min_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum duration in milliseconds"
+    },
+    "max_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum duration in milliseconds"
+    },
+    "containers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["mp4", "webm", "mov", "avi", "mkv"]
+      },
+      "description": "Accepted video container formats"
+    },
+    "codecs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["h264", "h265", "vp8", "vp9", "av1"]
+      },
+      "description": "Accepted video codecs"
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes"
+    },
+    "min_bitrate_kbps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum video bitrate in kilobits per second"
+    },
+    "max_bitrate_kbps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum video bitrate in kilobits per second"
+    },
+    "frame_rates": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": 1
+      },
+      "description": "Accepted frame rates in frames per second (e.g., [24, 30, 60])"
+    },
+    "audio_required": {
+      "type": "boolean",
+      "description": "Whether the video must include an audio track"
+    }
+  },
+  "additionalProperties": true
+}

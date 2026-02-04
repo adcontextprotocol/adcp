@@ -25,17 +25,32 @@ Display formats in AdCP include:
     "id": "display_300x250"
   },
   "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": { "width": false, "height": false }
+      }
+    }
+  ],
   "assets": [
     {
+      "item_type": "individual",
       "asset_id": "banner_image",
       "asset_type": "image",
       "asset_role": "hero_image",
       "required": true,
       "requirements": {
-        "width": 300,
-        "height": 250,
-        "file_types": ["jpg", "png", "webp", "gif"],
-        "max_file_size_kb": 200
+        "min_width": 300,
+        "max_width": 300,
+        "min_height": 250,
+        "max_height": 250,
+        "formats": ["jpg", "png", "webp", "gif"],
+        "max_file_size_kb": 200,
+        "animation_allowed": true,
+        "max_animation_duration_ms": 15000
       }
     }
   ]
@@ -229,6 +244,155 @@ Display formats in AdCP include:
 }
 ```
 
+## HTML Display Formats with Execution Context
+
+HTML display creatives run as executable code, not static media. Different publisher environments have different execution constraints - some allow full DOM access, others run in SafeFrame containers with restricted JavaScript capabilities.
+
+AdCP defines explicit **HTML asset requirements** that specify the execution environment the HTML must be compatible with:
+
+- **`sandbox`**: Execution environment (`none`, `iframe`, `safeframe`, `fencedframe`)
+- **`external_resources_allowed`**: Whether the creative can load external scripts, images, or fonts
+- **`allowed_external_domains`**: Permitted domains for external resources (when allowed)
+- **`max_file_size_kb`**: Maximum file size for the HTML asset
+
+### SafeFrame-Compatible HTML Banner
+
+SafeFrame is an IAB standard that provides secure isolation between ad creatives and publisher pages. SafeFrame-compatible creatives cannot use `document.write()`, must use SafeFrame expansion APIs, and cannot make arbitrary cross-origin requests.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html_safeframe"
+  },
+  "name": "SafeFrame HTML Banner 300x250",
+  "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": { "width": false, "height": false }
+      }
+    }
+  ],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "banner_html",
+      "asset_type": "html",
+      "asset_role": "creative",
+      "required": true,
+      "requirements": {
+        "max_file_size_kb": 150,
+        "sandbox": "safeframe",
+        "external_resources_allowed": false
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "landing_url",
+      "asset_type": "url",
+      "asset_role": "clickthrough",
+      "required": true,
+      "requirements": {
+        "protocols": ["https"]
+      }
+    }
+  ]
+}
+```
+
+### Native DOM HTML Banner
+
+Some publishers allow full DOM access for trusted creatives. These formats can use standard JavaScript APIs and load external resources.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html_native"
+  },
+  "name": "Native HTML Banner 300x250",
+  "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": { "width": false, "height": false }
+      }
+    }
+  ],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "banner_html",
+      "asset_type": "html",
+      "asset_role": "creative",
+      "required": true,
+      "requirements": {
+        "max_file_size_kb": 200,
+        "sandbox": "none",
+        "external_resources_allowed": true,
+        "allowed_external_domains": ["cdn.brand.com", "fonts.googleapis.com"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "landing_url",
+      "asset_type": "url",
+      "asset_role": "clickthrough",
+      "required": true,
+      "requirements": {
+        "protocols": ["https"]
+      }
+    }
+  ]
+}
+```
+
+### Fenced Frame HTML Banner (Privacy Sandbox)
+
+Chrome's Privacy Sandbox introduces Fenced Frames for privacy-preserving ad rendering. These have the most restrictive execution environment.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html_fencedframe"
+  },
+  "name": "Fenced Frame HTML Banner 300x250",
+  "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": { "width": false, "height": false }
+      }
+    }
+  ],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "banner_html",
+      "asset_type": "html",
+      "asset_role": "creative",
+      "required": true,
+      "requirements": {
+        "max_file_size_kb": 100,
+        "sandbox": "fencedframe",
+        "external_resources_allowed": false
+      }
+    }
+  ]
+}
+```
+
 ## Third-Party Tag Formats
 
 ### JavaScript Tag Format
@@ -240,17 +404,27 @@ Display formats in AdCP include:
     "id": "display_300x250_3p"
   },
   "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": { "width": false, "height": false }
+      }
+    }
+  ],
   "assets": [
     {
+      "item_type": "individual",
       "asset_id": "tag",
       "asset_type": "javascript",
       "asset_role": "third_party_tag",
       "required": true,
       "requirements": {
-        "width": 300,
-        "height": 250,
         "max_file_size_kb": 200,
-        "https_required": true
+        "external_resources_allowed": true,
+        "strict_mode_required": false
       }
     }
   ]
@@ -283,17 +457,27 @@ JavaScript tag manifest:
     "id": "display_728x90_html"
   },
   "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 728,
+        "height": 90,
+        "responsive": { "width": false, "height": false }
+      }
+    }
+  ],
   "assets": [
     {
+      "item_type": "individual",
       "asset_id": "tag",
       "asset_type": "html",
       "asset_role": "third_party_tag",
       "required": true,
       "requirements": {
-        "width": 728,
-        "height": 90,
         "max_file_size_kb": 200,
-        "https_required": true
+        "sandbox": "iframe",
+        "external_resources_allowed": true
       }
     }
   ]
