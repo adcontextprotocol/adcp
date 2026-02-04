@@ -189,6 +189,7 @@
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
+              "docs/media-buy/specification",
               {
                 "group": "Task Reference",
                 "pages": [
@@ -251,6 +252,7 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
+              "docs/creative/specification",
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
@@ -619,6 +621,7 @@
             "group": "Media Buy Protocol",
             "pages": [
               "docs/media-buy/index",
+              "docs/media-buy/specification",
               {
                 "group": "Task Reference",
                 "pages": [
@@ -681,6 +684,7 @@
             "group": "Creative",
             "pages": [
               "docs/creative/index",
+              "docs/creative/specification",
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
