@@ -323,37 +323,38 @@ export function createAgentOAuthRouter(): Router {
       // Handle OAuth errors
       if (error) {
         logger.warn({ error, error_description }, 'OAuth error from provider');
-        return res.redirect(`/admin/agents?oauth_error=${encodeURIComponent(String(error_description || error))}`);
+        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(String(error_description || error))}`);
       }
 
       if (!code || typeof code !== 'string') {
-        return res.redirect('/admin/agents?oauth_error=No+authorization+code+received');
+        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No authorization code received')}`);
       }
 
       if (!state || typeof state !== 'string') {
-        return res.redirect('/admin/agents?oauth_error=No+state+parameter+received');
+        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No state parameter received')}`);
       }
 
       // Get pending flow
       const flow = pendingFlows.get(state);
       if (!flow) {
         logger.warn({ state }, 'OAuth callback with unknown state');
-        return res.redirect('/admin/agents?oauth_error=Invalid+or+expired+OAuth+session');
+        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('Invalid or expired OAuth session')}`);
       }
 
       // Remove from pending
       pendingFlows.delete(state);
 
       // Discover token endpoint
+      const agentHost = new URL(flow.agentUrl).hostname;
       const metadata = await discoverOAuthMetadata(flow.agentUrl);
       if (!metadata) {
-        return res.redirect('/admin/agents?oauth_error=Failed+to+discover+OAuth+endpoints');
+        return res.redirect(`/oauth-complete.html?success=false&agent=${encodeURIComponent(agentHost)}&error=${encodeURIComponent('Failed to discover OAuth endpoints')}`);
       }
 
       // Get client credentials
       const client = await agentContextDb.getOAuthClient(flow.agentContextId);
       if (!client) {
-        return res.redirect('/admin/agents?oauth_error=OAuth+client+not+found');
+        return res.redirect(`/oauth-complete.html?success=false&agent=${encodeURIComponent(agentHost)}&error=${encodeURIComponent('OAuth client not found')}`);
       }
 
       // Exchange code for tokens
@@ -372,31 +373,12 @@ export function createAgentOAuthRouter(): Router {
 
       logger.info({ agentUrl: flow.agentUrl, hasPendingRequest: !!flow.pendingRequest }, 'OAuth tokens saved successfully');
 
-      // If there's a pending request, redirect to chat with auto-retry prompt
-      if (flow.pendingRequest) {
-        const { task, params } = flow.pendingRequest;
-        const agentHost = new URL(flow.agentUrl).hostname;
-
-        // Build a natural retry prompt for Addie
-        let retryPrompt = `I just authorized ${agentHost}. Please retry: ${task}`;
-
-        // Add key parameters to the prompt
-        if (params.brief) {
-          retryPrompt += ` with brief "${params.brief}"`;
-        }
-        retryPrompt += ` for agent ${flow.agentUrl}`;
-
-        const redirectUrl = `/chat?prompt=${encodeURIComponent(retryPrompt)}`;
-        logger.info({ redirectUrl, task, agentUrl: flow.agentUrl }, 'Redirecting to chat for auto-retry');
-        return res.redirect(redirectUrl);
-      }
-
-      // No pending request - redirect to agent management with success
-      res.redirect('/admin/agents?oauth_success=true');
+      // Redirect to success page - user can return to their conversation (Slack or web)
+      res.redirect(`/oauth-complete.html?success=true&agent=${encodeURIComponent(agentHost)}`);
     } catch (error) {
       logger.error({ error }, 'OAuth callback failed');
       const message = error instanceof Error ? error.message : 'Unknown error';
-      res.redirect(`/admin/agents?oauth_error=${encodeURIComponent(message)}`);
+      res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(message)}`);
     }
   });
 
