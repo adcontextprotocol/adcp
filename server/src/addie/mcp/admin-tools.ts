@@ -1089,6 +1089,21 @@ Examples:
       required: ['escalation_id'],
     },
   },
+  {
+    name: 'send_member_dm',
+    description: 'Send a direct message to a member on Slack. Look up by email (preferred) or name (may need disambiguation). Use for follow-ups, notifications, or closing the loop on resolved requests.',
+    usage_hints: 'Use when you need to reach out privately to a specific member.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Member email address (preferred lookup)' },
+        name: { type: 'string', description: 'Member name to search (may return multiple matches)' },
+        slack_user_id: { type: 'string', description: 'Direct Slack user ID (if already known)' },
+        message: { type: 'string', description: 'Message content to send' },
+      },
+      required: ['message'],
+    },
+  },
 ];
 
 /**
@@ -6251,6 +6266,131 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, escalationId }, 'Error resolving escalation');
       return `❌ Failed to resolve escalation #${escalationId}.`;
+    }
+  });
+
+  // ============================================
+  // SEND MEMBER DM
+  // ============================================
+  handlers.set('send_member_dm', async (input) => {
+    const adminError = requireAdminFromContext();
+    if (adminError) return adminError;
+
+    const email = (input.email as string | undefined)?.trim();
+    const name = (input.name as string | undefined)?.trim();
+    const slackUserId = (input.slack_user_id as string | undefined)?.trim();
+    const message = input.message as string | undefined;
+
+    if (!email && !name && !slackUserId) {
+      return '❌ Must provide email, name, or slack_user_id to identify the recipient.';
+    }
+
+    if (!message || message.trim().length === 0) {
+      return '❌ Message content is required.';
+    }
+
+    const MAX_MESSAGE_LENGTH = 4000;
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return `❌ Message too long (${message.length} characters). Maximum is ${MAX_MESSAGE_LENGTH} characters.`;
+    }
+
+    let targetSlackUserId: string | null = null;
+    let recipientInfo: { name?: string; email?: string } = {};
+
+    try {
+      // Priority 1: Direct Slack user ID
+      if (slackUserId) {
+        // Slack user IDs are U or W followed by alphanumeric (e.g., U01234ABCD)
+        if (!/^[UW][A-Z0-9]{8,12}$/i.test(slackUserId)) {
+          return '❌ Invalid Slack user ID format. Expected format: U01234ABCD';
+        }
+        targetSlackUserId = slackUserId;
+        const mapping = await slackDb.getBySlackUserId(slackUserId);
+        recipientInfo = {
+          name: mapping?.slack_real_name || mapping?.slack_display_name || undefined,
+          email: mapping?.slack_email || undefined,
+        };
+      }
+      // Priority 2: Email lookup
+      else if (email) {
+        const mapping = await slackDb.findByEmail(email);
+        if (!mapping) {
+          return `❌ No Slack user found with email: ${email}\n\nThe member may not have linked their Slack account, or uses a different email in Slack.`;
+        }
+        targetSlackUserId = mapping.slack_user_id;
+        recipientInfo = {
+          name: mapping.slack_real_name || mapping.slack_display_name || undefined,
+          email: mapping.slack_email || undefined,
+        };
+      }
+      // Priority 3: Name search
+      else if (name) {
+        const SEARCH_LIMIT = 10;
+        const matches = await wgDb.searchUsersForLeadership(name, SEARCH_LIMIT);
+
+        if (matches.length === 0) {
+          return `❌ No members found matching name: "${name}"`;
+        }
+
+        if (matches.length > 1) {
+          const matchList = matches.map((m, i) =>
+            `${i + 1}. **${m.name}** (${m.email}) - ${m.org_name}`
+          ).join('\n');
+
+          const truncationNote = matches.length >= SEARCH_LIMIT
+            ? `\n\n_(Showing first ${SEARCH_LIMIT} results. Use a more specific search or email address.)_`
+            : '';
+
+          return `🔍 Multiple members found matching "${name}". Please specify the email address:\n\n${matchList}${truncationNote}\n\nCall again with the specific email address.`;
+        }
+
+        // Single match - look up their Slack ID
+        const match = matches[0];
+        const mapping = await slackDb.findByEmail(match.email);
+
+        if (!mapping) {
+          return `❌ Found member **${match.name}** (${match.email}) but they don't have a linked Slack account.\n\nConsider reaching out via email instead.`;
+        }
+
+        targetSlackUserId = mapping.slack_user_id;
+        recipientInfo = {
+          name: match.name,
+          email: match.email,
+        };
+      }
+
+      if (!targetSlackUserId) {
+        return '❌ Could not resolve recipient Slack ID.';
+      }
+
+      // Send the DM
+      const result = await sendDirectMessage(targetSlackUserId, {
+        text: message,
+      });
+
+      if (result.ok) {
+        const recipientDisplay = recipientInfo.name
+          ? `**${recipientInfo.name}** (${recipientInfo.email || targetSlackUserId})`
+          : targetSlackUserId;
+
+        logger.info({
+          targetSlackUserId,
+          senderWorkosUserId: memberContext?.workos_user?.workos_user_id,
+          messageLength: message.length,
+        }, 'Admin sent DM via Addie');
+
+        return `✅ Message sent to ${recipientDisplay}`;
+      } else {
+        logger.warn({
+          targetSlackUserId,
+          error: result.error,
+        }, 'Failed to send admin DM via Addie');
+
+        return `❌ Failed to send message: ${result.error || 'Unknown error'}`;
+      }
+    } catch (error) {
+      logger.error({ error, email, name, slackUserId }, 'Error in send_member_dm');
+      return `❌ Error sending message: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
