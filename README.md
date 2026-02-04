@@ -73,7 +73,7 @@ pip install adcp
 
 Implement AdCP to enable AI-powered workflows for your customers:
 
-1. **Review the Specification**: [Signals Protocol](https://adcontextprotocol.org/docs/signals/specification)
+1. **Review the Specification**: [Signals Protocol](https://docs.adcontextprotocol.org/docs/signals/specification)
 2. **Implement MCP Server**: Check out the [reference implementations](#reference-implementations)
 3. **Test Your Implementation**: Use the validation test suite
 
@@ -474,9 +474,9 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 ## Links
 
 - **Website**: [adcontextprotocol.org](https://adcontextprotocol.org)
-- **API Documentation**: [Task Reference](https://adcontextprotocol.org/docs/media-buy/task-reference/index)
-- **MCP Integration**: [MCP Guide](https://adcontextprotocol.org/docs/protocols/mcp-guide)
-- **Specifications**: [Signals Protocol RFC](https://adcontextprotocol.org/docs/signals/specification)
+- **API Documentation**: [Task Reference](https://docs.adcontextprotocol.org/docs/media-buy/task-reference/index)
+- **MCP Integration**: [MCP Guide](https://docs.adcontextprotocol.org/docs/protocols/mcp-guide)
+- **Specifications**: [Signals Protocol RFC](https://docs.adcontextprotocol.org/docs/signals/specification)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
 

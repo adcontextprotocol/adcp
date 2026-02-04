@@ -161,8 +161,8 @@
 
     // Build Projects dropdown
     const adagentsUrl = isLocal ? '/adagents' : `${aaoBaseUrl}/adagents`;
-    const salesAgentUrl = isLocal ? '/sales-agent' : `${aaoBaseUrl}/sales-agent`;
-    const isProjectsActive = currentPath === '/adagents' || currentPath === '/sales-agent' ||
+    const salesAgentUrl = 'https://github.com/adcontextprotocol/salesagent';
+    const isProjectsActive = currentPath === '/adagents' ||
                              currentPath === '/members' || currentPath.startsWith('/members/') ||
                              currentPath === '/registry' || currentPath === '/publishers' || currentPath === '/properties';
     const projectsDropdown = `<div class="navbar__dropdown-wrapper">
@@ -175,7 +175,7 @@
           <div class="navbar__dropdown navbar__dropdown--nav">
             <a href="https://adcontextprotocol.org" class="navbar__dropdown-item">AdCP</a>
             <a href="${adagentsUrl}" class="navbar__dropdown-item ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
-            <a href="${salesAgentUrl}" class="navbar__dropdown-item ${currentPath === '/sales-agent' ? 'active' : ''}">Sales Agent</a>
+            <a href="${salesAgentUrl}" target="_blank" rel="noopener noreferrer" class="navbar__dropdown-item">Sales Agent</a>
             <div class="navbar__dropdown-divider"></div>
             <span class="navbar__dropdown-header-text">Registry</span>
             <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
@@ -282,7 +282,7 @@
           <span class="navbar__link navbar__link--header">Projects</span>
           <a href="https://adcontextprotocol.org" class="navbar__link navbar__link--indent">AdCP</a>
           <a href="${adagentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
-          <a href="${salesAgentUrl}" class="navbar__link navbar__link--indent ${currentPath === '/sales-agent' ? 'active' : ''}">Sales Agent</a>
+          <a href="${salesAgentUrl}" target="_blank" rel="noopener noreferrer" class="navbar__link navbar__link--indent">Sales Agent</a>
           <span class="navbar__link navbar__link--subheader">Registry</span>
           <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
