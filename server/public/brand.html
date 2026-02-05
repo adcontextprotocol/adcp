@@ -558,44 +558,106 @@
 
           <!-- House Portfolio Form -->
           <div id="form-portfolio">
-            <h4 style="margin-bottom: var(--space-4)">House Information</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
-              <div class="form-group" style="margin-bottom: 0">
-                <label>House Domain</label>
-                <input
-                  type="text"
-                  id="portfolio-house-domain"
-                  placeholder="parent-company.com"
-                  oninput="updatePreview()"
-                />
+            <!-- Step 1: Architecture Selection -->
+            <div id="architecture-step">
+              <h4 style="margin-bottom: var(--space-4)">What type of brand structure do you have?</h4>
+              <div class="variant-selector" style="margin-bottom: var(--space-6)">
+                <div class="variant-card" onclick="selectArchitecture('single')" id="arch-single">
+                  <div class="icon">🎯</div>
+                  <h4>Single Brand</h4>
+                  <p>One brand, one identity. Examples: Allbirds, Warby Parker, Glossier.</p>
+                </div>
+                <div class="variant-card" onclick="selectArchitecture('house_of_brands')" id="arch-house_of_brands">
+                  <div class="icon">🏛️</div>
+                  <h4>House of Brands</h4>
+                  <p>Multiple independent brands. Examples: P&G (Tide, Pampers), Unilever.</p>
+                </div>
+                <div class="variant-card" onclick="selectArchitecture('branded_house')" id="arch-branded_house">
+                  <div class="icon">🏠</div>
+                  <h4>Branded House</h4>
+                  <p>Master brand with sub-brands. Examples: Virgin, FedEx, Google.</p>
+                </div>
+                <div class="variant-card" onclick="selectArchitecture('hybrid')" id="arch-hybrid">
+                  <div class="icon">🔀</div>
+                  <h4>Hybrid</h4>
+                  <p>Mix of endorsed and independent brands. Examples: Nike (with Jordan), Microsoft.</p>
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom: 0">
-                <label>House Name</label>
-                <input
-                  type="text"
-                  id="portfolio-house-name"
-                  placeholder="Parent Company, Inc."
-                  oninput="updatePreview()"
-                />
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Brand Architecture</label>
-              <select id="portfolio-architecture" oninput="updatePreview()">
-                <option value="">Select architecture type...</option>
-                <option value="branded_house">Branded House (single master brand)</option>
-                <option value="house_of_brands">House of Brands (independent brands)</option>
-                <option value="hybrid">Hybrid (mix of approaches)</option>
-              </select>
-              <p class="hint">How the house organizes its brand portfolio</p>
             </div>
 
-            <h4 style="margin: var(--space-6) 0 var(--space-4) 0; display: flex; justify-content: space-between; align-items: center;">
-              Brands
-              <button class="btn" onclick="addBrand()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm)">+ Add Brand</button>
-            </h4>
-            <div id="brands-container">
-              <!-- Brand entries added here -->
+            <!-- Step 2: Brand Details (shown after architecture selected) -->
+            <div id="brand-details-step" class="hidden">
+              <h4 style="margin-bottom: var(--space-4)">House Information</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+                <div class="form-group" style="margin-bottom: 0">
+                  <label>House Domain</label>
+                  <input
+                    type="text"
+                    id="portfolio-house-domain"
+                    placeholder="company.com"
+                    oninput="updatePreview()"
+                  />
+                </div>
+                <div class="form-group" style="margin-bottom: 0">
+                  <label>House Name</label>
+                  <input
+                    type="text"
+                    id="portfolio-house-name"
+                    placeholder="Company, Inc."
+                    oninput="updatePreview()"
+                  />
+                </div>
+              </div>
+
+              <!-- Single Brand: Simplified inline form -->
+              <div id="single-brand-form" class="hidden">
+                <h4 style="margin: var(--space-6) 0 var(--space-4) 0">Brand Details</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+                  <div class="form-group" style="margin-bottom: 0">
+                    <label>Brand ID</label>
+                    <input
+                      type="text"
+                      id="single-brand-id"
+                      placeholder="my_brand"
+                      oninput="updateSingleBrand()"
+                    />
+                    <p class="hint">Lowercase identifier (e.g., "allbirds")</p>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0">
+                    <label>Brand Name</label>
+                    <input
+                      type="text"
+                      id="single-brand-name"
+                      placeholder="My Brand"
+                      oninput="updateSingleBrand()"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+                    Properties (websites, apps)
+                    <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+                  </label>
+                  <div id="single-brand-properties">
+                    <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Multi-Brand: Full brands list -->
+              <div id="multi-brand-form" class="hidden">
+                <h4 style="margin: var(--space-6) 0 var(--space-4) 0; display: flex; justify-content: space-between; align-items: center;">
+                  Brands
+                  <button class="btn" onclick="addBrand()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm)">+ Add Brand</button>
+                </h4>
+                <div id="brands-container">
+                  <!-- Brand entries added here -->
+                </div>
+              </div>
+
+              <div style="margin-top: var(--space-4)">
+                <button class="btn btn-secondary" onclick="changeArchitecture()" style="font-size: var(--text-sm)">← Change Architecture</button>
+              </div>
             </div>
           </div>
 
@@ -634,8 +696,10 @@
 
       let currentDomain = '';
       let currentVariant = 'portfolio';
+      let currentArchitecture = ''; // single, house_of_brands, branded_house, hybrid
       let brands = [];
       let brandIdCounter = 0;
+      let singleBrand = { brand_id: '', name: '', properties: [] };
 
       // ============================================================================
       // Main Functions
@@ -696,10 +760,15 @@
         // Show builder
         document.getElementById('builder-form').classList.remove('hidden');
 
-        // Initialize with one brand
-        if (brands.length === 0) {
-          addBrand();
-        }
+        // Reset architecture state (user will select)
+        currentArchitecture = '';
+        brands = [];
+        brandIdCounter = 0;
+        singleBrand = { brand_id: '', name: '', properties: [] };
+
+        // Show architecture selection step
+        document.getElementById('architecture-step').classList.remove('hidden');
+        document.getElementById('brand-details-step').classList.add('hidden');
 
         updatePreview();
       }
@@ -723,17 +792,153 @@
       }
 
       // ============================================================================
+      // Architecture Selection
+      // ============================================================================
+
+      function selectArchitecture(arch) {
+        currentArchitecture = arch;
+
+        // Update UI
+        document.querySelectorAll('#architecture-step .variant-card').forEach(card => {
+          card.classList.remove('selected');
+        });
+        document.getElementById(`arch-${arch}`).classList.add('selected');
+
+        // Show brand details step
+        document.getElementById('architecture-step').classList.add('hidden');
+        document.getElementById('brand-details-step').classList.remove('hidden');
+
+        // Show appropriate form based on architecture
+        if (arch === 'single') {
+          document.getElementById('single-brand-form').classList.remove('hidden');
+          document.getElementById('multi-brand-form').classList.add('hidden');
+          // Pre-fill brand ID from domain
+          if (currentDomain) {
+            const brandId = currentDomain.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '_');
+            document.getElementById('single-brand-id').value = brandId;
+            singleBrand.brand_id = brandId;
+          }
+        } else {
+          document.getElementById('single-brand-form').classList.add('hidden');
+          document.getElementById('multi-brand-form').classList.remove('hidden');
+          // Initialize with master brand for multi-brand architectures
+          if (brands.length === 0) {
+            addBrand(true); // true = is master brand
+          }
+        }
+
+        updatePreview();
+      }
+
+      function changeArchitecture() {
+        currentArchitecture = '';
+        brands = [];
+        brandIdCounter = 0;
+        singleBrand = { brand_id: '', name: '', properties: [] };
+
+        document.querySelectorAll('#architecture-step .variant-card').forEach(card => {
+          card.classList.remove('selected');
+        });
+
+        document.getElementById('architecture-step').classList.remove('hidden');
+        document.getElementById('brand-details-step').classList.add('hidden');
+
+        updatePreview();
+      }
+
+      // ============================================================================
+      // Single Brand Functions
+      // ============================================================================
+
+      function updateSingleBrand() {
+        singleBrand.brand_id = document.getElementById('single-brand-id').value;
+        singleBrand.name = document.getElementById('single-brand-name').value;
+        updatePreview();
+      }
+
+      function addSingleBrandProperty() {
+        singleBrand.properties.push({ type: 'website', identifier: '', primary: singleBrand.properties.length === 0 });
+        renderSingleBrandProperties();
+        updatePreview();
+      }
+
+      function removeSingleBrandProperty(index) {
+        singleBrand.properties.splice(index, 1);
+        renderSingleBrandProperties();
+        updatePreview();
+      }
+
+      function updateSingleBrandProperty(index, field, value) {
+        if (field === 'primary') {
+          value = value === 'true' || value === true;
+        }
+        singleBrand.properties[index][field] = value;
+        updatePreview();
+      }
+
+      function renderSingleBrandProperties() {
+        const container = document.getElementById('single-brand-properties');
+        if (singleBrand.properties.length === 0) {
+          container.innerHTML = `<p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>`;
+          return;
+        }
+
+        container.innerHTML = singleBrand.properties.map((prop, i) => `
+          <div class="property-entry">
+            <select onchange="updateSingleBrandProperty(${i}, 'type', this.value)">
+              <option value="website" ${prop.type === 'website' ? 'selected' : ''}>Website</option>
+              <option value="mobile_app" ${prop.type === 'mobile_app' ? 'selected' : ''}>Mobile App</option>
+              <option value="ctv_app" ${prop.type === 'ctv_app' ? 'selected' : ''}>CTV App</option>
+              <option value="desktop_app" ${prop.type === 'desktop_app' ? 'selected' : ''}>Desktop App</option>
+              <option value="dooh" ${prop.type === 'dooh' ? 'selected' : ''}>DOOH</option>
+              <option value="podcast" ${prop.type === 'podcast' ? 'selected' : ''}>Podcast</option>
+            </select>
+            <input type="text" value="${prop.identifier}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateSingleBrandProperty(${i}, 'identifier', this.value)" />
+            <label style="display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--text-sm);">
+              <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateSingleBrandProperty(${i}, 'primary', this.checked)" />
+              Primary
+            </label>
+            <button class="btn btn-secondary" onclick="removeSingleBrandProperty(${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+          </div>
+        `).join('');
+      }
+
+      // ============================================================================
       // Brand Management
       // ============================================================================
 
-      function addBrand() {
+      function addBrand(isMaster = false) {
         const brandId = ++brandIdCounter;
+        const isFirstBrand = brands.length === 0;
+
+        // Determine default keller_type based on architecture
+        let defaultKellerType = '';
+        if (isMaster || isFirstBrand) {
+          defaultKellerType = 'master';
+        } else {
+          switch (currentArchitecture) {
+            case 'house_of_brands':
+              defaultKellerType = 'independent';
+              break;
+            case 'branded_house':
+              defaultKellerType = 'sub-brand';
+              break;
+            case 'hybrid':
+              defaultKellerType = ''; // Let user choose
+              break;
+          }
+        }
+
+        // Find master brand ID for auto-linking parent
+        const masterBrand = brands.find(b => b.keller_type === 'master');
+        const defaultParent = (!isMaster && !isFirstBrand && masterBrand) ? masterBrand.brand_id : '';
+
         brands.push({
           id: brandId,
           brand_id: '',
           name: '',
-          keller_type: '',
-          parent_brand: '',
+          keller_type: defaultKellerType,
+          parent_brand: defaultParent,
           properties: []
         });
         renderBrands();
@@ -790,17 +995,31 @@
           container.innerHTML = `
             <div style="text-align: center; padding: var(--space-8); color: var(--text-muted); background: var(--color-bg-subtle); border-radius: var(--radius-lg); border: 2px dashed var(--color-border);">
               <p style="margin: 0 0 var(--space-3) 0">No brands added yet</p>
-              <button class="btn" onclick="addBrand()">+ Add Your First Brand</button>
+              <button class="btn" onclick="addBrand(true)">+ Add Master Brand</button>
             </div>
           `;
           return;
         }
 
-        container.innerHTML = brands.map(brand => `
+        // Determine what fields to show based on architecture
+        const showKellerType = currentArchitecture === 'hybrid';
+        const showParentBrand = currentArchitecture !== 'house_of_brands';
+
+        // Get list of potential parent brands for dropdown
+        const potentialParents = brands.filter(b => b.keller_type === 'master' || b.keller_type === 'endorsed');
+
+        container.innerHTML = brands.map((brand, index) => {
+          const isMaster = brand.keller_type === 'master';
+          const brandLabel = isMaster ? 'Master Brand' :
+                            currentArchitecture === 'house_of_brands' ? `Brand ${index + 1}` :
+                            currentArchitecture === 'branded_house' ? (index === 0 ? 'Master Brand' : 'Sub-brand') :
+                            `Brand ${index + 1}`;
+
+          return `
           <div class="brand-entry">
             <div class="brand-entry-header">
-              <h4 style="margin: 0; font-size: var(--text-lg);">Brand ${brand.id}</h4>
-              <button class="btn btn-secondary" onclick="removeBrand(${brand.id})" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Remove</button>
+              <h4 style="margin: 0; font-size: var(--text-lg);">${brandLabel}</h4>
+              ${brands.length > 1 ? `<button class="btn btn-secondary" onclick="removeBrand(${brand.id})" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Remove</button>` : ''}
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
@@ -814,22 +1033,32 @@
               </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+            ${(showKellerType || showParentBrand) ? `
+            <div style="display: grid; grid-template-columns: ${showKellerType && showParentBrand ? '1fr 1fr' : '1fr'}; gap: var(--space-3); margin-bottom: var(--space-4);">
+              ${showKellerType ? `
               <div>
-                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Keller Type</label>
-                <select value="${brand.keller_type}" onchange="updateBrand(${brand.id}, 'keller_type', this.value)">
-                  <option value="" ${!brand.keller_type ? 'selected' : ''}>Select type...</option>
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand Type</label>
+                <select onchange="updateBrand(${brand.id}, 'keller_type', this.value)">
                   <option value="master" ${brand.keller_type === 'master' ? 'selected' : ''}>Master (primary brand)</option>
                   <option value="sub-brand" ${brand.keller_type === 'sub-brand' ? 'selected' : ''}>Sub-brand (carries parent name)</option>
                   <option value="endorsed" ${brand.keller_type === 'endorsed' ? 'selected' : ''}>Endorsed (backed by parent)</option>
                   <option value="independent" ${brand.keller_type === 'independent' ? 'selected' : ''}>Independent (operates separately)</option>
                 </select>
               </div>
+              ` : ''}
+              ${showParentBrand && !isMaster && potentialParents.length > 0 ? `
               <div>
-                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Parent Brand (optional)</label>
-                <input type="text" value="${brand.parent_brand}" placeholder="parent_brand_id" oninput="updateBrand(${brand.id}, 'parent_brand', this.value)" />
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Parent Brand</label>
+                <select onchange="updateBrand(${brand.id}, 'parent_brand', this.value)">
+                  <option value="">None</option>
+                  ${potentialParents.map(p => `
+                    <option value="${p.brand_id}" ${brand.parent_brand === p.brand_id ? 'selected' : ''}>${p.name || p.brand_id}</option>
+                  `).join('')}
+                </select>
               </div>
+              ` : ''}
             </div>
+            ` : ''}
 
             <div>
               <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
@@ -860,7 +1089,7 @@
               </div>
             </div>
           </div>
-        `).join('');
+        `}).join('');
       }
 
       // ============================================================================
@@ -911,37 +1140,66 @@
 
             const portfolioDomain = document.getElementById('portfolio-house-domain').value.trim();
             const portfolioName = document.getElementById('portfolio-house-name').value.trim();
-            const architecture = document.getElementById('portfolio-architecture').value;
+
+            // Map architecture to schema value
+            const archMap = {
+              'single': 'branded_house',
+              'branded_house': 'branded_house',
+              'house_of_brands': 'house_of_brands',
+              'hybrid': 'hybrid'
+            };
+            const architecture = archMap[currentArchitecture] || '';
 
             json.house = {};
             if (portfolioDomain) json.house.domain = portfolioDomain;
             if (portfolioName) json.house.name = portfolioName;
             if (architecture) json.house.architecture = architecture;
 
-            json.brands = brands
-              .filter(b => b.brand_id || b.name)
-              .map(brand => {
-                const brandObj = {
-                  id: brand.brand_id || 'unnamed',
-                  names: brand.name ? [{ en: brand.name }] : []
-                };
-                if (brand.keller_type) {
-                  brandObj.keller_type = brand.keller_type;
-                }
-                if (brand.parent_brand) {
-                  brandObj.parent_brand = brand.parent_brand;
-                }
-                if (brand.properties.length > 0) {
-                  brandObj.properties = brand.properties
-                    .filter(p => p.identifier)
-                    .map(p => {
-                      const prop = { type: p.type, identifier: p.identifier };
-                      if (p.primary) prop.primary = true;
-                      return prop;
-                    });
-                }
-                return brandObj;
-              });
+            // Handle single brand vs multi-brand
+            if (currentArchitecture === 'single') {
+              // Single brand - use simplified singleBrand object
+              const brandObj = {
+                id: singleBrand.brand_id || 'unnamed',
+                names: singleBrand.name ? [{ en: singleBrand.name }] : [],
+                keller_type: 'master'
+              };
+              if (singleBrand.properties.length > 0) {
+                brandObj.properties = singleBrand.properties
+                  .filter(p => p.identifier)
+                  .map(p => {
+                    const prop = { type: p.type, identifier: p.identifier };
+                    if (p.primary) prop.primary = true;
+                    return prop;
+                  });
+              }
+              json.brands = [brandObj];
+            } else {
+              // Multi-brand - use brands array
+              json.brands = brands
+                .filter(b => b.brand_id || b.name)
+                .map(brand => {
+                  const brandObj = {
+                    id: brand.brand_id || 'unnamed',
+                    names: brand.name ? [{ en: brand.name }] : []
+                  };
+                  if (brand.keller_type) {
+                    brandObj.keller_type = brand.keller_type;
+                  }
+                  if (brand.parent_brand) {
+                    brandObj.parent_brand = brand.parent_brand;
+                  }
+                  if (brand.properties.length > 0) {
+                    brandObj.properties = brand.properties
+                      .filter(p => p.identifier)
+                      .map(p => {
+                        const prop = { type: p.type, identifier: p.identifier };
+                        if (p.primary) prop.primary = true;
+                        return prop;
+                      });
+                  }
+                  return brandObj;
+                });
+            }
             break;
         }
 
