@@ -395,6 +395,143 @@
         display: none !important;
       }
 
+      /* Decision Tree Styles */
+      .decision-step {
+        margin-bottom: var(--space-6);
+      }
+
+      .decision-step h4 {
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-lg);
+      }
+
+      .step-hint {
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        margin: 0 0 var(--space-4) 0;
+      }
+
+      .decision-options {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+      }
+
+      .decision-option {
+        display: flex;
+        align-items: center;
+        gap: var(--space-4);
+        padding: var(--space-4);
+        border: 2px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-bg);
+        cursor: pointer;
+        text-align: left;
+        transition: all 0.15s ease;
+      }
+
+      .decision-option:hover {
+        border-color: var(--color-brand);
+        background: var(--color-bg-subtle);
+      }
+
+      .decision-option.recommended {
+        position: relative;
+        border-color: var(--color-brand);
+      }
+
+      .option-badge {
+        position: absolute;
+        top: -10px;
+        right: var(--space-4);
+        background: var(--color-brand);
+        color: white;
+        font-size: var(--text-xs);
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-weight: var(--font-semibold);
+      }
+
+      .option-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        color: var(--color-brand);
+        flex-shrink: 0;
+      }
+
+      .option-content {
+        flex: 1;
+      }
+
+      .option-content strong {
+        display: block;
+        margin-bottom: var(--space-1);
+      }
+
+      .option-content span {
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+      }
+
+      .examples-row {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+        margin-bottom: var(--space-1);
+      }
+
+      .example-label {
+        font-weight: var(--font-medium);
+        color: var(--text-primary);
+      }
+
+      .back-link {
+        background: none;
+        border: none;
+        color: var(--color-brand);
+        cursor: pointer;
+        padding: 0;
+        font-size: var(--text-sm);
+        margin-bottom: var(--space-4);
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+
+      .back-link:hover {
+        text-decoration: underline;
+      }
+
+      .info-callout {
+        background: var(--color-bg-subtle);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-top: var(--space-4);
+        font-size: var(--text-sm);
+      }
+
+      .info-callout strong {
+        display: block;
+        margin-bottom: var(--space-2);
+      }
+
+      .info-callout ol {
+        margin: 0;
+        padding-left: var(--space-5);
+      }
+
+      .info-callout li {
+        margin-bottom: var(--space-1);
+      }
+
       @media (max-width: 768px) {
         .page-header h1 {
           font-size: var(--text-3xl);
@@ -416,8 +553,11 @@
       <div class="page-header">
         <h1>brand.json Builder</h1>
         <p>
-          Create and validate brand.json files for the Brand Protocol. Establish your brand identity
-          and make it discoverable by AI agents across the advertising ecosystem.
+          Make your brand discoverable by AI. When AI agents look up your domain,
+          they'll find your official brand name and identity instead of guessing.
+        </p>
+        <p style="font-size: var(--text-sm); opacity: 0.9; margin-top: var(--space-2);">
+          Similar to how robots.txt tells search engines how to crawl your site, brand.json tells AI agents who you are.
         </p>
       </div>
 
@@ -456,36 +596,102 @@
             </div>
           </div>
 
-          <!-- File Type Selector -->
-          <div style="margin-bottom: var(--space-6)">
-            <label style="display: block; margin-bottom: var(--space-3); font-weight: var(--font-semibold)">
-              What type of brand.json file do you need?
-            </label>
-            <div class="variant-selector">
-              <div class="variant-card selected" onclick="selectVariant('single')" id="variant-single">
-                <div class="icon">🎯</div>
-                <h4>Single Brand</h4>
-                <p>One domain, one brand. You only need this one file. Examples: Allbirds, Warby Parker.</p>
+          <!-- Decision Tree -->
+          <div id="decision-tree">
+            <!-- Step 1: Brand Count -->
+            <div id="step-brand-count" class="decision-step">
+              <h4>How many brands does your company have?</h4>
+              <p class="step-hint">If you're unsure, you probably have just one brand.</p>
+
+              <div class="decision-options">
+                <button class="decision-option" onclick="selectBrandCount('single')">
+                  <div class="option-icon">1</div>
+                  <div class="option-content">
+                    <strong>Just one brand</strong>
+                    <span>My company name IS my brand name</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectBrandCount('multiple')">
+                  <div class="option-icon">+</div>
+                  <div class="option-content">
+                    <strong>Multiple brands</strong>
+                    <span>We own several distinct brand names</span>
+                  </div>
+                </button>
               </div>
-              <div class="variant-card" onclick="selectVariant('portfolio')" id="variant-portfolio">
-                <div class="icon">🏢</div>
-                <h4>Brand Portfolio</h4>
-                <p>Corporate house with multiple brands. You'll also need redirect files for each brand domain.</p>
+
+              <div class="examples-row">
+                <span class="example-label">Single brand:</span> Allbirds, Warby Parker, Stripe
               </div>
-              <div class="variant-card" onclick="selectVariant('redirect')" id="variant-redirect">
-                <div class="icon">↪️</div>
-                <h4>Brand Redirect</h4>
-                <p>This domain belongs to a larger house. Points to the house's brand.json.</p>
+              <div class="examples-row">
+                <span class="example-label">Multiple brands:</span> Nike Inc (Nike, Jordan, Converse), P&G (Tide, Pampers)
               </div>
-              <div class="variant-card" onclick="selectVariant('agent')" id="variant-agent">
-                <div class="icon">🤖</div>
-                <h4>Brand Agent</h4>
-                <p>Your brand has an MCP agent that provides brand information dynamically.</p>
+            </div>
+
+            <!-- Step 2a: Single Brand Hosting -->
+            <div id="step-single-hosting" class="decision-step hidden">
+              <button class="back-link" onclick="goBackTo('step-brand-count')">← Back</button>
+              <h4>Where will you host your brand.json file?</h4>
+
+              <div class="decision-options">
+                <button class="decision-option recommended" onclick="selectVariant('single')">
+                  <div class="option-badge">Recommended</div>
+                  <div class="option-icon">📄</div>
+                  <div class="option-content">
+                    <strong>On my website</strong>
+                    <span>I'll put the file at <span id="single-domain-hint"></span>/.well-known/brand.json</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectVariant('hosted')">
+                  <div class="option-icon">☁️</div>
+                  <div class="option-content">
+                    <strong>Hosted elsewhere</strong>
+                    <span>A CDN or managed service hosts it for me</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectVariant('agent')">
+                  <div class="option-icon">🤖</div>
+                  <div class="option-content">
+                    <strong>I have an MCP agent</strong>
+                    <span>My brand info is served dynamically by an AI agent</span>
+                  </div>
+                </button>
               </div>
-              <div class="variant-card" onclick="selectVariant('hosted')" id="variant-hosted">
-                <div class="icon">🔗</div>
-                <h4>Hosted Location</h4>
-                <p>Your brand.json is hosted elsewhere (CDN, managed service).</p>
+            </div>
+
+            <!-- Step 2b: Multiple Brands - Which Domain -->
+            <div id="step-multiple-domain" class="decision-step hidden">
+              <button class="back-link" onclick="goBackTo('step-brand-count')">← Back</button>
+              <h4>Which domain are you setting up?</h4>
+              <p class="step-hint">Your domain: <strong id="multi-domain-hint"></strong></p>
+
+              <div class="decision-options">
+                <button class="decision-option" onclick="selectVariant('portfolio')">
+                  <div class="option-icon">🏢</div>
+                  <div class="option-content">
+                    <strong>This is the parent company domain</strong>
+                    <span>All brand info lives here (e.g., nikeinc.com for Nike Inc)</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectVariant('redirect')">
+                  <div class="option-icon">↪️</div>
+                  <div class="option-content">
+                    <strong>This is one of our brand domains</strong>
+                    <span>This brand is owned by a larger company</span>
+                  </div>
+                </button>
+              </div>
+
+              <div class="info-callout">
+                <strong>How multi-brand setup works:</strong>
+                <ol>
+                  <li>Create the full portfolio on your parent company domain</li>
+                  <li>Add a small redirect file on each brand domain</li>
+                </ol>
               </div>
             </div>
           </div>
@@ -727,19 +933,57 @@
         const brandId = currentDomain.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '_');
         document.getElementById('single-brand-id').value = brandId;
 
-        // Default to single brand variant
-        selectVariant('single');
+        // Reset decision tree to step 1 and populate domain hints
+        showDecisionStep('step-brand-count');
+        document.getElementById('single-domain-hint').textContent = currentDomain;
+        document.getElementById('multi-domain-hint').textContent = currentDomain;
+
+        // Hide all forms initially
+        document.getElementById('form-single').classList.add('hidden');
+        document.getElementById('form-portfolio').classList.add('hidden');
+        document.getElementById('form-redirect').classList.add('hidden');
+        document.getElementById('form-agent').classList.add('hidden');
+        document.getElementById('form-hosted').classList.add('hidden');
+
+        updatePreview();
+      }
+
+      // ============================================================================
+      // Decision Tree Functions
+      // ============================================================================
+
+      function showDecisionStep(stepId) {
+        // Hide all steps
+        document.querySelectorAll('.decision-step').forEach(step => {
+          step.classList.add('hidden');
+        });
+        // Show the requested step
+        const step = document.getElementById(stepId);
+        if (step) {
+          step.classList.remove('hidden');
+          step.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        // Show the decision tree container
+        document.getElementById('decision-tree').classList.remove('hidden');
+      }
+
+      function selectBrandCount(count) {
+        if (count === 'single') {
+          showDecisionStep('step-single-hosting');
+        } else {
+          showDecisionStep('step-multiple-domain');
+        }
+      }
+
+      function goBackTo(stepId) {
+        showDecisionStep(stepId);
       }
 
       function selectVariant(variant) {
         currentVariant = variant;
 
-        // Update UI - highlight selected card
-        document.querySelectorAll('.variant-card').forEach(card => {
-          card.classList.remove('selected');
-        });
-        const selectedCard = document.getElementById(`variant-${variant}`);
-        if (selectedCard) selectedCard.classList.add('selected');
+        // Hide decision tree, show selected form
+        document.getElementById('decision-tree').classList.add('hidden');
 
         // Show/hide forms based on variant
         document.getElementById('form-single').classList.toggle('hidden', variant !== 'single');
@@ -756,9 +1000,8 @@
 
         updatePreview();
 
-        // Auto-scroll to the form
-        const formId = `form-${variant}`;
-        const formElement = document.getElementById(formId);
+        // Scroll to the form
+        const formElement = document.getElementById(`form-${variant}`);
         if (formElement) {
           setTimeout(() => {
             formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
