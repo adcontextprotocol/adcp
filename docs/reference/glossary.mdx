@@ -62,6 +62,12 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 
 ## D
 
+**Data Provider**
+An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal catalogs via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/docs/signals/data-providers).
+
+**Data Provider Domain**
+The domain where a data provider publishes their signal catalog (e.g., `polk.com`). Used in `signal_id` objects to reference signals: `{ "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`.
+
 **Daypart**
 Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
 
@@ -218,16 +224,31 @@ The specific identifier used for signal activation, may differ from signal_id.
 Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
 
 **Signal Agent**
-An MCP server that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Examples: LiveRamp, Experian, Peer39.
+A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
+
+**Signal Catalog**
+A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
+
+**Signal Definition**
+A single signal entry in a data provider's signal catalog, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `description`, `tags`, `allowed_values`, and `range`.
 
 **Signal Discovery**
-The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions.
+The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured ID lookup.
 
 **Signal ID**
-A unique identifier for a signal within a provider's catalog.
+A structured identifier referencing a signal. Uses `source` as a discriminator with two variants: `catalog` signals reference a data provider's published catalog (`data_provider_domain` + `id`, verifiable); `agent` signals are native to the signals agent (`agent_url` + `id`, trust-based). Example catalog signal: `{ "source": "catalog", "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`. Example agent signal: `{ "source": "agent", "agent_url": "https://liveramp.com/signals", "id": "custom_segment" }`.
+
+**Signal Source**
+The origin type for a signal identifier: `catalog` (from a data provider's published catalog, authorization verifiable via adagents.json) or `agent` (native to the signals agent, not externally verifiable). See [Data Provider Guide](/docs/signals/data-providers).
+
+**Signal Tags**
+Tags used to group related signals within a data provider's catalog. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.
 
 **Signal Type**
 Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".
+
+**Signal Value Type**
+The data type of a signal's values: `binary` (user matches or doesn't), `categorical` (user has one of several possible values), or `numeric` (user has a score within a range). Determines the targeting expression format.
 
 **Size Unit** (Signals Protocol)
 The measurement type for signal size: individuals, devices, or households.

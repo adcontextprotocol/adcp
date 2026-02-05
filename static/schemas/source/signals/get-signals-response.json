@@ -11,9 +11,13 @@
       "items": {
         "type": "object",
         "properties": {
+          "signal_id": {
+            "$ref": "/schemas/core/signal-id.json",
+            "description": "Universal signal identifier referencing the data provider's catalog. Use this to verify authorization and look up signal definitions."
+          },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Unique identifier for the signal"
+            "description": "Opaque identifier used for activation. This is the signals agent's internal segment ID."
           },
           "name": {
             "type": "string",
@@ -23,13 +27,17 @@
             "type": "string",
             "description": "Detailed signal description"
           },
+          "value_type": {
+            "$ref": "/schemas/enums/signal-value-type.json",
+            "description": "The data type of this signal's values (binary, categorical, numeric)"
+          },
           "signal_type": {
             "$ref": "/schemas/enums/signal-catalog-type.json",
-            "description": "Type of signal"
+            "description": "Catalog type of signal (marketplace, custom, owned)"
           },
           "data_provider": {
             "type": "string",
-            "description": "Name of the data provider"
+            "description": "Human-readable name of the data provider"
           },
           "coverage_percentage": {
             "type": "number",

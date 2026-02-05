@@ -8,7 +8,7 @@
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-01-23",
+  "lastUpdated": "2025-02-01",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -185,6 +185,22 @@
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
+        },
+        "signal-id": {
+          "$ref": "/schemas/core/signal-id.json",
+          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
+        },
+        "signal-definition": {
+          "$ref": "/schemas/core/signal-definition.json",
+          "description": "Signal definition published in a data provider's adagents.json catalog"
+        },
+        "data-provider-signal-selector": {
+          "$ref": "/schemas/core/data-provider-signal-selector.json",
+          "description": "Selects signals from a data provider's adagents.json - supports three patterns: all signals, specific IDs, or by tags"
+        },
+        "signal-targeting": {
+          "$ref": "/schemas/core/signal-targeting.json",
+          "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
         }
       },
       "requirements": {
@@ -447,6 +463,14 @@
         "device-platform": {
           "$ref": "/schemas/enums/device-platform.json",
           "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"
+        },
+        "signal-value-type": {
+          "$ref": "/schemas/enums/signal-value-type.json",
+          "description": "Signal value types for targeting (binary, categorical, numeric)"
+        },
+        "signal-source": {
+          "$ref": "/schemas/enums/signal-source.json",
+          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
         }
       }
     },
@@ -903,10 +927,10 @@
       }
     },
     "adagents": {
-      "description": "Authorized sales agents file format specification",
+      "description": "Agent authorization file format specification for publishers and data providers",
       "$ref": "/schemas/adagents.json",
       "file_location": "/.well-known/adagents.json",
-      "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
+      "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal catalogs and authorize signals agents to resell their data."
     },
     "brand": {
       "description": "Brand identity claim file format specification",

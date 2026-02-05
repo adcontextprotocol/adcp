@@ -227,6 +227,7 @@ export type MemberOffering =
   | 'si_agent'
   | 'governance_agent'
   | 'publisher'
+  | 'data_provider'
   | 'consulting'
   | 'other';
 
@@ -241,6 +242,7 @@ export const VALID_MEMBER_OFFERINGS: readonly MemberOffering[] = [
   'si_agent',
   'governance_agent',
   'publisher',
+  'data_provider',
   'consulting',
   'other',
 ] as const;
@@ -442,6 +444,19 @@ export interface ResolvedProperty {
   verified: boolean;
 }
 
+/**
+ * Data provider configuration stored in member profiles
+ * Each data provider has a domain where their signal catalog is hosted via adagents.json
+ */
+export interface DataProviderConfig {
+  domain: string;
+  is_public: boolean;
+  // Cached info from validation (optional, refreshed periodically)
+  signal_count?: number;
+  categories?: string[];  // e.g., ["automotive", "demographics", "purchase_intent"]
+  last_validated?: string;
+}
+
 export interface MemberProfile {
   id: string;
   workos_organization_id: string;
@@ -462,6 +477,7 @@ export interface MemberProfile {
   agents: AgentConfig[];
   publishers: PublisherConfig[]; // Publishers with adagents.json
   brands: BrandConfig[]; // Brands owned by this member
+  data_providers: DataProviderConfig[]; // Data providers with signal catalogs
   headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
   markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
   metadata: Record<string, unknown>;
@@ -493,6 +509,7 @@ export interface CreateMemberProfileInput {
   agents?: AgentConfig[];
   publishers?: PublisherConfig[];
   brands?: BrandConfig[];
+  data_providers?: DataProviderConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
@@ -518,6 +535,7 @@ export interface UpdateMemberProfileInput {
   agents?: AgentConfig[];
   publishers?: PublisherConfig[];
   brands?: BrandConfig[];
+  data_providers?: DataProviderConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
