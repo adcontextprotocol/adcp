@@ -532,6 +532,105 @@
         margin-bottom: var(--space-1);
       }
 
+      /* Success/Next Steps Styles */
+      .next-steps {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 1px solid #86efac;
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        margin-top: var(--space-6);
+      }
+
+      .next-steps h4 {
+        margin: 0 0 var(--space-4) 0;
+        color: #166534;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .next-steps ol {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: step-counter;
+      }
+
+      .next-steps li {
+        counter-increment: step-counter;
+        display: flex;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+        align-items: flex-start;
+      }
+
+      .next-steps li:last-child {
+        margin-bottom: 0;
+      }
+
+      .step-number {
+        width: 28px;
+        height: 28px;
+        background: #166534;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        flex-shrink: 0;
+      }
+
+      .step-content {
+        flex: 1;
+      }
+
+      .step-content strong {
+        display: block;
+        margin-bottom: var(--space-1);
+        color: #166534;
+      }
+
+      .step-content p {
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+      }
+
+      .step-content code {
+        background: white;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+        font-size: var(--text-sm);
+        border: 1px solid #86efac;
+      }
+
+      .verify-result {
+        margin-top: var(--space-3);
+        padding: var(--space-3);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+      }
+
+      .verify-result.success {
+        background: #dcfce7;
+        border: 1px solid #86efac;
+        color: #166534;
+      }
+
+      .verify-result.error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+      }
+
+      .verify-result.pending {
+        background: #fefce8;
+        border: 1px solid #fde047;
+        color: #854d0e;
+      }
+
       @media (max-width: 768px) {
         .page-header h1 {
           font-size: var(--text-3xl);
@@ -831,6 +930,39 @@
             <h4 style="margin-bottom: var(--space-3)">Generated brand.json</h4>
             <pre class="json-preview" id="json-preview">{}</pre>
           </div>
+
+          <!-- Next Steps / Success State -->
+          <div class="next-steps" id="next-steps">
+            <h4>✅ Next Steps</h4>
+            <ol>
+              <li>
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <strong>Download your file</strong>
+                  <p>Save the generated brand.json to your computer.</p>
+                  <button class="btn" onclick="downloadJson()" style="padding: var(--space-2) var(--space-4);">Download brand.json</button>
+                </div>
+              </li>
+              <li>
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <strong>Upload to your website</strong>
+                  <p>Place the file at this exact location on your server:</p>
+                  <code id="deploy-path">https://example.com/.well-known/brand.json</code>
+                  <p style="margin-top: var(--space-2);">Create the <code>.well-known</code> folder if it doesn't exist.</p>
+                </div>
+              </li>
+              <li>
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <strong>Verify it works</strong>
+                  <p>Test that your brand.json is accessible and valid.</p>
+                  <button class="btn btn-secondary" onclick="verifyDeployment()" id="verify-btn" style="padding: var(--space-2) var(--space-4);">Test My Domain</button>
+                  <div id="verify-result"></div>
+                </div>
+              </li>
+            </ol>
+          </div>
         </div>
       </div>
 
@@ -998,6 +1130,12 @@
           addBrand();
         }
 
+        // Update deploy path in next steps
+        document.getElementById('deploy-path').textContent = `https://${currentDomain}/.well-known/brand.json`;
+
+        // Clear any previous verification result
+        document.getElementById('verify-result').innerHTML = '';
+
         updatePreview();
 
         // Scroll to the form
@@ -1007,6 +1145,50 @@
             formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 100);
         }
+      }
+
+      async function verifyDeployment() {
+        const btn = document.getElementById('verify-btn');
+        const resultDiv = document.getElementById('verify-result');
+
+        btn.disabled = true;
+        btn.textContent = 'Testing...';
+        resultDiv.innerHTML = '<div class="verify-result pending">🔍 Checking your domain...</div>';
+
+        try {
+          const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(currentDomain)}`);
+          const result = await response.json();
+
+          if (result.success && result.brand) {
+            resultDiv.innerHTML = `
+              <div class="verify-result success">
+                ✅ <strong>Success!</strong> Your brand.json is live and valid.<br>
+                <span style="font-size: 12px; opacity: 0.8;">
+                  House: ${result.brand.house_domain || currentDomain}
+                  ${result.brand.brand_id ? ` • Brand: ${result.brand.brand_id}` : ''}
+                </span>
+              </div>
+            `;
+          } else {
+            resultDiv.innerHTML = `
+              <div class="verify-result error">
+                ❌ <strong>Not found yet.</strong> Make sure you've uploaded the file to:<br>
+                <code style="background: white; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: inline-block;">
+                  https://${currentDomain}/.well-known/brand.json
+                </code>
+              </div>
+            `;
+          }
+        } catch (error) {
+          resultDiv.innerHTML = `
+            <div class="verify-result error">
+              ❌ <strong>Error checking domain.</strong> Please try again later.
+            </div>
+          `;
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Test My Domain';
       }
 
       // ============================================================================
