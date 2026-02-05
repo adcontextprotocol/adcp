@@ -456,79 +456,129 @@
             </div>
           </div>
 
-          <!-- Variant Selector -->
+          <!-- File Type Selector -->
           <div style="margin-bottom: var(--space-6)">
             <label style="display: block; margin-bottom: var(--space-3); font-weight: var(--font-semibold)">
-              Choose brand.json Type
+              What type of brand.json file do you need?
             </label>
             <div class="variant-selector">
-              <div class="variant-card selected" onclick="selectVariant('portfolio')" id="variant-portfolio">
-                <div class="icon">🏢</div>
-                <h4>House Portfolio</h4>
-                <p>Full brand hierarchy with all brands and properties. Use this if you're the authoritative source.</p>
+              <div class="variant-card selected" onclick="selectVariant('single')" id="variant-single">
+                <div class="icon">🎯</div>
+                <h4>Single Brand</h4>
+                <p>One domain, one brand. You only need this one file. Examples: Allbirds, Warby Parker.</p>
               </div>
-              <div class="variant-card" onclick="selectVariant('house-redirect')" id="variant-house-redirect">
+              <div class="variant-card" onclick="selectVariant('portfolio')" id="variant-portfolio">
+                <div class="icon">🏢</div>
+                <h4>Brand Portfolio</h4>
+                <p>Corporate house with multiple brands. You'll also need redirect files for each brand domain.</p>
+              </div>
+              <div class="variant-card" onclick="selectVariant('redirect')" id="variant-redirect">
                 <div class="icon">↪️</div>
-                <h4>House Redirect</h4>
-                <p>Point to a house domain that contains the full portfolio. Use for regional or sub-brand domains.</p>
+                <h4>Brand Redirect</h4>
+                <p>This domain belongs to a larger house. Points to the house's brand.json.</p>
               </div>
               <div class="variant-card" onclick="selectVariant('agent')" id="variant-agent">
                 <div class="icon">🤖</div>
                 <h4>Brand Agent</h4>
-                <p>Point to an MCP agent that provides brand information dynamically.</p>
+                <p>Your brand has an MCP agent that provides brand information dynamically.</p>
               </div>
-              <div class="variant-card" onclick="selectVariant('authoritative')" id="variant-authoritative">
+              <div class="variant-card" onclick="selectVariant('hosted')" id="variant-hosted">
                 <div class="icon">🔗</div>
-                <h4>Authoritative Location</h4>
-                <p>Redirect to a hosted brand.json at another URL. Use for CDN or managed services.</p>
+                <h4>Hosted Location</h4>
+                <p>Your brand.json is hosted elsewhere (CDN, managed service).</p>
               </div>
             </div>
           </div>
 
-          <!-- Authoritative Location Form -->
-          <div id="form-authoritative" class="hidden">
-            <div class="form-group">
-              <label>Authoritative Location URL</label>
-              <input
-                type="url"
-                id="authoritative-url"
-                placeholder="https://cdn.example.com/brands/brand.json"
-                oninput="updatePreview()"
-              />
-              <p class="hint">The HTTPS URL where the authoritative brand.json is hosted</p>
+          <!-- Single Brand Form (simplest case) -->
+          <div id="form-single">
+            <h4 style="margin-bottom: var(--space-4)">Brand Information</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+              <div class="form-group" style="margin-bottom: 0">
+                <label>Brand ID</label>
+                <input
+                  type="text"
+                  id="single-brand-id"
+                  placeholder="allbirds"
+                  oninput="updatePreview()"
+                />
+                <p class="hint">Lowercase identifier</p>
+              </div>
+              <div class="form-group" style="margin-bottom: 0">
+                <label>Brand Name</label>
+                <input
+                  type="text"
+                  id="single-brand-name"
+                  placeholder="Allbirds"
+                  oninput="updatePreview()"
+                />
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+                Properties (websites, apps)
+                <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+              </label>
+              <div id="single-brand-properties">
+                <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+              </div>
             </div>
           </div>
 
-          <!-- House Redirect Form -->
-          <div id="form-house-redirect" class="hidden">
+          <!-- Brand Portfolio Form (multi-brand) -->
+          <div id="form-portfolio" class="hidden">
+            <h4 style="margin-bottom: var(--space-4)">House Information</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+              <div class="form-group" style="margin-bottom: 0">
+                <label>House Domain</label>
+                <input
+                  type="text"
+                  id="portfolio-house-domain"
+                  placeholder="nikeinc.com"
+                  oninput="updatePreview()"
+                />
+                <p class="hint">Corporate/parent company domain</p>
+              </div>
+              <div class="form-group" style="margin-bottom: 0">
+                <label>House Name</label>
+                <input
+                  type="text"
+                  id="portfolio-house-name"
+                  placeholder="Nike, Inc."
+                  oninput="updatePreview()"
+                />
+              </div>
+            </div>
+
+            <h4 style="margin: var(--space-6) 0 var(--space-4) 0; display: flex; justify-content: space-between; align-items: center;">
+              Brands in Portfolio
+              <button class="btn" onclick="addBrand()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm)">+ Add Brand</button>
+            </h4>
+            <div id="brands-container">
+              <!-- Brand entries added here -->
+            </div>
+
+            <!-- Redirect Files Section -->
+            <div id="redirect-files-section" class="hidden" style="margin-top: var(--space-6); padding: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--radius-lg); border: 1px solid var(--color-border);">
+              <h4 style="margin: 0 0 var(--space-3) 0; font-size: var(--text-lg);">📁 Redirect Files Needed</h4>
+              <p style="color: var(--text-secondary); font-size: var(--text-sm); margin: 0 0 var(--space-3) 0;">
+                Each brand domain needs a redirect file pointing to this house:
+              </p>
+              <div id="redirect-files-list"></div>
+            </div>
+          </div>
+
+          <!-- Brand Redirect Form -->
+          <div id="form-redirect" class="hidden">
             <div class="form-group">
               <label>House Domain</label>
               <input
                 type="text"
-                id="house-domain"
-                placeholder="parent-company.com"
+                id="redirect-house-domain"
+                placeholder="nikeinc.com"
                 oninput="updatePreview()"
               />
-              <p class="hint">The domain of the house that contains the brand portfolio</p>
-            </div>
-            <div class="form-group">
-              <label>Region (optional)</label>
-              <input
-                type="text"
-                id="house-region"
-                placeholder="US"
-                oninput="updatePreview()"
-              />
-              <p class="hint">ISO 3166-1 alpha-2 country code (e.g., US, CN, DE)</p>
-            </div>
-            <div class="form-group">
-              <label>Note (optional)</label>
-              <input
-                type="text"
-                id="house-note"
-                placeholder="Regional site - see house for brand portfolio"
-                oninput="updatePreview()"
-              />
+              <p class="hint">The corporate/house domain that contains the full brand portfolio</p>
             </div>
           </div>
 
@@ -556,108 +606,17 @@
             </div>
           </div>
 
-          <!-- House Portfolio Form -->
-          <div id="form-portfolio">
-            <!-- Step 1: Architecture Selection -->
-            <div id="architecture-step">
-              <h4 style="margin-bottom: var(--space-4)">What type of brand structure do you have?</h4>
-              <div class="variant-selector" style="margin-bottom: var(--space-6)">
-                <div class="variant-card" onclick="selectArchitecture('single')" id="arch-single">
-                  <div class="icon">🎯</div>
-                  <h4>Single Brand</h4>
-                  <p>One brand, one identity. Examples: Allbirds, Warby Parker, Glossier.</p>
-                </div>
-                <div class="variant-card" onclick="selectArchitecture('house_of_brands')" id="arch-house_of_brands">
-                  <div class="icon">🏛️</div>
-                  <h4>House of Brands</h4>
-                  <p>Multiple independent brands. Examples: P&G (Tide, Pampers), Unilever.</p>
-                </div>
-                <div class="variant-card" onclick="selectArchitecture('branded_house')" id="arch-branded_house">
-                  <div class="icon">🏠</div>
-                  <h4>Branded House</h4>
-                  <p>Master brand with sub-brands. Examples: Virgin, FedEx, Google.</p>
-                </div>
-                <div class="variant-card" onclick="selectArchitecture('hybrid')" id="arch-hybrid">
-                  <div class="icon">🔀</div>
-                  <h4>Hybrid</h4>
-                  <p>Mix of endorsed and independent brands. Examples: Nike (with Jordan), Microsoft.</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Step 2: Brand Details (shown after architecture selected) -->
-            <div id="brand-details-step" class="hidden">
-              <h4 style="margin-bottom: var(--space-4)">House Information</h4>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
-                <div class="form-group" style="margin-bottom: 0">
-                  <label>House Domain</label>
-                  <input
-                    type="text"
-                    id="portfolio-house-domain"
-                    placeholder="company.com"
-                    oninput="updatePreview()"
-                  />
-                </div>
-                <div class="form-group" style="margin-bottom: 0">
-                  <label>House Name</label>
-                  <input
-                    type="text"
-                    id="portfolio-house-name"
-                    placeholder="Company, Inc."
-                    oninput="updatePreview()"
-                  />
-                </div>
-              </div>
-
-              <!-- Single Brand: Simplified inline form -->
-              <div id="single-brand-form" class="hidden">
-                <h4 style="margin: var(--space-6) 0 var(--space-4) 0">Brand Details</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
-                  <div class="form-group" style="margin-bottom: 0">
-                    <label>Brand ID</label>
-                    <input
-                      type="text"
-                      id="single-brand-id"
-                      placeholder="my_brand"
-                      oninput="updateSingleBrand()"
-                    />
-                    <p class="hint">Lowercase identifier (e.g., "allbirds")</p>
-                  </div>
-                  <div class="form-group" style="margin-bottom: 0">
-                    <label>Brand Name</label>
-                    <input
-                      type="text"
-                      id="single-brand-name"
-                      placeholder="My Brand"
-                      oninput="updateSingleBrand()"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
-                    Properties (websites, apps)
-                    <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
-                  </label>
-                  <div id="single-brand-properties">
-                    <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Multi-Brand: Full brands list -->
-              <div id="multi-brand-form" class="hidden">
-                <h4 style="margin: var(--space-6) 0 var(--space-4) 0; display: flex; justify-content: space-between; align-items: center;">
-                  Brands
-                  <button class="btn" onclick="addBrand()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm)">+ Add Brand</button>
-                </h4>
-                <div id="brands-container">
-                  <!-- Brand entries added here -->
-                </div>
-              </div>
-
-              <div style="margin-top: var(--space-4)">
-                <button class="btn btn-secondary" onclick="changeArchitecture()" style="font-size: var(--text-sm)">← Change Architecture</button>
-              </div>
+          <!-- Hosted Location Form -->
+          <div id="form-hosted" class="hidden">
+            <div class="form-group">
+              <label>Hosted URL</label>
+              <input
+                type="url"
+                id="hosted-url"
+                placeholder="https://cdn.example.com/brands/brand.json"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The HTTPS URL where your brand.json is hosted</p>
             </div>
           </div>
 
@@ -695,11 +654,10 @@
       // ============================================================================
 
       let currentDomain = '';
-      let currentVariant = 'portfolio';
-      let currentArchitecture = ''; // single, house_of_brands, branded_house, hybrid
+      let currentVariant = 'single'; // single, portfolio, redirect, agent, hosted
       let brands = [];
       let brandIdCounter = 0;
-      let singleBrand = { brand_id: '', name: '', properties: [] };
+      let singleBrandProperties = [];
 
       // ============================================================================
       // Main Functions
@@ -760,110 +718,66 @@
         // Show builder
         document.getElementById('builder-form').classList.remove('hidden');
 
-        // Reset architecture state (user will select)
-        currentArchitecture = '';
+        // Reset state
         brands = [];
         brandIdCounter = 0;
-        singleBrand = { brand_id: '', name: '', properties: [] };
+        singleBrandProperties = [];
 
-        // Show architecture selection step
-        document.getElementById('architecture-step').classList.remove('hidden');
-        document.getElementById('brand-details-step').classList.add('hidden');
+        // Pre-fill brand ID from domain for single brand
+        const brandId = currentDomain.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '_');
+        document.getElementById('single-brand-id').value = brandId;
 
-        updatePreview();
+        // Default to single brand variant
+        selectVariant('single');
       }
 
       function selectVariant(variant) {
         currentVariant = variant;
 
-        // Update UI
+        // Update UI - highlight selected card
         document.querySelectorAll('.variant-card').forEach(card => {
           card.classList.remove('selected');
         });
-        document.getElementById(`variant-${variant === 'house-redirect' ? 'house-redirect' : variant}`).classList.add('selected');
+        const selectedCard = document.getElementById(`variant-${variant}`);
+        if (selectedCard) selectedCard.classList.add('selected');
 
-        // Show/hide forms
-        document.getElementById('form-authoritative').classList.toggle('hidden', variant !== 'authoritative');
-        document.getElementById('form-house-redirect').classList.toggle('hidden', variant !== 'house-redirect');
-        document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
+        // Show/hide forms based on variant
+        document.getElementById('form-single').classList.toggle('hidden', variant !== 'single');
         document.getElementById('form-portfolio').classList.toggle('hidden', variant !== 'portfolio');
+        document.getElementById('form-redirect').classList.toggle('hidden', variant !== 'redirect');
+        document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
+        document.getElementById('form-hosted').classList.toggle('hidden', variant !== 'hosted');
 
-        updatePreview();
-      }
-
-      // ============================================================================
-      // Architecture Selection
-      // ============================================================================
-
-      function selectArchitecture(arch) {
-        currentArchitecture = arch;
-
-        // Update UI
-        document.querySelectorAll('#architecture-step .variant-card').forEach(card => {
-          card.classList.remove('selected');
-        });
-        document.getElementById(`arch-${arch}`).classList.add('selected');
-
-        // Show brand details step
-        document.getElementById('architecture-step').classList.add('hidden');
-        document.getElementById('brand-details-step').classList.remove('hidden');
-
-        // Show appropriate form based on architecture
-        if (arch === 'single') {
-          document.getElementById('single-brand-form').classList.remove('hidden');
-          document.getElementById('multi-brand-form').classList.add('hidden');
-          // Pre-fill brand ID from domain
-          if (currentDomain) {
-            const brandId = currentDomain.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '_');
-            document.getElementById('single-brand-id').value = brandId;
-            singleBrand.brand_id = brandId;
-          }
-        } else {
-          document.getElementById('single-brand-form').classList.add('hidden');
-          document.getElementById('multi-brand-form').classList.remove('hidden');
-          // Initialize with master brand for multi-brand architectures
-          if (brands.length === 0) {
-            addBrand(true); // true = is master brand
-          }
+        // Initialize portfolio with one brand if empty
+        if (variant === 'portfolio' && brands.length === 0) {
+          document.getElementById('portfolio-house-domain').value = currentDomain;
+          addBrand();
         }
 
         updatePreview();
-      }
 
-      function changeArchitecture() {
-        currentArchitecture = '';
-        brands = [];
-        brandIdCounter = 0;
-        singleBrand = { brand_id: '', name: '', properties: [] };
-
-        document.querySelectorAll('#architecture-step .variant-card').forEach(card => {
-          card.classList.remove('selected');
-        });
-
-        document.getElementById('architecture-step').classList.remove('hidden');
-        document.getElementById('brand-details-step').classList.add('hidden');
-
-        updatePreview();
+        // Auto-scroll to the form
+        const formId = `form-${variant}`;
+        const formElement = document.getElementById(formId);
+        if (formElement) {
+          setTimeout(() => {
+            formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }
       }
 
       // ============================================================================
-      // Single Brand Functions
+      // Single Brand Property Functions
       // ============================================================================
-
-      function updateSingleBrand() {
-        singleBrand.brand_id = document.getElementById('single-brand-id').value;
-        singleBrand.name = document.getElementById('single-brand-name').value;
-        updatePreview();
-      }
 
       function addSingleBrandProperty() {
-        singleBrand.properties.push({ type: 'website', identifier: '', primary: singleBrand.properties.length === 0 });
+        singleBrandProperties.push({ type: 'website', identifier: '', primary: singleBrandProperties.length === 0 });
         renderSingleBrandProperties();
         updatePreview();
       }
 
       function removeSingleBrandProperty(index) {
-        singleBrand.properties.splice(index, 1);
+        singleBrandProperties.splice(index, 1);
         renderSingleBrandProperties();
         updatePreview();
       }
@@ -872,18 +786,18 @@
         if (field === 'primary') {
           value = value === 'true' || value === true;
         }
-        singleBrand.properties[index][field] = value;
+        singleBrandProperties[index][field] = value;
         updatePreview();
       }
 
       function renderSingleBrandProperties() {
         const container = document.getElementById('single-brand-properties');
-        if (singleBrand.properties.length === 0) {
+        if (singleBrandProperties.length === 0) {
           container.innerHTML = `<p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>`;
           return;
         }
 
-        container.innerHTML = singleBrand.properties.map((prop, i) => `
+        container.innerHTML = singleBrandProperties.map((prop, i) => `
           <div class="property-entry">
             <select onchange="updateSingleBrandProperty(${i}, 'type', this.value)">
               <option value="website" ${prop.type === 'website' ? 'selected' : ''}>Website</option>
@@ -907,38 +821,13 @@
       // Brand Management
       // ============================================================================
 
-      function addBrand(isMaster = false) {
+      function addBrand() {
         const brandId = ++brandIdCounter;
-        const isFirstBrand = brands.length === 0;
-
-        // Determine default keller_type based on architecture
-        let defaultKellerType = '';
-        if (isMaster || isFirstBrand) {
-          defaultKellerType = 'master';
-        } else {
-          switch (currentArchitecture) {
-            case 'house_of_brands':
-              defaultKellerType = 'independent';
-              break;
-            case 'branded_house':
-              defaultKellerType = 'sub-brand';
-              break;
-            case 'hybrid':
-              defaultKellerType = ''; // Let user choose
-              break;
-          }
-        }
-
-        // Find master brand ID for auto-linking parent
-        const masterBrand = brands.find(b => b.keller_type === 'master');
-        const defaultParent = (!isMaster && !isFirstBrand && masterBrand) ? masterBrand.brand_id : '';
-
         brands.push({
           id: brandId,
           brand_id: '',
           name: '',
-          keller_type: defaultKellerType,
-          parent_brand: defaultParent,
+          domain: '', // Primary domain for this brand
           properties: []
         });
         renderBrands();
@@ -995,79 +884,43 @@
           container.innerHTML = `
             <div style="text-align: center; padding: var(--space-8); color: var(--text-muted); background: var(--color-bg-subtle); border-radius: var(--radius-lg); border: 2px dashed var(--color-border);">
               <p style="margin: 0 0 var(--space-3) 0">No brands added yet</p>
-              <button class="btn" onclick="addBrand(true)">+ Add Master Brand</button>
+              <button class="btn" onclick="addBrand()">+ Add Brand</button>
             </div>
           `;
           return;
         }
 
-        // Determine what fields to show based on architecture
-        const showKellerType = currentArchitecture === 'hybrid';
-        const showParentBrand = currentArchitecture !== 'house_of_brands';
-
-        // Get list of potential parent brands for dropdown
-        const potentialParents = brands.filter(b => b.keller_type === 'master' || b.keller_type === 'endorsed');
-
-        container.innerHTML = brands.map((brand, index) => {
-          const isMaster = brand.keller_type === 'master';
-          const brandLabel = isMaster ? 'Master Brand' :
-                            currentArchitecture === 'house_of_brands' ? `Brand ${index + 1}` :
-                            currentArchitecture === 'branded_house' ? (index === 0 ? 'Master Brand' : 'Sub-brand') :
-                            `Brand ${index + 1}`;
-
-          return `
+        container.innerHTML = brands.map((brand, index) => `
           <div class="brand-entry">
             <div class="brand-entry-header">
-              <h4 style="margin: 0; font-size: var(--text-lg);">${brandLabel}</h4>
-              ${brands.length > 1 ? `<button class="btn btn-secondary" onclick="removeBrand(${brand.id})" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Remove</button>` : ''}
+              <h4 style="margin: 0; font-size: var(--text-lg);">Brand ${index + 1}</h4>
+              <button class="btn btn-secondary" onclick="removeBrand(${brand.id})" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Remove</button>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
               <div>
                 <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand ID</label>
-                <input type="text" value="${brand.brand_id}" placeholder="my_brand" oninput="updateBrand(${brand.id}, 'brand_id', this.value)" />
+                <input type="text" value="${brand.brand_id}" placeholder="nike" oninput="updateBrand(${brand.id}, 'brand_id', this.value)" />
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand Name</label>
-                <input type="text" value="${brand.name}" placeholder="My Brand" oninput="updateBrand(${brand.id}, 'name', this.value)" />
+                <input type="text" value="${brand.name}" placeholder="Nike" oninput="updateBrand(${brand.id}, 'name', this.value)" />
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand Domain</label>
+                <input type="text" value="${brand.domain || ''}" placeholder="nike.com" oninput="updateBrand(${brand.id}, 'domain', this.value)" />
+                <p class="hint" style="font-size: 11px; margin-top: 2px;">Needs redirect file</p>
               </div>
             </div>
-
-            ${(showKellerType || showParentBrand) ? `
-            <div style="display: grid; grid-template-columns: ${showKellerType && showParentBrand ? '1fr 1fr' : '1fr'}; gap: var(--space-3); margin-bottom: var(--space-4);">
-              ${showKellerType ? `
-              <div>
-                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Brand Type</label>
-                <select onchange="updateBrand(${brand.id}, 'keller_type', this.value)">
-                  <option value="master" ${brand.keller_type === 'master' ? 'selected' : ''}>Master (primary brand)</option>
-                  <option value="sub-brand" ${brand.keller_type === 'sub-brand' ? 'selected' : ''}>Sub-brand (carries parent name)</option>
-                  <option value="endorsed" ${brand.keller_type === 'endorsed' ? 'selected' : ''}>Endorsed (backed by parent)</option>
-                  <option value="independent" ${brand.keller_type === 'independent' ? 'selected' : ''}>Independent (operates separately)</option>
-                </select>
-              </div>
-              ` : ''}
-              ${showParentBrand && !isMaster && potentialParents.length > 0 ? `
-              <div>
-                <label style="display: block; margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--font-medium);">Parent Brand</label>
-                <select onchange="updateBrand(${brand.id}, 'parent_brand', this.value)">
-                  <option value="">None</option>
-                  ${potentialParents.map(p => `
-                    <option value="${p.brand_id}" ${brand.parent_brand === p.brand_id ? 'selected' : ''}>${p.name || p.brand_id}</option>
-                  `).join('')}
-                </select>
-              </div>
-              ` : ''}
-            </div>
-            ` : ''}
 
             <div>
               <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
-                Properties
+                Other Properties (apps, etc.)
                 <button class="btn" onclick="addProperty(${brand.id})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
               </label>
               <div id="properties-${brand.id}">
                 ${brand.properties.length === 0 ? `
-                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No additional properties</p>
                 ` : brand.properties.map((prop, i) => `
                   <div class="property-entry">
                     <select onchange="updateProperty(${brand.id}, ${i}, 'type', this.value)">
@@ -1079,17 +932,51 @@
                       <option value="podcast" ${prop.type === 'podcast' ? 'selected' : ''}>Podcast</option>
                     </select>
                     <input type="text" value="${prop.identifier}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateProperty(${brand.id}, ${i}, 'identifier', this.value)" />
-                    <label style="display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--text-sm);">
-                      <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateProperty(${brand.id}, ${i}, 'primary', this.checked)" />
-                      Primary
-                    </label>
                     <button class="btn btn-secondary" onclick="removeProperty(${brand.id}, ${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
                   </div>
                 `).join('')}
               </div>
             </div>
           </div>
-        `}).join('');
+        `).join('');
+
+        // Update redirect files list
+        updateRedirectFilesList();
+      }
+
+      function updateRedirectFilesList() {
+        const section = document.getElementById('redirect-files-section');
+        const list = document.getElementById('redirect-files-list');
+        const houseDomain = document.getElementById('portfolio-house-domain').value.trim();
+
+        // Get all brand domains that need redirects
+        const brandDomains = brands
+          .filter(b => b.domain && b.domain !== houseDomain)
+          .map(b => b.domain);
+
+        if (brandDomains.length === 0) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        list.innerHTML = brandDomains.map(domain => `
+          <div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border);">
+            <code style="flex: 1; font-size: var(--text-sm);">${domain}/.well-known/brand.json</code>
+            <button class="btn btn-secondary" onclick="copyRedirectJson('${domain}')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Copy JSON</button>
+          </div>
+        `).join('');
+      }
+
+      function copyRedirectJson(domain) {
+        const houseDomain = document.getElementById('portfolio-house-domain').value.trim();
+        const redirectJson = {
+          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+          "house": houseDomain
+        };
+        navigator.clipboard.writeText(JSON.stringify(redirectJson, null, 2))
+          .then(() => alert(`Copied redirect JSON for ${domain}!`))
+          .catch(() => alert('Failed to copy'));
       }
 
       // ============================================================================
@@ -1102,29 +989,90 @@
         };
 
         switch (currentVariant) {
-          case 'authoritative':
-            const authUrl = document.getElementById('authoritative-url').value.trim();
-            if (authUrl) {
-              json.authoritative_location = authUrl;
+          case 'single':
+            // Single brand - simplest case
+            json.version = "1.0";
+            json.house = {
+              domain: currentDomain,
+              architecture: "branded_house"
+            };
+
+            const singleBrandId = document.getElementById('single-brand-id').value.trim();
+            const singleBrandName = document.getElementById('single-brand-name').value.trim();
+
+            const singleBrandObj = {
+              id: singleBrandId || 'unnamed',
+              names: singleBrandName ? [{ en: singleBrandName }] : [],
+              keller_type: 'master'
+            };
+
+            // Add domain as primary property
+            if (currentDomain) {
+              singleBrandObj.properties = [{ type: 'website', identifier: currentDomain, primary: true }];
             }
+
+            // Add additional properties
+            if (singleBrandProperties.length > 0) {
+              if (!singleBrandObj.properties) singleBrandObj.properties = [];
+              singleBrandProperties
+                .filter(p => p.identifier)
+                .forEach(p => {
+                  singleBrandObj.properties.push({ type: p.type, identifier: p.identifier });
+                });
+            }
+
+            json.brands = [singleBrandObj];
             break;
 
-          case 'house-redirect':
-            const houseDomain = document.getElementById('house-domain').value.trim();
-            if (houseDomain) {
-              json.house = houseDomain;
-            }
-            const region = document.getElementById('house-region').value.trim();
-            if (region) {
-              json.region = region;
-            }
-            const note = document.getElementById('house-note').value.trim();
-            if (note) {
-              json.note = note;
+          case 'portfolio':
+            // Multi-brand portfolio
+            json.version = "1.0";
+
+            const portfolioDomain = document.getElementById('portfolio-house-domain').value.trim();
+            const portfolioName = document.getElementById('portfolio-house-name').value.trim();
+
+            json.house = {
+              domain: portfolioDomain || currentDomain,
+              architecture: "house_of_brands"
+            };
+            if (portfolioName) json.house.name = portfolioName;
+
+            json.brands = brands
+              .filter(b => b.brand_id || b.name)
+              .map(brand => {
+                const brandObj = {
+                  id: brand.brand_id || 'unnamed',
+                  names: brand.name ? [{ en: brand.name }] : []
+                };
+
+                // Build properties array starting with domain
+                const props = [];
+                if (brand.domain) {
+                  props.push({ type: 'website', identifier: brand.domain, primary: true });
+                }
+                if (brand.properties && brand.properties.length > 0) {
+                  brand.properties
+                    .filter(p => p.identifier)
+                    .forEach(p => props.push({ type: p.type, identifier: p.identifier }));
+                }
+                if (props.length > 0) {
+                  brandObj.properties = props;
+                }
+
+                return brandObj;
+              });
+            break;
+
+          case 'redirect':
+            // Simple redirect to house
+            const redirectHouse = document.getElementById('redirect-house-domain').value.trim();
+            if (redirectHouse) {
+              json.house = redirectHouse;
             }
             break;
 
           case 'agent':
+            // Brand agent reference
             const agentUrl = document.getElementById('agent-url').value.trim();
             const agentId = document.getElementById('agent-id').value.trim();
             if (agentUrl || agentId) {
@@ -1135,70 +1083,11 @@
             }
             break;
 
-          case 'portfolio':
-            json.version = "1.0";
-
-            const portfolioDomain = document.getElementById('portfolio-house-domain').value.trim();
-            const portfolioName = document.getElementById('portfolio-house-name').value.trim();
-
-            // Map architecture to schema value
-            const archMap = {
-              'single': 'branded_house',
-              'branded_house': 'branded_house',
-              'house_of_brands': 'house_of_brands',
-              'hybrid': 'hybrid'
-            };
-            const architecture = archMap[currentArchitecture] || '';
-
-            json.house = {};
-            if (portfolioDomain) json.house.domain = portfolioDomain;
-            if (portfolioName) json.house.name = portfolioName;
-            if (architecture) json.house.architecture = architecture;
-
-            // Handle single brand vs multi-brand
-            if (currentArchitecture === 'single') {
-              // Single brand - use simplified singleBrand object
-              const brandObj = {
-                id: singleBrand.brand_id || 'unnamed',
-                names: singleBrand.name ? [{ en: singleBrand.name }] : [],
-                keller_type: 'master'
-              };
-              if (singleBrand.properties.length > 0) {
-                brandObj.properties = singleBrand.properties
-                  .filter(p => p.identifier)
-                  .map(p => {
-                    const prop = { type: p.type, identifier: p.identifier };
-                    if (p.primary) prop.primary = true;
-                    return prop;
-                  });
-              }
-              json.brands = [brandObj];
-            } else {
-              // Multi-brand - use brands array
-              json.brands = brands
-                .filter(b => b.brand_id || b.name)
-                .map(brand => {
-                  const brandObj = {
-                    id: brand.brand_id || 'unnamed',
-                    names: brand.name ? [{ en: brand.name }] : []
-                  };
-                  if (brand.keller_type) {
-                    brandObj.keller_type = brand.keller_type;
-                  }
-                  if (brand.parent_brand) {
-                    brandObj.parent_brand = brand.parent_brand;
-                  }
-                  if (brand.properties.length > 0) {
-                    brandObj.properties = brand.properties
-                      .filter(p => p.identifier)
-                      .map(p => {
-                        const prop = { type: p.type, identifier: p.identifier };
-                        if (p.primary) prop.primary = true;
-                        return prop;
-                      });
-                  }
-                  return brandObj;
-                });
+          case 'hosted':
+            // Hosted location redirect
+            const hostedUrl = document.getElementById('hosted-url').value.trim();
+            if (hostedUrl) {
+              json.authoritative_location = hostedUrl;
             }
             break;
         }
