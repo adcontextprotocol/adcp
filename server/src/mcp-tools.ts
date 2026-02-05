@@ -243,6 +243,10 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           description: "Domain to resolve (e.g., 'jumpman23.com' or 'nike.com')",
         },
+        fresh: {
+          type: "boolean",
+          description: "Bypass cache and fetch fresh data (default: false)",
+        },
       },
       required: ["domain"],
     },
@@ -257,6 +261,10 @@ export const TOOL_DEFINITIONS = [
         domain: {
           type: "string",
           description: "Domain to validate (e.g., 'nike.com')",
+        },
+        fresh: {
+          type: "boolean",
+          description: "Bypass cache and fetch fresh data (default: false)",
         },
       },
       required: ["domain"],
@@ -843,6 +851,7 @@ export class MCPToolHandler {
       // Brand tools
       case "resolve_brand": {
         const domain = args?.domain as string;
+        const fresh = args?.fresh as boolean | undefined;
         if (!domain) {
           return {
             content: [
@@ -854,7 +863,7 @@ export class MCPToolHandler {
             isError: true,
           };
         }
-        const resolved = await this.brandManager.resolveBrand(domain);
+        const resolved = await this.brandManager.resolveBrand(domain, { skipCache: fresh });
         if (!resolved) {
           return {
             content: [
@@ -890,6 +899,7 @@ export class MCPToolHandler {
 
       case "validate_brand_json": {
         const domain = args?.domain as string;
+        const fresh = args?.fresh as boolean | undefined;
         if (!domain) {
           return {
             content: [
@@ -901,7 +911,7 @@ export class MCPToolHandler {
             isError: true,
           };
         }
-        const validation = await this.brandManager.validateDomain(domain);
+        const validation = await this.brandManager.validateDomain(domain, { skipCache: fresh });
         return {
           content: [
             {

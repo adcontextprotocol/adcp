@@ -1922,11 +1922,12 @@ export class HTTPServer {
     this.app.get('/api/brands/resolve', async (req, res) => {
       try {
         const domain = req.query.domain as string;
+        const fresh = req.query.fresh === 'true';
         if (!domain) {
           return res.status(400).json({ error: 'domain parameter required' });
         }
 
-        const resolved = await this.brandManager.resolveBrand(domain);
+        const resolved = await this.brandManager.resolveBrand(domain, { skipCache: fresh });
         if (!resolved) {
           // Check discovered brands as fallback
           const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);

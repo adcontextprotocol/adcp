@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Cache } from './cache.js';
 import type {
   LocalizedName,
   BrandProperty,
@@ -96,11 +97,61 @@ export interface BrandAgentValidationResult {
 }
 
 export class BrandManager {
+  // Cache for successful brand.json lookups (24 hours)
+  private validationCache: Cache<BrandValidationResult>;
+  // Cache for resolved brands (24 hours)
+  private resolutionCache: Cache<ResolvedBrand | null>;
+  // Cache for failed lookups (1 hour)
+  private failedLookupCache: Cache<BrandValidationResult>;
+
+  constructor() {
+    this.validationCache = new Cache<BrandValidationResult>(24 * 60); // 24 hours
+    this.resolutionCache = new Cache<ResolvedBrand | null>(24 * 60); // 24 hours
+    this.failedLookupCache = new Cache<BrandValidationResult>(60); // 1 hour
+  }
+
+  /**
+   * Clear all caches
+   */
+  clearCache(): void {
+    this.validationCache.clear();
+    this.resolutionCache.clear();
+    this.failedLookupCache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { validation: number; resolution: number; failed: number } {
+    return {
+      validation: this.validationCache.size(),
+      resolution: this.resolutionCache.size(),
+      failed: this.failedLookupCache.size(),
+    };
+  }
+
   /**
    * Validates a domain's brand.json file
    */
-  async validateDomain(domain: string): Promise<BrandValidationResult> {
+  async validateDomain(domain: string, options?: { skipCache?: boolean }): Promise<BrandValidationResult> {
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const cacheKey = normalizedDomain;
+
+    // Check caches unless explicitly skipped
+    if (!options?.skipCache) {
+      // Check successful validation cache first
+      const cachedValid = this.validationCache.get(cacheKey);
+      if (cachedValid) {
+        return cachedValid;
+      }
+
+      // Check failed lookup cache
+      const cachedFailed = this.failedLookupCache.get(cacheKey);
+      if (cachedFailed) {
+        return cachedFailed;
+      }
+    }
+
     const url = `https://${normalizedDomain}/.well-known/brand.json`;
 
     const result: BrandValidationResult = {
@@ -133,6 +184,8 @@ export class BrandManager {
           message: statusMessage,
           severity: 'error',
         });
+        // Cache failed lookups for 1 hour
+        this.failedLookupCache.set(cacheKey, result);
         return result;
       }
 
@@ -193,6 +246,15 @@ export class BrandManager {
           severity: 'error',
         });
       }
+    }
+
+    // Cache the result
+    if (result.valid) {
+      // Cache successful lookups for 24 hours
+      this.validationCache.set(cacheKey, result);
+    } else {
+      // Cache failed lookups for 1 hour
+      this.failedLookupCache.set(cacheKey, result);
     }
 
     return result;
@@ -540,17 +602,28 @@ export class BrandManager {
    */
   async resolveBrand(
     domain: string,
-    options: { maxRedirects?: number } = {}
+    options: { maxRedirects?: number; skipCache?: boolean } = {}
   ): Promise<ResolvedBrand | null> {
-    const { maxRedirects = 3 } = options;
+    const { maxRedirects = 3, skipCache = false } = options;
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const cacheKey = `resolve:${normalizedDomain}`;
+
+    // Check resolution cache unless explicitly skipped
+    if (!skipCache) {
+      const cached = this.resolutionCache.get(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     let currentDomain = normalizedDomain;
     let redirectCount = 0;
 
     while (redirectCount < maxRedirects) {
-      const validationResult = await this.validateDomain(currentDomain);
+      const validationResult = await this.validateDomain(currentDomain, { skipCache });
 
       if (!validationResult.valid || !validationResult.raw_data) {
+        this.resolutionCache.set(cacheKey, null);
         return null;
       }
 
@@ -565,6 +638,7 @@ export class BrandManager {
             redirectCount++;
             continue;
           } catch {
+            this.resolutionCache.set(cacheKey, null);
             return null;
           }
         }
@@ -578,13 +652,15 @@ export class BrandManager {
 
         case 'brand_agent': {
           const agentData = data as BrandAgentVariant;
-          return {
+          const result: ResolvedBrand = {
             canonical_id: currentDomain,
             canonical_domain: currentDomain,
             brand_name: currentDomain, // Agent should provide the name via MCP
             brand_agent_url: agentData.brand_agent.url,
             source: 'brand_json',
           };
+          this.resolutionCache.set(cacheKey, result);
+          return result;
         }
 
         case 'house_portfolio': {
@@ -593,7 +669,7 @@ export class BrandManager {
           const brand = this.findBrandByProperty(portfolioData, normalizedDomain);
           if (brand) {
             const primaryName = this.getPrimaryName(brand.names);
-            return {
+            const result: ResolvedBrand = {
               canonical_id: brand.parent_brand
                 ? `${brand.parent_brand}#${brand.canonical_domain}`
                 : brand.canonical_domain,
@@ -607,6 +683,8 @@ export class BrandManager {
               brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
               source: 'brand_json',
             };
+            this.resolutionCache.set(cacheKey, result);
+            return result;
           }
 
           // Check if the query domain is the house domain itself
@@ -615,7 +693,7 @@ export class BrandManager {
             const masterBrand = portfolioData.brands.find((b) => b.keller_type === 'master');
             if (masterBrand) {
               const primaryName = this.getPrimaryName(masterBrand.names);
-              return {
+              const result: ResolvedBrand = {
                 canonical_id: masterBrand.canonical_domain,
                 canonical_domain: masterBrand.canonical_domain,
                 brand_name: primaryName || masterBrand.canonical_domain,
@@ -625,17 +703,22 @@ export class BrandManager {
                 house_name: portfolioData.house.name,
                 source: 'brand_json',
               };
+              this.resolutionCache.set(cacheKey, result);
+              return result;
             }
           }
 
+          this.resolutionCache.set(cacheKey, null);
           return null;
         }
 
         default:
+          this.resolutionCache.set(cacheKey, null);
           return null;
       }
     }
 
+    this.resolutionCache.set(cacheKey, null);
     return null; // Max redirects exceeded
   }
 
