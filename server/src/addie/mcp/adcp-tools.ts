@@ -15,6 +15,18 @@ import { AuthenticationRequiredError } from '@adcp/client';
 // Tool handler type (matches claude-client.ts internal type)
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
+/**
+ * Base URL for OAuth redirect URLs
+ * Uses BASE_URL env var in production, falls back to localhost for development
+ */
+function getBaseUrl(): string {
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  const port = process.env.PORT || process.env.CONDUCTOR_PORT || '3000';
+  return `http://localhost:${port}`;
+}
+
 // ============================================
 // MEDIA BUY TOOLS
 // ============================================
@@ -1423,7 +1435,7 @@ export function createAdcpToolHandlers(
               pending_task: task,
               pending_params: JSON.stringify(params),
             });
-            const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+            const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
 
             return (
               `**Task failed:** \`${task}\`\n\n` +

@@ -1918,7 +1918,7 @@ export function createMemberToolHandlers(
           const authParams = new URLSearchParams({
             agent_context_id: agentContext.id,
           });
-          const authUrl = `/api/oauth/agent/start?${authParams.toString()}`;
+          const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
 
           let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
           response += `### Connectivity\n`;
