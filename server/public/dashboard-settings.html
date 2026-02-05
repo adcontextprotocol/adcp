@@ -326,6 +326,49 @@
     </div>
   </div>
 
+  <!-- Business Information Modal -->
+  <div id="businessInfoModal" class="modal-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <h2>Edit Business Information</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: 20px;">
+        This information helps us determine appropriate membership pricing and display your company correctly in the directory.
+      </p>
+      <div class="form-group">
+        <label for="editCompanyType">Company Type</label>
+        <select id="editCompanyType" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          <option value="">Select...</option>
+          <option value="brand">Brand / Advertiser</option>
+          <option value="publisher">Publisher / Media Network</option>
+          <option value="agency">Agency</option>
+          <option value="adtech">Ad Tech Provider</option>
+          <option value="data">Data & Measurement</option>
+          <option value="ai">AI & Tech Platforms</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="editRevenueTier">Annual Revenue</label>
+        <select id="editRevenueTier" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          <option value="">Select...</option>
+          <option value="under_1m">Under $1M</option>
+          <option value="1m_5m">$1M - $5M</option>
+          <option value="5m_50m">$5M - $50M</option>
+          <option value="50m_250m">$50M - $250M</option>
+          <option value="250m_1b">$250M - $1B</option>
+          <option value="1b_plus">$1B+</option>
+        </select>
+        <p style="font-size: 12px; color: var(--color-text-muted); margin-top: 6px;">
+          Revenue tier determines your membership pricing. If your circumstances change, you can update this at any time.
+        </p>
+      </div>
+      <div id="businessInfoError" style="display: none; padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; margin-bottom: 16px; color: var(--color-error-700); font-size: 14px;"></div>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeBusinessInfoModal()">Cancel</button>
+        <button class="btn btn-primary" id="saveBusinessInfoBtn" onclick="saveBusinessInfo()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div class="page-header">
     <h1>Settings</h1>
     <p>Manage your organization settings and preferences</p>
@@ -366,6 +409,32 @@
             <div class="settings-label">
               <h3>Organization ID</h3>
               <p id="orgId" style="font-family: monospace; font-size: 12px;">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Business Information (Company accounts only) -->
+      <div id="businessInfoSection" class="settings-section" style="display: none;">
+        <div class="settings-section-header">
+          <h2>Business Information</h2>
+          <p>Used for membership pricing and directory listing</p>
+        </div>
+        <div class="settings-section-body">
+          <div class="settings-row">
+            <div class="settings-label">
+              <h3>Company Type</h3>
+              <p id="currentCompanyType">Not set</p>
+            </div>
+            <div class="settings-value">
+              <button class="btn btn-secondary btn-sm" onclick="openBusinessInfoModal()">Edit</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <h3>Revenue Tier</h3>
+              <p id="currentRevenueTier">Not set</p>
+              <p style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px;">Determines membership pricing</p>
             </div>
           </div>
         </div>
@@ -470,11 +539,14 @@
         workspaceHintEl.textContent = 'For consultants, academics, and independent professionals';
         convertToTeamBtn.style.display = 'block';
         convertToIndividualBtn.style.display = 'none';
+        document.getElementById('businessInfoSection').style.display = 'none';
       } else {
         workspaceTypeEl.textContent = 'Company account';
         workspaceHintEl.textContent = 'For organizations with team members';
         convertToTeamBtn.style.display = 'none';
         convertToIndividualBtn.style.display = 'block';
+        // Load business info for company accounts
+        loadBillingInfo();
       }
 
       // Show danger zone for owners
@@ -623,6 +695,121 @@
         errorEl.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Switch to Individual';
+      }
+    }
+
+    // Business info display labels
+    const companyTypeLabels = {
+      brand: 'Brand / Advertiser',
+      publisher: 'Publisher / Media Network',
+      agency: 'Agency',
+      adtech: 'Ad Tech Provider',
+      data: 'Data & Measurement',
+      ai: 'AI & Tech Platforms',
+      other: 'Other'
+    };
+
+    const revenueTierLabels = {
+      under_1m: 'Under $1M',
+      '1m_5m': '$1M - $5M',
+      '5m_50m': '$5M - $50M',
+      '50m_250m': '$50M - $250M',
+      '250m_1b': '$250M - $1B',
+      '1b_plus': '$1B+'
+    };
+
+    // Load billing info for company type and revenue tier
+    async function loadBillingInfo() {
+      if (!currentOrg || currentOrg.is_personal) return;
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/billing`, { credentials: 'include' });
+        if (response.ok) {
+          const data = await response.json();
+          currentOrg.billing = {
+            company_type: data.company_type,
+            revenue_tier: data.revenue_tier
+          };
+          renderBusinessInfo();
+        }
+      } catch (error) {
+        console.error('Error loading billing info:', error);
+      }
+    }
+
+    function renderBusinessInfo() {
+      const section = document.getElementById('businessInfoSection');
+      if (!section) return;
+
+      // Only show for company accounts
+      if (currentOrg.is_personal) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'block';
+
+      const companyType = currentOrg.billing?.company_type;
+      const revenueTier = currentOrg.billing?.revenue_tier;
+
+      document.getElementById('currentCompanyType').textContent =
+        companyType ? companyTypeLabels[companyType] || companyType : 'Not set';
+      document.getElementById('currentRevenueTier').textContent =
+        revenueTier ? revenueTierLabels[revenueTier] || revenueTier : 'Not set';
+    }
+
+    function openBusinessInfoModal() {
+      document.getElementById('editCompanyType').value = currentOrg.billing?.company_type || '';
+      document.getElementById('editRevenueTier').value = currentOrg.billing?.revenue_tier || '';
+      document.getElementById('businessInfoError').style.display = 'none';
+      document.getElementById('businessInfoModal').classList.add('show');
+    }
+
+    function closeBusinessInfoModal() {
+      document.getElementById('businessInfoModal').classList.remove('show');
+    }
+
+    async function saveBusinessInfo() {
+      const btn = document.getElementById('saveBusinessInfoBtn');
+      const errorEl = document.getElementById('businessInfoError');
+
+      const companyType = document.getElementById('editCompanyType').value;
+      const revenueTier = document.getElementById('editRevenueTier').value;
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      errorEl.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            company_type: companyType || null,
+            revenue_tier: revenueTier || null
+          })
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        // Update local data
+        if (!currentOrg.billing) currentOrg.billing = {};
+        currentOrg.billing.company_type = companyType || null;
+        currentOrg.billing.revenue_tier = revenueTier || null;
+
+        renderBusinessInfo();
+        closeBusinessInfoModal();
+        showToast('Business information updated');
+      } catch (error) {
+        errorEl.textContent = error.message || 'Failed to save business information';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
       }
     }
 

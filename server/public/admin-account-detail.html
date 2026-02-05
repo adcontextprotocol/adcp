@@ -1449,9 +1449,10 @@
         memberBadge.textContent = statusLabels[a.member_status] || 'Prospect';
       }
 
-      // Header subtitle (company type, employees, location)
+      // Header subtitle (company type, revenue tier, employees, location)
       const subtitleParts = [];
       if (a.company_type) subtitleParts.push(formatCompanyType(a.company_type));
+      if (a.revenue_tier) subtitleParts.push(formatRevenueTier(a.revenue_tier));
       if (a.enrichment?.employee_count_range) subtitleParts.push(a.enrichment.employee_count_range + ' employees');
       if (a.enrichment?.city && a.enrichment?.country) subtitleParts.push(`${a.enrichment.city}, ${a.enrichment.country}`);
       document.getElementById('headerSubtitle').textContent = subtitleParts.join(' • ') || '';
@@ -1972,6 +1973,18 @@
         other: 'Other'
       };
       return types[type] || type;
+    }
+
+    function formatRevenueTier(tier) {
+      const tiers = {
+        under_1m: 'Under $1M',
+        '1m_5m': '$1M-$5M',
+        '5m_50m': '$5M-$50M',
+        '50m_250m': '$50M-$250M',
+        '250m_1b': '$250M-$1B',
+        '1b_plus': '$1B+'
+      };
+      return tiers[tier] || tier;
     }
 
     function formatSource(source) {
