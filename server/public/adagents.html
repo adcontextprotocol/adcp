@@ -904,6 +904,12 @@
                 <button class="tab-btn" onclick="switchTab('agents')" id="agents-tab">
                   👥 Agents (<span id="agents-count">0</span>)
                 </button>
+                <button class="tab-btn" onclick="switchTab('signals')" id="signals-tab">
+                  📡 Signals (<span id="signals-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('signalTags')" id="signalTags-tab">
+                  🏷️ Signal Tags (<span id="signal-tags-count">0</span>)
+                </button>
               </div>
             </div>
 
@@ -993,6 +999,36 @@
 
             <div style="margin-top: 20px">
               <button class="btn" onclick="addAgent()">➕ Add Agent</button>
+            </div>
+          </div>
+
+          <!-- Signals Tab Content -->
+          <div id="signals-tab-content" class="tab-content" style="display: none">
+            <div id="signals-cards-list">
+              <!-- Signal cards will be added here -->
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap">
+              <button class="btn" onclick="addSignal('binary')">🔘 Add Binary Signal</button>
+              <button class="btn" onclick="addSignal('categorical')">📊 Add Categorical Signal</button>
+              <button class="btn" onclick="addSignal('numeric')">📈 Add Numeric Signal</button>
+            </div>
+          </div>
+
+          <!-- Signal Tags Tab Content -->
+          <div id="signalTags-tab-content" class="tab-content" style="display: none">
+            <div id="signal-tags-list">
+              <!-- Signal tag chips will be added here -->
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 12px; align-items: center">
+              <input
+                type="text"
+                id="new-signal-tag-input"
+                placeholder="Enter new signal tag name..."
+                style="flex: 1; max-width: 300px"
+              />
+              <button class="btn" onclick="createSignalTag()">➕ Create Tag</button>
             </div>
           </div>
           </div>
@@ -1262,6 +1298,63 @@
               <button class="btn btn-secondary" onclick="closeAgentModal()">Cancel</button>
               <button class="btn" onclick="saveAgent()">💾 Save Agent</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signal Editor Modal -->
+      <div id="signal-modal" class="modal" style="display: none">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="signal-modal-title">Edit Signal</h3>
+            <button class="modal-close" onclick="closeSignalModal()">✖️</button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="signal-edit-index" />
+
+            <div class="form-group">
+              <label>Value Type</label>
+              <select id="signal-value-type" onchange="updateSignalForm()">
+                <option value="binary">🔘 Binary (true/false membership)</option>
+                <option value="categorical">📊 Categorical (discrete values)</option>
+                <option value="numeric">📈 Numeric (continuous range)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Signal Name</label>
+              <input type="text" id="signal-name" placeholder="e.g., Likely Tesla Buyers" oninput="autoGenerateSignalId()" />
+            </div>
+
+            <div class="form-group">
+              <label>Signal ID <span style="font-size: 12px; color: #666">(auto-generated, can edit)</span></label>
+              <input type="text" id="signal-id" placeholder="e.g., likely_tesla_buyers" />
+            </div>
+
+            <div class="form-group">
+              <label>Description <span style="font-size: 12px; color: #666">(optional)</span></label>
+              <textarea id="signal-description" rows="3" placeholder="Detailed description of what this signal represents..."></textarea>
+            </div>
+
+            <!-- Dynamic form content based on value_type -->
+            <div id="signal-type-form">
+              <!-- Will be populated dynamically -->
+            </div>
+
+            <div class="form-group">
+              <label>Tags <span style="font-size: 12px; color: #666">(optional)</span></label>
+              <div id="signal-tags-checkboxes" style="max-height: 150px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border); border-radius: 6px;">
+                <!-- Dynamically populated with signal tag checkboxes -->
+              </div>
+              <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center">
+                <input type="text" id="quick-add-signal-tag" placeholder="Type to create new tag..." style="flex: 1" />
+                <button class="btn" onclick="quickCreateSignalTag()" style="padding: 6px 12px; font-size: 13px">➕ Add</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeSignalModal()">Cancel</button>
+            <button class="btn" onclick="saveSignal()">💾 Save Signal</button>
           </div>
         </div>
       </div>
@@ -1621,6 +1714,8 @@
         properties: [],
         agents: [],
         tags: [],
+        signals: [],
+        signalTags: [],
         fileFound: false,
         bulkSelectMode: false,
         selectedPropertyIds: [],
@@ -1702,9 +1797,25 @@
                 url: agent.url,
                 authorized_for: agent.authorized_for,
               };
-              if (agent.property_ids && agent.property_ids.length > 0) {
+
+              // Handle authorization type
+              if (agent.authorization_type) {
+                agentObj.authorization_type = agent.authorization_type;
+
+                if (agent.authorization_type === 'property_ids' && agent.property_ids?.length > 0) {
+                  agentObj.property_ids = agent.property_ids;
+                } else if (agent.authorization_type === 'property_tags' && agent.property_tags?.length > 0) {
+                  agentObj.property_tags = agent.property_tags;
+                } else if (agent.authorization_type === 'signal_ids' && agent.signal_ids?.length > 0) {
+                  agentObj.signal_ids = agent.signal_ids;
+                } else if (agent.authorization_type === 'signal_tags' && agent.signal_tags?.length > 0) {
+                  agentObj.signal_tags = agent.signal_tags;
+                }
+              } else if (agent.property_ids && agent.property_ids.length > 0) {
+                // Legacy support for property_ids without authorization_type
                 agentObj.property_ids = agent.property_ids;
               }
+
               return agentObj;
             }),
             last_updated: new Date().toISOString(),
@@ -1712,6 +1823,22 @@
 
           if (state.properties.length > 0) {
             adagents.properties = state.properties;
+          }
+
+          // Add signals if present
+          if (state.signals.length > 0) {
+            adagents.signals = state.signals;
+          }
+
+          // Add signal_tags metadata if present
+          if (state.signalTags.length > 0) {
+            adagents.signal_tags = {};
+            state.signalTags.forEach(tag => {
+              adagents.signal_tags[tag] = {
+                name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                description: `Signals tagged with "${tag}"`,
+              };
+            });
           }
         }
 
@@ -1722,6 +1849,8 @@
         document.getElementById('properties-count').textContent = state.properties.length;
         document.getElementById('tags-count').textContent = state.tags.length;
         document.getElementById('agents-count').textContent = state.agents.length;
+        document.getElementById('signals-count').textContent = state.signals.length;
+        document.getElementById('signal-tags-count').textContent = state.signalTags.length;
       }
 
       function renderProperties() {
@@ -1892,10 +2021,107 @@
         }
       }
 
+      function renderSignals() {
+        const container = document.getElementById('signals-cards-list');
+
+        if (state.signals.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📡</div>
+              <h4>No Signals Defined</h4>
+              <p>Signals are optional. Add them if you're a data provider publishing audience segments.</p>
+              <p style="font-size: 13px; color: #a0aec0;">
+                <strong>Binary:</strong> True/false membership (e.g., "Likely Tesla Buyers")<br>
+                <strong>Categorical:</strong> Discrete values (e.g., vehicle ownership)<br>
+                <strong>Numeric:</strong> Range values (e.g., purchase propensity score)
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = state.signals
+          .map((signal, index) => {
+            const icon = getSignalIcon(signal.value_type);
+
+            let typeInfo = formatValueType(signal.value_type);
+            if (signal.value_type === 'categorical' && signal.allowed_values) {
+              typeInfo += ` (${signal.allowed_values.length} values)`;
+            } else if (signal.value_type === 'numeric' && signal.range) {
+              typeInfo += ` (${signal.range.min}-${signal.range.max}${signal.range.unit ? ' ' + signal.range.unit : ''})`;
+            }
+
+            const tagDisplay = signal.tags && signal.tags.length > 0
+              ? `Tags: ${signal.tags.join(', ')}`
+              : 'No tags';
+
+            return `
+              <div class="dashboard-card">
+                <div class="dashboard-card-content">
+                  <div class="dashboard-card-title">
+                    ${icon} ${signal.id}
+                  </div>
+                  <div class="dashboard-card-meta">
+                    ${typeInfo} - ${signal.name}
+                  </div>
+                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${signal.description.substring(0, 100)}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
+                  <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
+                    ${tagDisplay}
+                  </div>
+                </div>
+                <div class="dashboard-card-actions">
+                  <button class="btn" onclick="editSignal(${index})">✏️ Edit</button>
+                  <button class="btn" onclick="removeSignal(${index})" style="background: var(--color-error-500);">🗑️ Remove</button>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      function renderSignalTags() {
+        const container = document.getElementById('signal-tags-list');
+
+        if (state.signalTags.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">🏷️</div>
+              <h4>No Signal Tags Created</h4>
+              <p>Create tags to organize your signals. Tags help group related signals for easier management and authorization.</p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = state.signalTags
+          .map((tag, index) => {
+            const signalCount = state.signals.filter(s => s.tags && s.tags.includes(tag)).length;
+
+            return `
+              <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
+                <div class="dashboard-card-content">
+                  <div class="dashboard-card-title">
+                    🏷️ ${tag}
+                  </div>
+                  <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
+                    Used by ${signalCount} ${signalCount === 1 ? 'signal' : 'signals'}
+                  </div>
+                </div>
+                <div class="dashboard-card-actions">
+                  <button class="btn" onclick="removeSignalTag(${index})" style="background: var(--color-error-500); padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+      }
+
       function render() {
         renderProperties();
         renderTags();
         renderAgents();
+        renderSignals();
+        renderSignalTags();
         updateCounts();
         updateJsonPreview();
       }
@@ -1934,6 +2160,306 @@
           .substring(0, 30);
 
         return sanitized || `${type}_${Date.now()}`;
+      }
+
+      function getSignalIcon(valueType) {
+        const icons = {
+          binary: '🔘',
+          categorical: '📊',
+          numeric: '📈',
+        };
+        return icons[valueType] || '📡';
+      }
+
+      function formatValueType(valueType) {
+        const names = {
+          binary: 'Binary',
+          categorical: 'Categorical',
+          numeric: 'Numeric',
+        };
+        return names[valueType] || valueType;
+      }
+
+      // ============================================================================
+      // Signal CRUD Operations
+      // ============================================================================
+
+      function addSignal(valueType) {
+        document.getElementById('signal-edit-index').value = '-1';
+        document.getElementById('signal-modal-title').textContent = `Add ${formatValueType(valueType)} Signal`;
+        document.getElementById('signal-value-type').value = valueType;
+        document.getElementById('signal-name').value = '';
+        document.getElementById('signal-id').value = '';
+        document.getElementById('signal-description').value = '';
+
+        updateSignalForm();
+        updateSignalTagCheckboxes([]);
+        document.getElementById('signal-modal').style.display = 'flex';
+      }
+
+      function editSignal(index) {
+        const signal = state.signals[index];
+
+        document.getElementById('signal-edit-index').value = index;
+        document.getElementById('signal-modal-title').textContent = 'Edit Signal';
+        document.getElementById('signal-value-type').value = signal.value_type;
+        document.getElementById('signal-name').value = signal.name;
+        document.getElementById('signal-id').value = signal.id;
+        document.getElementById('signal-description').value = signal.description || '';
+
+        updateSignalForm(signal);
+        updateSignalTagCheckboxes(signal.tags || []);
+        document.getElementById('signal-modal').style.display = 'flex';
+      }
+
+      function closeSignalModal() {
+        document.getElementById('signal-modal').style.display = 'none';
+      }
+
+      function autoGenerateSignalId() {
+        const editIndex = document.getElementById('signal-edit-index').value;
+        if (editIndex !== '-1') return; // Don't auto-generate for edits
+
+        const name = document.getElementById('signal-name').value;
+        if (name) {
+          document.getElementById('signal-id').value = generateSemanticId(name, 'signal');
+        }
+      }
+
+      function updateSignalForm(existingData = {}) {
+        const valueType = document.getElementById('signal-value-type').value;
+        const formContainer = document.getElementById('signal-type-form');
+
+        if (valueType === 'binary') {
+          formContainer.innerHTML = `
+            <div class="form-group">
+              <p style="color: #666; font-size: 13px; padding: 12px; background: var(--color-bg-subtle); border-radius: 6px;">
+                Binary signals represent true/false membership. No additional configuration needed.
+              </p>
+            </div>
+          `;
+        } else if (valueType === 'categorical') {
+          const existingValues = existingData.allowed_values || [];
+          formContainer.innerHTML = `
+            <div class="form-group">
+              <label>Allowed Values <span style="font-size: 12px; color: #666">(one per line)</span></label>
+              <textarea id="signal-allowed-values" rows="5" placeholder="tesla&#10;bmw&#10;mercedes&#10;audi">${existingValues.join('\n')}</textarea>
+            </div>
+          `;
+        } else if (valueType === 'numeric') {
+          const range = existingData.range || {};
+          formContainer.innerHTML = `
+            <div class="form-group">
+              <label>Value Range</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div>
+                  <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px;">Min</label>
+                  <input type="number" id="signal-range-min" placeholder="0" value="${range.min ?? ''}" step="any" />
+                </div>
+                <div>
+                  <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px;">Max</label>
+                  <input type="number" id="signal-range-max" placeholder="1" value="${range.max ?? ''}" step="any" />
+                </div>
+                <div>
+                  <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px;">Unit (optional)</label>
+                  <input type="text" id="signal-range-unit" placeholder="score" value="${range.unit || ''}" />
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      function updateSignalTagCheckboxes(selectedTags) {
+        const container = document.getElementById('signal-tags-checkboxes');
+
+        if (state.signalTags.length === 0) {
+          container.innerHTML =
+            '<p style="color: #999; font-size: 13px; padding: 8px;">No signal tags available. Create a tag below.</p>';
+          return;
+        }
+
+        container.innerHTML = state.signalTags
+          .map(tag => {
+            const checked = selectedTags.includes(tag) ? 'checked' : '';
+            return `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${tag}" ${checked} style="margin-right: 6px;">
+                ${tag}
+              </label>
+            `;
+          })
+          .join('');
+      }
+
+      function saveSignal() {
+        const index = parseInt(document.getElementById('signal-edit-index').value);
+        const valueType = document.getElementById('signal-value-type').value;
+        const name = document.getElementById('signal-name').value.trim();
+        const signalId = document.getElementById('signal-id').value.trim();
+        const description = document.getElementById('signal-description').value.trim();
+
+        // Collect selected tags
+        const selectedTags = [];
+        document.querySelectorAll('#signal-tags-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
+          selectedTags.push(checkbox.value);
+        });
+
+        if (!name) {
+          alert('Signal name is required');
+          return;
+        }
+
+        if (!signalId) {
+          alert('Signal ID is required');
+          return;
+        }
+
+        // Validate ID format
+        if (!/^[a-zA-Z0-9_-]+$/.test(signalId)) {
+          alert('Signal ID can only contain letters, numbers, underscores, and hyphens');
+          return;
+        }
+
+        // Check for duplicate IDs (excluding current signal when editing)
+        const existingSignal = state.signals.find((s, i) => s.id === signalId && i !== index);
+        if (existingSignal) {
+          alert(`A signal with ID "${signalId}" already exists`);
+          return;
+        }
+
+        const signal = {
+          id: signalId,
+          name: name,
+          value_type: valueType,
+        };
+
+        if (description) {
+          signal.description = description;
+        }
+
+        if (selectedTags.length > 0) {
+          signal.tags = selectedTags;
+        }
+
+        // Handle type-specific fields
+        if (valueType === 'categorical') {
+          const allowedValuesText = document.getElementById('signal-allowed-values').value.trim();
+          if (!allowedValuesText) {
+            alert('Categorical signals require at least one allowed value');
+            return;
+          }
+          signal.allowed_values = allowedValuesText.split('\n').map(v => v.trim()).filter(v => v);
+          if (signal.allowed_values.length === 0) {
+            alert('Categorical signals require at least one allowed value');
+            return;
+          }
+        } else if (valueType === 'numeric') {
+          const min = parseFloat(document.getElementById('signal-range-min').value);
+          const max = parseFloat(document.getElementById('signal-range-max').value);
+          const unit = document.getElementById('signal-range-unit').value.trim();
+
+          if (isNaN(min) || isNaN(max)) {
+            alert('Numeric signals require min and max values');
+            return;
+          }
+
+          if (min >= max) {
+            alert('Min must be less than max');
+            return;
+          }
+
+          signal.range = { min, max };
+          if (unit) {
+            signal.range.unit = unit;
+          }
+        }
+
+        if (index === -1) {
+          state.signals.push(signal);
+        } else {
+          state.signals[index] = signal;
+        }
+
+        closeSignalModal();
+        render();
+      }
+
+      function removeSignal(index) {
+        if (confirm(`Remove signal "${state.signals[index].id}"?`)) {
+          state.signals.splice(index, 1);
+          render();
+        }
+      }
+
+      // ============================================================================
+      // Signal Tag Operations
+      // ============================================================================
+
+      function createSignalTag() {
+        const input = document.getElementById('new-signal-tag-input');
+        const tagName = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+
+        if (!tagName) {
+          alert('Please enter a tag name');
+          return;
+        }
+
+        if (state.signalTags.includes(tagName)) {
+          alert(`Tag "${tagName}" already exists`);
+          return;
+        }
+
+        state.signalTags.push(tagName);
+        state.signalTags.sort();
+        input.value = '';
+        render();
+      }
+
+      function quickCreateSignalTag() {
+        const input = document.getElementById('quick-add-signal-tag');
+        const tagName = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+
+        if (!tagName) return;
+
+        if (!state.signalTags.includes(tagName)) {
+          state.signalTags.push(tagName);
+          state.signalTags.sort();
+        }
+
+        input.value = '';
+        // Update the checkboxes and check the new tag
+        const currentTags = [];
+        document.querySelectorAll('#signal-tags-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          currentTags.push(cb.value);
+        });
+        currentTags.push(tagName);
+        updateSignalTagCheckboxes(currentTags);
+      }
+
+      function removeSignalTag(index) {
+        const tag = state.signalTags[index];
+        const signalsUsingTag = state.signals.filter(s => s.tags && s.tags.includes(tag)).length;
+
+        let message = `Delete signal tag "${tag}"?`;
+        if (signalsUsingTag > 0) {
+          message += `\n\nThis tag is used by ${signalsUsingTag} signal(s). It will be removed from those signals.`;
+        }
+
+        if (confirm(message)) {
+          // Remove tag from all signals
+          state.signals.forEach(signal => {
+            if (signal.tags) {
+              signal.tags = signal.tags.filter(t => t !== tag);
+              if (signal.tags.length === 0) {
+                delete signal.tags;
+              }
+            }
+          });
+
+          state.signalTags.splice(index, 1);
+          render();
+        }
       }
 
       // ============================================================================
@@ -2627,6 +3153,30 @@
               const data = JSON.parse(event.target.result);
               state.agents = data.authorized_agents || [];
               state.properties = data.properties || [];
+              state.signals = data.signals || [];
+
+              // Extract property tags from properties
+              const propertyTags = new Set();
+              state.properties.forEach(prop => {
+                if (prop.tags) prop.tags.forEach(t => propertyTags.add(t));
+              });
+              // Also include tags from tags metadata object
+              if (data.tags) {
+                Object.keys(data.tags).forEach(t => propertyTags.add(t));
+              }
+              state.tags = Array.from(propertyTags).sort();
+
+              // Extract signal tags from signals
+              const signalTags = new Set();
+              state.signals.forEach(signal => {
+                if (signal.tags) signal.tags.forEach(t => signalTags.add(t));
+              });
+              // Also include tags from signal_tags metadata object
+              if (data.signal_tags) {
+                Object.keys(data.signal_tags).forEach(t => signalTags.add(t));
+              }
+              state.signalTags = Array.from(signalTags).sort();
+
               render();
               alert('File imported successfully!');
             } catch (error) {
@@ -2669,6 +3219,22 @@
           // Only include properties if there are any
           if (state.properties.length > 0) {
             data.properties = state.properties;
+          }
+
+          // Include signals if there are any
+          if (state.signals.length > 0) {
+            data.signals = state.signals;
+          }
+
+          // Include signal_tags metadata if there are any
+          if (state.signalTags.length > 0) {
+            data.signal_tags = {};
+            state.signalTags.forEach(tag => {
+              data.signal_tags[tag] = {
+                name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                description: `Signals tagged with "${tag}"`,
+              };
+            });
           }
         }
 
@@ -2773,7 +3339,29 @@
                   prop.tags.forEach(tag => allTags.add(tag));
                 }
               });
+              // Also include tags from tags metadata object
+              if (result.data.validation.raw_data.tags) {
+                Object.keys(result.data.validation.raw_data.tags).forEach(t => allTags.add(t));
+              }
               state.tags = Array.from(allTags).sort();
+            }
+
+            // Parse signals
+            if (result.data.validation.raw_data.signals) {
+              state.signals = result.data.validation.raw_data.signals;
+
+              // Extract all unique signal tags
+              const allSignalTags = new Set();
+              state.signals.forEach(signal => {
+                if (signal.tags && Array.isArray(signal.tags)) {
+                  signal.tags.forEach(tag => allSignalTags.add(tag));
+                }
+              });
+              // Also include tags from signal_tags metadata object
+              if (result.data.validation.raw_data.signal_tags) {
+                Object.keys(result.data.validation.raw_data.signal_tags).forEach(t => allSignalTags.add(t));
+              }
+              state.signalTags = Array.from(allSignalTags).sort();
             }
           } else {
             // File doesn't exist or is invalid
