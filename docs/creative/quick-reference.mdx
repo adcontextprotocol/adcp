@@ -31,21 +31,20 @@ Discover creative formats and their specifications.
 
 ```json
 {
-  "type": "video",
-  "asset_types": ["image", "text"]
+  "asset_types": ["video"]
 }
 ```
 
 **Key fields:**
 - `format_ids` (array, optional): Request specific format IDs
-- `type` (string, optional): Filter by type: `video`, `display`, `audio`, `dooh`
-- `asset_types` (array, optional): Filter by accepted asset types
+- `type` (string, optional): *(deprecated)* Filter by type: `video`, `display`, `audio`, `dooh`
+- `asset_types` (array, optional): Filter by accepted asset types - **recommended over `type`**
 - `max_width`, `max_height` (integer, optional): Dimension constraints
 - `is_responsive` (boolean, optional): Filter for responsive formats
 - `name_search` (string, optional): Search formats by name
 
 **Response contains:**
-- `formats`: Array of format definitions with `format_id`, `name`, `type`, `assets`, `renders`
+- `formats`: Array of format definitions with `format_id`, `name`, `assets`, `renders` (the `type` field is deprecated and optional)
 - `creative_agents`: Optional array of other creative agents providing additional formats
 
 ---

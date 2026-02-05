@@ -34,8 +34,8 @@ See [list_creative_formats (Sales Agent)](/docs/media-buy/task-reference/list_cr
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `format_ids` | FormatID[] | No | Return only specific format IDs (from `get_products` response) |
-| `type` | string | No | Filter by type: `audio`, `video`, `display`, `dooh` |
-| `asset_types` | string[] | No | Filter to formats accepting these asset types: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`. Uses OR logic. |
+| `type` | string | No | *(deprecated)* Filter by type: `audio`, `video`, `display`, `dooh`. Prefer `asset_types` filter instead. |
+| `asset_types` | string[] | No | Filter to formats accepting these asset types: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`. Uses OR logic. **Recommended over `type` filter.** |
 | `max_width` | integer | No | Maximum width in pixels (inclusive) - matches if ANY render fits |
 | `max_height` | integer | No | Maximum height in pixels (inclusive) - matches if ANY render fits |
 | `min_width` | integer | No | Minimum width in pixels (inclusive) |
@@ -55,7 +55,7 @@ Formats may produce multiple rendered pieces (e.g., video + companion banner). D
 
 | Field | Description |
 |-------|-------------|
-| `formats` | Array of full format definitions (format_id, name, type, requirements, assets, assets, renders) |
+| `formats` | Array of full format definitions (format_id, name, assets, renders). The `type` field is deprecated and may be omitted. |
 | `creative_agents` | Optional array of other creative agents providing additional formats |
 
 See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for complete format object structure.
