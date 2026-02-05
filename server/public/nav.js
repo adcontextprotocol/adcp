@@ -165,7 +165,6 @@
     // Build Projects dropdown
     const adagentsUrlLocal = isLocal ? '/adagents' : `${aaoBaseUrl}/adagents`;
     const brandUrlLocal = isLocal ? '/brand' : `${aaoBaseUrl}/brand`;
-    const salesAgentUrl = 'https://github.com/adcontextprotocol/salesagent';
     const isProjectsActive = currentPath === '/adagents' || currentPath === '/brand' ||
                              currentPath === '/members' || currentPath.startsWith('/members/') ||
                              currentPath === '/registry' || currentPath === '/publishers' || currentPath === '/properties';
@@ -180,7 +179,6 @@
             <a href="https://adcontextprotocol.org" class="navbar__dropdown-item">AdCP</a>
             <a href="${adagentsUrlLocal}" class="navbar__dropdown-item ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
             <a href="${brandUrlLocal}" class="navbar__dropdown-item ${currentPath === '/brand' ? 'active' : ''}">brand.json</a>
-            <a href="${salesAgentUrl}" target="_blank" rel="noopener noreferrer" class="navbar__dropdown-item">Sales Agent</a>
             <div class="navbar__dropdown-divider"></div>
             <span class="navbar__dropdown-header-text">Registry</span>
             <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
@@ -288,7 +286,6 @@
           <a href="https://adcontextprotocol.org" class="navbar__link navbar__link--indent">AdCP</a>
           <a href="${adagentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
           <a href="${brandUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brand' ? 'active' : ''}">brand.json</a>
-          <a href="${salesAgentUrl}" target="_blank" rel="noopener noreferrer" class="navbar__link navbar__link--indent">Sales Agent</a>
           <span class="navbar__link navbar__link--subheader">Registry</span>
           <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
