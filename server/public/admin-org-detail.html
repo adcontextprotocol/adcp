@@ -695,6 +695,10 @@
               <span class="info-label">Company Type</span>
               <span class="info-value" id="orgType">-</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">Revenue Tier</span>
+              <span class="info-value" id="orgRevenueTier">-</span>
+            </div>
             <div class="info-row" id="parentOrgRow" style="display: none;">
               <span class="info-label">Parent Org</span>
               <span class="info-value" id="orgParent">-</span>
@@ -1575,6 +1579,10 @@
       // Type(s) - uses shared config from /js/company-types.js
       const types = orgData.company_types || (orgData.company_type ? [orgData.company_type] : []);
       document.getElementById('orgType').textContent = formatCompanyTypes(types);
+
+      // Revenue Tier
+      document.getElementById('orgRevenueTier').textContent =
+        orgData.revenue_tier ? formatRevenueTierDisplay(orgData.revenue_tier) : '-';
 
       // Parent organization
       const parentRow = document.getElementById('parentOrgRow');
@@ -3994,7 +4002,7 @@
         '5m_50m': '$5M-$50M',
         '50m_250m': '$50M-$250M',
         '250m_1b': '$250M-$1B',
-        '1b_plus': 'Over $1B'
+        '1b_plus': '$1B+'
       };
       return tierLabels[tier] || tier;
     }
