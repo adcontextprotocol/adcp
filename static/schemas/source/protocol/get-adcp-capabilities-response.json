@@ -229,11 +229,26 @@
     },
     "signals": {
       "type": "object",
-      "description": "Signals protocol capabilities. Only present if signals is in supported_protocols. Reserved for future use.",
+      "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
       "properties": {
+        "data_provider_domains": {
+          "type": "array",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for signal catalog definitions and to verify authorization.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1
+        },
         "features": {
           "type": "object",
           "description": "Optional signals features supported",
+          "properties": {
+            "catalog_signals": {
+              "type": "boolean",
+              "description": "Supports signals from data provider catalogs with structured signal_id references"
+            }
+          },
           "additionalProperties": {
             "type": "boolean"
           }

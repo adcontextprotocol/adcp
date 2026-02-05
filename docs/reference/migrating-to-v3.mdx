@@ -58,7 +58,13 @@ Your migration path depends on what you're building:
 
 **Signals Agents** (data providers, measurement vendors):
 - **Breaking changes** - Update schema references from v2 to v3
+- **New feature** - Support structured `signal_id` references with `data_provider_domain`
+- **New feature** - Return `value_type` (binary/categorical/numeric) in signal responses
 - **No channel changes** - Signals Protocol doesn't use media channels in its core model
+
+**Data Providers** (signal catalog publishers) - *new in v3*:
+- **New feature** - Publish signal catalogs via `adagents.json`
+- See [Data Provider Guide](/docs/signals/data-providers) for implementation details
 
 **Creative Agents** (creative management, DCO providers):
 - **Breaking changes** - Support `assets` array with `required` boolean for full asset discovery
@@ -517,6 +523,124 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 
 ---
 
+### Signal Catalog for Data Providers
+
+Data providers can now publish signal catalogs via `adagents.json`, following the same pattern as publishers declaring properties.
+
+#### The Concept
+
+Just as publishers declare "what ad placements exist" via `adagents.json`, data providers declare "what signals exist":
+
+| Publishers | Data Providers |
+|------------|----------------|
+| Declare **properties** | Declare **signals** |
+| Use `property_ids` / `property_tags` | Use `signal_ids` / `signal_tags` |
+| Buyers verify via `publisher_domain` | Buyers verify via `data_provider_domain` |
+
+#### Signal Catalog Structure
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Acme Data",
+    "domain": "acme-data.com"
+  },
+  "signals": [
+    {
+      "id": "likely_ev_buyers",
+      "name": "Likely EV Buyers",
+      "value_type": "binary",
+      "category": "purchase_intent",
+      "tags": ["automotive"]
+    }
+  ],
+  "signal_tags": {
+    "automotive": {
+      "name": "Automotive Signals",
+      "description": "Vehicle-related audience segments"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://signals-agent.example.com",
+      "authorized_for": "All automotive signals",
+      "authorization_type": "signal_tags",
+      "signal_tags": ["automotive"]
+    }
+  ]
+}
+```
+
+#### Signal Value Types
+
+Signals now have explicit `value_type` with typed targeting:
+
+| Type | Description | Targeting |
+|------|-------------|-----------|
+| `binary` | User matches or doesn't | `{ "value": true }` |
+| `categorical` | User has one of several values | `{ "values": ["tesla", "bmw"] }` |
+| `numeric` | User has a score in a range | `{ "min_value": 0.7 }` |
+
+#### Structured Signal IDs
+
+Signal responses now include structured `signal_id` objects:
+
+**v2.x:**
+```json
+{
+  "signal_agent_segment_id": "seg_12345",
+  "name": "Likely Tesla Buyers",
+  "data_provider": "Polk"
+}
+```
+
+**v3.x:**
+```json
+{
+  "signal_id": {
+    "data_provider_domain": "polk.com",
+    "id": "likely_tesla_buyers"
+  },
+  "signal_agent_segment_id": "seg_12345",
+  "name": "Likely Tesla Buyers",
+  "value_type": "binary",
+  "data_provider": "Polk"
+}
+```
+
+The structured `signal_id` enables buyers to:
+1. Look up the signal definition in the data provider's catalog
+2. Verify the signals agent is authorized to resell this signal
+3. Understand the signal's characteristics (value_type, allowed_values, range)
+
+#### get_signals Request Changes
+
+The request now supports ID-based lookup alongside natural language:
+
+**v2.x:**
+```json
+{
+  "signal_spec": "automotive purchase intent audiences"
+}
+```
+
+**v3.x:**
+```json
+{
+  "signal_spec": "automotive purchase intent audiences",
+  "signal_ids": [
+    { "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }
+  ]
+}
+```
+
+When `signal_ids` is provided, the agent returns exact matches from the data provider's catalog.
+
+See the [Data Provider Guide](/docs/signals/data-providers) for complete implementation details.
+
+---
+
 ## Removed in v3
 
 These items from v2.x have been removed in v3:
@@ -565,6 +689,17 @@ These breaking changes affect anyone reading or writing AdCP data:
 
 - [ ] Update schema references from v2 to v3
 - [ ] Ensure `get_adcp_capabilities` returns `major_versions: [3]`
+- [ ] Return structured `signal_id` objects in `get_signals` responses
+- [ ] Include `value_type` field in signal responses
+- [ ] Support `signal_ids` parameter in `get_signals` requests for ID-based lookup
+
+### Data Providers (new in v3)
+
+- [ ] Create signal catalog in `/.well-known/adagents.json`
+- [ ] Define signals with `id`, `name`, `value_type`, and optional metadata
+- [ ] Add `signal_tags` for grouping and efficient authorization
+- [ ] Authorize signals agents using `signal_ids` or `signal_tags` authorization types
+- [ ] Validate catalog using AdAgents.json Builder
 
 ### Creative Agents
 

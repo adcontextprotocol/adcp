@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-value-type.json",
+  "title": "Signal Value Type",
+  "description": "The data type of a signal's values, determining how it can be targeted",
+  "type": "string",
+  "enum": [
+    "binary",
+    "categorical",
+    "numeric"
+  ],
+  "x-enum-descriptions": {
+    "binary": "Boolean signal - user either matches or doesn't (e.g., 'likely_tesla_buyers')",
+    "categorical": "Signal with discrete values from a defined set (e.g., 'vehicle_ownership' with values 'tesla', 'bmw', etc.)",
+    "numeric": "Signal with continuous numeric values within a range (e.g., 'purchase_propensity' from 0.0 to 1.0)"
+  }
+}

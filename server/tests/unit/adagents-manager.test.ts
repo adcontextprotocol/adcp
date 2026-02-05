@@ -438,7 +438,8 @@ describe('AdAgentsManager', () => {
       const results = await manager.validateAgentCards(agents);
 
       expect(results[0].valid).toBe(false);
-      expect(results[0].errors).toContain('No agent card found at /.well-known/agent-card.json or root URL');
+      // Error is prefixed with A2A: since both protocols are tried
+      expect(results[0].errors.some(e => e.includes('No agent card found'))).toBe(true);
     });
 
     it('detects wrong content-type for agent card', async () => {
@@ -846,6 +847,588 @@ describe('AdAgentsManager', () => {
       // Empty string is treated as missing/required in JavaScript (falsy check)
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field.includes('.authorized_for') && e.message.includes('required'))).toBe(true);
+    });
+  });
+
+  describe('Signals Support', () => {
+    describe('validateSignal', () => {
+      it('validates a valid binary signal', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'likely_tesla_buyers',
+                name: 'Likely Tesla Buyers',
+                value_type: 'binary',
+                category: 'purchase_intent',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('validates a valid categorical signal', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'vehicle_ownership',
+                name: 'Vehicle Ownership',
+                value_type: 'categorical',
+                allowed_values: ['tesla', 'bmw', 'mercedes'],
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('validates a valid numeric signal with range', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'purchase_propensity',
+                name: 'Purchase Propensity Score',
+                value_type: 'numeric',
+                range: { min: 0, max: 100, unit: 'score' },
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('detects missing signal id', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                name: 'Missing ID Signal',
+                value_type: 'binary',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'signals[0].id' && e.message.includes('required'))).toBe(true);
+      });
+
+      it('detects invalid signal id pattern', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'invalid id with spaces',
+                name: 'Invalid ID Signal',
+                value_type: 'binary',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'signals[0].id' && e.message.includes('alphanumeric'))).toBe(true);
+      });
+
+      it('detects missing signal name', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'test_signal',
+                value_type: 'binary',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'signals[0].name' && e.message.includes('required'))).toBe(true);
+      });
+
+      it('detects invalid value_type', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'test_signal',
+                name: 'Test Signal',
+                value_type: 'invalid_type',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'signals[0].value_type' && e.message.includes('binary, categorical, numeric'))).toBe(true);
+      });
+
+      it('warns about categorical signal without allowed_values', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'vehicle_type',
+                name: 'Vehicle Type',
+                value_type: 'categorical',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.warnings.some(w => w.field === 'signals[0].allowed_values')).toBe(true);
+      });
+
+      it('validates numeric signal range min > max', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'score',
+                name: 'Score',
+                value_type: 'numeric',
+                range: { min: 100, max: 0 },
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'signals[0].range' && e.message.includes('cannot be greater'))).toBe(true);
+      });
+
+      it('validates standard signal category', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'test_signal',
+                name: 'Test Signal',
+                value_type: 'binary',
+                category: 'purchase_intent',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.warnings.filter(w => w.field === 'signals[0].category')).toHaveLength(0);
+      });
+
+      it('warns about non-standard signal category', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'test_signal',
+                name: 'Test Signal',
+                value_type: 'binary',
+                category: 'my_custom_category',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.warnings.some(w => w.field === 'signals[0].category' && w.message.includes('not a standard category'))).toBe(true);
+      });
+
+      it('errors when signal category is not a string', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              {
+                id: 'test_signal',
+                name: 'Test Signal',
+                value_type: 'binary',
+                category: 123,
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'signals[0].category' && e.message.includes('must be a string'))).toBe(true);
+      });
+    });
+
+    describe('signal_tags validation', () => {
+      it('validates valid signal_tags', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              { id: 'test', name: 'Test', value_type: 'binary', tags: ['automotive'] },
+            ],
+            signal_tags: {
+              automotive: { name: 'Automotive', description: 'Vehicle-related signals' },
+            },
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+      });
+
+      it('warns about signal tags used but not defined', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              { id: 'test', name: 'Test', value_type: 'binary', tags: ['undefined_tag'] },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.warnings.some(w => w.message.includes('undefined_tag'))).toBe(true);
+      });
+
+      it('detects duplicate signal IDs', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              { url: 'https://agent.example.com', authorized_for: 'Test' },
+            ],
+            signals: [
+              { id: 'duplicate_id', name: 'Signal 1', value_type: 'binary' },
+              { id: 'duplicate_id', name: 'Signal 2', value_type: 'binary' },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true); // Warning, not error
+        expect(result.warnings.some(w => w.message.includes('Duplicate signal ID'))).toBe(true);
+      });
+    });
+
+    describe('signal authorization types', () => {
+      it('validates signal_ids authorization type', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              {
+                url: 'https://agent.example.com',
+                authorized_for: 'Automotive signals',
+                authorization_type: 'signal_ids',
+                signal_ids: ['likely_tesla_buyers'],
+              },
+            ],
+            signals: [
+              { id: 'likely_tesla_buyers', name: 'Likely Tesla Buyers', value_type: 'binary' },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('validates signal_tags authorization type', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              {
+                url: 'https://agent.example.com',
+                authorized_for: 'All automotive signals',
+                authorization_type: 'signal_tags',
+                signal_tags: ['automotive'],
+              },
+            ],
+            signals: [
+              { id: 'test', name: 'Test', value_type: 'binary', tags: ['automotive'] },
+            ],
+            signal_tags: {
+              automotive: { name: 'Automotive', description: 'Vehicle signals' },
+            },
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+      });
+
+      it('warns when signal_ids authorization has no matching signals', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              {
+                url: 'https://agent.example.com',
+                authorized_for: 'Test',
+                authorization_type: 'signal_ids',
+                signal_ids: ['nonexistent_signal'],
+              },
+            ],
+            signals: [
+              { id: 'actual_signal', name: 'Actual Signal', value_type: 'binary' },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.warnings.some(w => w.message.includes('nonexistent_signal'))).toBe(true);
+      });
+
+      it('warns when signal_ids authorization type but no signal_ids array', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              {
+                url: 'https://agent.example.com',
+                authorized_for: 'Test',
+                authorization_type: 'signal_ids',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(true);
+        expect(result.warnings.some(w => w.message.includes('signal_ids') && w.message.includes('no signal_ids provided'))).toBe(true);
+      });
+
+      it('errors when signal_ids is not an array', async () => {
+        mockedAxios.get.mockResolvedValue({
+          status: 200,
+          data: {
+            authorized_agents: [
+              {
+                url: 'https://agent.example.com',
+                authorized_for: 'Test',
+                signal_ids: 'not-an-array',
+              },
+            ],
+          },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const result = await manager.validateDomain('polk.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field.includes('.signal_ids') && e.message.includes('must be an array'))).toBe(true);
+      });
+    });
+
+    describe('createAdAgentsJson with signals', () => {
+      it('creates adagents.json with signals', () => {
+        const agents: AuthorizedAgent[] = [
+          {
+            url: 'https://agent.example.com',
+            authorized_for: 'All Polk automotive signals',
+            authorization_type: 'signal_tags',
+            signal_tags: ['automotive'],
+          },
+        ];
+
+        const signals = [
+          {
+            id: 'likely_tesla_buyers',
+            name: 'Likely Tesla Buyers',
+            value_type: 'binary' as const,
+            category: 'purchase_intent',
+            tags: ['automotive'],
+          },
+        ];
+
+        const signalTags = {
+          automotive: { name: 'Automotive', description: 'Vehicle-related signals' },
+        };
+
+        const json = manager.createAdAgentsJson(agents, true, true, undefined, signals, signalTags);
+        const parsed = JSON.parse(json);
+
+        expect(parsed.signals).toHaveLength(1);
+        expect(parsed.signals[0].id).toBe('likely_tesla_buyers');
+        expect(parsed.signal_tags).toBeDefined();
+        expect(parsed.signal_tags.automotive.name).toBe('Automotive');
+      });
+
+      it('creates adagents.json without signals when not provided', () => {
+        const agents: AuthorizedAgent[] = [
+          {
+            url: 'https://agent.example.com',
+            authorized_for: 'Test',
+          },
+        ];
+
+        const json = manager.createAdAgentsJson(agents, true, true);
+        const parsed = JSON.parse(json);
+
+        expect(parsed.signals).toBeUndefined();
+        expect(parsed.signal_tags).toBeUndefined();
+      });
+
+      it('creates adagents.json using options object', () => {
+        const json = manager.createAdAgentsJson({
+          agents: [
+            {
+              url: 'https://agent.example.com',
+              authorized_for: 'All signals',
+              authorization_type: 'signal_tags',
+              signal_tags: ['automotive'],
+            },
+          ],
+          signals: [
+            {
+              id: 'likely_ev_buyers',
+              name: 'Likely EV Buyers',
+              value_type: 'binary',
+              category: 'purchase_intent',
+              tags: ['automotive'],
+            },
+          ],
+          signalTags: {
+            automotive: { name: 'Automotive', description: 'Vehicle signals' },
+          },
+          includeSchema: true,
+          includeTimestamp: false,
+        });
+        const parsed = JSON.parse(json);
+
+        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+        expect(parsed.last_updated).toBeUndefined();
+        expect(parsed.signals).toHaveLength(1);
+        expect(parsed.signals[0].id).toBe('likely_ev_buyers');
+        expect(parsed.signal_tags.automotive.name).toBe('Automotive');
+      });
+
+      it('options object includeSchema defaults to true', () => {
+        const json = manager.createAdAgentsJson({
+          agents: [
+            {
+              url: 'https://agent.example.com',
+              authorized_for: 'Test',
+            },
+          ],
+        });
+        const parsed = JSON.parse(json);
+
+        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+        expect(parsed.last_updated).toBeDefined();
+      });
     });
   });
 });

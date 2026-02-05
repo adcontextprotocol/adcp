@@ -7,6 +7,7 @@ import type {
   MemberOffering,
   AgentConfig,
   PublisherConfig,
+  DataProviderConfig,
 } from '../types.js';
 
 /**
@@ -26,6 +27,7 @@ export class MemberDatabase {
   async createProfile(input: CreateMemberProfileInput): Promise<MemberProfile> {
     const agents = input.agents || [];
     const publishers = input.publishers || [];
+    const data_providers = input.data_providers || [];
 
     const result = await query<MemberProfile>(
       `INSERT INTO member_profiles (
@@ -33,9 +35,9 @@ export class MemberDatabase {
         logo_url, logo_light_url, logo_dark_url, brand_color,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
-        offerings, agents, publishers, headquarters, markets, metadata, tags,
+        offerings, agents, publishers, data_providers, headquarters, markets, metadata, tags,
         is_public, show_in_carousel, is_founding_member
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW() < '2026-04-01'::timestamptz)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW() < '2026-04-01'::timestamptz)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -55,6 +57,7 @@ export class MemberDatabase {
         input.offerings || [],
         JSON.stringify(agents),
         JSON.stringify(publishers),
+        JSON.stringify(data_providers),
         input.headquarters || null,
         input.markets || [],
         JSON.stringify(input.metadata || {}),
@@ -127,6 +130,7 @@ export class MemberDatabase {
       offerings: 'offerings',
       agents: 'agents',
       publishers: 'publishers',
+      data_providers: 'data_providers',
       headquarters: 'headquarters',
       markets: 'markets',
       metadata: 'metadata',
@@ -146,7 +150,7 @@ export class MemberDatabase {
       }
 
       setClauses.push(`${columnName} = $${paramIndex++}`);
-      if (key === 'metadata' || key === 'agents' || key === 'publishers') {
+      if (key === 'metadata' || key === 'agents' || key === 'publishers' || key === 'data_providers') {
         params.push(JSON.stringify(value));
       } else {
         params.push(value);
@@ -362,10 +366,19 @@ export class MemberDatabase {
         : row.publishers;
     }
 
+    // Parse data_providers JSONB
+    let data_providers: DataProviderConfig[] = [];
+    if (row.data_providers) {
+      data_providers = typeof row.data_providers === 'string'
+        ? JSON.parse(row.data_providers)
+        : row.data_providers;
+    }
+
     return {
       ...row,
       agents,
       publishers,
+      data_providers,
       markets: row.markets || [],
       metadata: typeof row.metadata === 'string'
         ? JSON.parse(row.metadata)
