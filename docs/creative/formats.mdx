@@ -4,9 +4,8 @@ title: Creative Formats
 
 
 Creative formats define the structural and technical requirements used to instantiate advertising creatives. A format specifies:
-- The media family under which the format falls (e.g., Display, Video, Audio, Native)
-- The creative element roles required to instantiate the format
-- Technical constraints such as duration, dimensions, file types, and limits
+- The asset types required (video, image, text, audio, etc.) via the `assets` array
+- Technical constraints for each asset (duration, dimensions, file types, limits)
 - How the resulting creative is delivered and validated
 
 Formats define requirements and constraints, not brand content or layout logic.
@@ -292,10 +291,14 @@ Formats are JSON objects with the following key fields:
 **Key fields:**
 - **format_id**: Unique identifier (may be namespaced with `domain:id`)
 - **agent_url**: The creative agent authoritative for this format
-- **type**: Category (video, display, audio, native, dooh, rich_media)
-- **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional
+- **type**: *(deprecated, optional)* High-level category hint. See note below.
+- **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional. This is the authoritative source for understanding creative requirements.
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
+
+<Note>
+**Deprecation Notice**: The `type` field is deprecated and optional. The `assets` array provides precise information about creative requirements (video, image, text, etc.) and should be used instead. Categories like "video", "display", and "native" are lossy abstractions that don't scale well to emerging formats like Performance Max (spans multiple channels), search ads (text-only with high intent), or conversational AI placements.
+</Note>
 
 ### Asset Discovery
 
@@ -520,13 +523,27 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 
 ## Format Categories
 
-Formats are classified under IAB format families:
+<Warning>
+The `type` field (FormatCategory) is deprecated. While formats may still include a `type` for backward compatibility, the authoritative source for understanding what a format requires is the `assets` array. See the [Asset Discovery](#asset-discovery) section for details on determining format requirements from assets.
+</Warning>
+
+Historically, formats were classified under IAB format families:
 - Display
 - Video
 - Audio
 - Native
 
 Additional distinctions such as DOOH, CTV, or mobile describe delivery environments, not format families.
+
+However, these categories are lossy abstractions. For example:
+- **Performance Max** spans video, display, search, and native simultaneously
+- **Search ads** (RSA) are text-only with high intent context
+- **Conversational AI** placements don't fit traditional categories
+
+The `assets` array tells you exactly what creative elements are needed:
+- Video required? Check for `asset_type: 'video'`
+- Images required? Check for `asset_type: 'image'`
+- Text only? All required assets have `asset_type: 'text'`
 
 AdCP supports formats across multiple media types:
 

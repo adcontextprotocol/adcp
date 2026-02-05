@@ -91,10 +91,10 @@ View supported creative specifications.
 ```
 
 **Key fields:**
-- `format_types` (array, optional): Filter to specific format categories
+- `format_types` (array, optional): *(uses deprecated FormatCategory)* Filter to specific format categories. Consider using `format_ids` for precise matching.
 
 **Response contains:**
-- `formats`: Array of format specifications with dimensions, requirements, and asset schemas
+- `formats`: Array of format specifications with dimensions, requirements, and asset schemas (the `type` field is deprecated and optional)
 
 ---
 

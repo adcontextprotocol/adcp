@@ -137,8 +137,8 @@ asyncio.run(discover_with_filters())
 |-----------|------|-------------|
 | `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
 | `is_fixed_price` | boolean | Filter for fixed price vs auction products |
-| `format_types` | string[] | Filter by format types (e.g., `["video", "display"]`) |
-| `format_ids` | FormatID[] | Filter by specific format IDs |
+| `format_types` | string[] | *(uses deprecated FormatCategory)* Filter by format types (e.g., `["video", "display"]`). Consider filtering by `format_ids` instead for precise matching. |
+| `format_ids` | FormatID[] | Filter by specific format IDs. **Recommended over `format_types`.** |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |

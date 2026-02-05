@@ -68,7 +68,7 @@
     },
     "type": {
       "$ref": "/schemas/enums/format-category.json",
-      "description": "Media type of this format - determines rendering method and asset requirements"
+      "description": "DEPRECATED: High-level category for this format. Use the assets array to understand creative requirements instead - it provides precise information about what asset types are needed."
     },
     "accepts_parameters": {
       "type": "array",
@@ -512,8 +512,7 @@
   },
   "required": [
     "format_id",
-    "name",
-    "type"
+    "name"
   ],
   "additionalProperties": true
 }
