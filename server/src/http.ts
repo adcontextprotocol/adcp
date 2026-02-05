@@ -2028,7 +2028,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_email && brand.created_by_email === req.user?.email;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
         }
@@ -2195,7 +2195,7 @@ export class HTTPServer {
 
         // Check ownership
         const isCreator = property.created_by_email && property.created_by_email === req.user?.email;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
         }
@@ -2229,12 +2229,8 @@ export class HTTPServer {
     // Member-contributed references to brand.json and adagents.json files
 
     // GET /api/manifest-refs/stats - Get statistics
-    this.app.get('/api/manifest-refs/stats', requireAuth, async (req, res) => {
+    this.app.get('/api/manifest-refs/stats', requireAdmin, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
-        }
         const stats = await manifestRefsDb.getManifestRefStats();
         return res.json({ success: true, stats });
       } catch (error) {
@@ -2244,13 +2240,8 @@ export class HTTPServer {
     });
 
     // GET /api/manifest-refs - List references with filters
-    this.app.get('/api/manifest-refs', requireAuth, async (req, res) => {
+    this.app.get('/api/manifest-refs', requireAdmin, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
-        }
-
         const { references, total } = await manifestRefsDb.listReferences({
           domain: req.query.domain as string,
           manifest_type: req.query.manifest_type as manifestRefsDb.ManifestType,
@@ -2343,13 +2334,8 @@ export class HTTPServer {
     });
 
     // POST /api/manifest-refs/:id/verify - Verify a reference
-    this.app.post('/api/manifest-refs/:id/verify', requireAuth, async (req, res) => {
+    this.app.post('/api/manifest-refs/:id/verify', requireAdmin, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
-        }
-
         const ref = await manifestRefsDb.getReference(req.params.id);
         if (!ref) {
           return res.status(404).json({ error: 'Reference not found' });
@@ -2391,7 +2377,10 @@ export class HTTPServer {
         }
 
         // Check if user can delete (admin or creator)
-        const isAdmin = req.user && await isWebUserAdmin(req.user.email);
+        const devUser = getDevUser(req);
+        const isDevAdmin = devUser?.isAdmin === true;
+        const isDbAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isAdmin = isDevAdmin || isDbAdmin;
         const isCreator = ref.contributed_by_email === req.user?.email;
 
         if (!isAdmin && !isCreator) {
