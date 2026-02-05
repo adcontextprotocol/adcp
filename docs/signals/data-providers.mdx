@@ -77,7 +77,6 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
       "name": "Likely EV Buyers",
       "description": "Consumers modeled as likely to purchase an electric vehicle in the next 12 months",
       "value_type": "binary",
-      "category": "purchase_intent",
       "tags": ["automotive", "green"]
     }
   ],
@@ -119,14 +118,10 @@ Each signal in the `signals` array describes a targetable segment:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `description` | string | Detailed description of methodology and coverage |
-| `category` | enum | High-level category (e.g., `purchase_intent`, `demographics`, `interests`) |
+| `description` | string | Detailed description of what this signal represents |
 | `tags` | array | Tags for grouping (lowercase, alphanumeric: `^[a-z0-9_-]+$`) |
 | `allowed_values` | array | For categorical signals: valid values |
 | `range` | object | For numeric signals: `{ min, max, unit }` |
-| `pricing_guidance` | object | CPM range guidance: `{ cpm_range: { min, max }, currency }` |
-| `coverage_notes` | string | Geographic coverage, match rates, availability |
-| `methodology_url` | string | URL to documentation on signal derivation |
 
 ## Signal Value Types
 
@@ -139,7 +134,7 @@ User either matches or doesn't. Most common type.
   "id": "likely_tesla_buyers",
   "name": "Likely Tesla Buyers",
   "value_type": "binary",
-  "category": "purchase_intent"
+  "tags": ["automotive", "purchase_intent"]
 }
 ```
 
@@ -353,21 +348,13 @@ A full signal catalog for an automotive data provider:
       "name": "Likely Tesla Buyers",
       "description": "Consumers modeled as likely to purchase a Tesla in the next 12 months based on vehicle registration, financial, and behavioral data",
       "value_type": "binary",
-      "category": "purchase_intent",
-      "tags": ["automotive", "premium"],
-      "pricing_guidance": {
-        "cpm_range": { "min": 2.50, "max": 5.00 },
-        "currency": "USD"
-      },
-      "coverage_notes": "US coverage, ~85% match rate on major DSPs",
-      "methodology_url": "https://polk.com/methodology/purchase-intent"
+      "tags": ["automotive", "premium"]
     },
     {
       "id": "vehicle_ownership",
       "name": "Current Vehicle Ownership",
       "description": "Current vehicle make owned by the consumer",
       "value_type": "categorical",
-      "category": "ownership",
       "allowed_values": ["tesla", "bmw", "mercedes", "audi", "lexus", "other_luxury", "non_luxury"],
       "tags": ["automotive"]
     },
@@ -376,7 +363,6 @@ A full signal catalog for an automotive data provider:
       "name": "Auto Purchase Propensity",
       "description": "Likelihood score of purchasing any new vehicle in the next 6 months",
       "value_type": "numeric",
-      "category": "purchase_intent",
       "range": { "min": 0, "max": 1, "unit": "score" },
       "tags": ["automotive"]
     }
@@ -441,7 +427,7 @@ The validator checks:
 
 ### 2. Provide Complete Metadata
 
-Include `description`, `coverage_notes`, and `methodology_url` so buyers understand what they're purchasing.
+Include `description` so buyers understand what each signal represents.
 
 ### 3. Use Tags for Scalability
 

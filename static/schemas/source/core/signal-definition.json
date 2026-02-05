@@ -25,10 +25,6 @@
       "$ref": "/schemas/enums/signal-value-type.json",
       "description": "The data type of this signal's values"
     },
-    "category": {
-      "$ref": "/schemas/enums/signal-category.json",
-      "description": "High-level category for this signal"
-    },
     "tags": {
       "type": "array",
       "description": "Tags for grouping and filtering signals within the catalog",
@@ -63,35 +59,6 @@
         }
       },
       "required": ["min", "max"]
-    },
-    "pricing_guidance": {
-      "type": "object",
-      "description": "Optional pricing guidance for this signal",
-      "properties": {
-        "cpm_range": {
-          "type": "object",
-          "properties": {
-            "min": { "type": "number", "minimum": 0 },
-            "max": { "type": "number", "minimum": 0 }
-          },
-          "required": ["min", "max"]
-        },
-        "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
-          "description": "ISO 4217 currency code"
-        }
-      }
-    },
-    "coverage_notes": {
-      "type": "string",
-      "description": "Notes about geographic coverage, match rates, or other availability details",
-      "maxLength": 1000
-    },
-    "methodology_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL to documentation explaining how this signal is derived"
     }
   },
   "required": [

@@ -460,10 +460,6 @@
           "$ref": "/schemas/enums/signal-value-type.json",
           "description": "Signal value types for targeting (binary, categorical, numeric)"
         },
-        "signal-category": {
-          "$ref": "/schemas/enums/signal-category.json",
-          "description": "High-level categories for classifying signals (purchase_intent, behavioral, ownership, etc.)"
-        },
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
           "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"

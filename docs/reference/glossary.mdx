@@ -224,13 +224,13 @@ The specific identifier used for signal activation, may differ from signal_id.
 Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
 
 **Signal Agent**
-An MCP server that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
+A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
 
 **Signal Catalog**
-A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, category, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
+A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
 
 **Signal Definition**
-A single signal entry in a data provider's signal catalog, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `category`, `tags`, `allowed_values`, `range`, and `pricing_guidance`.
+A single signal entry in a data provider's signal catalog, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `description`, `tags`, `allowed_values`, and `range`.
 
 **Signal Discovery**
 The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured ID lookup.
