@@ -571,13 +571,16 @@
 
       try {
         const response = await fetch(`/api/organizations/${currentOrg.id}`, {
-          method: 'PATCH',
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: newName }),
           credentials: 'include'
         });
 
-        if (!response.ok) throw new Error('Failed to rename');
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || 'Failed to rename');
+        }
 
         currentOrg.name = newName;
         renderSettings();
@@ -585,7 +588,7 @@
         closeRenameModal();
         showToast('Organization renamed successfully');
       } catch (error) {
-        showToast('Failed to rename organization', true);
+        showToast(error.message || 'Failed to rename organization', true);
       }
     }
 
